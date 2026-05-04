@@ -11,9 +11,9 @@ PACKAGE_MANAGER=${PACKAGE_MANAGER:-}
 PATH=node_modules/.bin:$PATH
 
 if [ "${TARGET}" = "--help" ] || [ "${TARGET}" = "-h" ]; then
-  echo "Usage: ${SCRIPT} <target>"
-  echo "Example: ${SCRIPT} charts/materialize-monitoring"
-  exit 1
+    echo "Usage: ${SCRIPT} <target>"
+    echo "Example: ${SCRIPT} charts/materialize-monitoring"
+    exit 1
 fi
 
 _ABS_TARGET=$(cd "${TARGET}" && pwd)
