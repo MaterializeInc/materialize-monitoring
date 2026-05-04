@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+set -e -o pipefail
+
+SCRIPT=$(basename "$0")
+
+TARGET=${1:-charts/materialize-monitoring}
+PACKAGE_MANAGER=${PACKAGE_MANAGER:-}
+
+# canonical node bin path
+PATH=node_modules/.bin:$PATH
+
+if [ "${TARGET}" = "--help" ] || [ "${TARGET}" = "-h" ]; then
+  echo "Usage: ${SCRIPT} <target>"
+  echo "Example: ${SCRIPT} charts/materialize-monitoring"
+  exit 1
+fi
+
+_ABS_TARGET=$(cd "${TARGET}" && pwd)
+
+# Set pwd to yarn project
+cd "$(dirname "$0")/../tools/helm-readme-sync"
+
+# Check for a given command existing in PATH
+_has_prog() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Ensure the chart directory exists and has the necessary files
+_check_files() {
+    if [ ! -d "${_ABS_TARGET}" ]; then
+        echo "Error: ${_ABS_TARGET} not found"
+        exit 1
+    fi
+    if [ ! -f "${_ABS_TARGET}/values.yaml" ]; then
+        echo "Error: ${_ABS_TARGET}/values.yaml not found"
+        exit 1
+    fi
+    if [ ! -f "${_ABS_TARGET}/README.md" ]; then
+        echo "Error: ${_ABS_TARGET}/README.md not found"
+        exit 1
+    fi
+}
+
+# Determine whether to use yarn or npm for installing dependencies
+_detect_package_manager() {
+    if [ -z "${PACKAGE_MANAGER:-}" ]; then
+        if _has_prog yarn; then
+            PACKAGE_MANAGER="yarn"
+        else
+            PACKAGE_MANAGER="npm"
+        fi
+    fi
+}
+
+# Ensure readme-generator is installed
+# (will install bitnami/readme-generator-for-helm if missing)
+_ensure_installed() {
+    if ! _has_prog readme-generator; then
+        _detect_package_manager
+        if [ "${PACKAGE_MANAGER}" = "yarn" ]; then
+            yarn install
+        else
+            npm install
+        fi
+    fi
+}
+
+# Do generation and syncing
+_run_sync() {
+    readme-generator --chart "${_ABS_TARGET}" --output "${_ABS_TARGET}/README.md"
+}
+
+# Run sync
+_main() {
+    _check_files
+    _ensure_installed
+    _run_sync
+}
+
+_main "$@"

@@ -1,0 +1,105 @@
+{
+  # yamllint configuration
+  # See .yamllint.yaml for general annotations
+  # This contains specific rules for KYAML
+  # See https://kyaml.com/ for syntax details
+  extends: "default",
+
+  yaml-files: [
+    "*.yaml",
+    "*.kyaml",
+  ],
+
+  rules: {
+    # KYAML does not support anchors at all (but there's no forbid option)
+    anchors: {
+      forbid-undeclared-aliases: true,
+      forbid-duplicated-anchors: true,
+      forbid-unused-anchors: true,
+    },
+    # Braces are required for KYAML
+    braces: {
+      # No required option
+      forbid: false,
+      max-spaces-inside: 0,
+      max-spaces-inside-empty: 0,
+    },
+    # Brackets are required for KYAML
+    brackets: {
+      # No required option
+      forbid: false,
+      max-spaces-inside: 0,
+      max-spaces-inside-empty: 0,
+    },
+    # Document end is not recommended (default is to not check)
+    document-end: {
+      present: false,
+      level: "warning",
+    },
+    # Document start is not recommended (can cause an empty doc[0])
+    document-start: {
+      present: false,
+      level: "warning",
+    },
+    # Empty lines are encouraged in values.yaml for readability between sections
+    empty-lines: "disable",
+    # Stricter checks than default for accidental colons/commas
+    empty-values: {
+      forbid-in-block-mappings: true,
+      forbid-in-flow-mappings: true,
+      forbid-in-block-sequences: true,
+    },
+    # Stricter than default for floats
+    float-values: {
+      # YAGNI
+      forbid-inf: true,
+      forbid-nan: true,
+      # usually looks like a typo
+      forbid-scientific-notation: true,
+      # can be hard to discern
+      require-numeral-before-decimal: true,
+    },
+    # We support both main styles of indented lists
+    # But expect a consistent 2 spaces
+    indentation: {
+      spaces: 2,
+      # Prefer indenting sequences
+      # Some frameworks do not support indentation (like python tools)
+      indent-sequences: "consistent",
+      # check-multi-line-strings behavior is whacky
+      check-multi-line-strings: false,
+    },
+    # Let's be generous with line length (default is 80)
+    line-length: {
+      max: 120,
+      allow-non-breakable-words: true,
+      allow-non-breakable-inline-mappings: true,
+      level: "warning",
+    },
+    new-line-at-end-of-file: "enable",
+    # Strict octals for best compat between YAML 1.1 and 1.2
+    octal-values: {
+      forbid-implicit-octal: true,
+      forbid-explicit-octal: true,
+    },
+    # Bring opinions about quotes where possible
+    quoted-strings: {
+      quote-type: "double",
+      # KYAML requires quoting strings
+      required: true,
+      # Double quotes need to be escaped with backslash
+      allow-quoted-quotes: false,
+      # Keys aren't required to be quoted
+      # (we can't check for extra-required though)
+      check-keys: false,
+    },
+    # Require on/off to be quoted
+    truthy: {
+      allowed-values: [
+        "true",
+        "false"
+      ],
+      check-keys: false,
+    },
+  },
+}

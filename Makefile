@@ -7,6 +7,8 @@
 ALL_BINARIES = mz-monitoring-build mz-monitoring-check
 BUILD_BIN_BASENAME = $(notdir $@)
 
+CHARTS = materialize-monitoring
+
 SOURCES_mz-monitoring-build = $(shell find crates/mz-monitoring-build -type f)
 SOURCES_mz-monitoring-check = $(shell find crates/mz-monitoring-check -type f)
 
@@ -19,3 +21,7 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 
 binaries: $(addprefix target/debug/,$(ALL_BINARIES))
 .PHONY: binaries
+
+charts/materialize-monitoring/README.md: charts/materialize-monitoring/values.yaml
+	bin/helm-readme-sync charts/materialize-monitoring
+	touch "$@"
