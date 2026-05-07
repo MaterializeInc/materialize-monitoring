@@ -1,0 +1,21 @@
+[project]
+name = "py-mzmon-lib"
+# We are more stable, but not published
+version = "0.1.0"
+description = "Internal library for shared definitions (Python)"
+readme = "README.md"
+requires-python = ">=3.12"
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Private :: Do Not Upload",
+    "Topic :: System :: Monitoring",
+]
+
+dependencies = [
+    # WARNING: package managers may see "later" versions that are actually earlier releases
+    # due to some epoch issues with grafana-foundation-sdk.
+    "grafana-foundation-sdk==0.0.12",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+]

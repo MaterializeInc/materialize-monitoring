@@ -31,8 +31,8 @@ values.*.local.yaml
 secrets.dec.*
 
 # ---- Jsonnet ----
-# jsonnet-bundler vendored libs (uncomment if you don't vendor)
-# vendor/
+# jsonnet-bundler vendored libs (comment when we start vendoring)
+vendor/
 # Compiled output
 *.jsonnet.json
 dashboards_out/
@@ -68,3 +68,63 @@ tmp/
 
 # ---- NodeJS tools ----
 node_modules/
+
+# ---- Python ----
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+# C extensions
+*.so
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dists/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+# PyInstaller
+*.manifest
+*.spec
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+# Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+# mypy / type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+# Ruff
+.ruff_cache/
+# Jupyter
+.ipynb_checkpoints/

@@ -1,0 +1,44 @@
+[project]
+name = "materialize-monitoring"
+# unversioned (do not upload)
+version = "0.0.0"
+description = "Infrastructure for Monitoring Materialize"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "BUSL-1.1"
+
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Private :: Do Not Upload",
+    "Topic :: System :: Monitoring",
+]
+
+dependencies = [
+    "py-mzmon-lib",
+    "grafana-dashboards",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.409",
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+]
+
+[tool.uv]
+package = false
+default-groups = "all"
+
+[tool.uv.sources]
+grafana-dashboards = { workspace = true }
+py-mzmon-lib = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "packages/py-mzmon-lib",  # internal library for shared defs (python)
+    "packages/grafana-dashboards",  # grafana dashboards
+]
+
+[build-system]
+requires = ["uv_build>=0.11.11,<0.12"]
+build-backend = "uv_build"
