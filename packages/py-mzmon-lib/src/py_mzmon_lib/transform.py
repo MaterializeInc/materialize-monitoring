@@ -27,12 +27,18 @@ class CompatTransformationKind(dashboardv2.TransformationKind):
         self.spec = spec if spec is not None else dashboardv2.DataTransformerConfig()
 
     def to_json(self) -> dict[str, object]:
+        """Dump to a json-serializable dict.
+
+        This adds a missing property.
+        """
         payload: dict[str, object] = super().to_json()
+        assert "group" not in payload, "fixer not needed"
         payload["group"] = self.group
         return payload
 
     @classmethod
     def from_json(cls, data: dict[str, typing.Any]) -> typing.Self:
+        """Load from a dict."""
         args: dict[str, typing.Any] = {}
 
         if "kind" in data:

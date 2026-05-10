@@ -15,7 +15,7 @@ from .models_v2 import dashboardv2
 T = typing.TypeVar("T")
 
 
-def _unique_list(items: Sequence[T]) -> list[T]:
+def _unique_list[T](items: Sequence[T]) -> list[T]:
     """Return a list of unique items."""
     return list(set(items))
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import textwrap
+
 from grafana_foundation_sdk.builders import common as common_builder
 from grafana_foundation_sdk.builders import gauge, stat
 from grafana_foundation_sdk.models import common
@@ -26,7 +28,17 @@ class OverviewSummary:
         """Get a panel showing environment status."""
         panel_id = "is-healthy"
         query = query_group(
-            promql_expr='count(v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"} == 1) / count(v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}) * 100'
+            promql_query(
+                textwrap.dedent(
+                    """
+                    count(
+                        v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"} == 1
+                    ) / count(
+                        v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}
+                    ) * 100
+                    """
+                ),
+            ),
         )
 
         self.dashboard.add_panel(
@@ -49,7 +61,17 @@ class OverviewSummary:
         """Get a panel showing availability over the current time range as a percentage."""
         panel_id = "availability-percent"
         query = query_group(
-            promql_expr='avg by (namespace) (avg_over_time(v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}[$__range]) * 100)'
+            promql_query(
+                textwrap.dedent(
+                    """
+                    avg by (namespace) (
+                        avg_over_time(
+                            v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}[$__range]
+                        ) * 100
+                    )
+                    """
+                ),
+            ),
         )
 
         self.dashboard.add_panel(
@@ -85,7 +107,14 @@ class OverviewSummary:
         panel_id = "last-restart"
         query = query_group(
             promql_query(
-                'time() - topk(1, container_start_time_seconds{namespace="$mzNamespace", container!="", container!="POD", container!="new-promsql-exporter"})'
+                textwrap.dedent(
+                    """
+                    time()
+                    - topk(1,
+                        container_start_time_seconds{$containerFilter, container!="new-promsql-exporter"}
+                    )
+                    """
+                )
             )
             .legend_format("{{pod}}\n{{container}}")
             .instant()
@@ -116,7 +145,17 @@ class OverviewSummary:
         panel_id = "cpu-usage-current"
         query = query_group(
             promql_query(
-                'sum by (namespace, container) (rate(container_cpu_usage_seconds_total{namespace="$mzNamespace", container!="POD", container!=""}[5m])) / sum by (namespace, container) (kube_pod_container_resource_limits{resource="cpu", namespace="$mzNamespace"})'
+                textwrap.dedent(
+                    """
+                    sum by (namespace, container) (
+                        rate(
+                            container_cpu_usage_seconds_total{$containerFilter}[5m]
+                        )
+                    ) / sum by (namespace, container) (
+                        kube_pod_container_resource_limits{resource="cpu", namespace="$mzNamespace"}
+                    )
+                    """
+                )
             )
             .legend_format("{{container}}")
             .instant()
@@ -143,7 +182,19 @@ class OverviewSummary:
         panel_id = "memory-usage-current"
         query = query_group(
             promql_query(
-                'sum by (namespace, container) (avg by (namespace, pod, container) (container_memory_working_set_bytes{namespace="$mzNamespace", container!="POD", container!=""})) / sum by (namespace, container) (avg by (namespace, pod, container) (container_spec_memory_limit_bytes{namespace="$mzNamespace", container!="POD", container!=""}))'
+                textwrap.dedent(
+                    """
+                    sum by (namespace, container) (
+                        avg by (namespace, pod, container) (
+                            container_memory_working_set_bytes{$containerFilter, container!="new-promsql-exporter"}
+                        )
+                    ) / sum by (namespace, container) (
+                        avg by (namespace, pod, container) (
+                            container_spec_memory_limit_bytes{$containerFilter, container!="new-promsql-exporter"}
+                        )
+                    )
+                    """
+                ),
             )
             .legend_format("{{container}}")
             .instant()
@@ -188,7 +239,13 @@ class OverviewSummary:
         query = (
             query_group(
                 promql_query(
-                    'group by (mz_version) (v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"})'
+                    textwrap.dedent(
+                        """
+                        group by (mz_version) (
+                            v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}
+                        )
+                        """
+                    ),
                 )
                 .legend_format("{{mz_version}}")
                 .instant()
@@ -253,7 +310,14 @@ class OverviewSummary:
         panel_id = "resource-cpu-total"
         query = query_group(
             promql_query(
-                'sum by (container) (container_spec_cpu_quota{namespace="$mzNamespace"} / container_spec_cpu_period{namespace="$mzNamespace", container!="POD", container!=""})'
+                textwrap.dedent(
+                    """
+                    sum by (container) (
+                        container_spec_cpu_quota{namespace="$mzNamespace"}
+                        / container_spec_cpu_period{namespace="$mzNamespace", container!="POD", container!=""}
+                    )
+                    """
+                ),
             )
             .legend_format("CPUs ({{container}})")
             .instant()
@@ -287,7 +351,13 @@ class OverviewSummary:
         query = query_group(
             promql_query(
                 # 'sum by (container) (mz_memory_limiter_memory_limit_bytes{materialize_cloud_organization_id="$environmentId"})'
-                'sum by (container) (container_spec_memory_limit_bytes{namespace="$mzNamespace", container!="", container!="POD", container!="new-promsql-exporter"})'
+                textwrap.dedent(
+                    """
+                    sum by (container) (
+                        container_spec_memory_limit_bytes{$containerFilter, container!="new-promsql-exporter"}
+                    )
+                    """
+                ),
             )
             .legend_format("Memory ({{container}})")
             .instant(),

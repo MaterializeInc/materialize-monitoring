@@ -25,6 +25,11 @@ class EnvironmentOverviewDashboard(MzDashboard):
         """Add variables to the dashboard."""
         self.add_variable(variables.environment_namespace())
         self.add_variable(variables.environment_id_variable())
+        self.add_variable(
+            variables.container_filter_variable(
+                'namespace="$mzNamespace"',
+            )
+        )
 
     def build_summary_tab(self) -> dashboardv2_builders.Tab:
         """Get a summary tab."""
@@ -38,4 +43,4 @@ class EnvironmentOverviewDashboard(MzDashboard):
 if __name__ == "__main__":
     from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
-    print(JSONEncoder(indent=2).encode(EnvironmentOverviewDashboard()))
+    print(JSONEncoder(indent=2).encode(EnvironmentOverviewDashboard()))  # noqa: T201

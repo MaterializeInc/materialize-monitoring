@@ -14,34 +14,44 @@ class VariableNames:
 
     METRIC_DS: Final[str] = METRICS_DATASOURCE_VAR_NAME  # metricsDatasource
     ENVIRONMENT_ID: Final[str] = "environmentId"
+    ENVIRONMENT_ID_LIST: Final[str] = "environmentIdList"
     NAMESPACE: Final[str] = "namespace"
+    NAMESPACE_LIST: Final[str] = "namespaceList"
     MZ_NAMESPACE: Final[str] = "mzNamespace"
+    MZ_NAMESPACE_LIST: Final[str] = "mzNamespaceList"
+    CONTAINER_FILTER: Final[str] = "containerFilter"
 
 
-def environment_namespace() -> dashboardv2_builders.QueryVariable:
+def environment_namespace(*, multi: bool = False) -> dashboardv2_builders.QueryVariable:
     """Get a variable for where materialize environments live."""
+    name = VariableNames.MZ_NAMESPACE_LIST if multi else VariableNames.MZ_NAMESPACE
     return (
-        dashboardv2_builders.QueryVariable(VariableNames.MZ_NAMESPACE)
+        dashboardv2_builders.QueryVariable(name)
         .label("Materialize Namespace")
         .description("The current materialize namespace where environments live")
         .allow_custom_value(True)
+        .multi(multi)
         .definition("label_values(v2_mz_can_connect, namespace)")
         .query(promql_query("label_values(v2_mz_can_connect, namespace)"))
     )
 
 
-def environment_id_variable() -> dashboardv2_builders.QueryVariable:
+def environment_id_variable(
+    *, multi: bool = False
+) -> dashboardv2_builders.QueryVariable:
     """Get a variable for environment_id.
 
     FIXME: This does not support augmenting with additional metadata
     (YET).
     FIXME: Use a _info metric once we have it.
     """
+    name = VariableNames.ENVIRONMENT_ID_LIST if multi else VariableNames.ENVIRONMENT_ID
     return (
-        dashboardv2_builders.QueryVariable(VariableNames.ENVIRONMENT_ID)
+        dashboardv2_builders.QueryVariable(name)
         .label("Environment")
         .description("The current environment to view")
         .allow_custom_value(True)
+        .multi(multi)
         .definition('query_result(v2_mz_can_connect{namespace="$mzNamespace"})')
         .query(
             promql_query('query_result(v2_mz_can_connect{namespace="$mzNamespace"})')
@@ -50,6 +60,24 @@ def environment_id_variable() -> dashboardv2_builders.QueryVariable:
         .regex(
             r".*materialize_cloud_organization_id=\"(?<value>[^\"]+)\",.*materialize_cloud_organization_name=\"(?<text>[^\"]+)\",.*",
         )
+    )
+
+
+def container_filter_variable(*filters: str) -> dashboardv2_builders.ConstantVariable:
+    """Create a hidden variable for fixing cadvisor container queries.
+
+    All queries generally should have a `container!="",container!="POD"` filter.
+    """
+    filter_list = [*filters, 'container!=""', 'container!="POD"']
+    return (
+        dashboardv2_builders.ConstantVariable(VariableNames.CONTAINER_FILTER)
+        .label("Container Filter")
+        .description(
+            "A filter to apply to cAdvisor queries to remove irrelevant series"
+        )
+        .query(",".join(filter_list))
+        .skip_url_sync(True)
+        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
 

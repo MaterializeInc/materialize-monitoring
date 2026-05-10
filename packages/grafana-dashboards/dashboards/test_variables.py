@@ -44,7 +44,7 @@ def test_variable_naming(variable_name: str):
 
 def test_environment_variable():
     """Test that the environment variable is configured appropriately."""
-    var = variables.environment_variable().build()
+    var = variables.environment_id_variable().build()
     assert "environment" in var.spec.name, var.spec.name
     assert not var.spec.name.endswith("s"), "must be singular"
     assert var.spec.allow_custom_value is True, "must allow break glass values"
