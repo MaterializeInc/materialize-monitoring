@@ -5,8 +5,13 @@ from __future__ import annotations
 import textwrap
 
 from grafana_foundation_sdk.builders import common as common_builder
-from grafana_foundation_sdk.builders import gauge, stat
-from grafana_foundation_sdk.models import common
+from grafana_foundation_sdk.builders import (
+    gauge,
+    stat,
+    piechart as piechart_builder,
+    timeseries,
+)
+from grafana_foundation_sdk.models import common, piechart
 from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
@@ -16,6 +21,17 @@ from py_mzmon_lib.query import promql_query, query_group
 from dashboards import threshold
 
 CADVISOR_MISSING = "No metrics: cadvisor/node-exporter is required"
+KSM_MISSING = "No metrics: kube-state-metrics is required"
+
+PIE_LEGEND_BUILDER = (
+    piechart_builder.PieChartLegendOptions()
+    .as_table(True)
+    .display_mode(common.LegendDisplayMode.TABLE)
+    .placement(common.LegendPlacement.RIGHT)
+    .is_visible(True)
+    .show_legend(True)
+    .values([piechart.PieChartLegendValues.VALUE])
+)
 
 
 class KubeResourcesMixin:
@@ -119,6 +135,164 @@ class KubeResourcesTab(KubeResourcesMixin):
     def __init__(self, dashboard: MzDashboard) -> None:
         self.dashboard = dashboard
 
+    def _ready_pods_panel(self):
+        """Show a breakdown of Pods by readiness phase.
+
+        We use a donut pie chart to easily denote status.
+        """
+        panel_id = "resource-pod-status"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max by (phase, namespace) (
+                        sum by (phase, namespace, instance) (
+                            kube_pod_status_phase{namespace=~"$mzNamespaceList"}
+                        )
+                    )
+                    """
+                )
+            )
+            .legend_format("{{phase}}")
+            .instant(),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod Readiness")
+            .description("Breakdown of Pods by readiness phase.")
+            .data(query)
+            .visualization(
+                piechart_builder.Visualization()
+                .pie_type(piechart.PieChartType.DONUT)
+                .legend(PIE_LEGEND_BUILDER)
+                .display_labels(
+                    [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
+                )
+                .no_value(KSM_MISSING)
+            ),
+        )
+        return panel_id
+
+    def _ready_statefulsets_panel(self):
+        """Show a breakdown of StatefulSets by readiness."""
+        panel_id = "resource-statefulset-status"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max by (namespace) (
+                        sum by (namespace, instance) (
+                            kube_statefulset_status_replicas_ready{namespace=~"$mzNamespaceList"}
+                        )
+                    )
+                    """
+                )
+            )
+            .legend_format("Ready")
+            .instant(),
+            # TODO: statefulset unready
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("StatefulSet Readiness")
+            .description("Breakdown of StatefulSets by readiness phase.")
+            .data(query)
+            .visualization(
+                piechart_builder.Visualization()
+                .pie_type(piechart.PieChartType.DONUT)
+                .legend(PIE_LEGEND_BUILDER)
+                .display_labels(
+                    [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
+                )
+                .no_value(KSM_MISSING)
+            ),
+        )
+        return panel_id
+
+    def _ready_deployments_panel(self):
+        """Show a breakdown of Deployments by readiness."""
+        panel_id = "resource-deployment-status"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max by (namespace) (
+                        sum by (namespace, instance) (
+                            kube_deployment_status_replicas_ready{namespace=~"$mzNamespaceList"}
+                        )
+                    )
+                    """
+                )
+            )
+            .legend_format("Ready")
+            .instant(),
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max by (namespace) (
+                        sum by (namespace, instance) (
+                            kube_deployment_status_replicas_unavailable{namespace=~"$mzNamespaceList"}
+                        )
+                    )
+                    """
+                )
+            )
+            .legend_format("Unavailable")
+            .instant(),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Deployment Readiness")
+            .description("Breakdown of Deployments by readiness phase.")
+            .data(query)
+            .visualization(
+                piechart_builder.Visualization()
+                .pie_type(piechart.PieChartType.DONUT)
+                .legend(PIE_LEGEND_BUILDER)
+                .display_labels(
+                    [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
+                )
+                .no_value(KSM_MISSING)
+            ),
+        )
+        return panel_id
+
+    def _pod_cpu_percent_panel(self):
+        """Show CPU usage (used / limit) for pods as a timeseries."""
+        panel_id = "pod-cpu-percent"
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod CPU Usage")
+            .visualization(
+                timeseries.Visualization().orientation(common.VizOrientation.AUTO)
+                # TODO: implement
+            ),
+        )
+        return panel_id
+
+    def _pod_memory_percent_panel(self):
+        """Show memory usage (used / limit) for pods as a timeseries."""
+        panel_id = "pod-memory-percent"
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod Memory Usage")
+            .visualization(
+                timeseries.Visualization().orientation(common.VizOrientation.AUTO)
+                # TODO: implement
+            ),
+        )
+        return panel_id
+
     def build_k8s_resources_summary_row(self) -> dashboardv2_builders.Row:
         """Get a row showing a summary of Kubernetes resources."""
         return (
@@ -133,13 +307,44 @@ class KubeResourcesTab(KubeResourcesMixin):
             )
         )
 
+    def build_k8s_readiness_row(self) -> dashboardv2_builders.Row:
+        """Get a row showing Kubernetes resource readiness."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Workload Readiness")
+            .hide_header(True)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .row_height_mode("short")
+                .max_column_count(5)  # leave room for Services, etc
+                .with_item(self._ready_pods_panel())
+                .with_item(self._ready_statefulsets_panel())
+                .with_item(self._ready_deployments_panel())
+            )
+        )
+
+    def build_pod_metrics_row(self) -> dashboardv2_builders.Row:
+        """Get a row showing drilldowns into Kubernetes resource metrics."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Pod Metrics")
+            .hide_header(False)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .with_item(self._pod_cpu_percent_panel())
+                .with_item(self._pod_memory_percent_panel())
+            )
+        )
+
     def build(self) -> dashboardv2_builders.Tab:
         """Generate a summary tab."""
         return (
             dashboardv2_builders.Tab()
             .title("Kubernetes Workloads")
             .layout(
-                dashboardv2_builders.Rows().row(self.build_k8s_resources_summary_row())
-                # .row(self.build_info_row())
+                dashboardv2_builders.Rows()
+                .row(self.build_k8s_resources_summary_row())
+                .row(self.build_k8s_readiness_row())
+                .row(self.build_pod_metrics_row())
             )
         )
