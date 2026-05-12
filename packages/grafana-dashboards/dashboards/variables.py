@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Final
 
 from grafana_foundation_sdk.cog import builder as cogbuilder
-
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import METRICS_DATASOURCE_VAR_NAME, promql_query

@@ -15,7 +15,7 @@ from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import threshold
 
-from .k8s_resources import KubeResourcesMixin, CADVISOR_MISSING
+from .k8s_resources import CADVISOR_MISSING, KubeResourcesMixin
 
 
 class OverviewSummary(KubeResourcesMixin):

@@ -7,12 +7,12 @@ from py_mzmon_lib.dashboard import MzDashboard
 
 from dashboards import variables
 
-from .summary import OverviewSummary
-from .k8s_resources import KubeResourcesTab
 from .cluster_objects import ClusterObjectsTab
 from .compute_objects import ComputeObjectsTab
-from .storage_objects import StorageObjectsTab
 from .dataflows import DataflowsTab
+from .k8s_resources import KubeResourcesTab
+from .storage_objects import StorageObjectsTab
+from .summary import OverviewSummary
 
 
 class EnvironmentOverviewDashboard(MzDashboard):

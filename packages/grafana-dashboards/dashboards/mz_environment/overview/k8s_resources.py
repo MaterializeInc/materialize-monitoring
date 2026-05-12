@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import textwrap
 
-from grafana_foundation_sdk.builders import common as common_builder
 from grafana_foundation_sdk.builders import (
-    gauge,
-    stat,
     piechart as piechart_builder,
+)
+from grafana_foundation_sdk.builders import (
+    stat,
     timeseries,
 )
 from grafana_foundation_sdk.models import common, piechart
-from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
-from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
-
-from dashboards import threshold
 
 CADVISOR_MISSING = "No metrics: cadvisor/node-exporter is required"
 KSM_MISSING = "No metrics: kube-state-metrics is required"
@@ -46,16 +42,16 @@ class KubeResourcesMixin:
         We show a stat for total cores available.
         """
         panel_id = f"{self.panel_id_prefix}-cpu-total"
-        filter = "$containerFilter"
+        metric_filter = "$containerFilter"
         if not include_monitoring:
-            filter += ', container!="new-promsql-exporter"'
+            metric_filter += ', container!="new-promsql-exporter"'
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     f"""
                     sum by (container) (
-                        container_spec_cpu_quota{{ {filter} }}
-                        / container_spec_cpu_period{{ {filter} }}
+                        container_spec_cpu_quota{{ {metric_filter} }}
+                        / container_spec_cpu_period{{ {metric_filter} }}
                     )
                     """
                 ),
@@ -89,16 +85,16 @@ class KubeResourcesMixin:
         FIXME: we don't have a swap totals available...
         """
         panel_id = f"{self.panel_id_prefix}-memory-total"
-        filter = "$containerFilter"
+        metric_filter = "$containerFilter"
         if not include_monitoring:
-            filter += ', container!="new-promsql-exporter"'
+            metric_filter += ', container!="new-promsql-exporter"'
         query = query_group(
             promql_query(
                 # 'sum by (container) (mz_memory_limiter_memory_limit_bytes{materialize_cloud_organization_id="$environmentId"})'
                 textwrap.dedent(
                     f"""
                     sum by (container) (
-                        container_spec_memory_limit_bytes{{ {filter} }}
+                        container_spec_memory_limit_bytes{{ {metric_filter} }}
                     )
                     """
                 ),
@@ -264,31 +260,107 @@ class KubeResourcesTab(KubeResourcesMixin):
         return panel_id
 
     def _pod_cpu_percent_panel(self):
-        """Show CPU usage (used / limit) for pods as a timeseries."""
+        """Show CPU usage (used / limit) for pods as a timeseries.
+
+        Split into two queries so the cluster/replica selectors still filter
+        cluster-replica pods, while non-cluster pods (envd, balancer, etc.)
+        stay visible regardless of the cluster/replica selection.
+        """
         panel_id = "pod-cpu-percent"
+        cluster_pod_re = (
+            r".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
+        )
+        noncluster_pod_re = r".*-cluster-.*-replica-.*"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod, container) (
+                        rate(
+                            container_cpu_usage_seconds_total{{$containerFilter, pod=~"{cluster_pod_re}"}}[5m]
+                        )
+                    ) / sum by (namespace, pod, container) (
+                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod=~"{cluster_pod_re}"}}
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} / {{container}}"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod, container) (
+                        rate(
+                            container_cpu_usage_seconds_total{{$containerFilter, pod!~"{noncluster_pod_re}"}}[5m]
+                        )
+                    ) / sum by (namespace, pod, container) (
+                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod!~"{noncluster_pod_re}"}}
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} / {{container}}"),
+        )
 
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod CPU Usage")
+            .description("CPU usage per pod as percent of limit (5 min rate).")
+            .data(query)
             .visualization(
-                timeseries.Visualization().orientation(common.VizOrientation.AUTO)
-                # TODO: implement
+                timeseries.Visualization()
+                .unit("percentunit")
+                .no_value(CADVISOR_MISSING)
             ),
         )
         return panel_id
 
     def _pod_memory_percent_panel(self):
-        """Show memory usage (used / limit) for pods as a timeseries."""
+        """Show memory usage (used / limit) for pods as a timeseries.
+
+        Split into two queries so the cluster/replica selectors still filter
+        cluster-replica pods, while non-cluster pods (envd, balancer, etc.)
+        stay visible regardless of the cluster/replica selection.
+        """
         panel_id = "pod-memory-percent"
+        cluster_pod_re = (
+            r".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
+        )
+        noncluster_pod_re = r".*-cluster-.*-replica-.*"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    avg by (namespace, pod, container) (
+                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{cluster_pod_re}"}}
+                    ) / avg by (namespace, pod, container) (
+                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{cluster_pod_re}"}}
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} / {{container}}"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    avg by (namespace, pod, container) (
+                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{noncluster_pod_re}"}}
+                    ) / avg by (namespace, pod, container) (
+                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{noncluster_pod_re}"}}
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} / {{container}}"),
+        )
 
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Memory Usage")
+            .description("Memory usage per pod as percent of limit (working set).")
+            .data(query)
             .visualization(
-                timeseries.Visualization().orientation(common.VizOrientation.AUTO)
-                # TODO: implement
+                timeseries.Visualization()
+                .unit("percentunit")
+                .no_value(CADVISOR_MISSING)
             ),
         )
         return panel_id
