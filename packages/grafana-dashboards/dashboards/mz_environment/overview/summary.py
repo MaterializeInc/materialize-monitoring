@@ -15,11 +15,13 @@ from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import threshold
 
-CADVISOR_MISSING = "No metrics: cadvisor/node-exporter is required"
+from .k8s_resources import KubeResourcesMixin, CADVISOR_MISSING
 
 
-class OverviewSummary:
+class OverviewSummary(KubeResourcesMixin):
     """Summary tab on Overview Dashboard."""
+
+    panel_id_prefix = "summary"
 
     def __init__(self, dashboard: MzDashboard) -> None:
         self.dashboard = dashboard
@@ -116,7 +118,7 @@ class OverviewSummary:
                     """
                 )
             )
-            .legend_format("{{pod}}\n{{container}}")
+            .legend_format("{{pod}}")
             .instant()
         )
 
@@ -302,86 +304,6 @@ class OverviewSummary:
         )
         return panel_id
 
-    def _cpu_total_panel(self):
-        """Get a panel showing a holistic summary of compute (CPUs).
-
-        We show a stat for total cores available.
-        """
-        panel_id = "resource-cpu-total"
-        query = query_group(
-            promql_query(
-                textwrap.dedent(
-                    """
-                    sum by (container) (
-                        container_spec_cpu_quota{namespace="$mzNamespace"}
-                        / container_spec_cpu_period{namespace="$mzNamespace", container!="POD", container!=""}
-                    )
-                    """
-                ),
-            )
-            .legend_format("CPUs ({{container}})")
-            .instant()
-        )
-
-        self.dashboard.add_panel(
-            panel_id,
-            dashboardv2_builders.Panel()
-            .title("Total CPU Cores")
-            .description("Total CPU cores available (excluding monitoring).")
-            .data(query)
-            .visualization(
-                stat.Visualization()
-                .color_mode(common.BigValueColorMode.NONE)
-                .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .graph_mode(common.BigValueGraphMode.NONE)
-                .unit("cores")
-                .no_value(CADVISOR_MISSING)
-            ),
-        )
-        return panel_id
-
-    def _memory_totals_panel(self):
-        """Get a panel showing a holistic summary of memory.
-
-        We show a stat for total memory available.
-
-        FIXME: we don't have a swap totals available...
-        """
-        panel_id = "resource-memory-total"
-        query = query_group(
-            promql_query(
-                # 'sum by (container) (mz_memory_limiter_memory_limit_bytes{materialize_cloud_organization_id="$environmentId"})'
-                textwrap.dedent(
-                    """
-                    sum by (container) (
-                        container_spec_memory_limit_bytes{$containerFilter, container!="new-promsql-exporter"}
-                    )
-                    """
-                ),
-            )
-            .legend_format("Memory ({{container}})")
-            .instant(),
-        )
-
-        self.dashboard.add_panel(
-            panel_id,
-            dashboardv2_builders.Panel()
-            .title("Total Memory")
-            .description(
-                "Total memory available in the environment (excluding monitoring)."
-            )
-            .data(query)
-            .visualization(
-                stat.Visualization()
-                .color_mode(common.BigValueColorMode.NONE)
-                .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .graph_mode(common.BigValueGraphMode.NONE)
-                .unit("bytes")
-                .no_value(CADVISOR_MISSING)
-            ),
-        )
-        return panel_id
-
     def build_info_row(self) -> dashboardv2_builders.Row:
         """Get a row showing environment info."""
         return (
@@ -392,8 +314,8 @@ class OverviewSummary:
                 dashboardv2_builders.AutoGrid()
                 .row_height_mode("short")
                 .with_item(self._materialize_version_panel())
-                .with_item(self._cpu_total_panel())
-                .with_item(self._memory_totals_panel())
+                .with_item(self.cpu_total_panel())
+                .with_item(self.memory_totals_panel())
             )
         )
 

@@ -2,6 +2,11 @@
 
 This is meant to prefer color-blind-friendly and print-friendly
 (black/white) as much as possible, while not bringing too much toil.
+
+These palettes generally come from the works of Paul Tol.
+
+See Also:
+    <https://sronpersonalpages.nl/~pault/>
 """
 
 from __future__ import annotations
@@ -9,9 +14,10 @@ from __future__ import annotations
 import enum
 
 # 12-step (11+1) sequence from "good" data to "bad"
-# good for color-blind, but not great for print
+# good for color-blind, but slightly less great for black and white printing
 # fairly intuitive for health meters and thresholds
 # safe to interpolate
+# https://sronpersonalpages.nl/~pault/#fig:scheme_incandescent
 INCANDESC_SEQUENTIAL = [
     # pale cyan
     "#CEFFFF",
