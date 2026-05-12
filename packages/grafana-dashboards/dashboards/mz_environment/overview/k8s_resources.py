@@ -5,6 +5,9 @@ from __future__ import annotations
 import textwrap
 
 from grafana_foundation_sdk.builders import (
+    common as common_builder,
+)
+from grafana_foundation_sdk.builders import (
     piechart as piechart_builder,
 )
 from grafana_foundation_sdk.builders import (
@@ -19,6 +22,14 @@ from py_mzmon_lib.query import promql_query, query_group
 CADVISOR_MISSING = "No metrics: cadvisor/node-exporter is required"
 KSM_MISSING = "No metrics: kube-state-metrics is required"
 
+# Pod-name regex matchers for cluster-replica pods vs everything else.
+# Used as PromQL label values inside pod=~"…" / pod!~"…" matchers.
+# `${var:regex}` expands multi-select dashboard variables into a proper
+# `(val1|val2|…)` alternation (bare `$var` does not, when embedded in a
+# wider regex string — see Grafana variable interpolation docs).
+CLUSTER_POD_RE = ".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
+NONCLUSTER_POD_RE = ".*-cluster-.*-replica-.*"
+
 PIE_LEGEND_BUILDER = (
     piechart_builder.PieChartLegendOptions()
     .as_table(True)
@@ -27,6 +38,16 @@ PIE_LEGEND_BUILDER = (
     .is_visible(True)
     .show_legend(True)
     .values([piechart.PieChartLegendValues.VALUE])
+)
+
+# Shared legend for timeseries panels in this tab: render as a table beneath
+# the chart, with per-series Max / Avg (mean) / Last (lastNotNull) columns.
+TS_LEGEND_BUILDER = (
+    common_builder.VizLegendOptions()
+    .display_mode(common.LegendDisplayMode.TABLE)
+    .placement(common.LegendPlacement.BOTTOM)
+    .show_legend(True)
+    .calcs(["max", "mean", "lastNotNull"])
 )
 
 
@@ -267,20 +288,16 @@ class KubeResourcesTab(KubeResourcesMixin):
         stay visible regardless of the cluster/replica selection.
         """
         panel_id = "pod-cpu-percent"
-        cluster_pod_re = (
-            r".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
-        )
-        noncluster_pod_re = r".*-cluster-.*-replica-.*"
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     f"""
                     sum by (namespace, pod, container) (
                         rate(
-                            container_cpu_usage_seconds_total{{$containerFilter, pod=~"{cluster_pod_re}"}}[5m]
+                            container_cpu_usage_seconds_total{{$containerFilter, pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
                         )
                     ) / sum by (namespace, pod, container) (
-                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod=~"{cluster_pod_re}"}}
+                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}
                     )
                     """
                 )
@@ -290,10 +307,10 @@ class KubeResourcesTab(KubeResourcesMixin):
                     f"""
                     sum by (namespace, pod, container) (
                         rate(
-                            container_cpu_usage_seconds_total{{$containerFilter, pod!~"{noncluster_pod_re}"}}[5m]
+                            container_cpu_usage_seconds_total{{$containerFilter, pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
                         )
                     ) / sum by (namespace, pod, container) (
-                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod!~"{noncluster_pod_re}"}}
+                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}
                     )
                     """
                 )
@@ -304,12 +321,13 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod CPU Usage")
-            .description("CPU usage per pod as percent of limit (5 min rate).")
+            .description("CPU usage per pod as percent of limit.")
             .data(query)
             .visualization(
                 timeseries.Visualization()
                 .unit("percentunit")
                 .no_value(CADVISOR_MISSING)
+                .legend(TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -322,18 +340,14 @@ class KubeResourcesTab(KubeResourcesMixin):
         stay visible regardless of the cluster/replica selection.
         """
         panel_id = "pod-memory-percent"
-        cluster_pod_re = (
-            r".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
-        )
-        noncluster_pod_re = r".*-cluster-.*-replica-.*"
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     f"""
                     avg by (namespace, pod, container) (
-                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{cluster_pod_re}"}}
+                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{CLUSTER_POD_RE}"}}
                     ) / avg by (namespace, pod, container) (
-                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{cluster_pod_re}"}}
+                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{CLUSTER_POD_RE}"}}
                     )
                     """
                 )
@@ -342,9 +356,9 @@ class KubeResourcesTab(KubeResourcesMixin):
                 textwrap.dedent(
                     f"""
                     avg by (namespace, pod, container) (
-                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{noncluster_pod_re}"}}
+                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{NONCLUSTER_POD_RE}"}}
                     ) / avg by (namespace, pod, container) (
-                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{noncluster_pod_re}"}}
+                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{NONCLUSTER_POD_RE}"}}
                     )
                     """
                 )
@@ -361,6 +375,233 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("percentunit")
                 .no_value(CADVISOR_MISSING)
+                .legend(TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _pod_network_rx_panel(self):
+        """Show network receive bandwidth per pod as a timeseries."""
+        panel_id = "pod-network-rx"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_receive_bytes_total{{namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}}"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_receive_bytes_total{{namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod Network Rx")
+            .description("Network receive bandwidth per pod.")
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("Bps")
+                .no_value(CADVISOR_MISSING)
+                .legend(TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _pod_network_tx_panel(self):
+        """Show network transmit bandwidth per pod as a timeseries."""
+        panel_id = "pod-network-tx"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_transmit_bytes_total{{namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}}"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_transmit_bytes_total{{namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod Network Tx")
+            .description("Network transmit bandwidth per pod.")
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("Bps")
+                .no_value(CADVISOR_MISSING)
+                .legend(TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _pod_network_errors_panel(self):
+        """Show combined network rx + tx errors per pod as a timeseries.
+
+        Four queries: rx and tx, each split into cluster-replica pods (filtered
+        by selectors) and non-cluster pods (always shown). The legend suffix
+        (rx/tx) distinguishes the direction in the chart.
+        """
+        panel_id = "pod-network-errors"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_receive_errors_total{{namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} rx"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_receive_errors_total{{namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} rx"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_transmit_errors_total{{namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} tx"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_transmit_errors_total{{namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} tx"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod Network Errors")
+            .description("Network rx + tx errors per pod.")
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("cps")
+                .no_value(CADVISOR_MISSING)
+                .legend(TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _pod_network_drops_panel(self):
+        """Show combined network rx + tx dropped packets per pod.
+
+        Four queries: rx and tx, each split into cluster-replica pods (filtered
+        by selectors) and non-cluster pods (always shown). The legend suffix
+        (rx/tx) distinguishes the direction in the chart.
+        """
+        panel_id = "pod-network-drops"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_receive_packets_dropped_total{{namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} rx"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_receive_packets_dropped_total{{namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} rx"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_transmit_packets_dropped_total{{namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} tx"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (namespace, pod) (
+                        rate(
+                            container_network_transmit_packets_dropped_total{{namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{pod}} tx"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Pod Network Packet Drops")
+            .description("Network rx + tx dropped packets per pod.")
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("pps")
+                .no_value(CADVISOR_MISSING)
+                .legend(TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -408,6 +649,27 @@ class KubeResourcesTab(KubeResourcesMixin):
             )
         )
 
+    def build_pod_network_row(self) -> dashboardv2_builders.Row:
+        """Get a row showing per-pod network bandwidth, errors, and drops.
+
+        Rendered as a 2-column auto grid so each panel has room for its
+        per-series legend table without overflow; with four panels this lays
+        out as a 2x2.
+        """
+        return (
+            dashboardv2_builders.Row()
+            .title("Pod Networking")
+            .hide_header(False)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .max_column_count(2)
+                .with_item(self._pod_network_rx_panel())
+                .with_item(self._pod_network_tx_panel())
+                .with_item(self._pod_network_errors_panel())
+                .with_item(self._pod_network_drops_panel())
+            )
+        )
+
     def build(self) -> dashboardv2_builders.Tab:
         """Generate a summary tab."""
         return (
@@ -418,5 +680,6 @@ class KubeResourcesTab(KubeResourcesMixin):
                 .row(self.build_k8s_resources_summary_row())
                 .row(self.build_k8s_readiness_row())
                 .row(self.build_pod_metrics_row())
+                .row(self.build_pod_network_row())
             )
         )
