@@ -1,4 +1,7 @@
-"""Source Objects tab on Overview Dashboard."""
+"""Storage Objects tab on Overview Dashboard.
+
+Storage Objects include Sources, Sinks, and Tables.
+"""
 
 from __future__ import annotations
 
@@ -18,17 +21,17 @@ from dashboards import threshold
 from .k8s_resources import CADVISOR_MISSING
 
 
-class SourceObjectsTab:
-    """Source Objects tab on Overview Dashboard."""
+class StorageObjectsTab:
+    """Storage Objects tab on Overview Dashboard."""
 
     def __init__(self, dashboard: MzDashboard) -> None:
         self.dashboard = dashboard
 
     def build(self) -> dashboardv2_builders.Tab:
-        """Generate a source objects tab."""
+        """Generate a storage objects tab."""
         return (
             dashboardv2_builders.Tab()
-            .title("Source Objects")
+            .title("Storage Objects")
             .layout(
                 dashboardv2_builders.Rows()
                 # .row(self.build_replication_summary_row())

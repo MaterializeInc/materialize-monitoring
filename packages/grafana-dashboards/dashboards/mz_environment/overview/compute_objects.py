@@ -1,4 +1,7 @@
-"""Compute Objects tab on Overview Dashboard."""
+"""Compute Objects tab on Overview Dashboard.
+
+Compute objects include Indexes, Materialized Views, Subscriptions.
+"""
 
 from __future__ import annotations
 

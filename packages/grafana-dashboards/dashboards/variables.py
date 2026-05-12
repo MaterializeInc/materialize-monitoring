@@ -11,6 +11,7 @@ from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import METRICS_DATASOURCE_VAR_NAME, promql_query
 
 _MZ_INFO_METRIC = "mz_compute_commands_total"
+_MZ_CLUSTER_INFO_METRIC = "mz_tokio_worker_park_count"
 
 
 class VariableNames:
@@ -76,6 +77,7 @@ def environment_id_variable(
         .allow_custom_value(True)
         .multi(multi)
         .include_all(multi)
+        .all_value(".*")
         # don't use natural for envs since they contain hex
         .sort(dashboardv2.VariableSort.ALPHABETICAL_ASC)
         .definition(f"query_result({_MZ_INFO_METRIC})")
@@ -152,15 +154,20 @@ def include_system_clusters_variable() -> dashboardv2_builders.SwitchVariable:
             "Whether to include materialize system clusters in the cluster list."
         )
         # inclusion pattern for instance_id=~"$includeSystemClusters"
-        .enabled_value("^.*")
-        .disabled_value("^(?!s).*")
-        .current("^.*")
+        .enabled_value(".*")
+        # NOTE: negative lookahead is not supported
+        .disabled_value("^[^s].*")
+        .current(".*")
+        .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
     )
 
 
 def cluster_list_variable() -> dashboardv2_builders.QueryVariable:
-    """A list of clusters we should filter on within an environment."""
+    """A list of clusters we should filter on within an environment.
+
+    XXX: Do we want to show name or id in this list?
+    """
     return (
         dashboardv2_builders.QueryVariable(VariableNames.MZ_CLUSTER_LIST)
         .label("Cluster")
@@ -168,22 +175,32 @@ def cluster_list_variable() -> dashboardv2_builders.QueryVariable:
         .allow_custom_value(True)
         .multi(True)
         .include_all(True)
-        # Use natural for cluster names (mostly numbers)
+        # Use natural for cluster names (u2 < u11)
         .sort(dashboardv2.VariableSort.NATURAL_ASC)
         .definition(
-            f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }}, instance_id)'
+            f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", cluster_environmentd_materialize_cloud_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
         )
         .query(
             promql_query(
-                f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }}, instance_id)'
+                f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", cluster_environmentd_materialize_cloud_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
+        # it would be nice if we could show both name and id as text
+        #   but we don't get format support
+        # NB: Grafana sorts labels alphabetically by default (so this regex is stable)
+        .regex(
+            r".*cluster_environmentd_materialize_cloud_cluster_id=\"(?<value>[^\"]+)\",.*cluster_environmentd_materialize_cloud_cluster_name=\"(?<text>[^\"]+)\",.*",
+        )
     )
 
 
 def replica_list_variable() -> dashboardv2_builders.QueryVariable:
-    """A list of replicas we should filter on within an environment."""
+    """A list of replicas we should filter on within an environment.
+
+    Note that replica_name is almost "r1", which is not very unique
+    across clusters, so we use replica_id for the text.
+    """
     return (
         dashboardv2_builders.QueryVariable(VariableNames.MZ_REPLICA_LIST)
         .label("Replica")
@@ -191,6 +208,8 @@ def replica_list_variable() -> dashboardv2_builders.QueryVariable:
         .allow_custom_value(True)
         .multi(True)
         .include_all(True)
+        .all_value(".*")
+        # Use natural for replica ids (mostly numbers)
         .sort(dashboardv2.VariableSort.NATURAL_ASC)
         .definition(
             f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'

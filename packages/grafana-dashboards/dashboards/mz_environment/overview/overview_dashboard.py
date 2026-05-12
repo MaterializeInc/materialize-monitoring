@@ -9,9 +9,9 @@ from dashboards import variables
 
 from .summary import OverviewSummary
 from .k8s_resources import KubeResourcesTab
-from .replication import ReplicationTab
+from .cluster_objects import ClusterObjectsTab
 from .compute_objects import ComputeObjectsTab
-from .source_objects import SourceObjectsTab
+from .storage_objects import StorageObjectsTab
 from .dataflows import DataflowsTab
 
 
@@ -52,17 +52,17 @@ class EnvironmentOverviewDashboard(MzDashboard):
         """Get a Kubernetes resources tab."""
         return KubeResourcesTab(self).build()
 
-    def build_replication_tab(self) -> dashboardv2_builders.Tab:
-        """Get a replication/availability tab."""
-        return ReplicationTab(self).build()
+    def build_cluster_objects_tab(self) -> dashboardv2_builders.Tab:
+        """Get a clusters/replicas/availability tab."""
+        return ClusterObjectsTab(self).build()
 
     def build_compute_objects_tab(self) -> dashboardv2_builders.Tab:
         """Get a compute objects tab."""
         return ComputeObjectsTab(self).build()
 
-    def build_source_objects_tab(self) -> dashboardv2_builders.Tab:
-        """Get a source objects tab."""
-        return SourceObjectsTab(self).build()
+    def build_storage_objects_tab(self) -> dashboardv2_builders.Tab:
+        """Get a storage objects tab."""
+        return StorageObjectsTab(self).build()
 
     def build_dataflows_tab(self) -> dashboardv2_builders.Tab:
         """Get a dataflows tab."""
@@ -74,9 +74,9 @@ class EnvironmentOverviewDashboard(MzDashboard):
             dashboardv2_builders.Tabs()
             .tab(self.build_summary_tab())
             .tab(self.build_k8s_resources_tab())
-            .tab(self.build_replication_tab())
+            .tab(self.build_cluster_objects_tab())
             .tab(self.build_compute_objects_tab())
-            .tab(self.build_source_objects_tab())
+            .tab(self.build_storage_objects_tab())
             .tab(self.build_dataflows_tab())
         ).build()
 
