@@ -23,22 +23,18 @@ class VariableNames:
     NAMESPACE: Final[str] = "namespace"
     """A standard Kubernetes namespace.
 
-    Prefer MZ_NAMESPACE for environment-specific dashboards.
+    Prefer MZ_NAMESPACE_LIST for environment-specific dashboards.
     """
     NAMESPACE_LIST: Final[str] = "namespaceList"
     """A list of Kubernetes namespaces."""
 
-    MZ_NAMESPACE: Final[str] = "mzNamespace"
-    """A Kubernetes namespace where a materialize environment lives."""
-    MZ_NAMESPACE_LIST: Final[str] = "mzNamespaceList"
-    """A list of materialize namespaces."""
-    ENVIRONMENT_ID: Final[str] = "environmentId"
-    """A single environment ID to filter to.
-
-    This does not include the `environment-` prefix.
-    """
     ENVIRONMENT_ID_LIST: Final[str] = "environmentIdList"
-    """A list of environment IDs to filter to."""
+    """A list of environment IDs to filter to.
+
+    These do not include the `environment-` prefix.
+    """
+    MZ_NAMESPACE_LIST: Final[str] = "mzNamespaceList"
+    """A list of materialize namespaces associated with selected environments."""
     MZ_INCLUDE_SYSTEM_CLUSTERS: Final[str] = "includeSystemClusters"
     """Whether to include system clusters in cluster variables."""
     MZ_CLUSTER_LIST: Final[str] = "mzClusterList"
@@ -60,44 +56,58 @@ class IntermediateNames:
     """A filter to apply to materialize queries to filter to the current replica."""
 
 
-def environment_namespace(*, multi: bool = False) -> dashboardv2_builders.QueryVariable:
-    """Get a variable for where materialize environments live."""
-    name = VariableNames.MZ_NAMESPACE_LIST if multi else VariableNames.MZ_NAMESPACE
-    return (
-        dashboardv2_builders.QueryVariable(name)
-        .label("Materialize Namespace")
-        .description("The current materialize namespace where environments live")
-        .allow_custom_value(True)
-        .multi(multi)
-        .definition(f"label_values({_MZ_INFO_METRIC}, namespace)")
-        .query(promql_query(f"label_values({_MZ_INFO_METRIC}, namespace)"))
-    )
-
-
 def environment_id_variable(
     *, multi: bool = False
 ) -> dashboardv2_builders.QueryVariable:
     """Get a variable for environment_id.
 
+    This supports multi-select but only if the UI supports it.
+    Queries should expect a List regardless.
+
     FIXME: This does not support augmenting with additional metadata
     (YET).
     FIXME: Use a _info metric once we have it.
     """
-    name = VariableNames.ENVIRONMENT_ID_LIST if multi else VariableNames.ENVIRONMENT_ID
+    name = VariableNames.ENVIRONMENT_ID_LIST
     return (
         dashboardv2_builders.QueryVariable(name)
         .label("Environment")
         .description("The current environment to view")
         .allow_custom_value(True)
         .multi(multi)
-        .definition(f'query_result({_MZ_INFO_METRIC}{{namespace="$mzNamespace"}})')
-        .query(
-            promql_query(f'query_result({_MZ_INFO_METRIC}{{namespace="$mzNamespace"}})')
-        )
-        # NB: already alphabetical
+        .include_all(multi)
+        # don't use natural for envs since they contain hex
+        .sort(dashboardv2.VariableSort.ALPHABETICAL_ASC)
+        .definition(f"query_result({_MZ_INFO_METRIC})")
+        .query(promql_query(f"query_result({_MZ_INFO_METRIC})"))
+        # NB: Grafana formats labels alphabetically by default
         .regex(
             r".*materialize_cloud_organization_id=\"(?<value>[^\"]+)\",.*materialize_cloud_organization_name=\"(?<text>[^\"]+)\",.*",
         )
+    )
+
+
+def environment_namespace() -> dashboardv2_builders.QueryVariable:
+    """Get a variable for where materialize environments live."""
+    name = VariableNames.MZ_NAMESPACE_LIST
+    return (
+        dashboardv2_builders.QueryVariable(name)
+        .label("Materialize Namespace")
+        .description("The current materialize namespace where environments live")
+        .allow_custom_value(True)
+        .multi(True)
+        .include_all(True)
+        .sort(dashboardv2.VariableSort.ALPHABETICAL_ASC)
+        .skip_url_sync(True)
+        .definition(
+            f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_id=~"$environmentIdList" }}, namespace)'
+        )
+        .query(
+            promql_query(
+                f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_id=~"$environmentIdList" }}, namespace)'
+            )
+        )
+        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
 
@@ -127,7 +137,7 @@ def environment_filter_variable() -> dashboardv2_builders.ConstantVariable:
         .description(
             "A filter to apply to queries to filter to the current environment"
         )
-        .query('materialize_cloud_organization_id="$environmentId"')
+        .query('materialize_cloud_organization_id=~"$environmentIdList"')
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
@@ -141,10 +151,10 @@ def include_system_clusters_variable() -> dashboardv2_builders.SwitchVariable:
         .description(
             "Whether to include materialize system clusters in the cluster list."
         )
-        # exclusion pattern for instance_id!~"$mzClusterList"
-        .enabled_value("")
-        .disabled_value("^s.*")
-        .current("")
+        # inclusion pattern for instance_id=~"$includeSystemClusters"
+        .enabled_value("^.*")
+        .disabled_value("^(?!s).*")
+        .current("^.*")
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
     )
 
@@ -158,12 +168,14 @@ def cluster_list_variable() -> dashboardv2_builders.QueryVariable:
         .allow_custom_value(True)
         .multi(True)
         .include_all(True)
+        # Use natural for cluster names (mostly numbers)
+        .sort(dashboardv2.VariableSort.NATURAL_ASC)
         .definition(
-            f'label_values({_MZ_INFO_METRIC}{{namespace="$mzNamespace", instance_id!~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }}, instance_id)'
+            f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }}, instance_id)'
         )
         .query(
             promql_query(
-                f'label_values({_MZ_INFO_METRIC}{{namespace="$mzNamespace", instance_id!~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }}, instance_id)'
+                f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }}, instance_id)'
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
@@ -179,12 +191,13 @@ def replica_list_variable() -> dashboardv2_builders.QueryVariable:
         .allow_custom_value(True)
         .multi(True)
         .include_all(True)
+        .sort(dashboardv2.VariableSort.NATURAL_ASC)
         .definition(
-            f'label_values({_MZ_INFO_METRIC}{{namespace="$mzNamespace", instance_id=~"$mzClusterList"}}, replica_id)'
+            f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'
         )
         .query(
             promql_query(
-                f'label_values({_MZ_INFO_METRIC}{{namespace="$mzNamespace", instance_id=~"$mzClusterList"}}, replica_id)'
+                f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
@@ -198,7 +211,7 @@ def cluster_filter_variable() -> dashboardv2_builders.ConstantVariable:
         .label("Cluster Filter")
         .description("A filter to apply to queries to filter to the current cluster")
         .query(
-            'materialize_cloud_organization_id="$environmentId", instance_id=~"$mzClusterList"'
+            'materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"'
         )
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
@@ -212,7 +225,7 @@ def replica_filter_variable() -> dashboardv2_builders.ConstantVariable:
         .label("Replica Filter")
         .description("A filter to apply to queries to filter to the current replica")
         .query(
-            'materialize_cloud_organization_id="$environmentId", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList"'
+            'materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList"'
         )
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
@@ -238,8 +251,8 @@ def metric_adhoc_variable() -> dashboardv2_builders.AdhocVariable:
     filters: list[cogbuilder.Builder[dashboardv2.AdHocFilterWithLabels]] = [
         dashboardv2_builders.AdHocFilterWithLabels()
         .key("namespace")
-        .operator("=")
-        .value("$mzNamespace"),
+        .operator("=~")
+        .value("$mzNamespaceList"),
     ]
     return (
         dashboardv2_builders.AdhocVariable(name=VariableNames.METRIC_ADHOC)

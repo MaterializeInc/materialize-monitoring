@@ -33,7 +33,7 @@ class EnvironmentOverviewDashboard(MzDashboard):
         self.add_variable(variables.environment_id_variable())
         self.add_variable(
             variables.container_filter_variable(
-                'namespace="$mzNamespace"',
+                'namespace=~"$mzNamespaceList"',
             )
         )
         self.add_variable(variables.include_system_clusters_variable())

@@ -137,7 +137,7 @@ class KubeResourcesTab(KubeResourcesMixin):
         """Generate a summary tab."""
         return (
             dashboardv2_builders.Tab()
-            .title("Kubernetes Resources")
+            .title("Kubernetes Workloads")
             .layout(
                 dashboardv2_builders.Rows().row(self.build_k8s_resources_summary_row())
                 # .row(self.build_info_row())

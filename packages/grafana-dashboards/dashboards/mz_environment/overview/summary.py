@@ -34,9 +34,9 @@ class OverviewSummary(KubeResourcesMixin):
                 textwrap.dedent(
                     """
                     count(
-                        v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"} == 1
+                        v2_mz_compute_cluster_status{$environmentFilter} == 1
                     ) / count(
-                        v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}
+                        v2_mz_compute_cluster_status{$environmentFilter}
                     ) * 100
                     """
                 ),
@@ -68,7 +68,7 @@ class OverviewSummary(KubeResourcesMixin):
                     """
                     avg by (namespace) (
                         avg_over_time(
-                            v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}[$__range]
+                            v2_mz_compute_cluster_status{$environmentFilter}[$__range]
                         ) * 100
                     )
                     """
@@ -154,7 +154,7 @@ class OverviewSummary(KubeResourcesMixin):
                             container_cpu_usage_seconds_total{$containerFilter}[5m]
                         )
                     ) / sum by (namespace, container) (
-                        kube_pod_container_resource_limits{resource="cpu", namespace="$mzNamespace"}
+                        kube_pod_container_resource_limits{resource="cpu", namespace=~"$mzNamespaceList"}
                     )
                     """
                 )
@@ -244,7 +244,7 @@ class OverviewSummary(KubeResourcesMixin):
                     textwrap.dedent(
                         """
                         group by (mz_version) (
-                            v2_mz_compute_cluster_status{materialize_cloud_organization_id="$environmentId"}
+                            v2_mz_compute_cluster_status{$environmentFilter}
                         )
                         """
                     ),
