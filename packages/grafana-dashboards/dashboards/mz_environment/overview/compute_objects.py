@@ -23,7 +23,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, visualization
+from dashboards import palette, threshold, visualization
 
 NO_FILTER_MATCH = "No matches for the current filters"
 # Some metrics in this tab are pre-calculated by the promsql-exporter at the
@@ -97,7 +97,13 @@ def add_currently_hydrating_panel(
             "signal (the value of those series is always 0)."
         )
         .data(query)
-        .visualization(visualization.sparkline_stat(shade=shade).min(0)),
+        .visualization(
+            visualization.sparkline_stat(shade=shade)
+            .min(0)
+            .thresholds(
+                threshold.time_stable_thresholds(seconds=60 * 60 * 3, high_bad=True)
+            )
+        ),
     )
     return panel_id
 
@@ -308,12 +314,12 @@ class ComputeObjectsTab:
                             instance_id=~"$mzClusterList",
                             replica_id=~"$mzReplicaList"
                         }
-                    )
+                    ) > 0
                     """
                 )
             ).legend_format(
-                "{{cluster_environmentd_materialize_cloud_cluster_name}}"
-                " / {{cluster_environmentd_materialize_cloud_replica_name}}"
+                "{{instance_id}}"
+                " / {{replica_id}}"
             ),
         )
 
@@ -331,6 +337,7 @@ class ComputeObjectsTab:
                 .unit("short")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
+                .no_value("Hydration Queue is empty")
             ),
         )
         return panel_id
@@ -391,6 +398,19 @@ class ComputeObjectsTab:
                     .log(10)
                 )
                 .no_value(NO_FILTER_MATCH)
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(COMPUTE_THEME)
+                )
+                .thresholds(
+                    threshold.time_stable_thresholds(seconds=60 * 60 * 6, high_bad=True)
+                )
+                .thresholds_style(
+                    common_builder.GraphThresholdsStyleConfig().mode(
+                        common.GraphThresholdsStyleMode.AREA
+                    )
+                )
             ),
         )
         return panel_id

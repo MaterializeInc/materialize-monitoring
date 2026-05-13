@@ -152,6 +152,7 @@ def time_stable_thresholds(
     seconds: float | None = None,
     days: float | None = None,
     divisor: float = 1.0,  # seconds
+    high_bad: bool = False,
 ) -> dashboardv2_builders.ThresholdsConfig:
     """Get thresholds for a visualization with increasing stable time.
 
@@ -174,7 +175,8 @@ def time_stable_thresholds(
     # (12th root is easier to rationalize than 2**(log2(stable)/12))
     factor = stable ** (1 / total_steps)
     value = factor
-    for color in THRESHOLD_PALETTE[::-1]:
+    colors = THRESHOLD_PALETTE if high_bad else THRESHOLD_PALETTE[::-1]
+    for color in colors:
         thresholds.append(
             dashboardv2.Threshold(
                 value=int(value),
