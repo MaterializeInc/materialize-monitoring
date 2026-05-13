@@ -13,7 +13,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import threshold
+from dashboards import threshold, visualization
 
 from .k8s_resources import CADVISOR_MISSING, KubeResourcesMixin
 
@@ -50,11 +50,10 @@ class OverviewSummary(KubeResourcesMixin):
             .description("Whether the environment is healthy.")
             .data(query)
             .visualization(
-                stat.Visualization()
+                visualization.sparkline_stat()
                 .color_mode(common.BigValueColorMode.BACKGROUND)
                 # since we want to transform our value, we use a mapping
                 .mappings(threshold.health_mapping(min_degraded=80, min_healthy=100))
-                .text_mode(common.BigValueTextMode.VALUE)
             ),
         )
         return panel_id
@@ -85,7 +84,7 @@ class OverviewSummary(KubeResourcesMixin):
             )
             .data(query)
             .visualization(
-                stat.Visualization()
+                visualization.sparkline_stat()
                 .color_mode(common.BigValueColorMode.BACKGROUND)
                 .thresholds(
                     threshold.health_thresholds(
@@ -94,7 +93,6 @@ class OverviewSummary(KubeResourcesMixin):
                         mode=dashboardv2.ThresholdsMode.PERCENTAGE,
                     )
                 )
-                .text_mode(common.BigValueTextMode.VALUE)
                 .decimals(4)  # 100.0000
                 .unit("percent")
             ),
@@ -129,7 +127,7 @@ class OverviewSummary(KubeResourcesMixin):
             .description("The last time a container in the environment was restarted.")
             .data(query)
             .visualization(
-                stat.Visualization()
+                visualization.sparkline_stat()
                 .color_mode(common.BigValueColorMode.BACKGROUND)
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
                 .unit("s")  # Time / seconds (s)

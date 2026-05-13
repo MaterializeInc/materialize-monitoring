@@ -5,19 +5,18 @@ from __future__ import annotations
 import textwrap
 
 from grafana_foundation_sdk.builders import (
-    common as common_builder,
-)
-from grafana_foundation_sdk.builders import (
     piechart as piechart_builder,
 )
 from grafana_foundation_sdk.builders import (
-    stat,
     timeseries,
 )
-from grafana_foundation_sdk.models import common, piechart
+from grafana_foundation_sdk.models import piechart
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
+from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
+
+from dashboards import palette, visualization
 
 CADVISOR_MISSING = "No metrics: cadvisor/node-exporter is required"
 KSM_MISSING = "No metrics: kube-state-metrics is required"
@@ -30,25 +29,7 @@ KSM_MISSING = "No metrics: kube-state-metrics is required"
 CLUSTER_POD_RE = ".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
 NONCLUSTER_POD_RE = ".*-cluster-.*-replica-.*"
 
-PIE_LEGEND_BUILDER = (
-    piechart_builder.PieChartLegendOptions()
-    .as_table(True)
-    .display_mode(common.LegendDisplayMode.TABLE)
-    .placement(common.LegendPlacement.RIGHT)
-    .is_visible(True)
-    .show_legend(True)
-    .values([piechart.PieChartLegendValues.VALUE])
-)
-
-# Shared legend for timeseries panels in this tab: render as a table beneath
-# the chart, with per-series Max / Avg (mean) / Last (lastNotNull) columns.
-TS_LEGEND_BUILDER = (
-    common_builder.VizLegendOptions()
-    .display_mode(common.LegendDisplayMode.TABLE)
-    .placement(common.LegendPlacement.BOTTOM)
-    .show_legend(True)
-    .calcs(["max", "mean", "lastNotNull"])
-)
+K8S_THEME = palette.THEME_PALETTE[1]
 
 
 class KubeResourcesMixin:
@@ -76,9 +57,7 @@ class KubeResourcesMixin:
                     )
                     """
                 ),
-            )
-            .legend_format("CPUs ({{container}})")
-            .instant()
+            ).legend_format("CPUs ({{container}})")
         )
 
         self.dashboard.add_panel(
@@ -88,10 +67,7 @@ class KubeResourcesMixin:
             .description("Total CPU cores available.")
             .data(query)
             .visualization(
-                stat.Visualization()
-                .color_mode(common.BigValueColorMode.NONE)
-                .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .graph_mode(common.BigValueGraphMode.NONE)
+                visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("cores")
                 .no_value(CADVISOR_MISSING)
             ),
@@ -119,9 +95,7 @@ class KubeResourcesMixin:
                     )
                     """
                 ),
-            )
-            .legend_format("Memory ({{container}})")
-            .instant(),
+            ).legend_format("Memory ({{container}})")
         )
 
         self.dashboard.add_panel(
@@ -133,10 +107,7 @@ class KubeResourcesMixin:
             )
             .data(query)
             .visualization(
-                stat.Visualization()
-                .color_mode(common.BigValueColorMode.NONE)
-                .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .graph_mode(common.BigValueGraphMode.NONE)
+                visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("bytes")
                 .no_value(CADVISOR_MISSING)
             ),
@@ -183,7 +154,12 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 piechart_builder.Visualization()
                 .pie_type(piechart.PieChartType.DONUT)
-                .legend(PIE_LEGEND_BUILDER)
+                .legend(visualization.PIE_LEGEND_BUILDER)
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(K8S_THEME)
+                )
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
@@ -221,7 +197,12 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 piechart_builder.Visualization()
                 .pie_type(piechart.PieChartType.DONUT)
-                .legend(PIE_LEGEND_BUILDER)
+                .legend(visualization.PIE_LEGEND_BUILDER)
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(K8S_THEME)
+                )
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
@@ -271,7 +252,12 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 piechart_builder.Visualization()
                 .pie_type(piechart.PieChartType.DONUT)
-                .legend(PIE_LEGEND_BUILDER)
+                .legend(visualization.PIE_LEGEND_BUILDER)
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(K8S_THEME)
+                )
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
@@ -327,7 +313,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("percentunit")
                 .no_value(CADVISOR_MISSING)
-                .legend(TS_LEGEND_BUILDER)
+                .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -375,7 +361,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("percentunit")
                 .no_value(CADVISOR_MISSING)
-                .legend(TS_LEGEND_BUILDER)
+                .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -418,7 +404,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("Bps")
                 .no_value(CADVISOR_MISSING)
-                .legend(TS_LEGEND_BUILDER)
+                .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -461,7 +447,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("Bps")
                 .no_value(CADVISOR_MISSING)
-                .legend(TS_LEGEND_BUILDER)
+                .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -531,7 +517,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("cps")
                 .no_value(CADVISOR_MISSING)
-                .legend(TS_LEGEND_BUILDER)
+                .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
         return panel_id
@@ -601,7 +587,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 timeseries.Visualization()
                 .unit("pps")
                 .no_value(CADVISOR_MISSING)
-                .legend(TS_LEGEND_BUILDER)
+                .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
         return panel_id

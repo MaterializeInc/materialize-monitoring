@@ -8,14 +8,18 @@ from grafana_foundation_sdk.builders import (
     piechart as piechart_builder,
 )
 from grafana_foundation_sdk.builders import (
-    stat,
     table,
 )
 from grafana_foundation_sdk.models import common, piechart
 from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
+from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
+
+from dashboards import palette, visualization
+
+CLUSTERS_THEME = palette.THEME_PALETTE[2]
 
 
 class ClusterObjectsTab:
@@ -43,9 +47,7 @@ class ClusterObjectsTab:
                     )
                     """
                 )
-            )
-            .legend_format("Total Clusters")
-            .instant(),
+            ).legend_format("Total Clusters"),
             promql_query(
                 textwrap.dedent(
                     """
@@ -56,9 +58,7 @@ class ClusterObjectsTab:
                     )
                     """
                 )
-            )
-            .legend_format("System Clusters")
-            .instant(),
+            ).legend_format("System Clusters"),
         )
 
         self.dashboard.add_panel(
@@ -68,9 +68,9 @@ class ClusterObjectsTab:
             .description("Number of clusters.")
             .data(query)
             .visualization(
-                stat.Visualization()
+                visualization.sparkline_stat(shade=CLUSTERS_THEME)
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .no_value("No matches for the current filters")
+                .min(0)
             ),
         )
         return panel_id
@@ -94,9 +94,7 @@ class ClusterObjectsTab:
                     )
                     """
                 )
-            )
-            .legend_format("Total Replicas")
-            .instant(),
+            ).legend_format("Total Replicas"),
             promql_query(
                 textwrap.dedent(
                     """
@@ -107,9 +105,7 @@ class ClusterObjectsTab:
                     ) or vector(0)
                     """
                 )
-            )
-            .legend_format("Additional Replicas")
-            .instant(),
+            ).legend_format("Additional Replicas"),
         )
 
         self.dashboard.add_panel(
@@ -121,9 +117,9 @@ class ClusterObjectsTab:
             )
             .data(query)
             .visualization(
-                stat.Visualization()
+                visualization.sparkline_stat(shade=CLUSTERS_THEME)
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .no_value("No matches for the current filters")
+                .min(0)
             ),
         )
         return panel_id
@@ -157,6 +153,12 @@ class ClusterObjectsTab:
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(CLUSTERS_THEME)
+                )
+                .legend(visualization.PIE_LEGEND_BUILDER)
                 .no_value("No matches for the current filters")
             ),
         )
@@ -191,8 +193,7 @@ class ClusterObjectsTab:
             .description("Distribution of replicas across availability zones.")
             .data(query)
             .visualization(
-                stat.Visualization()
-                .color_mode(common.BigValueColorMode.BACKGROUND)
+                visualization.sparkline_stat(shade=CLUSTERS_THEME)
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
                 .justify_mode(common.BigValueJustifyMode.CENTER)
                 .no_value("No matches for the current filters or AZ label missing.")
