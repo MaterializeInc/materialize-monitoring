@@ -16,8 +16,9 @@ from grafana_foundation_sdk.builders import (
 from grafana_foundation_sdk.builders import (
     piechart as piechart_builder,
 )
-from grafana_foundation_sdk.builders import timeseries
+from grafana_foundation_sdk.builders import table, timeseries
 from grafana_foundation_sdk.models import common, piechart
+from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
@@ -397,6 +398,7 @@ class ComputeObjectsTab:
                 .bar_width(0.8)
                 .group_width(0.95)
                 .no_value(NO_FILTER_MATCH)
+                .x_tick_label_spacing(100)
                 .color_scheme(
                     dashboardv2_builders.FieldColor()
                     .mode(dashboardv2.FieldColorModeId.SHADES)
@@ -734,17 +736,147 @@ class ComputeObjectsTab:
         )
 
     def build_arrangements_row(self) -> dashboardv2_builders.Row:
-        """Arrangements row: aggregate + per-worker maintenance CPU rate."""
+        """Arrangements row: aggregate + per-worker maintenance CPU rate.
+
+        Three tables split by collection_id prefix (system / user /
+        transient+none). Tables rather than graphs because the values are
+        near-static — Min/Max columns surface the occasional spike that
+        a time series would otherwise hide.
+        """
         return (
             dashboardv2_builders.Row()
             .title("Arrangements")
             .hide_header(False)
             .layout(
                 dashboardv2_builders.AutoGrid()
-                .max_column_count(2)
+                .column_width_mode("wide")
                 .with_item(self._arrangement_rate_panel())
                 .with_item(self._arrangement_rate_by_worker_panel())
+                .with_item(self._arrangement_records_system_panel())
+                .with_item(self._arrangement_records_user_panel())
+                .with_item(self._arrangement_records_transient_panel())
             )
+        )
+
+    def _arrangement_records_table(
+        self,
+        panel_id: str,
+        title: str,
+        collection_id_regex: str,
+        description: str,
+    ):
+        """Build a table of `v2_mz_arrangement_record_count` per collection.
+
+        Records per collection are nearly static — graphs are uninteresting,
+        but Min/Max over $__range catch occasional spikes that Last alone
+        would miss.
+
+        `max by (collection_id)` collapses the per-(replica, worker)
+        duplicates (workers in a replica agree; replicas of a cluster agree
+        when hydrated).
+
+        The Reduce transformation in `seriesToRows` mode produces one row
+        per series with the three calc columns; SortBy puts the biggest
+        current value at the top.
+        """
+        query = (
+            query_group(
+                promql_query(
+                    textwrap.dedent(
+                        f"""
+                        max by (collection_id) (
+                            v2_mz_arrangement_record_count{{
+                                $environmentFilter,
+                                instance_id=~"$mzClusterList",
+                                replica_id=~"$mzReplicaList",
+                                collection_id=~"{collection_id_regex}"
+                            }}
+                        )
+                        """
+                    )
+                ).legend_format("{{collection_id}}"),
+            )
+            .transformation(
+                transform_builders.CompatTransformationBuilder()
+                .group("reduce")
+                .id("reduce")
+                .options(
+                    {
+                        "reducers": ["min", "max", "lastNotNull"],
+                        "mode": "seriesToRows",
+                    }
+                )
+            )
+            .transformation(
+                transform_builders.CompatTransformationBuilder()
+                .group("organize")
+                .id("organize")
+                .options({"renameByName": {"Field": "Collection ID"}})
+            )
+            .transformation(
+                transform_builders.CompatTransformationBuilder()
+                .group("sortBy")
+                .id("sortBy")
+                .options(
+                    {
+                        "fields": {},
+                        "sort": [{"field": "Last *", "desc": True}],
+                    }
+                )
+            )
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title(title)
+            .description(description)
+            .data(query)
+            .visualization(
+                table.Visualization()
+                .show_header(True)
+                .filterable(True)
+                .unit("short")
+                .no_value(NO_FILTER_MATCH)
+            ),
+        )
+        return panel_id
+
+    def _arrangement_records_system_panel(self):
+        return self._arrangement_records_table(
+            panel_id="arrangement-records-system",
+            title="System Collections — Record Counts",
+            collection_id_regex="s.*",
+            description=(
+                "Arrangement record counts for system collections "
+                '(collection_id starting with "s"). Min/Max/Last over the '
+                "selected time range; sorted by Last desc."
+            ),
+        )
+
+    def _arrangement_records_user_panel(self):
+        return self._arrangement_records_table(
+            panel_id="arrangement-records-user",
+            title="User Collections — Record Counts",
+            collection_id_regex="u.*",
+            description=(
+                "Arrangement record counts for user collections "
+                '(collection_id starting with "u"). Min/Max/Last over the '
+                "selected time range; sorted by Last desc."
+            ),
+        )
+
+    def _arrangement_records_transient_panel(self):
+        return self._arrangement_records_table(
+            panel_id="arrangement-records-transient",
+            title="Transient / Uncategorized — Record Counts",
+            collection_id_regex="t.*|none",
+            description=(
+                "Arrangement record counts for transient collections "
+                '(collection_id starting with "t") and the "none" sentinel '
+                "for uncategorized arrangements. Min/Max/Last over the "
+                "selected time range; sorted by Last desc."
+            ),
         )
 
     def build(self) -> dashboardv2_builders.Tab:
