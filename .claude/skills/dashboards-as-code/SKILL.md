@@ -450,6 +450,26 @@ Two non-obvious requirements:
   that drifts from 64 to 66 look like a huge swing. Anchor to zero so
   the magnitude is visible.
 
+### Partitioned sparkline stats
+
+When a sparkline-stat query produces multiple series (e.g. `sum by
+(session_type) (...)` returning `system` and `user` rows), the stat
+panel renders one tile per series. In that case set
+`text_mode=VALUE_AND_NAME` so each tile labels itself with its series
+name; otherwise you get a row of bare numbers with no indication of
+which is which.
+
+```python
+.visualization(
+    visualization.sparkline_stat(shade=MY_THEME)
+    .min(0)
+    .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
+)
+```
+
+For single-series sparklines, leave the default `VALUE` text mode — the
+panel title is the label.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series

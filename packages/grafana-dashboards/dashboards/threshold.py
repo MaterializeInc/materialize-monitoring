@@ -1,8 +1,10 @@
-"""Common thresholds."""
+"""Common thresholds.
+
+It'd be nice if we could cache these, but the builders they return
+are mutable.
+"""
 
 from __future__ import annotations
-
-import functools
 
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.models_v2 import dashboardv2
@@ -10,6 +12,7 @@ from py_mzmon_lib.models_v2 import dashboardv2
 from . import palette
 
 THRESHOLD_PALETTE = palette.INCANDESC_SEQUENTIAL
+ERROR_PALETTE = palette.SUNSET_ERROR_SEQ
 
 # HACK: null in value mappings is supposed to be infinity,
 # .... but it doesn't work
@@ -50,7 +53,6 @@ THRESHOLD_80_10 = get_high_threshold(min_value=80, step=10).mode(
 )
 
 
-@functools.cache
 def health_mapping(
     *, min_degraded: float = 80, min_healthy: float = 100
 ) -> list[dashboardv2.ValueMapping]:
@@ -112,7 +114,6 @@ def health_mapping(
     return value_mappings
 
 
-@functools.cache
 def health_thresholds(
     *,
     min_degraded: float = 80,
@@ -146,7 +147,6 @@ def health_thresholds(
     return dashboardv2_builders.ThresholdsConfig().mode(mode).steps(thresholds)
 
 
-@functools.cache
 def time_stable_thresholds(
     *,
     seconds: float | None = None,
@@ -191,7 +191,30 @@ def time_stable_thresholds(
     )
 
 
-@functools.cache
+def error_thresholds(
+    *, min_errors: float = 1, max_errors: float = 100
+) -> dashboardv2_builders.ThresholdsConfig:
+    """Get thresholds for a visualization with increasing errors.
+
+    The provided value is how many errors for the highest color.
+    """
+    thresholds = []
+    step = (max_errors - min_errors) / len(ERROR_PALETTE)
+    for step_idx, color in enumerate(ERROR_PALETTE):
+        value = min_errors + step * step_idx
+        thresholds.append(
+            dashboardv2.Threshold(
+                value=value,
+                color=color,
+            )
+        )
+    return (
+        dashboardv2_builders.ThresholdsConfig()
+        .mode(dashboardv2.ThresholdsMode.ABSOLUTE)
+        .steps(thresholds)
+    )
+
+
 def load_thresholds(
     *, min_load: float = 0.0, max_load: float = 1.0
 ) -> dashboardv2_builders.ThresholdsConfig:

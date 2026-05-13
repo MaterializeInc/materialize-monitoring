@@ -9,6 +9,7 @@ from dashboards import variables
 
 from .cluster_objects import ClusterObjectsTab
 from .compute_objects import ComputeObjectsTab
+from .connections_activity import ConnectionsActivityTab
 from .k8s_resources import KubeResourcesTab
 from .storage_objects import StorageObjectsTab
 from .summary import OverviewSummary
@@ -55,6 +56,10 @@ class EnvironmentOverviewDashboard(MzDashboard):
         """Get a clusters/replicas/availability tab."""
         return ClusterObjectsTab(self).build()
 
+    def build_connections_activity_tab(self) -> dashboardv2_builders.Tab:
+        """Get a connections / activity tab."""
+        return ConnectionsActivityTab(self).build()
+
     def build_compute_objects_tab(self) -> dashboardv2_builders.Tab:
         """Get a compute objects tab."""
         return ComputeObjectsTab(self).build()
@@ -69,6 +74,7 @@ class EnvironmentOverviewDashboard(MzDashboard):
             dashboardv2_builders.Tabs()
             .tab(self.build_summary_tab())
             .tab(self.build_k8s_resources_tab())
+            .tab(self.build_connections_activity_tab())
             .tab(self.build_cluster_objects_tab())
             .tab(self.build_compute_objects_tab())
             .tab(self.build_storage_objects_tab())

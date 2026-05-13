@@ -538,6 +538,20 @@ class ComputeObjectsTab:
             )
         )
 
+    def build_freshness_row(self) -> dashboardv2_builders.Row:
+        """Freshness row — stub.
+
+        Reserved for end-to-end freshness lag (how far behind real-time
+        each materialized view / index is). Title-only row for now so
+        the section slot exists; panels will be added in a follow-up.
+        """
+        return (
+            dashboardv2_builders.Row()
+            .title("Freshness")
+            .hide_header(False)
+            .layout(dashboardv2_builders.AutoGrid())
+        )
+
     def build_hydration_row(self) -> dashboardv2_builders.Row:
         """Hydration row: currently-hydrating stat, queue depth, slowest per cluster."""
         return (
@@ -887,6 +901,7 @@ class ComputeObjectsTab:
             .layout(
                 dashboardv2_builders.Rows()
                 .row(self.build_summary_row())
+                .row(self.build_freshness_row())
                 .row(self.build_hydration_row())
                 .row(self.build_dataflows_row())
                 .row(self.build_arrangements_row())

@@ -29,7 +29,7 @@ KSM_MISSING = "No metrics: kube-state-metrics is required"
 CLUSTER_POD_RE = ".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
 NONCLUSTER_POD_RE = ".*-cluster-.*-replica-.*"
 
-K8S_THEME = palette.THEME_PALETTE[1]
+K8S_THEME = palette.THEME_PALETTE[0]
 
 
 class KubeResourcesMixin:

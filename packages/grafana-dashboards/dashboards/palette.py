@@ -50,6 +50,28 @@ INCANDESC_SEQUENTIAL_4 = INCANDESC_SEQUENTIAL[2:12:3]
 INCANDESC_SEQUENTIAL_6 = INCANDESC_SEQUENTIAL[1:12:2]  # evens (or odds, 0 indexed)
 
 
+SUNSET_DIVERGING_SEQ = [
+    "#364B9A",  # dark blue
+    "#4A7BB7",
+    "#6EA6CD",
+    "#98CAE1",
+    "#C2E4EF",
+    "#EAECCC",  # light yellow
+    "#FEDA8B",  # light orange
+    "#FDB366",  # orange
+    "#F67E4B",  # red-orange
+    "#DD3D2D",  # red
+    "#A50026",  # dark red
+]
+
+# white for invalid data
+SUNSET_INVALID = "#FFFFFF"
+# not an error
+SUNSET_NOMINAL = SUNSET_DIVERGING_SEQ[5]
+# increasing errors
+SUNSET_ERROR_SEQ = SUNSET_DIVERGING_SEQ[6:]
+
+
 class Binary(enum.StrEnum):
     """Two-step palette (single LOW/HIGH)."""
 
