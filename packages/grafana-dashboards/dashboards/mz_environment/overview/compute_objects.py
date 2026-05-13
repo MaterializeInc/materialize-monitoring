@@ -8,10 +8,16 @@ from __future__ import annotations
 import textwrap
 
 from grafana_foundation_sdk.builders import (
+    barchart as barchart_builder,
+)
+from grafana_foundation_sdk.builders import (
+    common as common_builder,
+)
+from grafana_foundation_sdk.builders import (
     piechart as piechart_builder,
 )
 from grafana_foundation_sdk.builders import timeseries
-from grafana_foundation_sdk.models import piechart
+from grafana_foundation_sdk.models import common, piechart
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
@@ -44,6 +50,56 @@ _ARRANGEMENT_FILTER = (
     f'{ARRANGEMENT_LABEL_CLUSTER_ID}=~"$mzClusterList", '
     f'{ARRANGEMENT_LABEL_REPLICA_ID}=~"$mzReplicaList"'
 )
+
+
+def add_currently_hydrating_panel(
+    dashboard: MzDashboard,
+    panel_id: str = "hydration-unhydrated-count",
+    *,
+    shade: str = COMPUTE_THEME,
+) -> str:
+    """Add a 'Currently Hydrating' sparkline-stat panel to `dashboard`.
+
+    Module-level so both the Compute Objects tab and the Summary tab's
+    Environment Health row can register the same panel under different
+    panel_ids without duplicating the query/viz logic.
+
+    `v2_mz_compute_hydration_time_seconds{hydrated="0"}` is a marker series:
+    its value stays at 0, but the series only exists while a collection has
+    not yet finished hydrating. Counting the series gives a real-time
+    "is anything currently hydrating?" signal. The `or vector(0)` keeps the
+    panel showing 0 (instead of "no data") when nothing is unhydrated.
+    """
+    query = query_group(
+        promql_query(
+            textwrap.dedent(
+                """
+                count(
+                    v2_mz_compute_hydration_time_seconds{
+                        $environmentFilter,
+                        instance_id=~"$mzClusterList",
+                        replica_id=~"$mzReplicaList",
+                        hydrated="0"
+                    }
+                ) or vector(0)
+                """
+            )
+        ).legend_format("unhydrated"),
+    )
+
+    dashboard.add_panel(
+        panel_id,
+        dashboardv2_builders.Panel()
+        .title("Currently Hydrating")
+        .description(
+            'Collections currently un-hydrated. The count of {hydrated="0"} '
+            "marker series gives a real-time 'is anything still hydrating?' "
+            "signal (the value of those series is always 0)."
+        )
+        .data(query)
+        .visualization(visualization.sparkline_stat(shade=shade).min(0)),
+    )
+    return panel_id
 
 
 def _active_objects_query(obj_type: str):
@@ -226,6 +282,119 @@ class ComputeObjectsTab:
         )
         return panel_id
 
+    def _unhydrated_count_panel(self):
+        return add_currently_hydrating_panel(self.dashboard)
+
+    def _hydration_queue_panel(self):
+        """Timeseries: compute controller hydration queue depth per replica.
+
+        `mz_compute_controller_hydration_queue_size` is reported by
+        environmentd with one series per (cluster, replica). When the queue
+        is non-zero, work is waiting to be hydrated.
+        """
+        panel_id = "hydration-queue-size"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    sum by (
+                        instance_id,
+                        cluster_environmentd_materialize_cloud_cluster_name,
+                        replica_id,
+                        cluster_environmentd_materialize_cloud_replica_name
+                    ) (
+                        mz_compute_controller_hydration_queue_size{
+                            $environmentFilter,
+                            instance_id=~"$mzClusterList",
+                            replica_id=~"$mzReplicaList"
+                        }
+                    )
+                    """
+                )
+            ).legend_format(
+                "{{cluster_environmentd_materialize_cloud_cluster_name}}"
+                " / {{cluster_environmentd_materialize_cloud_replica_name}}"
+            ),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Hydration Queue Size")
+            .description(
+                "Collections waiting to be hydrated per (cluster, replica). "
+                "Non-zero means hydration work is backed up."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("short")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _slowest_hydrating_collections_panel(self):
+        """Horizontal bar chart: top-N slowest hydrating collections.
+
+        `v2_mz_compute_hydration_time_seconds{hydrated="1"}` carries the
+        seconds it took each collection to hydrate; `topk(N, ...)` keeps the
+        N longest individually rather than collapsing per cluster. This
+        preserves the within-cluster spread (e.g., the cluster of times
+        around 111-112s on the `s2` catalog cluster) and surfaces the
+        specific collection_id that was slow.
+
+        Heads-up: `s2` is the `mz_catalog` cluster, which has a very large
+        number of internal collections relative to user clusters and tends
+        to dominate this chart. If that's noisy in practice, consider
+        splitting into "everything except s2" vs "just s2" panels via the
+        `instance_id` filter.
+        """
+        panel_id = "hydration-slowest-collections"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    topk(15,
+                        v2_mz_compute_hydration_time_seconds{
+                            $environmentFilter,
+                            instance_id=~"$mzClusterList",
+                            replica_id=~"$mzReplicaList",
+                            hydrated="1"
+                        }
+                    )
+                    """
+                )
+            )
+            .legend_format("{{instance_id}} / {{replica_id}} / {{collection_id}}")
+            .instant(),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Slowest Hydrating Collections")
+            .description(
+                "Top 15 individual collections by hydration time (seconds), "
+                "labeled as cluster_id / replica_id / collection_id. Snapshot — "
+                "use the time range to scope what hydrations are visible."
+            )
+            .data(query)
+            .visualization(
+                barchart_builder.Visualization()
+                .orientation(common.VizOrientation.HORIZONTAL)
+                .unit("s")
+                .scale_distribution(
+                    common_builder.ScaleDistributionConfig()
+                    .type(common.ScaleDistribution.LOG)
+                    .log(10)
+                )
+                .no_value(NO_FILTER_MATCH)
+            ),
+        )
+        return panel_id
+
     def _arrangement_rate_panel(self):
         """Timeseries: arrangement maintenance CPU summed across workers.
 
@@ -348,6 +517,21 @@ class ComputeObjectsTab:
             )
         )
 
+    def build_hydration_row(self) -> dashboardv2_builders.Row:
+        """Hydration row: currently-hydrating stat, queue depth, slowest per cluster."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Hydration")
+            .hide_header(False)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .max_column_count(3)
+                .with_item(self._unhydrated_count_panel())
+                .with_item(self._hydration_queue_panel())
+                .with_item(self._slowest_hydrating_collections_panel())
+            )
+        )
+
     def build_arrangements_row(self) -> dashboardv2_builders.Row:
         """Arrangements row: aggregate + per-worker maintenance CPU rate."""
         return (
@@ -370,6 +554,7 @@ class ComputeObjectsTab:
             .layout(
                 dashboardv2_builders.Rows()
                 .row(self.build_summary_row())
+                .row(self.build_hydration_row())
                 .row(self.build_arrangements_row())
             )
         )

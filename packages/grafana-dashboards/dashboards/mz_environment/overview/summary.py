@@ -15,6 +15,7 @@ from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import threshold, visualization
 
+from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, KubeResourcesMixin
 
 
@@ -216,6 +217,15 @@ class OverviewSummary(KubeResourcesMixin):
         )
         return panel_id
 
+    def _currently_hydrating_panel(self):
+        """Re-use the Compute Objects "Currently Hydrating" panel.
+
+        Uses a summary-scoped panel_id so the two registrations don't collide.
+        """
+        return add_currently_hydrating_panel(
+            self.dashboard, panel_id="summary-currently-hydrating"
+        )
+
     def build_healthy_row(self) -> dashboardv2_builders.Row:
         """Get a row showing health."""
         return (
@@ -228,6 +238,7 @@ class OverviewSummary(KubeResourcesMixin):
                 .with_item(self._is_healthy_panel())
                 .with_item(self._availability_panel())
                 .with_item(self._last_restart_panel())
+                .with_item(self._currently_hydrating_panel())
                 .with_item(self._cpu_usage_panel())
                 .with_item(self._memory_usage_panel())
             )
