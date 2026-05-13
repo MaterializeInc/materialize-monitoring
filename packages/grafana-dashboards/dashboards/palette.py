@@ -69,3 +69,30 @@ class TriHealth(enum.StrEnum):
     UNHEALTHY = INCANDESC_SEQUENTIAL_3[2]
 
     INVALID = INCANDESC_INVALID
+
+
+# Theme colors
+# https://sronpersonalpages.nl/~pault/#fig:scheme_light
+# These can be used for cases where health isn't important
+LIGHT_QUALITATIVE_NONSEQ = [
+    "#77AADD",  # light blue
+    # "#99DDFF",  # light cyan  (too close to light blue)
+    # "#44BB99",  # mint  (staying away from greens)
+    "#BBCC33",  # pear
+    "#AAAA00",  # olive
+    "#EEDD88",  # light yellow
+    "#EE8866",  # orange
+    "#FFAABB",  # pink
+    "#DDDDDD",  # light gray
+]
+BRIGHT_QUALITATIVE_NONSEQ = [
+    "#0077BB",  # blue
+    "#33BBEE",  # cyan
+    "#009988",  # teal
+    "#EE7733",  # orange
+    "#CCBB44",  # yellow
+    # "#CC3311",  # red  (health color)
+    "#EE3377",  # magenta
+    "#BBBBBB",  # gray
+]
+THEME_PALETTE = BRIGHT_QUALITATIVE_NONSEQ
