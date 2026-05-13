@@ -10,7 +10,7 @@ from grafana_foundation_sdk.builders import (
 from grafana_foundation_sdk.builders import (
     timeseries,
 )
-from grafana_foundation_sdk.models import piechart
+from grafana_foundation_sdk.models import common, piechart
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
@@ -69,6 +69,7 @@ class KubeResourcesMixin:
             .visualization(
                 visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("cores")
+                .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
                 .no_value(CADVISOR_MISSING)
             ),
         )
@@ -109,6 +110,7 @@ class KubeResourcesMixin:
             .visualization(
                 visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("bytes")
+                .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
                 .no_value(CADVISOR_MISSING)
             ),
         )
