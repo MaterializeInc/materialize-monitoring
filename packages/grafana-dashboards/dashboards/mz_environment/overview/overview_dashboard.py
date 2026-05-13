@@ -9,7 +9,6 @@ from dashboards import variables
 
 from .cluster_objects import ClusterObjectsTab
 from .compute_objects import ComputeObjectsTab
-from .dataflows import DataflowsTab
 from .k8s_resources import KubeResourcesTab
 from .storage_objects import StorageObjectsTab
 from .summary import OverviewSummary
@@ -64,10 +63,6 @@ class EnvironmentOverviewDashboard(MzDashboard):
         """Get a storage objects tab."""
         return StorageObjectsTab(self).build()
 
-    def build_dataflows_tab(self) -> dashboardv2_builders.Tab:
-        """Get a dataflows tab."""
-        return DataflowsTab(self).build()
-
     def build_layout(self):
         """Get the layout for the dashboard."""
         return (
@@ -77,7 +72,6 @@ class EnvironmentOverviewDashboard(MzDashboard):
             .tab(self.build_cluster_objects_tab())
             .tab(self.build_compute_objects_tab())
             .tab(self.build_storage_objects_tab())
-            .tab(self.build_dataflows_tab())
         ).build()
 
 

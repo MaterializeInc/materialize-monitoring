@@ -317,10 +317,7 @@ class ComputeObjectsTab:
                     ) > 0
                     """
                 )
-            ).legend_format(
-                "{{instance_id}}"
-                " / {{replica_id}}"
-            ),
+            ).legend_format("{{instance_id}} / {{replica_id}}"),
         )
 
         self.dashboard.add_panel(
@@ -397,6 +394,8 @@ class ComputeObjectsTab:
                     .type(common.ScaleDistribution.LOG)
                     .log(10)
                 )
+                .bar_width(0.8)
+                .group_width(0.95)
                 .no_value(NO_FILTER_MATCH)
                 .color_scheme(
                     dashboardv2_builders.FieldColor()
@@ -552,6 +551,188 @@ class ComputeObjectsTab:
             )
         )
 
+    def _dataflow_count_panel(self):
+        """Timeseries: per-replica dataflow count.
+
+        `mz_compute_replica_history_dataflow_count` is reported per
+        (cluster, replica, worker). Dataflows are replicated across all
+        workers in a replica, so each worker reports the same count
+        (8 workers x 7 dataflows is not 56 dataflows; it is just 7). We take
+        `max by (cluster, replica)` so the panel surfaces the actual
+        per-replica count rather than a worker-multiplied sum.
+
+        Dataflows are the underlying execution units for indexes,
+        materialized views, and subscribes — each compute object becomes
+        one or more dataflows on its replica.
+        """
+        panel_id = "dataflow-count"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    max by (
+                        {ARRANGEMENT_LABEL_CLUSTER_ID},
+                        {ARRANGEMENT_LABEL_CLUSTER_NAME},
+                        {ARRANGEMENT_LABEL_REPLICA_ID},
+                        {ARRANGEMENT_LABEL_REPLICA_NAME}
+                    ) (
+                        mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
+                    )
+                    """
+                )
+            ).legend_format(
+                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_NAME}}}}}"
+                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_NAME}}}}}"
+            ),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Dataflow Count")
+            .description(
+                "Number of active dataflows per replica. Each index, "
+                "materialized view, or subscribe becomes one or more "
+                "dataflows on its replica."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("short")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _dataflow_count_by_worker_panel(self):
+        """Timeseries: dataflow count broken out per worker.
+
+        Workers in the same replica should always agree on the count.
+        Visible divergence between worker series here is a signal that
+        something has gone wrong with the dataflow replication.
+        """
+        panel_id = "dataflow-count-by-worker"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    max by (
+                        {ARRANGEMENT_LABEL_CLUSTER_ID},
+                        {ARRANGEMENT_LABEL_CLUSTER_NAME},
+                        {ARRANGEMENT_LABEL_REPLICA_ID},
+                        {ARRANGEMENT_LABEL_REPLICA_NAME},
+                        worker_id
+                    ) (
+                        mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
+                    )
+                    """
+                )
+            ).legend_format(
+                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_NAME}}}}}"
+                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_NAME}}}}}"
+                " / w{{worker_id}}"
+            ),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Dataflow Count (per worker)")
+            .description(
+                "Per-worker dataflow count. Normally identical across "
+                "workers in the same replica; divergence is a signal that "
+                "dataflow replication has drifted."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("short")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _dataflow_elapsed_rate_panel(self):
+        """Timeseries: total cores busy in dataflows per cluster (log Y-axis).
+
+        `v2_mz_dataflow_elapsed_seconds_total` is a per-(collection,
+        replica, worker) counter of cumulative CPU-seconds inside
+        dataflows. `sum by (instance_id) (rate(...))` gives total cores
+        busy per cluster — broader than the arrangement maintenance rate
+        panel (which is just the maintenance subset of dataflow work).
+
+        Aggregating away `collection_id`, `replica_id`, and `worker_id`
+        is deliberate: at scale (hundreds of collections * replicas *
+        workers), keeping that cardinality has made graphs fail to load
+        on larger customer environments. Specialists can drill down via
+        ad-hoc queries when needed; the dashboard prioritizes
+        reliability at high granularity over drill-down convenience.
+
+        Log Y-axis keeps idle clusters near zero visible alongside busy
+        ones at >1 core — common pattern in this environment is one
+        cluster (e.g. mz_catalog_server) sitting at 1-3 cores while
+        everything else is in the 0.001-0.01 range.
+        """
+        panel_id = "dataflow-elapsed-rate"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    sum by (instance_id) (
+                        rate(
+                            v2_mz_dataflow_elapsed_seconds_total{
+                                $environmentFilter,
+                                instance_id=~"$mzClusterList",
+                                replica_id=~"$mzReplicaList"
+                            }[$__rate_interval]
+                        )
+                    )
+                    """
+                )
+            ).legend_format("{{instance_id}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Dataflow Elapsed Rate")
+            .description(
+                "Total CPU-cores busy inside dataflows per cluster. "
+                "Includes all dataflow work (maintenance, evaluation, "
+                "hydration). Aggregated by cluster only to keep series "
+                "counts manageable on large environments."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("none")
+                .scale_distribution(
+                    common_builder.ScaleDistributionConfig()
+                    .type(common.ScaleDistribution.LOG)
+                    .log(10)
+                )
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def build_dataflows_row(self) -> dashboardv2_builders.Row:
+        """Dataflows row: counts (per-replica + per-worker) + elapsed rate."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Dataflows")
+            .hide_header(False)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .max_column_count(3)
+                .with_item(self._dataflow_count_panel())
+                .with_item(self._dataflow_count_by_worker_panel())
+                .with_item(self._dataflow_elapsed_rate_panel())
+            )
+        )
+
     def build_arrangements_row(self) -> dashboardv2_builders.Row:
         """Arrangements row: aggregate + per-worker maintenance CPU rate."""
         return (
@@ -575,6 +756,7 @@ class ComputeObjectsTab:
                 dashboardv2_builders.Rows()
                 .row(self.build_summary_row())
                 .row(self.build_hydration_row())
+                .row(self.build_dataflows_row())
                 .row(self.build_arrangements_row())
             )
         )
