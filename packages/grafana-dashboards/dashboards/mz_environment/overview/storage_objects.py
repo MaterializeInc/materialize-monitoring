@@ -19,15 +19,16 @@ from grafana_foundation_sdk.models import common, piechart
 from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
+from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, visualization
+from dashboards import palette, threshold, visualization
 
-# `mz_source_bytes_received` (and other compute-side source metrics) uses the
+# Compute-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
 # long-form `cluster_environmentd_materialize_cloud_*` label family — same
 # convention as arrangement/dataflow metrics. This is the PromQL fragment
 # that filters by env + cluster + replica using those labels.
-_SOURCE_COMPUTE_FILTER = (
+_COMPUTE_FILTER = (
     "$environmentFilter, "
     'cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", '
     'cluster_environmentd_materialize_cloud_replica_id=~"$mzReplicaList"'
@@ -144,6 +145,11 @@ class StorageObjectsTab:
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
+                )
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(STORAGE_THEME)
                 )
                 .no_value(visualization.NO_FILTER_MATCH)
             ),
@@ -286,7 +292,7 @@ class StorageObjectsTab:
                 f"""
                 (
                     sum by (parent_source_id) (
-                        rate(mz_source_bytes_received{{{_SOURCE_COMPUTE_FILTER}}}[$__rate_interval])
+                        rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
                     )
                     * on (parent_source_id) group_left (source_name)
                     {status_with_parent_label}
@@ -300,7 +306,7 @@ class StorageObjectsTab:
                 f"""
                 (
                     sum by (parent_source_id) (
-                        rate(mz_source_bytes_received{{{_SOURCE_COMPUTE_FILTER}}}[$__rate_interval])
+                        rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
                     )
                     unless on (parent_source_id)
                     {status_with_parent_label}
@@ -351,6 +357,449 @@ class StorageObjectsTab:
             )
         )
 
+    # ---- Sinks: universal ----
+
+    def _sink_types_panel(self):
+        """Donut: sinks broken down by (type, envelope_type).
+
+        Kafka has both `debezium` and `upsert` envelopes in practice;
+        Iceberg is upsert-only as of writing. Keying on the pair
+        surfaces that mix instead of collapsing it.
+
+        `v2_mz_sinks_count` is env-scoped — no cluster filter.
+        """
+        panel_id = "sinks-types"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    sum by (type, envelope_type) (
+                        v2_mz_sinks_count{$environmentFilter}
+                    ) > 0
+                    """
+                )
+            )
+            .legend_format("{{type}} / {{envelope_type}}")
+            .instant(),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Sink Types")
+            .description(
+                f"Sinks broken down by (type, envelope_type). {ENV_SCOPED_NOTE}"
+            )
+            .data(query)
+            .visualization(
+                piechart_builder.Visualization()
+                .pie_type(piechart.PieChartType.DONUT)
+                .legend(visualization.PIE_LEGEND_BUILDER)
+                .display_labels(
+                    [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
+                )
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(STORAGE_THEME)
+                )
+                .no_value(visualization.NO_FILTER_MATCH)
+            ),
+        )
+        return panel_id
+
+    def _sink_throughput_panel(self):
+        """Timeseries: per-sink bytes-committed rate (log Y-axis).
+
+        Unlike sources, sinks have no `v2_mz_sink_status` analog — no
+        friendly name is available. Legend is `sink_id`.
+        """
+        panel_id = "sinks-throughput"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    ) > 0
+                    """
+                )
+            ).legend_format("{{sink_id}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Sink Throughput (committed)")
+            .description(
+                "Bytes per second committed by each sink. There's no "
+                "v2_mz_sink_status equivalent of source_status, so the "
+                "legend is sink_id. Log Y-axis."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("Bps")
+                .scale_distribution(
+                    common_builder.ScaleDistributionConfig()
+                    .type(common.ScaleDistribution.LOG)
+                    .log(10)
+                )
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _sink_lag_panel(self):
+        """Timeseries: per-sink lag in bytes (staged minus committed).
+
+        Both metrics are counters; their difference is "bytes that have
+        been prepared but not yet acknowledged downstream" at the moment
+        of scrape. Brief negative values can occur from scrape skew
+        (committed updates between staged and committed reads), hence
+        `clamp_min(..., 0)`.
+        """
+        panel_id = "sinks-lag"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    clamp_min(
+                        sum by (sink_id) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}})
+                        - sum by (sink_id) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}),
+                        0
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Sink Lag (staged minus committed)")
+            .description(
+                "Bytes staged but not yet committed per sink. Persistent "
+                "growth signals downstream backpressure or recurring "
+                "commit failures."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("bytes")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def build_sinks_row(self) -> dashboardv2_builders.Row:
+        """Sinks row: type/envelope donut + throughput + lag (always visible)."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Sinks")
+            .hide_header(False)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .max_column_count(3)
+                .column_width_mode("wide")
+                .with_item(self._sink_types_panel())
+                .with_item(self._sink_throughput_panel())
+                .with_item(self._sink_lag_panel())
+            )
+        )
+
+    # ---- Iceberg-specific sinks ----
+
+    def _iceberg_commit_latency_panel(self):
+        """Histogram quantile p50/p90/p99 of iceberg commit duration."""
+        panel_id = "sinks-iceberg-commit-latency"
+
+        def quantile(p: float, label: str):
+            return promql_query(
+                textwrap.dedent(
+                    f"""
+                    histogram_quantile({p},
+                        sum by (le) (
+                            rate(mz_sink_iceberg_commit_duration_seconds_bucket{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
+                    )
+                    """
+                )
+            ).legend_format(label)
+
+        query = query_group(
+            quantile(0.50, "p50"),
+            quantile(0.90, "p90"),
+            quantile(0.99, "p99"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Iceberg Commit Latency (p50 / p90 / p99)")
+            .description(
+                "Iceberg snapshot commit duration percentiles across the "
+                "env. Log Y-axis because commits range from sub-second to "
+                "multi-second."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("s")
+                .scale_distribution(
+                    common_builder.ScaleDistributionConfig()
+                    .type(common.ScaleDistribution.LOG)
+                    .log(10)
+                )
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _iceberg_failures_panel(self):
+        """Iceberg commit failures + conflicts rate (threshold-colored)."""
+        panel_id = "sinks-iceberg-failures"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_iceberg_commit_failures{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} failures"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_iceberg_commit_conflicts{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} conflicts"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Iceberg Commit Failures & Conflicts")
+            .description(
+                "Rate of commit failures and conflicts per sink. "
+                "Conflicts are usually concurrent-writer races; failures "
+                "are commit-side errors. Non-zero is bad."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("cps")
+                .min(0)
+                .thresholds(threshold.error_thresholds(max_errors=10))
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _iceberg_files_panel(self):
+        """Iceberg data/delete files written + snapshots committed rate."""
+        panel_id = "sinks-iceberg-files"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_iceberg_data_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} data"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_iceberg_delete_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} deletes"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_iceberg_snapshots_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} snapshots"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Iceberg File & Snapshot Rate")
+            .description(
+                "Rate of data files, delete files, and snapshots per sink. "
+                "Their proportions tell you about commit batching and "
+                "upsert behavior."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("cps")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def build_iceberg_sinks_row(self) -> dashboardv2_builders.Row:
+        """Iceberg-specific sink panels (collapsed by default)."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Iceberg Sinks")
+            .hide_header(False)
+            .collapse(True)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .max_column_count(3)
+                .column_width_mode("wide")
+                .with_item(self._iceberg_commit_latency_panel())
+                .with_item(self._iceberg_failures_panel())
+                .with_item(self._iceberg_files_panel())
+            )
+        )
+
+    # ---- Kafka-specific sinks ----
+
+    def _kafka_tx_errors_panel(self):
+        """Kafka rdkafka TX error rate per sink (threshold-colored)."""
+        panel_id = "sinks-kafka-tx-errors"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_rdkafka_txerrs{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Kafka TX Error Rate")
+            .description(
+                "rdkafka TX error rate per sink. Non-zero indicates "
+                "publishing failures against the broker."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("cps")
+                .min(0)
+                .thresholds(threshold.error_thresholds(max_errors=10))
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _kafka_outbuf_panel(self):
+        """Kafka rdkafka outgoing message buffer per sink."""
+        panel_id = "sinks-kafka-outbuf"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        mz_sink_rdkafka_outbuf_msg_cnt{{{_COMPUTE_FILTER}}}
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Kafka Output Buffer (messages)")
+            .description(
+                "Messages currently buffered in rdkafka waiting for "
+                "transmission. Sustained high values indicate broker-side "
+                "back-pressure."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("short")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def _kafka_connects_panel(self):
+        """Kafka connect & disconnect event rates per sink."""
+        panel_id = "sinks-kafka-connects"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_rdkafka_connects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} connects"),
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (sink_id) (
+                        rate(mz_sink_rdkafka_disconnects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                    """
+                )
+            ).legend_format("{{sink_id}} disconnects"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Kafka Connect / Disconnect Rate")
+            .description(
+                "Connect and disconnect events per sink. A persistently "
+                "high disconnect rate is a sign of unhealthy broker "
+                "connectivity."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("cps")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+            ),
+        )
+        return panel_id
+
+    def build_kafka_sinks_row(self) -> dashboardv2_builders.Row:
+        """Kafka-specific sink panels (collapsed by default)."""
+        return (
+            dashboardv2_builders.Row()
+            .title("Kafka Sinks")
+            .hide_header(False)
+            .collapse(True)
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .max_column_count(3)
+                .column_width_mode("wide")
+                .with_item(self._kafka_tx_errors_panel())
+                .with_item(self._kafka_outbuf_panel())
+                .with_item(self._kafka_connects_panel())
+            )
+        )
+
     def build_summary_row(self) -> dashboardv2_builders.Row:
         """Summary row: source / sink / table counts."""
         return (
@@ -377,5 +826,8 @@ class StorageObjectsTab:
                 dashboardv2_builders.Rows()
                 .row(self.build_summary_row())
                 .row(self.build_sources_row())
+                .row(self.build_sinks_row())
+                .row(self.build_iceberg_sinks_row())
+                .row(self.build_kafka_sinks_row())
             )
         )

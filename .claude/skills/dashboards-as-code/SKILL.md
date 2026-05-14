@@ -530,9 +530,35 @@ an explicit thresholds/mappings palette (see `dashboards.threshold`).
   legend tables (multiple calc columns + long pod names), 2 columns per
   row is a good default; for compact stat panels, the default 3 or
   bumping to 5 (e.g. workload readiness) is fine.
-- Use `.column_width_mode("narrow")` when a row of mostly-stat panels
-  needs to fit alongside one or two donuts — narrow column width keeps
-  the donut from stealing all the horizontal space.
+- **Column-width sizing** (`AutoGridLayout.column_width_mode(...)`):
+  - `"narrow"` — rows of mostly-stat panels alongside one or two donuts;
+    keeps the donut from stealing all the horizontal space.
+  - `"wide"` — rows of complex panels (timeseries with table legends,
+    histograms, bar charts, tables). Lets each panel get enough room to
+    be readable; on smaller monitors the row will scroll horizontally
+    rather than cram everything into a too-narrow column.
+  - Default (`"standard"`) is fine for typical mixes.
 - **Do not** wrap a small set of related panels in nested sub-rows when
   the auto-layout will tile them correctly — let `AutoGridLayout`
   handle the 2D wrap.
+
+### Collapsed rows for type-specific drilldowns
+
+When a row only applies to a subset of environments — e.g. Iceberg-sink
+metrics only matter when Iceberg sinks exist — declare the row collapsed
+by default with `.collapse(True)`:
+
+```python
+def build_iceberg_sinks_row(self):
+    return (
+        dashboardv2_builders.Row()
+        .title("Iceberg Sinks")
+        .hide_header(False)
+        .collapse(True)  # collapsed; expand on demand
+        .layout(...)
+    )
+```
+
+Operators can expand the row when they need it; the row title acts as
+documentation that the section exists. This keeps the default page light
+without losing the type-specific content.
