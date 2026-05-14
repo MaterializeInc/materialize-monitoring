@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-and-deploy:
@@ -18,13 +19,14 @@ jobs:
     concurrency:
       group: docs-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.26'
 
       - uses: peaceiris/actions-hugo@v3
         with:
@@ -32,10 +34,12 @@ jobs:
           extended: true
 
       - name: Cache Hugo module downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/hugo_cache
           key: ${{ runner.os }}-hugo-mod-${{ hashFiles('docs/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-hugo-mod-
 
       - name: Compute base URL and target folder
         id: paths
@@ -73,8 +77,9 @@ jobs:
       # Selective deploy:
       #  * main → target-folder '.' (the root of gh-pages). clean: true wipes
       #    stale files at the root, but clean-exclude keeps `preview/` intact.
-      #  * PR   → target-folder 'preview/pr-N'. clean: true only operates on
-      #    that subdirectory, so other PRs' previews and main are untouched.
+      #  * PR   → target-folder 'preview/<branch-slug>'. clean: true only
+      #    operates on that subdirectory, so other PRs' previews and main are
+      #    untouched.
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
@@ -87,6 +92,25 @@ jobs:
           commit-message: |
             Deploy ${{ github.sha }} -> ${{ steps.paths.outputs.target-folder }}
 
+      # Sticky comment: one comment per PR (matched via `header`), updated in
+      # place on every push. The cleanup job removes it when the PR closes.
+      - name: Update PR preview comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: docs-preview
+          message: |
+            ## Docs preview
+
+            This PR's docs are deployed at <${{ steps.paths.outputs.base-url }}>.
+
+            | | |
+            | --- | --- |
+            | Source commit | `${{ github.event.pull_request.head.sha }}` |
+            | Target path   | `${{ steps.paths.outputs.target-folder }}/` |
+
+            Updates on every push. Removed when the PR closes.
+
   cleanup:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     # Same group as build-and-deploy for this PR. cancel-in-progress: false
@@ -95,7 +119,8 @@ jobs:
     concurrency:
       group: docs-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
@@ -132,3 +157,9 @@ jobs:
             echo "Push attempt ${attempt} failed; rebasing and retrying."
             git pull --rebase origin gh-pages
           done
+
+      - name: Remove preview comment from PR
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: docs-preview
+          delete: true
