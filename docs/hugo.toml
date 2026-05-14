@@ -1,0 +1,3 @@
+baseURL = 'https://materializeinc.github.io/materialize-monitoring/'
+locale = 'en-us'
+title = 'materialize-monitoring Documentation'
