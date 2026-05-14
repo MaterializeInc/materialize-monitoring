@@ -1,0 +1,57 @@
+# A comprehensive YAML file for reference.
+# This is annotated with comments, albeit more verbosely than your YAML files.
+#
+# A good YAML file has its own comments at the top.
+
+# comments for an object may proceed it
+myObject:
+  # comments for a key may proceed it
+  key1: "value1"
+  key2: "value2"
+
+
+# These are some good types to be using
+goodTypes:
+  someInt: 42
+  someBool: true
+  someObject:
+    nestedKey: "nestedValue"
+  someArray:
+    - "item1"
+    - "item2"
+  # If a type isn't detected, it's usually handled as a string even without quotes
+  # We do prefer double quotes (and it's required for KYAML),
+  # but not quoting is an acceptable shorthand (especially for user input values)
+  someString: "a string"
+
+
+# Objects can be fairly complex
+complexObjects:
+  subObj1:
+    keyA: "valueA"
+    subObj2:
+      subObj3:
+        # For jsonpath expressions, this would be .complexObjects.subObj1.subObj2.subObj3.keyB
+        keyB: "valueB"
+    # Note that you probably don't want to mix types within your arrays, but this is just an example
+    subArray:
+      - "itemA"
+      - arrayObj:
+          # This jsonpath expression would be .complexObjects.subObj1.subArray[1].arrayObj.arrayObjKey
+          arrayObjKey: "arrayObjValue"
+
+
+# Examples for strings and multi-line strings
+stringFlowExamples:
+  normalString: "this is a normal string"
+  singleQuoteException: 'if you need "double quotes" inside, you can use single quotes'
+  # Prefer literal strings for multi-line strings
+  literalString: |
+    this is a literal string
+    that will preserve newlines
+    Leading spaces (4 here) will be removed
+  # Avoid using folded strings unless you need a really long line (which maybe you do)
+  foldedString: >
+    this is a folded string
+    that will be folded into a single line
+    with newlines replaced by spaces

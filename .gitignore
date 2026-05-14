@@ -1,24 +1,130 @@
-# Environment variables
-.env
+# ---- Rust ----
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock.bak
 
-# Docker volumes
-prometheus_data/
-grafana_data/
+# ---- Go ----
+# Test/coverage artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+# Vendor directory (uncomment if you don't vendor)
+# vendor/
+# Go workspace files
+go.work
+go.work.sum
 
-# OS files
+# ---- Helm ----
+# Packaged charts
+*.tgz
+charts/*.tgz
+# Downloaded chart dependencies
+charts/*/charts/
+charts/*/Chart.lock
+# Local values overrides
+values.local.yaml
+values.*.local.yaml
+# Helm secrets / decrypted values
+secrets.dec.*
+
+# ---- Jsonnet ----
+# jsonnet-bundler vendored libs (comment when we start vendoring)
+vendor/
+# Compiled output
+*.jsonnet.json
+dashboards_out/
+manifests_out/
+
+# ---- Hugo (docs) ----
+docs/public/
+docs/resources/_gen/
+docs/.hugo_build.lock
+public/
+resources/_gen/
+.hugo_build.lock
+
+# ---- Editors / OS ----
+.idea/
+.vscode/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 
-# Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 
-# Logs
+# ---- Misc ----
 *.log
-
-# Temporary files
 tmp/
-temp/
+.tmp/
+
+# ---- NodeJS tools ----
+node_modules/
+
+# ---- Python ----
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+# C extensions
+*.so
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dists/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+# PyInstaller
+*.manifest
+*.spec
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+# Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+# mypy / type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+# Ruff
+.ruff_cache/
+# Jupyter
+.ipynb_checkpoints/

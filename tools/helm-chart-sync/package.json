@@ -1,0 +1,12 @@
+{
+  "name": "helm-chart-sync",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "dependencies": {
+    "@bitnami/readme-generator-for-helm": "2.7.2"
+  },
+  "scripts": {
+    "readme-generator": "readme-generator"
+  }
+}
