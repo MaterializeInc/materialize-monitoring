@@ -52,3 +52,6 @@ class GlobalDashboardConfig(BaseSettings):
         default="browser",
         description="Default timezone for all dashboards",
     )
+
+
+GLOBAL_DASHBOARD_CONFIG = GlobalDashboardConfig()
