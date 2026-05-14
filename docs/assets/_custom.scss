@@ -19,6 +19,7 @@
   --mz-divider-dark: #2a2a30;
   --mz-header-bg-light: #ffffff;
   --mz-header-bg-dark: #000000;
+  --mz-gray-light: #dddddd;
 }
 
 body {
@@ -30,6 +31,8 @@ body {
   --color-visited-link: var(--mz-purple-dark);
   --body-background: var(--mz-bg-light);
   --mz-header-bg: var(--mz-header-bg-light);
+  --mz-highlight: var(--mz-purple-dark);
+  --mz-menu-divider: var(--mz-gray-light);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -40,6 +43,8 @@ body {
     --gray-100: var(--mz-surface-dark);
     --gray-200: var(--mz-divider-dark);
     --mz-header-bg: var(--mz-header-bg-dark);
+    --mz-highlight: var(--mz-highlight-dark);
+    --mz-menu-divider: var(--mz-divider-dark);
   }
 }
 
@@ -139,6 +144,36 @@ a[href]:visited {
 // disturbing Book's sticky child elements.
 main.container {
   padding-top: var(--site-header-height);
+}
+
+// --- Sidebar: top-level entries -----------------------------------------
+//
+// Book wraps directory entries in `<li><label><a/></label><ul/></li>` and
+// flat-page entries in `<li><a/></li>`. Both forms get the same highlight
+// treatment: Materialize purple, medium weight, faint divider underneath.
+// When a directory is expanded (its toggle checkbox is `:checked`), the
+// divider is dropped so the section flows into its children.
+
+// Book applies `nav ul a { padding: 0.5em 0 }` to every menu anchor. For
+// directories, that padding sits on the <a> *inside* the <label>, so the
+// label box is text + 1em tall. For flat pages the same padding lives on
+// the bare <a>. Don't set padding-bottom on the row — Book's anchor
+// padding already gives both shapes equal vertical spacing.
+.book-menu-content > nav > ul > li > label,
+.book-menu-content > nav > ul > li > a[href] {
+  border-bottom: 1px solid var(--mz-menu-divider);
+}
+
+.book-menu-content > nav > ul > li > label > a[href],
+.book-menu-content > nav > ul > li > label > a[href]:visited,
+.book-menu-content > nav > ul > li > a[href],
+.book-menu-content > nav > ul > li > a[href]:visited {
+  color: var(--mz-highlight);
+  font-weight: 500;
+}
+
+.book-menu-content > nav > ul > li > input.toggle:checked + label {
+  border-bottom: none;
 }
 
 // --- Search input -------------------------------------------------------
