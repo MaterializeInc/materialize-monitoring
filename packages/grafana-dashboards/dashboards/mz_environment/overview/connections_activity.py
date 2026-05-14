@@ -27,6 +27,45 @@ from dashboards import palette, threshold, visualization
 
 CONNECTIONS_THEME = palette.THEME_PALETTE[1]
 
+# Per-percentile descriptions for the Peek Latency panels. Each percentile
+# tells the operator something different (typical vs tail vs worst-case),
+# so the three panels deliberately carry tailored writeups instead of one
+# generic "latency at PN" line.
+_PEEK_LATENCY_DESCRIPTIONS: dict[str, str] = {
+    "p50": (
+        "**Median read-query latency** — the typical time it takes to "
+        "look up the current state of an arrangement (the operation "
+        "behind every `SELECT … FROM <view>` against an index). p50 is "
+        'your "what does a normal query feel like" number. Nominal: '
+        "typically a few milliseconds on a healthy cluster. Sustained "
+        "multi-second p50 means the cluster is overwhelmed. One line "
+        "per `cluster_id / replica_id` — narrow the cluster/replica "
+        "selectors to focus. Log Y-axis. See also: _Dataflow Elapsed "
+        "Rate_ and _Arrangement Maintenance Rate_ on the _Compute "
+        "Objects_ tab."
+    ),
+    "p90": (
+        '**90th-percentile read-query latency** — "how slow do my '
+        'slowest 10% of queries feel?" Catches contention bursts and '
+        "rarely-hit cold paths that p50 hides. Nominal: usually a "
+        "small multiple of p50 (2-5x). If p90 is 10-100x p50, your "
+        "latency distribution is bimodal — typically cold-cache "
+        "effects on infrequently-queried indexes or contention. Same "
+        "per-(cluster, replica) split as p50."
+    ),
+    "p99": (
+        "**Tail read-query latency (99th percentile)** — the slowest "
+        "1% of queries, the ones users complain about. Nominal: a "
+        "small multiple of p50 (typically 2-10x), with occasional "
+        "spikes during query plan recompilation or hydration. "
+        "Sustained p99 in the seconds range — especially when *not* "
+        "paired with elevated p50/p90 — points at a single bad query "
+        "or a tail-latency-sensitive use case worth investigating "
+        "directly. Pair with _Query Rate_ above to confirm the "
+        "latency is happening on actual traffic, not just idle scrapes."
+    ),
+}
+
 
 class ConnectionsActivityTab:
     """Connections / Activity tab on Overview Dashboard."""
@@ -60,8 +99,15 @@ class ConnectionsActivityTab:
             dashboardv2_builders.Panel()
             .title("Active Sessions")
             .description(
-                "Currently-open SQL sessions, broken down by session type "
-                "(system / user). Multiple stat tiles, one per session type."
+                "**Currently-open SQL sessions, broken down by session "
+                "type (`system` vs `user`).** `system` sessions come "
+                "from Materialize's internal probing (a few are always "
+                "present); `user` sessions come from client connections. "
+                "Nominal: a small steady `system` count and a variable "
+                "`user` count tracking your client activity. Sustained "
+                "high `user` count is often a leaked-connection signal "
+                "— sanity-check by seeing whether _Active Queries_ "
+                "shows commensurate activity. Environment-scoped."
             )
             .data(query)
             .visualization(
@@ -97,8 +143,14 @@ class ConnectionsActivityTab:
             dashboardv2_builders.Panel()
             .title("Active Queries")
             .description(
-                "Query rate (queries/sec) by session type. "
-                "Rated from the mz_query_total counter."
+                "**Queries per second by session type, rated from the "
+                "`mz_query_total` counter.** Bursty in normal operation "
+                "— `user` tracks your client traffic shape, `system` "
+                "reflects internal health-checks (typically a steady "
+                "single-digit baseline). Use _Query Distribution_ to see "
+                "*what kinds* of queries make up the rate, and _Peek "
+                "Latency_ to confirm the queries are running fast "
+                "enough. Environment-scoped."
             )
             .data(query)
             .visualization(
@@ -136,9 +188,14 @@ class ConnectionsActivityTab:
             dashboardv2_builders.Panel()
             .title("Adapter Command Rate")
             .description(
-                "Adapter command rate across the environment "
-                "(commands/sec, summed across command_type and status). "
-                "Drilldown by command_type/status is a natural follow-up."
+                "**Commands per second across the adapter** — the SQL "
+                "protocol layer that handles parse, execute, prepare, "
+                "fetch, etc. Usually higher than the query rate because "
+                "each query produces several commands. Sudden flat-line "
+                "on a usually-busy env is unusual (could indicate "
+                "adapter trouble). Use _Adapter Commands by Application_ "
+                "below to see which clients dominate, and watch its "
+                "Errors column for failed commands. Environment-scoped."
             )
             .data(query)
             .visualization(
@@ -177,9 +234,16 @@ class ConnectionsActivityTab:
             dashboardv2_builders.Panel()
             .title("Query Distribution (by statement_type)")
             .description(
-                "Share of queries by statement type over the current time "
-                "range. Workload-shape signal — what kinds of queries are "
-                "hitting this environment."
+                "**Share of queries by statement type over the "
+                "dashboard's time range** — uses `increase()`, so the "
+                "slice sizes are total counts over the time selector, "
+                "not per-second rates. Workload-shape signal. Heavy "
+                "`set_variable` / `reset_variable` / `fetch` traffic is "
+                "normal — that's how PostgreSQL clients manage session "
+                "state. Heavy `insert` / `update` / `delete` on a "
+                "service you think of as read-mostly is worth "
+                "investigating. Idle statement types are filtered out "
+                "(`> 0`). Environment-scoped."
             )
             .data(query)
             .visualization(
@@ -219,10 +283,14 @@ class ConnectionsActivityTab:
             dashboardv2_builders.Panel()
             .title("Query Rate (by statement_type / session_type)")
             .description(
-                "Queries per second per (statement_type, session_type). "
-                "Pairs with the distribution donut: the donut shows the "
-                "shape over the whole range, this shows it over time and "
-                "splits user vs system."
+                "**Queries per second broken down by statement type AND "
+                "session type, fully time-resolved.** Pairs with the "
+                "_Query Distribution_ donut (which shows the time-range "
+                "total): this panel shows *how those slices move over "
+                "time*. Watch for sudden spikes in `select / user` — "
+                "pair with _Peek Latency (p99)_ to see if the system "
+                "kept up. Idle (statement, session) tuples are filtered "
+                "out. Environment-scoped."
             )
             .data(query)
             .visualization(
@@ -276,10 +344,7 @@ class ConnectionsActivityTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title(f"Peek Latency ({percentile_label})")
-            .description(
-                f"Read-query (peek) latency at {percentile_label}, "
-                "per (cluster, replica). Log Y-axis."
-            )
+            .description(_PEEK_LATENCY_DESCRIPTIONS[percentile_label])
             .data(query)
             .visualization(
                 timeseries.Visualization()
@@ -423,10 +488,19 @@ class ConnectionsActivityTab:
             dashboardv2_builders.Panel()
             .title("Adapter Commands by Application")
             .description(
-                "Total adapter commands per application_name over the "
-                "dashboard time range, split into Success and Errors. "
-                "The Errors column is threshold-colored — non-zero errors "
-                "should jump out."
+                "**Adapter command totals per `application_name` over "
+                "the dashboard time range, split into Success and Errors "
+                "columns.** Rows sorted by Errors (descending) so "
+                "anything bad floats to the top. The Errors column is "
+                "threshold-colored — non-zero jumps out visually. Most "
+                "clients set `application_name` via the PostgreSQL "
+                "connection string; clients that don't are bucketed as "
+                "`unrecognized` or `unspecified` (normal). Sustained "
+                "non-zero Errors on a real application means that app "
+                "is consistently failing — investigate by correlating "
+                "with that application's own logs, and inspect recent "
+                "failures via Materialize's `mz_internal` activity-log "
+                "views."
             )
             .data(query)
             .visualization(

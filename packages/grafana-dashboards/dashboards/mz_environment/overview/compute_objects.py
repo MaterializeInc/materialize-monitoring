@@ -93,9 +93,15 @@ def add_currently_hydrating_panel(
         dashboardv2_builders.Panel()
         .title("Currently Hydrating")
         .description(
-            'Collections currently un-hydrated. The count of {hydrated="0"} '
-            "marker series gives a real-time 'is anything still hydrating?' "
-            "signal (the value of those series is always 0)."
+            "**Compute objects (indexes, materialized views) that haven't "
+            "finished hydrating.** Hydration is the process of rebuilding a "
+            "dataflow's in-memory state from persisted storage — it runs "
+            "after a cluster restart, after creating a replica, and after "
+            "some DDL. Nominal: 0 in steady state; non-zero is briefly "
+            "expected after restarts. Sustained non-zero (more than a few "
+            "minutes) means hydration is stuck — check _Slowest Hydrating "
+            "Collections_ next, then pod restart history on _Kubernetes "
+            "Workloads_."
         )
         .data(query)
         .visualization(
@@ -144,7 +150,15 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Active Materialized Views")
             .description(
-                "Materialized views in the catalog, scoped to the selected clusters."
+                "**Number of materialized views actively maintained by "
+                "Materialize.** Each materialized view is a persistent "
+                "compute object that incrementally keeps a query's result "
+                "up to date — so this count is roughly proportional to "
+                "how much work the cluster is doing. Nominal: stable in "
+                "steady state; expected to step on `CREATE MATERIALIZED "
+                "VIEW` / `DROP MATERIALIZED VIEW`. Sustained drift "
+                "suggests automated DDL activity. Scoped to the selected "
+                "clusters."
             )
             .data(_active_objects_query("materialized-view"))
             .visualization(visualization.sparkline_stat(shade=COMPUTE_THEME).min(0)),
@@ -158,7 +172,15 @@ class ComputeObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Active Indexes")
-            .description("Indexes in the catalog, scoped to the selected clusters.")
+            .description(
+                "**Number of indexes maintained on the selected clusters.** "
+                "An index is an in-memory arrangement that makes `SELECT`s "
+                "against its underlying relation effectively instant — at "
+                "the cost of memory. Rapid growth here typically pairs with "
+                "growing memory usage on the cluster's pods (see "
+                "_Kubernetes Workloads -> Pod Memory Usage_). Scoped to the "
+                "selected clusters."
+            )
             .data(_active_objects_query("index"))
             .visualization(visualization.sparkline_stat(shade=COMPUTE_THEME).min(0)),
         )
@@ -187,7 +209,14 @@ class ComputeObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Active Views")
-            .description(f"Views in the catalog. {ENV_SCOPED_NOTE}")
+            .description(
+                "**Views (non-materialized) in the catalog.** Views are "
+                "query templates evaluated on demand — they don't consume "
+                "compute or memory until something queries them. Mostly a "
+                "catalog-shape signal; for read-side activity see "
+                "_Connections / Activity -> Query Rate_. "
+                f"{ENV_SCOPED_NOTE}"
+            )
             .data(query)
             .visualization(visualization.sparkline_stat(shade=COMPUTE_THEME).min(0)),
         )
@@ -222,7 +251,12 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Active Subscribes")
             .description(
-                "Live SUBSCRIBE sessions broken down by session type. "
+                "**Live SUBSCRIBE sessions — long-running queries that "
+                "push updates to a client as the underlying data changes.** "
+                "`system` subscribes are Materialize's internal probing / "
+                "health checks (always a few); `user` subscribes come from "
+                "client connections. A persistently high `user` count is "
+                "often a leaked-connection signal. "
                 f"{ENV_SCOPED_NOTE}"
             )
             .data(query)
@@ -269,7 +303,13 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Index Types")
             .description(
-                f"Indexes broken down by the underlying relation type. {ENV_SCOPED_NOTE}"
+                "**Indexes by the underlying relation type** (view / table "
+                "/ materialized-view). Most workloads heavily favor indexes "
+                "on views — that's the canonical 'maintain a query's "
+                "result' pattern. A high ratio of indexes on tables is "
+                "unusual and worth understanding (often a misunderstanding "
+                "of materialization). "
+                f"{ENV_SCOPED_NOTE}"
             )
             .data(query)
             .visualization(
@@ -326,8 +366,14 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Hydration Queue Size")
             .description(
-                "Collections waiting to be hydrated per (cluster, replica). "
-                "Non-zero means hydration work is backed up."
+                "**Collections waiting in the compute controller's "
+                "hydration queue, per replica.** environmentd schedules "
+                "hydration work in batches; backlog here means it's "
+                "queueing faster than replicas can complete it — typical "
+                "during mass cluster restarts, atypical otherwise. "
+                "Nominal: 0. Sustained non-zero means the replica is "
+                "undersized or one slow-hydrating collection is blocking "
+                "the line."
             )
             .data(query)
             .visualization(
@@ -381,9 +427,17 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Slowest Hydrating Collections")
             .description(
-                "Top 15 individual collections by hydration time (seconds), "
-                "labeled as cluster_id / replica_id / collection_id. Snapshot — "
-                "use the time range to scope what hydrations are visible."
+                "**The 15 collections that took the longest to finish "
+                "hydrating** in the current time range. Hydration time "
+                "scales roughly with the size of the maintained state, so "
+                "large materialized views and indexes naturally lead the "
+                "list. Sudden growth on a previously-fast collection "
+                "usually means its input data grew. Translate "
+                "`collection_id` to a name via `SELECT id, name FROM "
+                "mz_internal.mz_indexes` (or `mz_materialized_views`). "
+                "Heads-up: `s2` (`mz_catalog_server`) typically dominates "
+                "this chart with internal system collections — that's "
+                "expected and noise-floor."
             )
             .data(query)
             .visualization(
@@ -456,9 +510,15 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Arrangement Maintenance Rate")
             .description(
-                "CPU-seconds per second spent maintaining arrangements, "
-                "summed across workers in each replica. 1.0 = one CPU "
-                "thread fully busy; an 8-worker replica can reach 8.0."
+                "**CPU-cores spent maintaining arrangements** — the "
+                "in-memory indexed snapshots that back every index and "
+                "materialized view. Summed across workers in each "
+                "replica, so an N-worker replica can hit N. Nominal: "
+                "well below worker count. Sustained near-max indicates "
+                "the replica is bottlenecked on maintenance work — "
+                "usually high upstream change rate or many heavy "
+                "indexes. The catalog cluster's normal baseline is "
+                "higher than typical user clusters."
             )
             .data(query)
             .visualization(
@@ -506,9 +566,15 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Arrangement Maintenance Rate (per worker)")
             .description(
-                "CPU fraction per worker spent maintaining arrangements. "
-                "1.0 = one worker thread fully saturated. Useful for spotting "
-                "skew between workers in the same replica."
+                "**Same metric as the aggregate, but split per worker** — "
+                "each worker tops out at 1.0. Watch for skew: if one "
+                "worker series sits near 1.0 while siblings sit near 0, "
+                "the cluster is bottlenecked on that single worker (a "
+                "'hot key' or hot arrangement). Skew is the most common "
+                "reason an 8-worker cluster behaves like a 1-worker one. "
+                "If you see it, the next step is usually `EXPLAIN "
+                "PHYSICAL PLAN` on the offending object to find the "
+                "heavy operator."
             )
             .data(query)
             .visualization(
@@ -607,9 +673,14 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Dataflow Count")
             .description(
-                "Number of active dataflows per replica. Each index, "
-                "materialized view, or subscribe becomes one or more "
-                "dataflows on its replica."
+                "**Number of active dataflows running on each replica.** "
+                "Every index, materialized view, and live `SUBSCRIBE` "
+                "manifests as one or more dataflows on a replica — so "
+                "this count rises with DDL and SUBSCRIBE activity. "
+                "Nominal: stable for steady workloads. A sharp drop "
+                "without correlating DDL usually means a replica restart "
+                "(cross-check _Kubernetes Workloads_); a sharp rise "
+                "typically means bulk object creation."
             )
             .data(query)
             .visualization(
@@ -656,9 +727,12 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Dataflow Count (per worker)")
             .description(
-                "Per-worker dataflow count. Normally identical across "
-                "workers in the same replica; divergence is a signal that "
-                "dataflow replication has drifted."
+                "**Per-worker view of the dataflow count.** Workers within "
+                "the same replica run in lockstep and should always see "
+                "the same dataflows — so the worker series for a given "
+                "replica should overlap exactly. Visible divergence "
+                "between worker series within a single (cluster, replica) "
+                "tuple is a bug-class signal and worth filing."
             )
             .data(query)
             .visualization(
@@ -715,10 +789,16 @@ class ComputeObjectsTab:
             dashboardv2_builders.Panel()
             .title("Dataflow Elapsed Rate")
             .description(
-                "Total CPU-cores busy inside dataflows per cluster. "
-                "Includes all dataflow work (maintenance, evaluation, "
-                "hydration). Aggregated by cluster only to keep series "
-                "counts manageable on large environments."
+                "**CPU-cores busy inside dataflows, per cluster.** Covers "
+                "all dataflow work — arrangement maintenance, evaluation, "
+                "and hydration. Capped by cluster size: a `400cc` cluster "
+                "can't exceed 400 cores. Nominal: well below cluster "
+                "size; sustained near-max means the cluster is CPU-bound "
+                "and a candidate for upsizing. The catalog cluster (`s2`) "
+                "is typically the busiest by far in any environment. Log "
+                "Y-axis so idle and busy clusters share the chart. For "
+                "maintenance-only breakdown see the _Arrangements_ row "
+                "below."
             )
             .data(query)
             .visualization(
@@ -862,9 +942,15 @@ class ComputeObjectsTab:
             title="System Collections — Record Counts",
             collection_id_regex="s.*",
             description=(
-                "Arrangement record counts for system collections "
-                '(collection_id starting with "s"). Min/Max/Last over the '
-                "selected time range; sorted by Last desc."
+                "**Row counts of arrangements maintained for Materialize's "
+                "internal system collections** (`collection_id` starts with "
+                "`s`). These back catalog tables, internal probes, and "
+                "other infrastructure — they're not user data and "
+                "shouldn't grow with workload. Columns are Min / Max / "
+                "Last over the selected time range, sorted by Last "
+                "(largest current arrangements first). Useful for spotting "
+                "unexpected growth in system collections, which can "
+                "indicate a Materialize bug."
             ),
         )
 
@@ -874,9 +960,17 @@ class ComputeObjectsTab:
             title="User Collections — Record Counts",
             collection_id_regex="u.*",
             description=(
-                "Arrangement record counts for user collections "
-                '(collection_id starting with "u"). Min/Max/Last over the '
-                "selected time range; sorted by Last desc."
+                "**Row counts of arrangements maintained for user-created "
+                "compute objects** (`collection_id` starts with `u`). "
+                "This is the row count of every index and materialized "
+                "view on the selected clusters — the primary driver of "
+                "memory consumption. Sudden growth on a specific "
+                "collection tracks the size of its underlying data. "
+                "Columns are Min / Max / Last over the time range; sorted "
+                "by Last desc so the largest current arrangements are at "
+                "the top. Translate `collection_id` to a name via `SELECT "
+                "id, name FROM mz_internal.mz_indexes` (or "
+                "`mz_materialized_views`)."
             ),
         )
 
@@ -886,10 +980,15 @@ class ComputeObjectsTab:
             title="Transient / Uncategorized — Record Counts",
             collection_id_regex="t.*|none",
             description=(
-                "Arrangement record counts for transient collections "
-                '(collection_id starting with "t") and the "none" sentinel '
-                "for uncategorized arrangements. Min/Max/Last over the "
-                "selected time range; sorted by Last desc."
+                "**Row counts of arrangements with `collection_id` "
+                "starting with `t` (transient) or labeled `none`.** "
+                "Transient arrangements are short-lived intermediates "
+                "created during query optimization and dataflow "
+                "execution; the `none` sentinel is for arrangements "
+                "whose collection is unidentified. Both are usually "
+                "small and ephemeral. Sustained non-trivial entries "
+                "here are worth investigating — they may indicate stuck "
+                "or leaked dataflows."
             ),
         )
 

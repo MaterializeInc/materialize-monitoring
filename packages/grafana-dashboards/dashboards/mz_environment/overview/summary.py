@@ -48,7 +48,17 @@ class OverviewSummary(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Environment Status")
-            .description("Whether the environment is healthy.")
+            .description(
+                "**High-level environment health based on the fraction "
+                "of clusters reporting healthy.** Aggregates "
+                "`v2_mz_compute_cluster_status` across the env; the "
+                "result is mapped to text via thresholds: Healthy "
+                "(100%), Degraded (80-100%), Unhealthy (<80%). When "
+                "this turns Degraded or Unhealthy, check _Kubernetes "
+                "Workloads_ for pod restart history and _Cluster "
+                "Objects / Replicas_ to see which cluster(s) are "
+                "affected."
+            )
             .data(query)
             .visualization(
                 visualization.sparkline_stat()
@@ -81,7 +91,15 @@ class OverviewSummary(KubeResourcesMixin):
             dashboardv2_builders.Panel()
             .title("Environment Availability (Select Time Range)")
             .description(
-                "Percentage of time the environment was healthy over the current time range."
+                "**Fraction of time the environment was healthy over "
+                "the dashboard's selected time range** — computed from "
+                "`v2_mz_compute_cluster_status` averaged over "
+                "`$__range`. Effectively an SLO snapshot. Nominal: "
+                "100.0000% (note the four decimals — five-nines = "
+                "99.999%). Sustained dips correlate with cluster "
+                "restarts or outages; widen the time range to find "
+                "when they happened, then check _Last Restart Time_ "
+                "and _Kubernetes Workloads_ for pod restart context."
             )
             .data(query)
             .visualization(
@@ -125,7 +143,15 @@ class OverviewSummary(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Last Restart Time")
-            .description("The last time a container in the environment was restarted.")
+            .description(
+                "**Seconds since the most recent container restart in "
+                "the environment.** Threshold-colored from red "
+                "(seconds ago — likely an active incident) through to "
+                "gray (days ago, fine). Nominal: hours-to-days. Recent "
+                "restarts (red/orange) are worth correlating with "
+                "_Environment Availability_ and the _Kubernetes "
+                "Workloads_ tab's pod-health panels."
+            )
             .data(query)
             .visualization(
                 visualization.sparkline_stat()
@@ -166,7 +192,17 @@ class OverviewSummary(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Current CPU Usage (5 min)")
-            .description("Current CPU usage as percent of limit.")
+            .description(
+                "**Current CPU usage as a fraction of each container's "
+                "limit, averaged over the last 5 minutes.** "
+                "Per-container gauge — shows the worst-loaded container "
+                "types in the env. Nominal: well below 1.0; sustained "
+                "near 1.0 means a container type is CPU-bound. For "
+                "time-resolved per-pod view see _Kubernetes Workloads "
+                "-> Pod CPU Usage_; for the Materialize workload "
+                "causing it see _Compute Objects -> Dataflow Elapsed "
+                "Rate_."
+            )
             .data(query)
             .visualization(
                 gauge.Visualization()
@@ -205,7 +241,18 @@ class OverviewSummary(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Current Memory Usage")
-            .description("Current memory usage as percent of limit.")
+            .description(
+                "**Current memory usage as a fraction of each "
+                "container's limit.** Per-container gauge — shows the "
+                "worst-loaded container types. **Sustained near 1.0 "
+                "is dangerous** — OOM-kill triggers a hydration cycle "
+                "(in-memory state has to be rebuilt from persisted "
+                "storage, taking minutes-to-hours depending on data "
+                "size). For time-resolved view see _Kubernetes "
+                "Workloads -> Pod Memory Usage_; the offending "
+                "workload usually shows in _Compute Objects -> "
+                "Arrangements_."
+            )
             .data(query)
             .visualization(
                 gauge.Visualization()
@@ -286,7 +333,15 @@ class OverviewSummary(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Materialize Version")
-            .description("The version of Materialize running in the environment.")
+            .description(
+                "**The version of Materialize currently running in "
+                "the environment.** A single version is the steady "
+                "state; multiple distinct values typically appear "
+                "briefly during a rolling upgrade. Click the value to "
+                "open the corresponding commit on GitHub. If the "
+                "version doesn't match what you expect, check the "
+                "env's manifest in the deployment pipeline."
+            )
             .data(query)
             .visualization(
                 stat.Visualization()

@@ -65,7 +65,16 @@ class ClusterObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Cluster Count")
-            .description("Number of clusters.")
+            .description(
+                "**Number of clusters in the environment, split into "
+                '"Total" and "System".** System clusters are '
+                "Materialize-managed (e.g., `mz_catalog_server`, "
+                "`mz_system`, `mz_probe`) and exist in every env; the "
+                "difference between Total and System is the user clusters "
+                "you've created. Stable in steady state; expected to step "
+                "on `CREATE CLUSTER` / `DROP CLUSTER`. Scoped to the "
+                "selected clusters."
+            )
             .data(query)
             .visualization(
                 visualization.sparkline_stat(shade=CLUSTERS_THEME)
@@ -113,7 +122,14 @@ class ClusterObjectsTab:
             dashboardv2_builders.Panel()
             .title("Replica Count")
             .description(
-                "Number of replicas. Additional replicas are those beyond the first replica of the cluster."
+                "**Number of replicas across the selected clusters, with "
+                '"Additional Replicas" calling out those beyond the '
+                "first.** Every cluster needs at least one replica to run; "
+                '"Additional" counts the redundancy on top of that — '
+                "non-zero means at least one cluster has been configured "
+                "for higher availability or extra capacity. Expected to "
+                "step on `CREATE CLUSTER REPLICA` / `DROP CLUSTER "
+                "REPLICA`. Scoped to the selected clusters."
             )
             .data(query)
             .visualization(
@@ -146,7 +162,13 @@ class ClusterObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Replica Sizes")
-            .description("Sizes of replicas.")
+            .description(
+                "**Replicas grouped by their configured size.** Most "
+                "workloads cluster around a small number of sizes; a long "
+                "tail of one-off sizes usually means experimentation or "
+                "migration in progress. The total here matches the "
+                "Replica Count panel. Scoped to the selected clusters."
+            )
             .data(query)
             .visualization(
                 piechart_builder.Visualization()
@@ -190,7 +212,16 @@ class ClusterObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Replica Availability Zones")
-            .description("Distribution of replicas across availability zones.")
+            .description(
+                "**Replicas grouped by the cloud availability zone they're "
+                "scheduled on.** For HA-sensitive deployments, replicas of "
+                "the same cluster should be spread across AZs — heavy "
+                "concentration in one AZ means an AZ outage takes more of "
+                "the workload down with it. Materialize's scheduler "
+                "spreads multi-replica clusters across AZs automatically, "
+                "but ad-hoc single-replica clusters can land anywhere. "
+                "Scoped to the selected clusters."
+            )
             .data(query)
             .visualization(
                 visualization.sparkline_stat(shade=CLUSTERS_THEME)
@@ -317,7 +348,16 @@ class ClusterObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Cluster Information")
-            .description("Information about clusters and replicas in this environment.")
+            .description(
+                "**A row per (cluster, replica) tuple, with cluster_id / "
+                "cluster_name / replica metadata and size / AZ / region "
+                'info.** Operator\'s "what does my fleet look like" '
+                "reference. The column-header filters let you narrow "
+                "without changing the dashboard's cluster/replica "
+                "selectors. Useful for copying a `cluster_id` or "
+                "`replica_id` into the dashboard selectors to scope the "
+                "rest of the dashboard."
+            )
             .data(query)
             .visualization(
                 table.Visualization()

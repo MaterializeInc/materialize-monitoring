@@ -64,7 +64,15 @@ class KubeResourcesMixin:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Total CPU Capacity")
-            .description("Total CPU cores available.")
+            .description(
+                "**Total CPU cores configured across containers in the "
+                "selected scope** (sum of CPU limits from cAdvisor). "
+                "Steps correlate with `ALTER CLUSTER REPLICA SIZE`, "
+                "`CREATE`/`DROP CLUSTER REPLICA`, or pod restarts. On "
+                "the Summary tab the monitoring exporter is excluded "
+                "(so this reflects user-workload capacity); on the "
+                "Kubernetes Workloads tab it's included."
+            )
             .data(query)
             .visualization(
                 visualization.sparkline_stat(shade=K8S_THEME)
@@ -104,7 +112,13 @@ class KubeResourcesMixin:
             dashboardv2_builders.Panel()
             .title("Total Memory")
             .description(
-                "Total memory available in the environment (excluding monitoring)."
+                "**Total memory configured across containers in the "
+                "selected scope** (sum of memory limits from "
+                "cAdvisor). Memory is the dominant constraint on "
+                "Materialize: in-memory arrangements (see _Compute "
+                "Objects -> Arrangements_) live in here. Steps "
+                "correlate with `ALTER CLUSTER REPLICA SIZE` or pod "
+                "restarts."
             )
             .data(query)
             .visualization(
@@ -151,7 +165,15 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Readiness")
-            .description("Breakdown of Pods by readiness phase.")
+            .description(
+                "**Pods in the Materialize namespace grouped by "
+                "phase** (Running, Pending, Failed, etc.). Nominal: "
+                "nearly all `Running`. Pods stuck in `Pending` usually "
+                "mean Kubernetes can't schedule them (capacity, taints, "
+                "AZ constraints); `Failed` means a container exited "
+                "and won't be restarted. Pairs with _Last Restart "
+                "Time_ on the Summary tab. Requires kube-state-metrics."
+            )
             .data(query)
             .visualization(
                 piechart_builder.Visualization()
@@ -194,7 +216,15 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("StatefulSet Readiness")
-            .description("Breakdown of StatefulSets by readiness phase.")
+            .description(
+                "**Number of StatefulSet replicas reporting Ready.** "
+                "environmentd and Materialize's cluster pods are "
+                "StatefulSets; this panel counts the replicas that "
+                "have reached the Ready state. Nominal: matches the "
+                "configured replica count. A drop indicates a pod "
+                "stuck in initialization or hydration. Requires "
+                "kube-state-metrics."
+            )
             .data(query)
             .visualization(
                 piechart_builder.Visualization()
@@ -249,7 +279,13 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Deployment Readiness")
-            .description("Breakdown of Deployments by readiness phase.")
+            .description(
+                "**Deployment replica health — Ready vs Unavailable.** "
+                "Deployments back stateless services (e.g., the "
+                "promsql exporter). Nominal: all replicas Ready, zero "
+                "Unavailable. Unavailable counts indicate failed "
+                "rollouts or crashing pods. Requires kube-state-metrics."
+            )
             .data(query)
             .visualization(
                 piechart_builder.Visualization()
@@ -309,7 +345,16 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod CPU Usage")
-            .description("CPU usage per pod as percent of limit.")
+            .description(
+                "**CPU utilization per pod, as a fraction of the "
+                "pod's CPU limit.** Two-query split: one for cluster "
+                "replica pods (filtered by the dashboard's "
+                "cluster/replica selectors), one for everything else "
+                "(envd, balancer, exporter, etc.). Sustained near 1.0 "
+                "for a pod means it's CPU-bound. For the "
+                "Materialize-level cause see _Compute Objects -> "
+                "Dataflow Elapsed Rate_ or _Arrangements_."
+            )
             .data(query)
             .visualization(
                 timeseries.Visualization()
@@ -357,7 +402,18 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Memory Usage")
-            .description("Memory usage per pod as percent of limit (working set).")
+            .description(
+                "**Memory usage per pod, as a fraction of the pod's "
+                "memory limit (working-set basis).** Same two-query "
+                "split as Pod CPU Usage. **Sustained climb toward 1.0 "
+                "is dangerous** — a pod hitting its memory limit "
+                "gets OOM-killed, which on a compute replica triggers "
+                "a hydration cycle (in-memory state rebuilt from "
+                "persistence, often minutes). If a Materialize cluster "
+                "pod is the offender, _Compute Objects -> "
+                "Arrangements_ shows which arrangements consume the "
+                "memory."
+            )
             .data(query)
             .visualization(
                 timeseries.Visualization()
@@ -400,7 +456,17 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Network Rx")
-            .description("Network receive bandwidth per pod.")
+            .description(
+                "**Network bytes/sec received per pod**, aggregated "
+                "across all network interfaces. Same cluster/non-cluster "
+                "split as the pod CPU/memory panels. For cluster pods, "
+                "Rx tracks ingest from upstream (Kafka, Postgres, "
+                "etc.) and inter-pod replication; for envd and the "
+                "balancer it reflects client SQL traffic. Surges that "
+                "coincide with _Compute Objects -> Hydration_ activity "
+                "are normal (catchup); surges otherwise can mean a "
+                "runaway client or source."
+            )
             .data(query)
             .visualization(
                 timeseries.Visualization()
@@ -443,7 +509,14 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Network Tx")
-            .description("Network transmit bandwidth per pod.")
+            .description(
+                "**Network bytes/sec transmitted per pod**, "
+                "aggregated across interfaces. For cluster pods Tx "
+                "covers sink output, inter-pod replication, and query "
+                "results returning to envd; for envd it's client "
+                "query responses. Pairs with _Storage Objects -> Sink "
+                "Throughput_ when investigating sink-side bandwidth."
+            )
             .data(query)
             .visualization(
                 timeseries.Visualization()
@@ -513,7 +586,15 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Network Errors")
-            .description("Network rx + tx errors per pod.")
+            .description(
+                "**Network rx + tx errors per pod per second** "
+                "(errors counted at the NIC/kernel level). Nominal: "
+                "0. Non-zero is unusual and points at infrastructure "
+                "problems (faulty NIC, kernel network stack issues, "
+                "container runtime bugs) — not Materialize-level. If "
+                "you see persistent non-zero, file an infra ticket; "
+                "this isn't fixable from within Materialize."
+            )
             .data(query)
             .visualization(
                 timeseries.Visualization()
@@ -583,7 +664,17 @@ class KubeResourcesTab(KubeResourcesMixin):
             panel_id,
             dashboardv2_builders.Panel()
             .title("Pod Network Packet Drops")
-            .description("Network rx + tx dropped packets per pod.")
+            .description(
+                "**Network packets dropped (rx + tx) per pod per "
+                "second.** Drops happen when the kernel's network "
+                "buffers fill up faster than the application can read "
+                "from them (rx) or when egress rate-limiting kicks in "
+                "(tx). Nominal: 0. Low-level non-zero drops "
+                "(single-digit pps) are usually harmless background "
+                "noise; sustained higher rates indicate the pod is "
+                "overwhelmed at the network layer — often paired with "
+                "elevated _Pod CPU Usage_."
+            )
             .data(query)
             .visualization(
                 timeseries.Visualization()

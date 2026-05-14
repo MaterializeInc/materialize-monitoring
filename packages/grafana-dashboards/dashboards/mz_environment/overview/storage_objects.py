@@ -81,7 +81,15 @@ class StorageObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Active Sources")
-            .description(f"Sources in the catalog. {ENV_SCOPED_NOTE}")
+            .description(
+                "**Number of active sources in the catalog.** Each source "
+                "is a continuous ingestion connection from an external "
+                "system (Kafka, Postgres, MySQL, S3, etc.) — so this count "
+                "is roughly the number of upstream feeds the environment "
+                "is maintaining. See _Sources_ row below for type "
+                "breakdown and per-source throughput. "
+                f"{ENV_SCOPED_NOTE}"
+            )
             .data(_env_total_count_query("v2_mz_sources_count"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
@@ -94,7 +102,14 @@ class StorageObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Active Sinks")
-            .description(f"Sinks in the catalog. {ENV_SCOPED_NOTE}")
+            .description(
+                "**Number of active sinks in the catalog.** Each sink is "
+                "an outbound feed (Kafka, Iceberg, etc.) that emits the "
+                "results of a materialized view or query to an external "
+                "system. See _Sinks_ row below for per-sink throughput "
+                "and lag. "
+                f"{ENV_SCOPED_NOTE}"
+            )
             .data(_env_total_count_query("v2_mz_sinks_count"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
@@ -107,7 +122,14 @@ class StorageObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Active Tables")
-            .description(f"Tables in the catalog. {ENV_SCOPED_NOTE}")
+            .description(
+                "**Number of user-created tables in the catalog.** Tables "
+                "in Materialize are write-once-read-many; `INSERT`s feed "
+                "dataflows downstream. Mostly a catalog-shape signal — "
+                "for actual ingest activity see _Sources -> Source Bytes "
+                "Received_. "
+                f"{ENV_SCOPED_NOTE}"
+            )
             .data(_env_total_count_query("v2_mz_tables_count"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
@@ -137,7 +159,13 @@ class StorageObjectsTab:
             panel_id,
             dashboardv2_builders.Panel()
             .title("Source Types")
-            .description(f"Sources broken down by source type. {ENV_SCOPED_NOTE}")
+            .description(
+                "**Sources broken down by source type** (kafka / postgres "
+                "/ mysql / etc.). Tells you what flavors of upstream feed "
+                "make up your ingest workload. Most environments "
+                "concentrate on one or two types. "
+                f"{ENV_SCOPED_NOTE}"
+            )
             .data(query)
             .visualization(
                 piechart_builder.Visualization()
@@ -236,8 +264,15 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Sources by Status")
             .description(
-                "Named sources with their current status. Useful for spotting "
-                "stalled or failing sources at a glance."
+                "**Per-source status table with `source_name`, type, "
+                "current status, and connection info.** Status `running` "
+                "is the steady state; `stalled` means the source is "
+                "paused (often during catchup or after an error); "
+                "`errored` indicates a hard failure. `stalled` isn't "
+                "always bad — Postgres sources stall briefly during "
+                "their initial snapshot, for example. For active "
+                "throughput see _Source Bytes Received (rate)_; for "
+                "richer source metadata use `SELECT * FROM mz_sources;`."
             )
             .data(query)
             .visualization(
@@ -322,10 +357,18 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Source Bytes Received (rate)")
             .description(
-                "Bytes per second received per primary source (subsources "
-                "aggregated). Series with a matching v2_mz_source_status "
-                "entry show as source_name; the rest fall back to "
-                "parent_source_id. Log Y-axis."
+                "**Inbound throughput per primary source — bytes per "
+                "second pulled from upstream.** Subsources (e.g., "
+                "per-table Postgres replication subsources) are "
+                "aggregated up to their primary, so each line represents "
+                "one logical source. Series with a match in "
+                "`v2_mz_source_status` show as `source_name`; sources "
+                "missing from the status metric fall back to "
+                "`parent_source_id` (a metric-side gap that happens for "
+                "some source types in some envs, not a problem with the "
+                "source itself). Idle sources are filtered out (`> 0`). "
+                "Log Y-axis so kB/s and tens-of-MB/s sources share the "
+                "chart. Scoped to the selected clusters/replicas."
             )
             .data(query)
             .visualization(
@@ -388,7 +431,13 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Sink Types")
             .description(
-                f"Sinks broken down by (type, envelope_type). {ENV_SCOPED_NOTE}"
+                "**Sinks broken down by (type, envelope_type)** — e.g., "
+                "`kafka / upsert`, `kafka / debezium`, `iceberg / "
+                "upsert`. The envelope determines how Materialize "
+                "encodes changes: `upsert` writes the latest value per "
+                "key, `debezium` writes change events with old+new "
+                "values. Most envs concentrate on one combination. "
+                f"{ENV_SCOPED_NOTE}"
             )
             .data(query)
             .visualization(
@@ -432,9 +481,15 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Sink Throughput (committed)")
             .description(
-                "Bytes per second committed by each sink. There's no "
-                "v2_mz_sink_status equivalent of source_status, so the "
-                "legend is sink_id. Log Y-axis."
+                "**Outbound throughput per sink — bytes per second "
+                "successfully committed to the downstream system** "
+                "(Kafka broker, Iceberg catalog, etc.). Log Y-axis so "
+                "low- and high-volume sinks share the chart. Unlike "
+                "sources, there's no `v2_mz_sink_status` metric — the "
+                "legend uses `sink_id` rather than a friendly name; "
+                "look the id up via `SELECT id, name FROM mz_sinks;`. "
+                "Idle sinks are filtered out (`> 0`). Scoped to the "
+                "selected clusters/replicas."
             )
             .data(query)
             .visualization(
@@ -479,9 +534,18 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Sink Lag (staged minus committed)")
             .description(
-                "Bytes staged but not yet committed per sink. Persistent "
-                "growth signals downstream backpressure or recurring "
-                "commit failures."
+                "**Bytes staged for a sink but not yet committed "
+                "downstream — a queue depth in bytes.** Both metrics "
+                "are counters; their difference at any moment is the "
+                "in-flight write that's been prepared but not yet "
+                "acknowledged by the downstream system. Nominal: "
+                "oscillates around a small value as commits happen "
+                "periodically. **Sustained growth means the sink can't "
+                "keep up** — usually downstream back-pressure (broker "
+                "overloaded, Iceberg catalog slow) or repeated commit "
+                "failures (see _Iceberg Commit Failures & Conflicts_ "
+                "or _Kafka TX Error Rate_ in the collapsed rows below). "
+                "Scoped to the selected clusters/replicas."
             )
             .data(query)
             .visualization(
@@ -539,9 +603,17 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Iceberg Commit Latency (p50 / p90 / p99)")
             .description(
-                "Iceberg snapshot commit duration percentiles across the "
-                "env. Log Y-axis because commits range from sub-second to "
-                "multi-second."
+                "**Iceberg commit duration percentiles** — how long each "
+                "`COMMIT` against the Iceberg catalog takes. Iceberg "
+                "writes are batched and committed periodically; the "
+                "commit involves writing a snapshot manifest and asking "
+                "the catalog to atomically swap it in. Nominal: p50 "
+                "sub-second to low seconds; p99 a few seconds even on "
+                "healthy systems. Sustained p99 in tens of seconds "
+                "points at a slow Iceberg catalog (REST catalog under "
+                "load, Glue API throttling) — _Sink Lag_ will be "
+                "growing at the same time. Log Y-axis. Scoped to the "
+                "selected clusters/replicas."
             )
             .data(query)
             .visualization(
@@ -586,9 +658,16 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Iceberg Commit Failures & Conflicts")
             .description(
-                "Rate of commit failures and conflicts per sink. "
-                "Conflicts are usually concurrent-writer races; failures "
-                "are commit-side errors. Non-zero is bad."
+                "**Per-sink rate of failed and conflicting Iceberg "
+                "commits.** Conflicts (concurrent-writer races on the "
+                "Iceberg snapshot pointer) are recoverable — Materialize "
+                "retries — but a high rate signals that something else "
+                "is writing to the same Iceberg table. Failures are "
+                "commit-side errors (network, auth, schema). **Non-zero "
+                "in either dimension is worth investigating.** If "
+                "failures are climbing, _Sink Lag_ will follow. The "
+                'Errors threshold-coloring is calibrated for "any '
+                'non-zero is interesting".'
             )
             .data(query)
             .visualization(
@@ -639,9 +718,15 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Iceberg File & Snapshot Rate")
             .description(
-                "Rate of data files, delete files, and snapshots per sink. "
-                "Their proportions tell you about commit batching and "
-                "upsert behavior."
+                "**Per-sink rate of files and snapshots written to "
+                "Iceberg.** Each commit produces one snapshot containing "
+                "some data files (new rows) and delete files (tombstones "
+                "for upserts). The data:delete file ratio tells you "
+                "about your workload: pure-insert sinks produce ~0 "
+                "deletes; upsert-heavy workloads produce roughly 1:1. "
+                "Sustained delete-file rate without data files means "
+                "the sink is mostly deleting (data evaporating "
+                "upstream). Scoped to the selected clusters/replicas."
             )
             .data(query)
             .visualization(
@@ -692,8 +777,14 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Kafka TX Error Rate")
             .description(
-                "rdkafka TX error rate per sink. Non-zero indicates "
-                "publishing failures against the broker."
+                "**Per-sink rate of TX errors from the librdkafka "
+                "client.** Each TX error is one failed produce-request "
+                "against the Kafka broker. **Non-zero is a problem** — "
+                "likely causes are broker outages, ACL changes, topic "
+                "deletion/recreation, or partition rebalancing. If "
+                "errors are sustained, _Sink Lag_ will grow and _Kafka "
+                "Output Buffer_ may fill. Errors threshold-coloring is "
+                'calibrated for "any non-zero is interesting".'
             )
             .data(query)
             .visualization(
@@ -726,9 +817,14 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Kafka Output Buffer (messages)")
             .description(
-                "Messages currently buffered in rdkafka waiting for "
-                "transmission. Sustained high values indicate broker-side "
-                "back-pressure."
+                "**Messages currently sitting in the librdkafka output "
+                "buffer, waiting to be sent to the broker.** Normal "
+                "buffer fluctuates briefly as messages flow through; "
+                "sustained high values mean Materialize is producing "
+                "faster than the broker is accepting. Often paired "
+                "with a non-zero _Kafka TX Error Rate_. If the buffer "
+                "hits its bound, the sink stalls and _Sink Lag_ starts "
+                "climbing."
             )
             .data(query)
             .visualization(
@@ -769,9 +865,14 @@ class StorageObjectsTab:
             dashboardv2_builders.Panel()
             .title("Kafka Connect / Disconnect Rate")
             .description(
-                "Connect and disconnect events per sink. A persistently "
-                "high disconnect rate is a sign of unhealthy broker "
-                "connectivity."
+                "**Connect and disconnect events per sink against the "
+                "Kafka broker.** Healthy connections are persistent — "
+                "a couple of connects at sink startup and zero "
+                "disconnects afterward. **Sustained non-zero disconnect "
+                "rate is a sign of unhealthy connectivity** (network "
+                "flakiness, broker restarting, auth tokens expiring). "
+                "Pairs with _Kafka TX Error Rate_ when the issue is "
+                "broker-side rather than purely network."
             )
             .data(query)
             .visualization(

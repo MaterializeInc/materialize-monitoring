@@ -562,3 +562,113 @@ def build_iceberg_sinks_row(self):
 Operators can expand the row when they need it; the row title acts as
 documentation that the section exists. This keeps the default page light
 without losing the type-specific content.
+
+## Writing Panel Descriptions
+
+Grafana renders panel `.description(...)` text as a hover tooltip and a
+full info dialog (click the panel's title chevron). It supports
+**GitHub-flavored Markdown**. Descriptions are the operator's
+first-line documentation for "what am I looking at" — invest in them.
+
+### Audience
+
+Write for a **Materialize end user**: someone with database experience
+and basic familiarity reading graphs, but minimal cloud / Kubernetes /
+observability expertise. Assume SQL fluency. Explain Materialize-side
+concepts (peek, hydration, arrangement) when they appear. Don't
+restate the obvious ("Network bandwidth per pod" — they can read the
+title).
+
+### Structure
+
+Lead with a **bold headline sentence** that captures the panel's whole
+purpose. Grafana truncates the hover-tooltip preview, so the lead has
+to carry the punch line on its own. After that, free-form prose
+covering nominal/anomalous framing and where to look next:
+
+```python
+.description(
+    "**One-sentence headline of what this panel shows.** "
+    "Optional second sentence on why it exists. "
+    "Nominal: <expected state>. <Anomaly signal>: <what it means>. "
+    "If anomalous, check _Other Panel_ next."
+)
+```
+
+The four questions every description should try to answer:
+
+- **Why is this panel here?** (operator-facing reason to care)
+- **What does nominal look like?** (anchor expectations)
+- **What does anomalous look like?** (the signal)
+- **What's the next step?** (cross-reference to another panel/tab)
+
+### Markdown conventions
+
+- **Bold** the first-sentence headline: `**Like this.**`
+- *Italics* for cross-references between panels:
+  `_Compute Objects -> Arrangements_`
+- Backticks for identifiers and code:
+  `` `mz_internal.mz_indexes` ``, `` `cluster_id` ``
+- Use **ASCII `->`** in cross-references, **not** Unicode `→`. The
+  arrow shows up in panel titles and descriptions; `→` triggers
+  the ruff `RUF001`/`RUF002` "ambiguous character" lint rules.
+- Em-dash `—` is OK inside description bodies and docstrings, but
+  avoid it in *titles* (`RUF001` flags it in panel titles).
+
+### Cross-references
+
+Reference panels by their visible title, italicized, using `->`
+between tab and panel when crossing tabs:
+
+```
+For per-pod CPU view see _Kubernetes Workloads -> Pod CPU Usage_.
+Pair with _Sink Lag_ (in this tab) when investigating commit issues.
+```
+
+Bare prose references are easier to follow than HTML/anchored links
+in the current dashboard ergonomics. Don't include clickable URLs.
+
+### SQL drilldowns
+
+Where a panel surfaces a raw id (`source_id`, `collection_id`,
+`sink_id`), include the SQL to translate it to a user-friendly name:
+
+```
+Translate `collection_id` to a name via
+`SELECT id, name FROM mz_internal.mz_indexes` (or `mz_materialized_views`).
+```
+
+### Per-variant descriptions for shared helpers
+
+When a single panel method is called multiple times with different
+parameters and each variant deserves its own description (e.g. the
+Peek Latency panels at p50/p90/p99), define a module-level dict keyed
+by the variant label and have the helper look it up:
+
+```python
+_PEEK_LATENCY_DESCRIPTIONS: dict[str, str] = {
+    "p50": "**Median read-query latency** — ...",
+    "p90": "**90th-percentile read-query latency** — ...",
+    "p99": "**Tail read-query latency** — ...",
+}
+
+def _peek_latency_panel(self, percentile: float, label: str):
+    ...
+    .description(_PEEK_LATENCY_DESCRIPTIONS[label])
+```
+
+### Shared-helper / mixin descriptions
+
+When a helper function or mixin method registers the same panel on
+multiple tabs (e.g. `cpu_total_panel` from `KubeResourcesMixin`
+appears on both Summary and Kubernetes Workloads), the description is
+shared across all call sites. Either:
+
+- Write a single description that's accurate in both contexts (and
+  call out the differences inline: "On Summary the monitoring exporter
+  is excluded; on K8s it's included.")
+- Refactor the helper to accept a `description=` parameter and have
+  each call site pass its own.
+
+The shared-string approach is cheaper; refactor only when the
+descriptions truly need to diverge.
