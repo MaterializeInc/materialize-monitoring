@@ -1,0 +1,30 @@
+// Materialize brand customizations layered on top of the Hugo Book theme.
+//
+// Book's `_custom.scss` is imported BEFORE its `:root { @include theme-auto }`
+// block, so CSS variable overrides at plain `:root` get clobbered. We use
+// `:root:root` (specificity 0,2,0) to win over Book's `:root` (0,1,0).
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --mz-brand: #7f4eff;
+  --mz-purple-dark: #472f85;
+  --mz-highlight-dark: #e0a5fb;
+  --mz-orchid: #e537c0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+:root:root {
+  --color-link: var(--mz-brand);
+  --color-visited-link: var(--mz-purple-dark);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:root {
+    --color-link: var(--mz-highlight-dark);
+    --color-visited-link: var(--mz-orchid);
+  }
+}
