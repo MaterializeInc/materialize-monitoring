@@ -10,6 +10,20 @@ description: |
 Instead of more common ClickOps strategies (manually configuring dashboards in the UI),
 we manage dashboards as reproducible source code.
 
+This document is both a **conventions guide** (how to do things) and a
+**state snapshot** (what currently exists). Skim "Current Dashboard
+State" near the bottom first if you're picking up where someone else
+left off.
+
+## Intended Audience
+
+The dashboards target **Materialize end users**: database-literate
+operators with basic graph-reading fluency but minimal cloud /
+Kubernetes / observability expertise. SQL is fair game; jargon like
+"differential dataflow's arrangement" needs a one-liner explanation.
+Panel descriptions, titles, and even cluster names should respect that
+baseline.
+
 ## Targets
 
 We support the following targets:
@@ -672,3 +686,334 @@ shared across all call sites. Either:
 
 The shared-string approach is cheaper; refactor only when the
 descriptions truly need to diverge.
+
+---
+
+# Current Dashboard State
+
+This section captures the live state of the dashboards in this repo so
+the next session has something concrete to start from. Update it when
+state changes meaningfully (new dashboard, new tab, retired panel).
+
+## Dashboard Inventory
+
+| Family | Dashboard module | Class | Live UID |
+|---|---|---|---|
+| `mz_environment` | `overview.overview_dashboard` | `EnvironmentOverviewDashboard` | (auto-assigned at first upload; codified UID is `mz-mon-env-top` but the live one diverged before that became authoritative — see "UID Selection and Behavior") |
+
+The `mz_environment/overview` dashboard has six tabs, in declared order:
+
+| # | Tab title | Module | Theme |
+|---|---|---|---|
+| 1 | Summary | `summary.py` | (no unique theme; uses health palette and themes from imports) |
+| 2 | Kubernetes Workloads | `k8s_resources.py` | `K8S_THEME` = `palette.THEME_PALETTE[0]` (blue) |
+| 3 | Cluster Objects / Replicas | `cluster_objects.py` | `CLUSTERS_THEME` = `palette.THEME_PALETTE[2]` (teal) |
+| 4 | Connections / Activity | `connections_activity.py` | `CONNECTIONS_THEME` = `palette.THEME_PALETTE[1]` (cyan) |
+| 5 | Compute Objects | `compute_objects.py` | `COMPUTE_THEME` = `palette.THEME_PALETTE[3]` (orange) |
+| 6 | Storage Objects | `storage_objects.py` | `STORAGE_THEME` = `palette.THEME_PALETTE[4]` (yellow) |
+
+The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel`
+and `memory_totals_panel`, and also mirrors the
+`add_currently_hydrating_panel(...)` helper from `compute_objects.py`
+in its Environment Health row.
+
+### Tab-by-tab row structure
+
+**Summary**
+1. Environment Health — Environment Status, Availability, Last Restart, Currently Hydrating (mirror), Current CPU Usage, Current Memory Usage
+2. Environment Info — Materialize Version, Total CPU Capacity, Total Memory
+
+**Kubernetes Workloads**
+1. Resources Summary — Total CPU Capacity, Total Memory (includes monitoring)
+2. Workload Readiness — Pod Readiness, StatefulSet Readiness, Deployment Readiness
+3. Pod Metrics — Pod CPU Usage, Pod Memory Usage
+4. Pod Networking — Rx, Tx, Errors, Packet Drops
+
+**Cluster Objects / Replicas**
+1. Cluster Summary — Cluster Count, Replica Count
+2. Replication / Availability — Replica Sizes (donut), Replica AZs
+3. Cluster Information — Cluster Information table
+
+**Connections / Activity**
+1. Connection Summary — Active Sessions, Active Queries, Adapter Command Rate
+2. Queries — Distribution donut, Query Rate, Peek Latency p50/p90/p99 (3 separate panels)
+3. Adapter Commands — Adapter Commands by Application table
+
+**Compute Objects**
+1. Compute Objects Summary — Active MV, Active Indexes, Active Views, Active Subscribes (donut), Index Types (donut)
+2. **Freshness** — **STUB row, no panels yet** (placeholder title only)
+3. Hydration — Currently Hydrating, Hydration Queue Size, Slowest Hydrating Collections (top-15 horizontal bar)
+4. Dataflows — Dataflow Count, Dataflow Count (per worker), Dataflow Elapsed Rate (log scale)
+5. Arrangements — Arrangement Rate, Arrangement Rate (per worker), 3 record-count tables (System / User / Transient)
+
+**Storage Objects**
+1. Storage Objects Summary — Active Sources, Active Sinks, Active Tables
+2. Sources — Source Types donut, Sources by Status table, Source Bytes Received (rate)
+3. Sinks — Sink Types donut, Sink Throughput, Sink Lag (staged minus committed)
+4. Iceberg Sinks (**collapsed by default**) — Commit Latency p50/p90/p99, Commit Failures & Conflicts, File & Snapshot Rate
+5. Kafka Sinks (**collapsed by default**) — TX Error Rate, Output Buffer, Connect / Disconnect Rate
+
+### Known stubs and orphans
+
+- **`compute_objects.py` Freshness row** — title-only, reserved for end-to-end freshness/lag metrics. Pick a freshness signal (`mz_internal.mz_materialized_view_refreshes`?) when filling it in.
+- **`dataflows.py`** — orphaned after Dataflows became a row inside Compute Objects rather than its own tab. Safe to delete; only referenced from `overview_dashboard.py`'s import history (now removed).
+
+## Reference Environments
+
+Materialize developers may have access to an internal shared
+Grafana with multiple test environments.
+It can be useful to look at queries in live environments
+when building dashboards.
+Do not use environments without explicit permission.
+
+Always scope investigative queries with `materialize_cloud_organization_id="..."` when
+testing — these are shared envs and you don't want to mix data across
+them.
+
+## Materialize Metric Label Families
+
+Materialize metrics come from two scraper paths with **different label
+naming conventions**. Picking the wrong filter is a common failure
+mode.
+
+**Short-form** (env-scoped pre-calc and envd-side metrics):
+- `instance_id` (this is the cluster id)
+- `replica_id`
+
+Examples: `v2_mz_compute_hydration_time_seconds`,
+`v2_mz_compute_replica_peek_duration_seconds_*`,
+`v2_mz_dataflow_elapsed_seconds_total`, `mz_active_subscribes`,
+`mz_compute_controller_*`, `mz_query_total`, `mz_adapter_commands`.
+
+**Long-form** (compute-side metrics, scraped from clusterd):
+- `cluster_environmentd_materialize_cloud_cluster_id`
+- `cluster_environmentd_materialize_cloud_cluster_name`
+- `cluster_environmentd_materialize_cloud_replica_id`
+- `cluster_environmentd_materialize_cloud_replica_name`
+- `cluster_environmentd_materialize_cloud_replica_role`
+- `cluster_environmentd_materialize_cloud_workers` (cluster size)
+- `worker_id`
+
+Examples: `mz_arrangement_maintenance_seconds_total`,
+`mz_compute_replica_history_dataflow_count`, `mz_source_*`,
+`mz_sink_*`.
+
+**Pre-calc metrics with NO cluster labels** (env-scoped only):
+`v2_mz_sources_count`, `v2_mz_sinks_count`, `v2_mz_tables_count`,
+`v2_mz_views_count`, `v2_mz_indexes_count`, `v2_mz_mzd_views_count`,
+`v2_mz_source_status`, `mz_active_subscribes`. These get the
+`ENV_SCOPED_NOTE` callout in descriptions.
+
+**Helper constants for filtering**:
+- `_COMPUTE_FILTER` (in `storage_objects.py`) — long-form filter on env + cluster + replica.
+- `_ARRANGEMENT_FILTER` (in `compute_objects.py`) — same shape, different module. Originally arrangement-specific, now reused for dataflows.
+- These two constants are **the same PromQL fragment** in two places; lifting them to a shared module is a cleanup candidate.
+
+## Module-Level Constants and Helpers
+
+For navigation when looking for a shared building block:
+
+| Where | Name | What it is |
+|---|---|---|
+| `dashboards/visualization.py` | `NO_FILTER_MATCH` | "No matches for the current filters" string |
+| `dashboards/visualization.py` | `PIE_LEGEND_BUILDER` | piechart legend (table, right placement, value column) |
+| `dashboards/visualization.py` | `TS_LEGEND_BUILDER` | timeseries legend (table, bottom, Max/Avg/Last calcs) |
+| `dashboards/visualization.py` | `sparkline_stat(shade=…)` | stat.Visualization factory with area sparkline |
+| `dashboards/palette.py` | `THEME_PALETTE` (alias of `BRIGHT_QUALITATIVE_NONSEQ`) | tab-level theme colors, 7 entries |
+| `dashboards/palette.py` | `INCANDESC_SEQUENTIAL`, `Binary`, `TriHealth`, `SUNSET_*` | health/threshold palettes |
+| `dashboards/threshold.py` | `health_mapping`, `health_thresholds` | text + color mapping for healthy/degraded/unhealthy |
+| `dashboards/threshold.py` | `time_stable_thresholds(seconds=…)` | gray-out for "long ago is fine" |
+| `dashboards/threshold.py` | `error_thresholds(max_errors=…)` | gradient for error-count panels |
+| `dashboards/threshold.py` | `load_thresholds(max_load=…)` | gradient for load gauges |
+| `k8s_resources.py` | `CADVISOR_MISSING`, `KSM_MISSING` | no-value strings for cadvisor / kube-state-metrics gaps |
+| `k8s_resources.py` | `CLUSTER_POD_RE`, `NONCLUSTER_POD_RE` | pod-name regex matchers for cluster filtering |
+| `compute_objects.py` | `ARRANGEMENT_LABEL_*` constants + `_ARRANGEMENT_FILTER` | long-form cluster label names + filter snippet |
+| `compute_objects.py` | `ENV_SCOPED_NOTE` | "Environment-scoped — not affected by…" boilerplate |
+| `connections_activity.py` | `_PEEK_LATENCY_DESCRIPTIONS` | per-percentile (p50/p90/p99) description dict for the peek-latency panels |
+| `storage_objects.py` | `_COMPUTE_FILTER` | long-form filter snippet (duplicate of `_ARRANGEMENT_FILTER`) |
+| `storage_objects.py` | `ENV_SCOPED_NOTE` | **duplicate of the one in `compute_objects.py`** — consolidation candidate |
+| `compute_objects.py` | `add_currently_hydrating_panel(dashboard, panel_id, shade=…)` | shared panel factory used by Summary's Environment Health row |
+
+## Known Metric Quirks and Gotchas
+
+Things that have surprised us during development; worth knowing before
+touching the relevant panels.
+
+- **"Peek" is the read-query latency metric.** No "query" in the name.
+  `v2_mz_compute_replica_peek_duration_seconds_*` is the histogram for
+  read-query latency on indexed data (the differential-dataflow
+  operation behind `SELECT … FROM <view>`).
+- **No `v2_mz_sink_status`** analog of `v2_mz_source_status`. Sink
+  panels show `sink_id` rather than friendly names; translate via
+  `SELECT id, name FROM mz_sinks`.
+- **`v2_mz_source_status` doesn't cover all sources in all envs.**
+  Some primary sources visible in `mz_source_bytes_received` (via
+  `parent_source_id`) don't appear in `v2_mz_source_status`. The
+  Source Bytes Received panel uses an outer-join pattern to handle
+  this gracefully (see PromQL Recipes below).
+- **`mz_source_bytes_received.source_id` is the *subsource* id**, not
+  the primary. The primary lives in `parent_source_id`. Postgres
+  sources fan out one bytes_received series per replicated table.
+  Aggregate by `parent_source_id` to get per-primary rates.
+- **`mz_sink_oustanding_progress_records` is misspelled** in
+  Materialize itself ("oustanding" not "outstanding"). Don't "fix" the
+  PromQL — match the metric name as-is.
+- **`mz_compute_controller_subscribe_count` vs `mz_active_subscribes`
+  trade-off**: the former has `instance_id` (cluster-filterable) but
+  no `session_type`; the latter has `session_type` but no cluster
+  labels. The summary tab uses `mz_active_subscribes` for the
+  session_type donut, accepting the loss of cluster filtering.
+- **`v2_mz_production_object`** is the only catalog metric with
+  `cluster_id` — useful for cluster-filtered counts of indexes,
+  materialized views, and sources (`type=` values are `index`,
+  `materialized-view`, `source`).
+- **`s2` is the `mz_catalog_server` cluster** and dominates many
+  panels (commit rates, peek counts, arrangement maintenance,
+  hydration). It's a system cluster and the noise floor is its
+  business-as-usual. Mention this explicitly in panel descriptions
+  where users might mistake it for an anomaly.
+- **`v2_mz` vs `mz_` prefix convention**: prefer `v2_mz` when both
+  exist. v2 metrics come from the newer promsql-exporter and are
+  typically env-level pre-calculations; `mz_` metrics come from
+  clusterd/envd scrapers and are richer in cluster/replica labels.
+- **`v2_mz_sources_count` and `v2_mz_sinks_count` carry breakdown
+  labels** (`type`, `envelope_type`, `size`). A naive `max(...)`
+  returns the largest single bucket, not the total. Use
+  `max(sum by (instance) (...))` to dedup across exporter pods *and*
+  sum over the breakdown labels in one shot. See
+  `_env_total_count_query` in `storage_objects.py`.
+
+## PromQL Recipes
+
+Reference for patterns we've established that aren't obvious in the
+language docs.
+
+### Outer-join for label enrichment
+
+When one metric has the value you want and another has the friendly
+name, you can't always inner-join (some entities may be missing from
+the name metric). Use a two-query outer-join:
+
+```promql
+# Named branch — series with a matching name available
+(<value_query>
+ * on (<key>) group_left (<name_label>)
+ label_replace(<name_query>, "<key>", "$1", "<source_key>", "(.*)")) > 0
+
+# Orphan branch — series without a name match
+(<value_query>
+ unless on (<key>)
+ label_replace(<name_query>, "<key>", "$1", "<source_key>", "(.*)")) > 0
+```
+
+Each branch goes into its own `promql_query(...)` in the panel; their
+legends can differ (e.g., `{{source_name}}` for the named branch and
+`{{parent_source_id}}` for the orphan). Real example:
+`_source_bytes_received_panel` in `storage_objects.py`.
+
+### Table pivot via `groupingToMatrix`
+
+To turn one row per (entity, dimension) into one row per entity with
+columns per dimension value (e.g., Success / Errors columns from a
+`status` label):
+
+```python
+.transformation(... labelsToFields keepLabels=[entity, dimension])
+.transformation(... merge)
+.transformation(... groupingToMatrix
+                rowField=entity columnField=dimension valueField=Value)
+.transformation(... organize  renameByName={...})
+.transformation(... sortBy    ...)
+```
+
+After `groupingToMatrix`, the row-identifier column comes out named
+`<rowField>\<columnField>` literally (one backslash). In Python source
+that's `"<rowField>\\<columnField>"` (Python escape for one
+backslash). Real example: `_adapter_commands_by_application_panel`
+in `connections_activity.py`.
+
+The naive alternative — two queries joined by `joinByField` — produces
+one Value column **per input frame**, not per query, which is N×M
+columns instead of 2. We tried that and gave up.
+
+### Histogram quantile aggregated by labels
+
+Standard pattern, but worth pinning the shape because the `sum by`
+labels matter:
+
+```promql
+histogram_quantile(0.99,
+  sum by (le, <preserved_labels...>) (
+    rate(<metric>_bucket{<filter>}[$__rate_interval])
+  )
+)
+```
+
+Real examples: `_peek_latency_panel` (per cluster_id/replica_id),
+`_iceberg_commit_latency_panel` (aggregated env-wide).
+
+### `or vector(0)` to keep panels non-empty
+
+For stat panels where "no series" should render as `0` rather than "No
+data":
+
+```promql
+count(<series_query>) or vector(0)
+```
+
+Real example: `add_currently_hydrating_panel`.
+
+### Per-cluster aggregation that handles label breakdowns
+
+To get a single env-wide count from a metric with breakdown labels
+(like `v2_mz_sources_count.type`/`envelope_type`/`size`), without
+falling for the "max grabs the biggest bucket, not the total" trap:
+
+```promql
+max(sum by (instance) (<metric>{$environmentFilter})) or vector(0)
+```
+
+`sum by (instance)` collapses all label dimensions per scraper
+instance, then `max(...)` dedups across multiple promsql-exporter pods
+if there's more than one. Real example: `_env_total_count_query` in
+`storage_objects.py`.
+
+### Cluster + non-cluster pod split
+
+For Kubernetes panels (CPU, memory, networking) where you want the
+cluster/replica selectors to scope cluster pods but not hide
+infra pods:
+
+```promql
+# Cluster pods (filtered)
+<metric>{$containerFilter, pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}
+
+# Non-cluster pods (always shown)
+<metric>{$containerFilter, pod!~".*-cluster-.*-replica-.*"}
+```
+
+Constants `CLUSTER_POD_RE` and `NONCLUSTER_POD_RE` in
+`k8s_resources.py` hold the regex strings — reuse them rather than
+re-typing.
+
+---
+
+# Cleanup / Refactor Candidates
+
+Tracked items that are working but could be tidier:
+
+- **`ENV_SCOPED_NOTE` is duplicated** in `compute_objects.py` and
+  `storage_objects.py`. Lift to `visualization.py` (or a sibling
+  `_messages.py` if it grows).
+- **`_COMPUTE_FILTER` and `_ARRANGEMENT_FILTER` are the same string**
+  in two modules. Lift to a shared place; rename to something neutral
+  like `_LONGFORM_CLUSTER_FILTER`.
+- **`dataflows.py` is orphaned.** Safe to `rm`.
+- **The Compute Objects "Freshness" row is a title-only stub.** Pick a
+  freshness signal and fill it in (`mz_materialized_view_lag_seconds`
+  in newer Materialize versions, or a derived metric from frontier
+  metrics).
+- **`mz-mon-` prefix isn't enforced in `MzDashboard.UID`** values today
+  (the class has `UID = "env-top"` and `MzDashboard.__init__` prefixes
+  it). Consistent across all current dashboards (one). Worth a
+  validator if more dashboards land.
