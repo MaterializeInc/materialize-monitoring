@@ -420,7 +420,7 @@ drift between numerator and denominator patterns.
 ## Panel Visualization Conventions
 
 Shared panel-styling helpers live in
-[`dashboards/visualization.py`](../../packages/grafana-dashboards/dashboards/visualization.py).
+[`dashboards/visualization.py`](../../../packages/grafana-dashboards/dashboards/visualization.py).
 **Prefer importing from there over hand-rolling per-tab versions.** It
 currently exports:
 

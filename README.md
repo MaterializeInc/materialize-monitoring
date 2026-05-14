@@ -4,9 +4,16 @@ This customer-facing repository provides common observability (o11y)
 infrastructure and configurations for Materialize Deployments, including
 Self-Managed and Materialize Cloud.
 
+## WORK IN PROGRESS
+
+**This repository is being actively developed!**
+
+This readme will try to track changes with dates, but expect
+some amount of flux as this repository stabilizes.
+
 ## Getting Started
 
-This is automatically deployed by our
+This will be automatically (TODO: implement) deployed by our
 [recommended terraform module](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 for deploying Materialize.
 
@@ -16,11 +23,48 @@ For more bespoke configurations, please see our documentation: TODO LINK.
 
 The primary Artifacts are:
 
-* A published, versioned helm umbrella chart for deploying an observability stack
+* (TODO) A published, versioned helm umbrella chart for deploying an observability stack
     alongside Materialize.
-* Documentation about the intricacies of the observability stack and how to use it.
-* Dashboards that customers can use to manage their own Deployments and that we
+* (WIP) Documentation about the intricacies of the observability stack and how to use it.
+* (WIP) Dashboards that customers can use to manage their own Deployments and that we
     use for our own internal monitoring of Materialize Cloud.
+
+## Supported Dashboards
+
+### Materialize Overview
+
+Day 2 Operations for Materialize environments.
+
+Supported Materialize Versions:
+* v26.0 - v26.24 (new-promsql v2_mz / unstable mz_)
+
+Targets:
+* (Alpha) Grafana 13
+    * generated: `docs/static/dashboards/grafana/` (TODO: docsite link)
+    * grafana-operator template: TODO
+    * source (Python SDK): `packages/grafana-dashboards/dashboards/`
+* (TODO) Grafana 12
+* (TODO) Grafana 10-11
+* (TODO) DataDog
+* (TODO) Google Cloud Operations
+
+### Materialize Fleet View
+
+Day 2 Operations across many Materialize environments.
+
+TODO
+
+### Materialize Troubleshooting
+
+Guided troubleshooting dashboards for common issues.
+
+TODO
+
+### Materialize Infrastructure
+
+Infrastructure-level monitoring for Materialize dependencies.
+
+TODO
 
 ## License
 
