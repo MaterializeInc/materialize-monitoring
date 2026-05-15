@@ -1,14 +1,14 @@
 {
   "name": "materialize-monitoring Documentation",
   "short_name": "materialize-monitoring Documentation",
-  "start_url": "/materialize-monitoring/",
-  "scope": "/materialize-monitoring/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
     {
-      "src": "/materialize-monitoring/favicon.svg",
+      "src": "/favicon.svg",
       "sizes": "512x512"
     }
   ]
