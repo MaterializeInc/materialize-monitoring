@@ -31,7 +31,7 @@ PY_RUN := uv run
 
 # Invoke hugo as a tool (you can use HUGO_BIN=hugo to use brew)
 # By default, we get the one from go.mod
-HUGO_BIN ?= $(GO) tool hugo
+HUGO_BIN ?= GOFLAGS=-tags=extended $(GO) tool hugo
 
 # Whether brew can be used for installs (use ifneq)
 HAS_BREW := $(shell command -v brew 2> /dev/null)
