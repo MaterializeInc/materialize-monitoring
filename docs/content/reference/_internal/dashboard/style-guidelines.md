@@ -3,4 +3,487 @@ title: "Style Guidelines"
 weight: 20
 ---
 
-TODO
+# Dashboard Style Guidelines
+
+Conventions for building visually consistent, operator-friendly dashboards. The audience for the dashboards themselves is **Materialize end users**: database-literate operators with basic graph-reading fluency but minimal cloud / Kubernetes / observability expertise. SQL is fair game; jargon like "differential dataflow's arrangement" needs a one-liner explanation when it appears.
+
+## Contents
+
+- [Layouts](#layouts)
+- [Palettes](#palettes)
+- [Tab-level theming](#tab-level-theming)
+- [Variables](#variables)
+- [Panel visualization conventions](#panel-visualization-conventions)
+- [Writing panel descriptions](#writing-panel-descriptions)
+- [PromQL conventions](#promql-conventions)
+- [Filtering by cluster / replica](#filtering-by-cluster--replica)
+- [Materialize metric label families](#materialize-metric-label-families)
+- [Known metric quirks and gotchas](#known-metric-quirks-and-gotchas)
+- [PromQL recipes](#promql-recipes)
+- [Shared module-level constants and helpers](#shared-module-level-constants-and-helpers)
+
+## Layouts
+
+Prefer **automatic layouts** over fixed positioning. Dashboard v2 provides more ergonomic options like Tabs and a formal automatic layout system.
+
+- Prefer `AutoGridLayout` over fixed positioning.
+- Use `.max_column_count(N)` to tune density. For panels with wide legend tables (multiple calc columns + long pod names), 2 columns per row is a good default; for compact stat panels, the default 3 or bumping to 5 (e.g. workload readiness) is fine.
+- **Column-width sizing** (`AutoGridLayout.column_width_mode(...)`):
+  - `"narrow"` — rows of mostly-stat panels alongside one or two donuts; keeps the donut from stealing all the horizontal space.
+  - `"wide"` — rows of complex panels (timeseries with table legends, histograms, bar charts, tables). Lets each panel get enough room to be readable; on smaller monitors the row scrolls horizontally rather than cramming everything into a too-narrow column.
+  - Default (`"standard"`) is fine for typical mixes.
+- **Do not** wrap a small set of related panels in nested sub-rows when the auto-layout will tile them correctly — let `AutoGridLayout` handle the 2D wrap.
+
+### Collapsed rows for type-specific drilldowns
+
+When a row only applies to a subset of environments — e.g. Iceberg-sink metrics only matter when Iceberg sinks exist — declare the row collapsed by default with `.collapse(True)`:
+
+```python
+def build_iceberg_sinks_row(self):
+    return (
+        dashboardv2_builders.Row()
+        .title("Iceberg Sinks")
+        .hide_header(False)
+        .collapse(True)  # collapsed; expand on demand
+        .layout(...)
+    )
+```
+
+Operators can expand the row when they need it; the row title acts as documentation that the section exists. This keeps the default page light without losing the type-specific content.
+
+### Dashboard v1 compatibility (IGNORE THIS SECTION)
+
+> Ignore this section until v1 support is desired.
+
+We build dashboards as v2 by default and then provide best-effort compatibility with v1.
+
+For Dashboard v1 compatibility, we use Collapsed rows as a replacement for v2 Tabs.
+
+We do not provide direct positions, but instead calculate grid positions based on a 24-column grid system. The default height of rows is 9.
+
+## Palettes
+
+We offer a few colorblind-friendly palettes for use in dashboards. Grafana does not provide colorblind-friendly palettes by default.
+
+- `packages/grafana-dashboards/dashboards/palette.py` — qualitative + sequential palettes
+- `packages/grafana-dashboards/dashboards/threshold.py` — threshold-based color/text mappings
+
+Read the comments in `dashboards.palette` and `dashboards.threshold` for intended usage.
+
+## Tab-level theming
+
+For non-health metrics (counts, totals, capacity, etc.) where there's no intrinsic good/bad coloring, pick a tab-level theme shade and use it across all stat-style panels in that tab. The convention is:
+
+```python
+# At module scope, near the top of each tab's file:
+COMPUTE_THEME = palette.THEME_PALETTE[3]  # pick a distinct index per tab
+```
+
+Pass the shade through to `visualization.sparkline_stat(shade=…)` (see [Sparkline stats](#sparkline-stats)). This gives each tab a visually distinct background hue without re-deriving the choice in every panel.
+
+`palette.THEME_PALETTE` is an alias of `BRIGHT_QUALITATIVE_NONSEQ` (7 entries). The index assigned per tab is the project's source of truth for visual identity — see the dashboard inventory in the `dashboards-as-code` skill for current assignments.
+
+## Variables
+
+Exposed variables should live inside of `dashboard.variables` and be explicitly registered in a given dashboard within the `configure_variables` method (or `configure_datasources` for datasource variables). Variables are global to all panels within the dashboard.
+
+### Advanced controls
+
+For variables which should generally be left on their defaults but may be modifiable for "power users", use the "Controls" section of the variable editor (in v2: `inControlsMenu`; in v1: VariableHide "3").
+
+### Intermediates
+
+Intermediate variables are variables that are computed from other variables and are hidden from the UI (in v2: `hideVariable`; in v1: VariableHide "2").
+
+Constant Variables may contain "chained variables" and may use other variables as part of their definition. This pattern slightly contradicts the documentation which says Constant Variables are "static", but the pattern is useful for reusable snippets.
+
+### Multi-select variables in regex contexts
+
+For multi-select variables (`multi: true`) used in PromQL label matchers, prefer the explicit `:regex` interpolation format when the variable is embedded inside a wider regex string.
+
+Grafana auto-detects the regex format only for the simple direct case `label=~"$var"`. When the variable appears inside a larger pattern, auto-detection does not fire, and bare `$var` resolves to literal `$__all` (or a `{val1,val2}` glob form) that doesn't behave as alternation.
+
+```text
+# Direct usage — auto-detected, plain `$var` is fine:
+compute_cluster_id=~"$mzClusterList"
+
+# Embedded usage — use `:regex` to get `(val1|val2|…)`:
+pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
+```
+
+This is the same guidance Grafana's own MCP tool surfaces in its dashboard-authoring hints.
+
+## Panel visualization conventions
+
+Shared panel-styling helpers live in `packages/grafana-dashboards/dashboards/visualization.py`. **Prefer importing from there over hand-rolling per-tab versions.** It currently exports:
+
+- `NO_FILTER_MATCH` — standard "no value" string for panels driven by multi-select filters (e.g., "No matches for the current filters").
+- `PIE_LEGEND_BUILDER` — pre-configured piechart legend (table layout, right placement, value column).
+- `TS_LEGEND_BUILDER` — pre-configured timeseries legend (table layout, bottom placement, Max / Avg / Last calcs).
+- `sparkline_stat(shade=…)` — factory returning a `stat.Visualization` with the area-mode sparkline pre-configured and (optionally) a fixed background shade.
+
+### Sparkline stats
+
+For "count" / "total" / "capacity" style metrics, prefer `visualization.sparkline_stat(...)` over a plain stat:
+
+```python
+from dashboards import palette, visualization
+
+COMPUTE_THEME = palette.THEME_PALETTE[3]  # one shade per tab
+
+.visualization(
+    visualization.sparkline_stat(shade=COMPUTE_THEME)
+    .unit("short")
+    .min(0)  # anchor the sparkline Y-axis at zero for count-style metrics
+)
+```
+
+Two non-obvious requirements:
+
+- **Use a range query, not `.instant()`.** Sparklines need a series of points to render; if the query is instant, the panel will show the big number but the sparkline footer will be blank. Donuts / piecharts / single-value panels still want `.instant()` — the rule is "only instant queries when a single point is exactly what's being displayed."
+- **`.min(0)` for counts.** Without it, Grafana auto-zooms the sparkline Y-axis to the data's actual range, which makes a count that drifts from 64 to 66 look like a huge swing. Anchor to zero so the magnitude is visible.
+
+### Partitioned sparkline stats
+
+When a sparkline-stat query produces multiple series (e.g. `sum by (session_type) (...)` returning `system` and `user` rows), the stat panel renders one tile per series. In that case set `text_mode=VALUE_AND_NAME` so each tile labels itself with its series name; otherwise you get a row of bare numbers with no indication of which is which.
+
+```python
+.visualization(
+    visualization.sparkline_stat(shade=MY_THEME)
+    .min(0)
+    .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
+)
+```
+
+For single-series sparklines, leave the default `VALUE` text mode — the panel title is the label.
+
+### Timeseries legend
+
+Apply the shared timeseries legend builder to every multi-series timeseries panel:
+
+```python
+.visualization(
+    timeseries.Visualization()
+    .unit("Bps")
+    .no_value(CADVISOR_MISSING)
+    .legend(visualization.TS_LEGEND_BUILDER)
+)
+```
+
+Notes:
+
+- **Placement BOTTOM** gives the table room for the per-series name + calc columns without truncation; RIGHT works for short legends only.
+- **Avg -> `mean`, Last -> `lastNotNull`.** Plain `last` includes nulls and surprises users when the most recent scrape was missing.
+
+### Donut / pie legend
+
+```python
+.visualization(
+    piechart_builder.Visualization()
+    .pie_type(piechart.PieChartType.DONUT)
+    .legend(visualization.PIE_LEGEND_BUILDER)
+    .display_labels([piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE])
+    .no_value(visualization.NO_FILTER_MATCH)
+)
+```
+
+### "No data" messaging
+
+Every panel that depends on an optional or filterable metric source should set `.no_value("…")` with a self-explanatory reason. Reach for the closest existing constant rather than inventing new wording:
+
+- `visualization.NO_FILTER_MATCH` — multi-select filter excluded everything (cluster/replica/namespace selection).
+- `CADVISOR_MISSING` / `KSM_MISSING` (defined in `k8s_resources.py`) — required scrape target is absent.
+
+This way a blank panel tells the operator *why* it is blank.
+
+### Color-mode default
+
+For stat panels showing values that aren't intrinsically good/bad (counts, totals, capacity), use `color_mode=NONE` so the value renders in the default text color rather than green. `visualization.sparkline_stat` already does this. For health metrics, use `color_mode=BACKGROUND` plus an explicit thresholds/mappings palette (see `dashboards.threshold`).
+
+## Writing panel descriptions
+
+Grafana renders panel `.description(...)` text as a hover tooltip and a full info dialog (click the panel's title chevron). It supports **GitHub-flavored Markdown**. Descriptions are the operator's first-line documentation for "what am I looking at" — invest in them.
+
+### Audience
+
+Write for a **Materialize end user**: someone with database experience and basic familiarity reading graphs, but minimal cloud / Kubernetes / observability expertise. Assume SQL fluency. Explain Materialize-side concepts (peek, hydration, arrangement) when they appear. Don't restate the obvious ("Network bandwidth per pod" — they can read the title).
+
+### Structure
+
+Lead with a **bold headline sentence** that captures the panel's whole purpose. Grafana truncates the hover-tooltip preview, so the lead has to carry the punch line on its own. After that, free-form prose covering nominal/anomalous framing and where to look next:
+
+```python
+.description(
+    "**One-sentence headline of what this panel shows.** "
+    "Optional second sentence on why it exists. "
+    "Nominal: <expected state>. <Anomaly signal>: <what it means>. "
+    "If anomalous, check _Other Panel_ next."
+)
+```
+
+The four questions every description should try to answer:
+
+- **Why is this panel here?** (operator-facing reason to care)
+- **What does nominal look like?** (anchor expectations)
+- **What does anomalous look like?** (the signal)
+- **What's the next step?** (cross-reference to another panel/tab)
+
+### Markdown conventions
+
+- **Bold** the first-sentence headline: `**Like this.**`
+- *Italics* for cross-references between panels: `_Compute Objects -> Arrangements_`
+- Backticks for identifiers and code: `` `mz_internal.mz_indexes` ``, `` `cluster_id` ``
+- Use **ASCII `->`** in cross-references, **not** Unicode `→`. The arrow shows up in panel titles and descriptions; `→` triggers the ruff `RUF001`/`RUF002` "ambiguous character" lint rules.
+- Em-dash `—` is OK inside description bodies and docstrings, but avoid it in *titles* (`RUF001` flags it in panel titles).
+
+### Cross-references
+
+Reference panels by their visible title, italicized, using `->` between tab and panel when crossing tabs:
+
+```text
+For per-pod CPU view see _Kubernetes Workloads -> Pod CPU Usage_.
+Pair with _Sink Lag_ (in this tab) when investigating commit issues.
+```
+
+Bare prose references are easier to follow than HTML/anchored links in the current dashboard ergonomics. Don't include clickable URLs.
+
+### SQL drilldowns
+
+Where a panel surfaces a raw id (`source_id`, `collection_id`, `sink_id`), include the SQL to translate it to a user-friendly name:
+
+```text
+Translate `collection_id` to a name via
+`SELECT id, name FROM mz_internal.mz_indexes` (or `mz_materialized_views`).
+```
+
+### Per-variant descriptions for shared helpers
+
+When a single panel method is called multiple times with different parameters and each variant deserves its own description (e.g. Peek Latency at p50/p90/p99), define a module-level dict keyed by the variant label and have the helper look it up:
+
+```python
+_PEEK_LATENCY_DESCRIPTIONS: dict[str, str] = {
+    "p50": "**Median read-query latency** — ...",
+    "p90": "**90th-percentile read-query latency** — ...",
+    "p99": "**Tail read-query latency** — ...",
+}
+
+def _peek_latency_panel(self, percentile: float, label: str):
+    ...
+    .description(_PEEK_LATENCY_DESCRIPTIONS[label])
+```
+
+### Shared-helper / mixin descriptions
+
+When a helper function or mixin method registers the same panel on multiple tabs (e.g. `cpu_total_panel` from `KubeResourcesMixin` appears on both Summary and Kubernetes Workloads), the description is shared across all call sites. Either:
+
+- Write a single description that's accurate in both contexts (and call out the differences inline: "On Summary the monitoring exporter is excluded; on K8s it's included.")
+- Refactor the helper to accept a `description=` parameter and have each call site pass its own.
+
+The shared-string approach is cheaper; refactor only when the descriptions truly need to diverge.
+
+## PromQL conventions
+
+### Rate intervals
+
+Use `[$__rate_interval]` for `rate()` window selectors. Grafana derives this from the panel's resolution so the rate window adapts to zoom level. Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window for semantic reasons — e.g. the "Current CPU Usage (5 min)" summary stat deliberately samples a 5-minute window regardless of zoom.
+
+### Filtering cAdvisor metrics
+
+The `$containerFilter` constant variable expands to `namespace=~"$mzNamespaceList",container!="",container!="POD"`. This excludes the pod-network-namespace sentinel and the empty-container series cAdvisor reports for pod-level metrics.
+
+That means **don't use `$containerFilter` for `container_network_*` metrics** — those *are* the pod-level metrics it excludes. For network queries, scope only with `namespace=~"$mzNamespaceList"` (plus pod regex matchers as needed).
+
+### Aggregation defaults
+
+- For per-container metrics that you want to see per-pod (CPU, memory), group by `(namespace, pod, container)`.
+- For network metrics, group by `(namespace, pod)` — this also drops the per-`interface` cardinality (most pods report at least `eth0` + `lo`).
+- For environment-wide rollups, group only by `(namespace)` or `(container)` as appropriate.
+
+### Series cardinality budgets
+
+Prefer aggregating away `collection_id`, `replica_id`, and `worker_id` on environment-wide panels unless a breakdown is the panel's whole point. Large customer environments can have hundreds of collections multiplied by replicas multiplied by workers — keeping that cardinality has caused graphs to fail to load on production dashboards.
+
+The dashboard default is **per-cluster aggregation**; specialists can drill down to specific collections via ad-hoc PromQL when needed. A working dashboard at less granularity is more valuable than a broken one with maximum detail.
+
+Concretely:
+
+- `sum by (instance_id)` rather than `sum by (instance_id, collection_id)`
+- `max by (cluster, replica)` rather than per-worker series, *unless* the whole point of the panel is worker drift / skew detection (e.g. the Dataflows "per worker" panel is intentionally per-worker; the aggregate Dataflow Count panel is not).
+- For "show me the worst offenders" panels, use `topk(N, …)` rather than letting every series through.
+
+## Filtering by cluster / replica
+
+Materialize cluster pods follow the naming convention `…-cluster-<cluster_id>-replica-<replica_id>-…`. To make the `mzClusterList` and `mzReplicaList` selectors filter cluster pods without hiding system pods (envd, balancer, etc.), use **two queries per panel** with module-level regex constants:
+
+```python
+CLUSTER_POD_RE = ".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
+NONCLUSTER_POD_RE = ".*-cluster-.*-replica-.*"
+
+# Query 1 — cluster-replica pods, filtered by selection:
+container_cpu_usage_seconds_total{$containerFilter, pod=~"<CLUSTER_POD_RE>"}
+
+# Query 2 — everything else, always shown:
+container_cpu_usage_seconds_total{$containerFilter, pod!~"<NONCLUSTER_POD_RE>"}
+```
+
+Putting the regex constants at module scope (next to `CADVISOR_MISSING` etc.) keeps them shareable across all panels in the file and prevents drift between numerator and denominator patterns.
+
+## Materialize metric label families
+
+Materialize metrics come from two scraper paths with **different label naming conventions**. Picking the wrong filter is a common failure mode.
+
+**Short-form** (env-scoped pre-calc and envd-side metrics):
+
+- `instance_id` (this is the cluster id)
+- `replica_id`
+
+Examples: `v2_mz_compute_hydration_time_seconds`, `v2_mz_compute_replica_peek_duration_seconds_*`, `v2_mz_dataflow_elapsed_seconds_total`, `mz_active_subscribes`, `mz_compute_controller_*`, `mz_query_total`, `mz_adapter_commands`.
+
+**Long-form** (compute-side metrics, scraped from clusterd):
+
+- `cluster_environmentd_materialize_cloud_cluster_id`
+- `cluster_environmentd_materialize_cloud_cluster_name`
+- `cluster_environmentd_materialize_cloud_replica_id`
+- `cluster_environmentd_materialize_cloud_replica_name`
+- `cluster_environmentd_materialize_cloud_replica_role`
+- `cluster_environmentd_materialize_cloud_workers` (cluster size)
+- `worker_id`
+
+Examples: `mz_arrangement_maintenance_seconds_total`, `mz_compute_replica_history_dataflow_count`, `mz_source_*`, `mz_sink_*`.
+
+**Pre-calc metrics with NO cluster labels** (env-scoped only):
+
+`v2_mz_sources_count`, `v2_mz_sinks_count`, `v2_mz_tables_count`, `v2_mz_views_count`, `v2_mz_indexes_count`, `v2_mz_mzd_views_count`, `v2_mz_source_status`, `mz_active_subscribes`. These get the `ENV_SCOPED_NOTE` callout in descriptions.
+
+**Helper constants for filtering**:
+
+- `_COMPUTE_FILTER` (in `storage_objects.py`) — long-form filter on env + cluster + replica.
+- `_ARRANGEMENT_FILTER` (in `compute_objects.py`) — same shape, different module. Originally arrangement-specific, now reused for dataflows.
+- These two constants are **the same PromQL fragment** in two places; lifting them to a shared module is a known cleanup candidate.
+
+## Known metric quirks and gotchas
+
+Things that have surprised us during development; worth knowing before touching the relevant panels.
+
+- **"Peek" is the read-query latency metric.** No "query" in the name. `v2_mz_compute_replica_peek_duration_seconds_*` is the histogram for read-query latency on indexed data (the differential-dataflow operation behind `SELECT … FROM <view>`).
+- **No `v2_mz_sink_status`** analog of `v2_mz_source_status`. Sink panels show `sink_id` rather than friendly names; translate via `SELECT id, name FROM mz_sinks`.
+- **`v2_mz_source_status` doesn't cover all sources in all envs.** Some primary sources visible in `mz_source_bytes_received` (via `parent_source_id`) don't appear in `v2_mz_source_status`. The Source Bytes Received panel uses an outer-join pattern to handle this gracefully (see [PromQL recipes](#promql-recipes)).
+- **`mz_source_bytes_received.source_id` is the *subsource* id**, not the primary. The primary lives in `parent_source_id`. Postgres sources fan out one bytes_received series per replicated table. Aggregate by `parent_source_id` to get per-primary rates.
+- **`mz_sink_oustanding_progress_records` is misspelled** in Materialize itself ("oustanding" not "outstanding"). Don't "fix" the PromQL — match the metric name as-is.
+- **`mz_compute_controller_subscribe_count` vs `mz_active_subscribes` trade-off**: the former has `instance_id` (cluster-filterable) but no `session_type`; the latter has `session_type` but no cluster labels. The summary tab uses `mz_active_subscribes` for the session_type donut, accepting the loss of cluster filtering.
+- **`v2_mz_production_object`** is the only catalog metric with `cluster_id` — useful for cluster-filtered counts of indexes, materialized views, and sources (`type=` values are `index`, `materialized-view`, `source`).
+- **`s2` is the `mz_catalog_server` cluster** and dominates many panels (commit rates, peek counts, arrangement maintenance, hydration). It's a system cluster and the noise floor is its business-as-usual. Mention this explicitly in panel descriptions where users might mistake it for an anomaly.
+- **`v2_mz` vs `mz_` prefix convention**: prefer `v2_mz` when both exist. v2 metrics come from the newer promsql-exporter and are typically env-level pre-calculations; `mz_` metrics come from clusterd/envd scrapers and are richer in cluster/replica labels.
+- **`v2_mz_sources_count` and `v2_mz_sinks_count` carry breakdown labels** (`type`, `envelope_type`, `size`). A naive `max(...)` returns the largest single bucket, not the total. Use `max(sum by (instance) (...))` to dedup across exporter pods *and* sum over the breakdown labels in one shot. See `_env_total_count_query` in `storage_objects.py`.
+
+## PromQL recipes
+
+Reference for patterns we've established that aren't obvious in the language docs.
+
+### Outer-join for label enrichment
+
+When one metric has the value you want and another has the friendly name, you can't always inner-join (some entities may be missing from the name metric). Use a two-query outer-join:
+
+```promql
+# Named branch — series with a matching name available
+(<value_query>
+ * on (<key>) group_left (<name_label>)
+ label_replace(<name_query>, "<key>", "$1", "<source_key>", "(.*)")) > 0
+
+# Orphan branch — series without a name match
+(<value_query>
+ unless on (<key>)
+ label_replace(<name_query>, "<key>", "$1", "<source_key>", "(.*)")) > 0
+```
+
+Each branch goes into its own `promql_query(...)` in the panel; their legends can differ (e.g., `{{source_name}}` for the named branch and `{{parent_source_id}}` for the orphan). Real example: `_source_bytes_received_panel` in `storage_objects.py`.
+
+### Table pivot via `groupingToMatrix`
+
+To turn one row per (entity, dimension) into one row per entity with columns per dimension value (e.g., Success / Errors columns from a `status` label):
+
+```python
+.transformation(... labelsToFields keepLabels=[entity, dimension])
+.transformation(... merge)
+.transformation(... groupingToMatrix
+                rowField=entity columnField=dimension valueField=Value)
+.transformation(... organize  renameByName={...})
+.transformation(... sortBy    ...)
+```
+
+After `groupingToMatrix`, the row-identifier column comes out named `<rowField>\<columnField>` literally (one backslash). In Python source that's `"<rowField>\\<columnField>"` (Python escape for one backslash). Real example: `_adapter_commands_by_application_panel` in `connections_activity.py`.
+
+The naive alternative — two queries joined by `joinByField` — produces one Value column **per input frame**, not per query, which is N×M columns instead of 2. We tried that and gave up.
+
+### Histogram quantile aggregated by labels
+
+Standard pattern, but worth pinning the shape because the `sum by` labels matter:
+
+```promql
+histogram_quantile(0.99,
+  sum by (le, <preserved_labels...>) (
+    rate(<metric>_bucket{<filter>}[$__rate_interval])
+  )
+)
+```
+
+Real examples: `_peek_latency_panel` (per cluster_id/replica_id), `_iceberg_commit_latency_panel` (aggregated env-wide).
+
+### `or vector(0)` to keep panels non-empty
+
+For stat panels where "no series" should render as `0` rather than "No data":
+
+```promql
+count(<series_query>) or vector(0)
+```
+
+Real example: `add_currently_hydrating_panel`.
+
+### Per-cluster aggregation that handles label breakdowns
+
+To get a single env-wide count from a metric with breakdown labels (like `v2_mz_sources_count.type`/`envelope_type`/`size`), without falling for the "max grabs the biggest bucket, not the total" trap:
+
+```promql
+max(sum by (instance) (<metric>{$environmentFilter})) or vector(0)
+```
+
+`sum by (instance)` collapses all label dimensions per scraper instance, then `max(...)` dedups across multiple promsql-exporter pods if there's more than one. Real example: `_env_total_count_query` in `storage_objects.py`.
+
+### Cluster + non-cluster pod split
+
+For Kubernetes panels (CPU, memory, networking) where you want the cluster/replica selectors to scope cluster pods but not hide infra pods:
+
+```promql
+# Cluster pods (filtered)
+<metric>{$containerFilter, pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}
+
+# Non-cluster pods (always shown)
+<metric>{$containerFilter, pod!~".*-cluster-.*-replica-.*"}
+```
+
+Constants `CLUSTER_POD_RE` and `NONCLUSTER_POD_RE` in `k8s_resources.py` hold the regex strings — reuse them rather than re-typing.
+
+## Shared module-level constants and helpers
+
+For navigation when looking for a shared building block:
+
+| Where | Name | What it is |
+|---|---|---|
+| `dashboards/visualization.py` | `NO_FILTER_MATCH` | "No matches for the current filters" string |
+| `dashboards/visualization.py` | `PIE_LEGEND_BUILDER` | piechart legend (table, right placement, value column) |
+| `dashboards/visualization.py` | `TS_LEGEND_BUILDER` | timeseries legend (table, bottom, Max/Avg/Last calcs) |
+| `dashboards/visualization.py` | `sparkline_stat(shade=…)` | stat.Visualization factory with area sparkline |
+| `dashboards/palette.py` | `THEME_PALETTE` (alias of `BRIGHT_QUALITATIVE_NONSEQ`) | tab-level theme colors, 7 entries |
+| `dashboards/palette.py` | `INCANDESC_SEQUENTIAL`, `Binary`, `TriHealth`, `SUNSET_*` | health/threshold palettes |
+| `dashboards/threshold.py` | `health_mapping`, `health_thresholds` | text + color mapping for healthy/degraded/unhealthy |
+| `dashboards/threshold.py` | `time_stable_thresholds(seconds=…)` | gray-out for "long ago is fine" |
+| `dashboards/threshold.py` | `error_thresholds(max_errors=…)` | gradient for error-count panels |
+| `dashboards/threshold.py` | `load_thresholds(max_load=…)` | gradient for load gauges |
+| `k8s_resources.py` | `CADVISOR_MISSING`, `KSM_MISSING` | no-value strings for cadvisor / kube-state-metrics gaps |
+| `k8s_resources.py` | `CLUSTER_POD_RE`, `NONCLUSTER_POD_RE` | pod-name regex matchers for cluster filtering |
+| `compute_objects.py` | `ARRANGEMENT_LABEL_*` constants + `_ARRANGEMENT_FILTER` | long-form cluster label names + filter snippet |
+| `compute_objects.py` | `ENV_SCOPED_NOTE` | "Environment-scoped — not affected by…" boilerplate |
+| `connections_activity.py` | `_PEEK_LATENCY_DESCRIPTIONS` | per-percentile (p50/p90/p99) description dict for the peek-latency panels |
+| `storage_objects.py` | `_COMPUTE_FILTER` | long-form filter snippet (duplicate of `_ARRANGEMENT_FILTER`) |
+| `storage_objects.py` | `ENV_SCOPED_NOTE` | **duplicate of the one in `compute_objects.py`** — consolidation candidate |
+| `compute_objects.py` | `add_currently_hydrating_panel(dashboard, panel_id, shade=…)` | shared panel factory used by Summary's Environment Health row |
