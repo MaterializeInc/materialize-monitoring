@@ -24,10 +24,10 @@ A key-value pair attached to a metric or log line describing one dimension of wh
 **Label budget**
 A target ceiling on the number of distinct values a given label may take — or, more broadly, on the total cardinality a metric is allowed to produce. Treated as a contract between metric producers and the platform: producers commit to staying under budget, the platform commits to scraping and storing what fits. When a budget is exceeded, this stack's pipeline can drop the offending labels into structured metadata or refuse them entirely. See [Operating > Tuning](../operating/tuning/) for the policy applied here.
 
-**Latency**
+**Latency (generically)**
 The time elapsed between a request being initiated and a response being received. Almost always reported as a *histogram* and queried at p50/p90/p99 — averages hide the tail behavior that matters operationally. Materialize-specific note: read-query latency is exposed as *peek* latency (see *Peek*); there is no metric named "query latency."
 
-**Observability (o11y)**
+**Observability / o11y**
 The practice of inferring a running system's internal state from the signals it externalizes — metrics, logs, and events. "o11y" is the conventional shorthand: the letter `o`, eleven characters, the letter `y`.
 
 **Quantile / Percentile**
