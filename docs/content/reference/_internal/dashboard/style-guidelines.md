@@ -7,21 +7,6 @@ weight: 20
 
 Conventions for building visually consistent, operator-friendly dashboards. The audience for the dashboards themselves is **Materialize end users**: database-literate operators with basic graph-reading fluency but minimal cloud / Kubernetes / observability expertise. SQL is fair game; jargon like "differential dataflow's arrangement" needs a one-liner explanation when it appears.
 
-## Contents
-
-- [Layouts](#layouts)
-- [Palettes](#palettes)
-- [Tab-level theming](#tab-level-theming)
-- [Variables](#variables)
-- [Panel visualization conventions](#panel-visualization-conventions)
-- [Writing panel descriptions](#writing-panel-descriptions)
-- [PromQL conventions](#promql-conventions)
-- [Filtering by cluster / replica](#filtering-by-cluster--replica)
-- [Materialize metric label families](#materialize-metric-label-families)
-- [Known metric quirks and gotchas](#known-metric-quirks-and-gotchas)
-- [PromQL recipes](#promql-recipes)
-- [Shared module-level constants and helpers](#shared-module-level-constants-and-helpers)
-
 ## Layouts
 
 Prefer **automatic layouts** over fixed positioning. Dashboard v2 provides more ergonomic options like Tabs and a formal automatic layout system.

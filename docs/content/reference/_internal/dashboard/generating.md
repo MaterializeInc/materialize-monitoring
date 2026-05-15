@@ -7,14 +7,6 @@ weight: 30
 
 How dashboard code is structured, how we keep generation deterministic, and how dashboards flow from source code into a live Grafana instance.
 
-## Contents
-
-- [Code structure](#code-structure)
-- [Code quality](#code-quality)
-- [Determinism in dashboards](#determinism-in-dashboards)
-- [Generating dashboards](#generating-dashboards)
-- [Pushing dashboards to Grafana](#pushing-dashboards-to-grafana)
-
 ## Code structure
 
 Dashboards live in their respective packages within `packages/`. The current Python implementation lives in `packages/grafana-dashboards` as a `uv` workspace. Python helpers live in `packages/py-mzmon-lib`.

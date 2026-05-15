@@ -22,9 +22,16 @@ SOURCES_mz-monitoring-check = $(shell find crates/mz-monitoring-check -type f)
 ### CONFIG ###
 # These may be overridden by the user
 
+# Go binary (can provide an alternative path to a compatible binary)
+GO ?= go
+
 # Prefix for all python commands
 # TODO: detect other cases
 PY_RUN := uv run
+
+# Invoke hugo as a tool (you can use HUGO_BIN=hugo to use brew)
+# By default, we get the one from go.mod
+HUGO_BIN ?= $(GO) tool hugo
 
 # Whether brew can be used for installs (use ifneq)
 HAS_BREW := $(shell command -v brew 2> /dev/null)
@@ -79,22 +86,11 @@ charts/materialize-monitoring: charts/materialize-monitoring-$(HELM_VERSION_mate
 
 ### HUGO DOCS ###
 
-# Install hugo for docs
-install-hugo:
-ifneq ($(HAS_BREW),)
-	brew install hugo
-else
-	$(error "brew not detected. install hugo manually.")
-endif
-.PHONY: install-hugo
-
-# Check if hugo is installed, else install it
-ensure-hugo:
-	@command -v hugo || $(MAKE) install-hugo
-.PHONY: ensure-hugo
+serve-docs:
+	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
+.PHONY: serve-docs
 
 # Generate docs
 docs/public: $(shell find docs/content -type f)
-	$(MAKE) ensure-hugo
-	hugo --source docs --destination public
+	$(HUGO_BIN) --source docs --destination public
 	touch "$@"
