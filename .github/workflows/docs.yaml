@@ -1,0 +1,165 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-and-deploy:
+    if: github.event.action != 'closed'
+    # Per-target concurrency: a new push for the same PR (or main) cancels any
+    # build still in flight. Cleanup uses the same group with cancel-in-progress
+    # disabled, so it queues behind an active deploy instead of racing it.
+    concurrency:
+      group: docs-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+      cancel-in-progress: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.161.1'
+          extended: true
+
+      - name: Cache Hugo module downloads
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/hugo_cache
+          key: ${{ runner.os }}-hugo-mod-${{ hashFiles('docs/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-hugo-mod-
+
+      - name: Compute base URL and target folder
+        id: paths
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          repo_name="${{ github.event.repository.name }}"
+          owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          host="https://${owner_lc}.github.io/${repo_name}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Sanitize the source branch for use as a URL path segment:
+            # lowercase, replace any non-alphanumeric run with a single dash,
+            # then trim leading/trailing dashes.
+            slug=$(echo "$HEAD_REF" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+            if [ -z "$slug" ]; then
+              echo "Sanitized branch name is empty; falling back to pr-<number>." >&2
+              slug="pr-${{ github.event.pull_request.number }}"
+            fi
+            target="preview/${slug}"
+            base_url="${host}/${target}/"
+          else
+            target="."
+            base_url="${host}/"
+          fi
+          echo "base-url=${base_url}" >> "$GITHUB_OUTPUT"
+          echo "target-folder=${target}" >> "$GITHUB_OUTPUT"
+          echo "Building with baseURL=${base_url} target=${target}"
+
+      - name: Build site
+        working-directory: docs
+        run: hugo --gc --minify --baseURL "${{ steps.paths.outputs.base-url }}"
+
+      # Selective deploy:
+      #  * main → target-folder '.' (the root of gh-pages). clean: true wipes
+      #    stale files at the root, but clean-exclude keeps `preview/` intact.
+      #  * PR   → target-folder 'preview/<branch-slug>'. clean: true only
+      #    operates on that subdirectory, so other PRs' previews and main are
+      #    untouched.
+      - name: Deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs/public
+          branch: gh-pages
+          target-folder: ${{ steps.paths.outputs.target-folder }}
+          clean: true
+          clean-exclude: |
+            preview
+          commit-message: |
+            Deploy ${{ github.sha }} -> ${{ steps.paths.outputs.target-folder }}
+
+      # Sticky comment: one comment per PR (matched via `header`), updated in
+      # place on every push. The cleanup job removes it when the PR closes.
+      - name: Update PR preview comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: docs-preview
+          message: |
+            ## Docs preview
+
+            This PR's docs are deployed at <${{ steps.paths.outputs.base-url }}>.
+
+            | | |
+            | --- | --- |
+            | Source commit | `${{ github.event.pull_request.head.sha }}` |
+            | Target path   | `${{ steps.paths.outputs.target-folder }}/` |
+
+            Updates on every push. Removed when the PR closes.
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # Same group as build-and-deploy for this PR. cancel-in-progress: false
+    # queues this job behind any deploy still in flight so we don't delete a
+    # directory that a build is about to repopulate.
+    concurrency:
+      group: docs-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+
+      - name: Remove PR preview directory
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # Same sanitization as the build step. Keeping them in lockstep is
+          # important: the directory we remove here has to match the directory
+          # the build wrote.
+          slug=$(echo "$HEAD_REF" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+          if [ -z "$slug" ]; then
+            slug="pr-${PR_NUMBER}"
+          fi
+          pr_dir="preview/${slug}"
+          if [ ! -d "${pr_dir}" ]; then
+            echo "No preview at ${pr_dir}; nothing to clean."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r "${pr_dir}"
+          git commit -m "Clean up preview for closed PR #${PR_NUMBER} (${slug})"
+          # Retry on conflict with concurrent pushes from another deploy.
+          for attempt in 1 2 3; do
+            if git push origin gh-pages; then
+              break
+            fi
+            echo "Push attempt ${attempt} failed; rebasing and retrying."
+            git pull --rebase origin gh-pages
+          done
+
+      - name: Remove preview comment from PR
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: docs-preview
+          delete: true
