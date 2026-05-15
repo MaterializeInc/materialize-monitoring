@@ -1,5 +1,6 @@
 locale = 'en-us'
 title = 'materialize-monitoring Documentation'
+baseURL = 'https://materializeinc.github.io/materialize-monitoring/'
 
 [markup]
   [markup.goldmark.renderer]
