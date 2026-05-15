@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  pages: read
 
 jobs:
   build-and-deploy:
@@ -41,14 +42,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-hugo-mod-
 
+      # Ask GitHub for the canonical Pages URL. This is the authoritative
+      # source — it handles public repos (`<owner>.github.io/<repo>/`),
+      # private repos (random `<slug>.pages.github.io`), and custom
+      # domains (CNAME) without us having to know which case we're in.
+      # Requires `pages: read` and Pages to be enabled on the repo.
+      - name: Resolve Pages host URL
+        id: pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          host=$(gh api "/repos/${{ github.repository }}/pages" --jq .html_url)
+          host="${host%/}"  # strip trailing slash so we can concatenate
+          echo "host=${host}" >> "$GITHUB_OUTPUT"
+          echo "Pages host: ${host}"
+
       - name: Compute base URL and target folder
         id: paths
         env:
           HEAD_REF: ${{ github.head_ref }}
+          HOST: ${{ steps.pages.outputs.host }}
         run: |
-          repo_name="${{ github.event.repository.name }}"
-          owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          host="https://${owner_lc}.github.io/${repo_name}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             # Sanitize the source branch for use as a URL path segment:
             # lowercase, replace any non-alphanumeric run with a single dash,
@@ -61,10 +75,10 @@ jobs:
               slug="pr-${{ github.event.pull_request.number }}"
             fi
             target="preview/${slug}"
-            base_url="${host}/${target}/"
+            base_url="${HOST}/${target}/"
           else
             target="."
-            base_url="${host}/"
+            base_url="${HOST}/"
           fi
           echo "base-url=${base_url}" >> "$GITHUB_OUTPUT"
           echo "target-folder=${target}" >> "$GITHUB_OUTPUT"
