@@ -44,13 +44,13 @@ The rate at which a system processes work, usually expressed as units per second
 
 ## Metrics
 
-**Counter**
+**Counter Metric**
 A metric that only increases (or resets to zero on process restart). Examples: total bytes received, total queries served. Always wrap a counter in `rate(...)` or `increase(...)` in PromQL — the raw value of a counter is rarely directly useful.
 
-**Gauge**
+**Gauge Metric**
 A metric that can go up or down at any time. Examples: current memory usage, currently active connections. Read the value directly; no rate wrapper needed.
 
-**Histogram**
+**Histogram Metric**
 A metric that records the distribution of observed values across configured bucket boundaries. Latency, request-size, and other "spread matters" metrics are almost always histograms. Query a histogram via `histogram_quantile(quantile, sum by (le) (rate(<metric>_bucket[...])))`.
 
 **Metric**
@@ -59,7 +59,7 @@ A numeric measurement, identified by a name and a set of labels, that is scraped
 **Recording rule**
 A precomputed PromQL expression evaluated at scrape interval and stored as a new series. Two main uses: speed up expensive queries that appear in many dashboards/alerts, and reduce cardinality before metrics egress to expensive backends. See [Metrics > Rules](../metrics/rules/).
 
-**Sample**
+**Sample Metric**
 One (timestamp, value) data point in a series. A series is, mechanically, an ordered list of samples.
 
 ## Logs and events
@@ -73,7 +73,7 @@ A line (or structured record) emitted by a running process. This stack collects 
 **Log level**
 The severity class attached to a log line: typically `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` (some systems add `FATAL` above `ERROR`). Materialize emits at `INFO` by default; production filtering is usually `WARN`/`ERROR` for storage cost, dropping to `INFO` or `DEBUG` for active debugging. Configurable per-process via the standard Rust `RUST_LOG`/log-filter conventions.
 
-**Stream**
+**Log Stream**
 The Loki analogue of a Prometheus series: a unique combination of labels under which log entries are ordered by time. As with metrics, label cardinality is the cost driver — keep volatile attributes (request_id, trace_id) in the *log body*, not as Loki labels.
 
 ## Dashboards and queries
@@ -81,11 +81,11 @@ The Loki analogue of a Prometheus series: a unique combination of labels under w
 **Dashboard**
 A collection of panels backed by queries, typically laid out in tabs and rows. This stack ships dashboards for both Grafana and DataDog; see [Dashboards](../dashboards/).
 
+**Dashboard Panel**
+A single visualization on a dashboard — a time series, table, donut, single-stat, etc. Most panels are backed by one or more queries.
+
 **LogQL**
 Loki's query language. Borrows PromQL's selector syntax (`{job="mz", container="environmentd"}`) and adds line-filter operators (`|=`, `|~`) and parsing pipelines (`| json | line_format ...`).
-
-**Panel**
-A single visualization on a dashboard — a time series, table, donut, single-stat, etc. Most panels are backed by one or more queries.
 
 **PromQL**
 Prometheus's query language. Used by Grafana, Alertmanager, recording rules, and alerting rules across this stack. PromQL operates on time series: `rate(metric[5m])` computes a per-second rate; `sum by (label) (...)` aggregates.
@@ -118,14 +118,11 @@ A target reliability number expressed as a percentage over a time window — e.g
 **Alloy**
 [Grafana Alloy](https://grafana.com/docs/alloy/) is the collector at the heart of this stack. It scrapes metrics, ingests logs, applies relabeling, and exports to one or more backends (Prometheus remote-write, Loki push, OTLP, the Datadog Agent). Replaces older agents like Grafana Agent and Promtail.
 
-**Exporter**
+**Monitoring Profile**
+A named pipeline configuration that targets a specific backend shape: `datadog-agent`, `prometheus-remote-write`, `otlp`, or `bundled-stack`. Customers pick a profile via Helm values; the chart wires Alloy and (for the bundled profile) Loki/Thanos/Grafana accordingly. Distinct from a *profile* in the continuous-profiling sense (Pyroscope, etc.).
+
+**Prometheus Exporter**
 A small process that translates some other system's state into Prometheus metrics on an HTTP endpoint. `kube-state-metrics`, `node-exporter`, and `cAdvisor` are common examples. Materialize itself exports its metrics natively from `environmentd` and `clusterd` — no separate exporter is required for the Materialize surface.
-
-**Pipeline**
-The Alloy configuration that describes how telemetry flows from sources to backends — scrape targets, relabeling rules, filters, and routing. This stack ships several reference pipelines via profiles.
-
-**Profile**
-A named pipeline configuration that targets a specific backend shape: `datadog-agent`, `prometheus-remote-write`, `otlp`, or `bundled-stack`. Customers pick a profile via Helm values; the chart wires Alloy and (for the bundled profile) Loki/Thanos/Grafana accordingly.
 
 **Relabeling**
 Rewriting label keys and values during ingestion. Used to normalize divergent label naming across deployment modes (self-managed vs. Cloud vs. BYOC) and to drop or coalesce high-cardinality labels before metrics egress to expensive backends.
@@ -135,6 +132,9 @@ The Prometheus protocol for pushing metrics to a downstream backend (another Pro
 
 **Scrape**
 The act of pulling metrics from an HTTP `/metrics` endpoint. Prometheus and Alloy both scrape; targets are discovered either statically (in config) or dynamically via ServiceMonitor / PodMonitor resources.
+
+**Telemetry Pipeline**
+The Alloy configuration that describes how telemetry flows from sources to backends — scrape targets, relabeling rules, filters, and routing. This stack ships several reference pipelines, each parameterized as a *monitoring profile*.
 
 ## Stack components
 
@@ -167,20 +167,20 @@ Container Advisor — collects per-container resource usage (CPU, memory, networ
 **kube-state-metrics**
 An exporter that surfaces metrics about Kubernetes API objects: pod readiness, deployment replicas desired vs. available, PVC status, etc. Different from `metrics-server`, which provides resource utilization for the horizontal pod autoscaler.
 
+**Kubernetes Probe**
+A Kubernetes health-check mechanism on a container. Three flavors: a *liveness probe* restarts the container when it fails (the process is wedged); a *readiness probe* removes the pod from Service load-balancing (the process is up but not ready to serve); a *startup probe* delays liveness/readiness during slow boots (e.g., during long hydration). Probe failures surface through kube-state-metrics and pod events.
+
+**Kubernetes Sidecar**
+A secondary container running in the same Kubernetes pod as a primary application container, sharing the pod's network namespace and (often) volumes. In observability, sidecars commonly inject log shippers or proxies — though this stack prefers a DaemonSet (one Alloy per node) over per-pod sidecars for collector workloads, since the DaemonSet shape scales with nodes rather than pods.
+
 **node-exporter**
 An exporter that surfaces per-host (node-level) metrics — CPU utilization, memory, disk usage, filesystem stats, block-device counters, network counters — pulled from the Linux kernel. Typically deployed as a DaemonSet (one pod per node). Distinct from *cAdvisor*, which surfaces per-*container* metrics from the kubelet; node-exporter sees the whole machine.
-
-**Probe**
-A Kubernetes health-check mechanism on a container. Three flavors: a *liveness probe* restarts the container when it fails (the process is wedged); a *readiness probe* removes the pod from Service load-balancing (the process is up but not ready to serve); a *startup probe* delays liveness/readiness during slow boots (e.g., during long hydration). Probe failures surface through kube-state-metrics and pod events.
 
 **Prometheus Operator**
 A Kubernetes operator that manages Prometheus, Alertmanager, and the CRDs (`ServiceMonitor`, `PodMonitor`, `PrometheusRule`, etc.) that drive their configuration. Optional — Alloy alone can scrape without it — but ubiquitous in Kubernetes monitoring stacks.
 
 **ServiceMonitor / PodMonitor**
 Custom resources owned by the Prometheus Operator that tell Prometheus/Alloy what to scrape. ServiceMonitors target Services; PodMonitors target Pods directly. This stack does **not** ship ServiceMonitors for Materialize itself — those live with the Materialize application chart — but Alloy consumes them when present.
-
-**Sidecar**
-A secondary container running in the same Kubernetes pod as a primary application container, sharing the pod's network namespace and (often) volumes. In observability, sidecars commonly inject log shippers or proxies — though this stack prefers a DaemonSet (one Alloy per node) over per-pod sidecars for collector workloads, since the DaemonSet shape scales with nodes rather than pods.
 
 ## Deployment models
 
