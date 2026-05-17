@@ -50,6 +50,12 @@ charts: $(addprefix charts/,$(CHARTS))
 docs: docs/public
 .PHONY: docs
 
+### REPO MAINTENANCE ###
+
+check-lfs:
+	./bin/check-lfs.sh
+.PHONY: check-lfs
+
 ### RUST TOOLING ###
 # Rust binary name
 BUILD_BIN_BASENAME = $(notdir $@)
