@@ -7,6 +7,7 @@ import typing
 from collections.abc import Sequence
 
 from grafana_foundation_sdk.cog import builder as cogbuilder
+from grafana_foundation_sdk.cog.encoder import JSONEncoder
 from grafana_foundation_sdk.models.dashboard import Dashboard as DashboardV1
 
 from .config import GLOBAL_DASHBOARD_CONFIG
@@ -112,12 +113,13 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         """Add variables to the dashboard."""
 
     @classmethod
-    def build(cls, **kwargs) -> dashboardv2.Dashboard:
-        """Build the dashboard with the given kwargs.
+    def render(cls, **kwargs) -> str:
+        """Render the dashboard with the given kwargs.
 
         This is the main entrypoint for our generator.
         """
-        return cls(**kwargs)
+        dashboard = cls(**kwargs)
+        return JSONEncoder(indent=2).encode(dashboard)
 
     @abc.abstractmethod
     def build_layout(self):

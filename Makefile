@@ -50,6 +50,15 @@ charts: $(addprefix charts/,$(CHARTS))
 docs: docs/public
 .PHONY: docs
 
+grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana
+.PHONY: grafana-dashboards
+
+dashboards: grafana-dashboards
+.PHONY: dashboards
+
+synced: dashboards charts
+.PHONY: synced
+
 ### REPO MAINTENANCE ###
 
 check-lfs:
@@ -67,6 +76,14 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 # target/release/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 # 	cargo build --release --bin "$(BUILD_BIN_BASENAME)"
 
+### DASHBOARD SYNC ###
+
+SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f)
+
+charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards)
+	rm -f "$@/"*.json
+	$(PY_RUN) -m dashboards.render -o "$@" --format json
+	touch "$@"
 
 ### HELM CHARTS ###
 
