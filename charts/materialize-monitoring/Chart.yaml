@@ -1,0 +1,139 @@
+apiVersion: v2
+name: materialize-monitoring
+description: |
+  Unified observability stack for Materialize: Alloy-based pipeline,
+  optional bundled backends (Loki / Thanos / Grafana / Alertmanager),
+  and the dashboards / alerts / rules that consume the Materialize
+  metrics surface.
+type: application
+version: 0.0.1
+appVersion: "0.0.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/MaterializeInc/materialize-monitoring
+sources:
+  - https://github.com/MaterializeInc/materialize-monitoring
+maintainers:
+  - name: Materialize
+    email: support@materialize.com
+    url: https://materialize.com
+keywords:
+  - materialize
+  - observability
+  - monitoring
+  - prometheus
+  - alloy
+  - loki
+  - thanos
+  - grafana
+  - datadog
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial umbrella chart skeleton.
+
+# Subchart sourcing
+# -----------------
+# OCI registries are preferred wherever the upstream publishes one. Bitnami
+# is intentionally excluded as a chart source.
+#
+# Registries currently in use:
+#   oci://ghcr.io/grafana/helm-charts          → alloy, loki, grafana
+#   oci://ghcr.io/thanos-community/helm-charts → thanos
+#   oci://ghcr.io/prometheus-community/charts  → alertmanager, kube-state-metrics, prometheus-operator-crds
+#   https://kubernetes-sigs.github.io/metrics-server → metrics-server (TODO: switch to OCI when upstream publishes one)
+#
+# Versions below are scaffolding placeholders that point at recent stable
+# releases; "prefer latest" is enforced at lockfile time. Before the first
+# real `helm dep update`, bump each `version:` to the current latest from
+# its registry and let Chart.lock pin the resolved set. Bumps thereafter
+# are routine maintenance.
+#
+# Alloy is declared twice via `alias` so the same upstream chart powers
+# both the agent (scrape / collection / pre-egress shaping) and the
+# gateway (cardinality reduction / egress to backends). `helm dep update`
+# resolves both aliases from a single tarball.
+#
+# Enablement is driven primarily by Helm tags: each dependency carries a
+# group tag and a per-chart tag, and customers flip entries under `tags:`
+# in `values.yaml`. Helm combines tags with OR semantics — if any of a
+# dependency's tags is true, the dependency is included.
+#
+# Each dependency additionally declares a `condition:` pointing at
+# `<chart>.enabled` as a *circuit breaker*. Helm evaluates `condition:`
+# before `tags:`, but only if the referenced path exists in the merged
+# values. The corresponding `enabled:` key is intentionally left commented
+# out in `values.yaml`, so the default behavior is tag-driven; uncommenting
+# `<chart>.enabled: true|false` force-includes or force-excludes that
+# chart regardless of any tag state.
+dependencies:
+  - name: alloy
+    alias: alloy-agent
+    version: "^1.8.0"
+    repository: https://grafana.github.io/helm-charts
+    condition: alloy-agent.enabled
+    tags:
+      - pipeline
+      - alloy-agent
+  - name: alloy
+    alias: alloy-gateway
+    version: "^1.8.0"
+    repository: https://grafana.github.io/helm-charts
+    condition: alloy-gateway.enabled
+    tags:
+      - pipeline
+      - alloy-gateway
+  - name: loki
+    version: "^15.0.0"
+    repository: oci://ghcr.io/grafana-community/helm-charts
+    condition: loki.enabled
+    tags:
+      - bundled-backends
+      - loki
+  - name: thanos
+    version: "^0.11.0"
+    repository: oci://ghcr.io/thanos-community/helm-charts
+    condition: thanos.enabled
+    tags:
+      - bundled-backends
+      - thanos
+  - name: grafana
+    version: "^12.3.3"
+    repository: oci://ghcr.io/grafana-community/helm-charts
+    condition: grafana.enabled
+    tags:
+      - grafana-standalone
+  - name: grafana-operator
+    version: "^5.22.2"
+    repository: oci://ghcr.io/grafana/helm-charts
+    condition: grafana-operator.enabled
+    tags:
+      - bundled-backends
+      - grafana-operator
+  - name: alertmanager
+    version: "^1.25.0"
+    repository: oci://ghcr.io/prometheus-community/charts
+    condition: alertmanager.enabled
+    tags:
+      - bundled-backends
+      - alertmanager
+  - name: kube-state-metrics
+    version: "^7.3.0"
+    repository: oci://ghcr.io/prometheus-community/charts
+    condition: kube-state-metrics.enabled
+    tags:
+      - cluster-metrics
+      - kube-state-metrics
+  - name: metrics-server
+    version: "^3.13.0"
+    repository: https://kubernetes-sigs.github.io/metrics-server
+    condition: metrics-server.enabled
+    tags:
+      - cluster-metrics
+      - metrics-server
+  - name: prometheus-operator-crds
+    version: "^20.0.0"
+    repository: oci://ghcr.io/prometheus-community/charts
+    condition: prometheus-operator-crds.enabled
+    tags:
+      - crds
+      - prometheus-operator-crds

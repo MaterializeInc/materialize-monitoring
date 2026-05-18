@@ -93,11 +93,10 @@ CHART_NAME = $(dir $(patsubst charts/%,%,$@))
 # Update helm chart README
 # WARNING: if README.md is updated after values.yaml, this won't run
 charts/materialize-monitoring/README.md: charts/materialize-monitoring/values.yaml
-	bin/helm-readme-sync "$(CHART_NAME)"
+	bin/helm-readme-sync "charts/$(CHART_NAME)"
 	touch "$@"
 
-# TODO: helm package
-HELM_VERSION_materialize-monitoring = TODO.0.0
+HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring/README.md
 	helm package charts/materialize-monitoring --destination charts/
 	test -f "$@"
