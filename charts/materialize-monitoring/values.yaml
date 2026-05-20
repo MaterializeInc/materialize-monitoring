@@ -8,6 +8,9 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
 
+nameOverride: ""
+fullnameOverride: ""
+
 ## @section Profile selection
 ## @descriptionStart
 ## A profile chooses sensible defaults for which subcharts are enabled, how
@@ -155,20 +158,32 @@ pipeline:
 ## the sources under `packages/` and embedded via `.Files.Get`.
 ## @descriptionEnd
 
-configurations:
-  ## @param configurations.dashboards.grafana.enabled Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
-  ## @param configurations.dashboards.datadog.enabled Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
-  dashboards:
+dashboards:
+  config:
+    ## @param dashboards.config.grafana.enabled Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+    ## @param dashboards.config.datadog.enabled Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
     grafana:
       enabled: true
-      ## @param configurations.dashboards.grafana.mode Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).
+      ## @param dashboards.config.grafana.mode Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).
       mode: "operator"
+
+      manifest:
+        ## @param dashboards.config.grafana.manifest.resyncPeriod Time to sync the dashboard from the manifest
+        resyncPeriod: 5m
+        ## @param dashboards.config.grafana.manifest.instanceSelector [object] Non-default label selector for a Grafana-operator Grafana instance
+        instanceSelector: {}
+        ## @param dashboards.config.grafana.manifest.apiTarget Dashboard API Version (v2 or v2beta1)
+        apiTarget: "dashboard.grafana.app/v2"
     datadog:
       enabled: false
+  ## @param dashboards.selected [array] List of dashboard patterns to render
+  selected:
+    - env-*
 
-  ## @param configurations.rules.prometheus.enabled Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.
-  ## @param configurations.rules.loki.enabled Install the bundled Loki rules.
-  ## @param configurations.rules.thanos.enabled Install the bundled Thanos rules.
+config:
+  ## @param config.rules.prometheus.enabled Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.
+  ## @param config.rules.loki.enabled Install the bundled Loki rules.
+  ## @param config.rules.thanos.enabled Install the bundled Thanos rules.
   rules:
     prometheus:
       enabled: true
@@ -177,13 +192,33 @@ configurations:
     thanos:
       enabled: false
 
-  ## @param configurations.alerts.enabled Install the bundled Alertmanager routing and templates.
+  ## @param config.alerts.enabled Install the bundled Alertmanager routing and templates.
   alerts:
     enabled: true
 
-  ## @param configurations.scrapers.enabled Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.
+  ## @param config.scrapers.enabled Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.
   scrapers:
     enabled: true
+
+connections:
+  # How to talk to a grafana instance
+  grafana:
+    ## @param connections.grafana.mode How this establishes its connection to Grafana. bundled means it uses the grafana provisioning chart.
+    mode: bundled
+
+    ## @param connections.grafana.labels [object] Labels applied to Grafana instance
+    labels: {}
+
+    # https://grafana.github.io/grafana-operator/docs/api/#grafanaspecexternal
+    external:
+      ## @param connections.grafana.external.url External grafana uri
+      url: ""
+      ## @param connections.grafana.external.adminPassword [object] Secret for Grafana admin password
+      adminPassword: {}
+      ## @param connections.grafana.external.adminUser [object] Secret for Grafana admin user
+      adminUser: {}
+      ## @param connections.grafana.external.apiKey [object] Secret for Grafana API key
+      apiKey: {}
 
 ## @section Subcharts
 ## @descriptionStart
@@ -218,14 +253,23 @@ thanos: {}
   # enabled: true
 
 ## @param grafana-operator [object] Bundled Grafana-operator for dashboard rendering.
-grafana-operator: {}
+# https://grafana.github.io/grafana-operator/docs/installation/helm/#values
+# https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml
+grafana-operator:
   # Circuit breaker (precedence over `tags.bundled-backends` and `tags.grafana-operator`):
-  # enabled: true
+  # enabled:
+  ## @skip grafana-operator.crds.immutable To install crds during upgrades, this must be false
+  crds:
+    immutable: false
 
 ## @param grafana [object] Bundled Grafana for dashboard rendering. This is mutually exclusive with Grafana operator.
-grafana: {}
+# https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
+grafana:
   # Circuit breaker (precedence over `tags.grafana-standalone`):
   # enabled: true
+  replicas: 1
+
+  grafana.ini: {}
 
 ## @param alertmanager [object] Bundled Alertmanager for routing alerts emitted by the rule packages.
 alertmanager: {}

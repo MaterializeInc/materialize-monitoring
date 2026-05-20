@@ -78,11 +78,13 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 
 ### DASHBOARD SYNC ###
 
+SOURCES_py-mzmon-lib = $(shell find packages/py-mzmon-lib/src -type f)
 SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f)
 
-charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards)
-	rm -f "$@/"*.json
-	$(PY_RUN) -m dashboards.render -o "$@" --format json
+charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards) $(SOURCES_py-mzmon-lib)
+	mkdir -p "$@"
+	rm -f "$@/"*.yaml
+	$(PY_RUN) -m dashboards.render -o "$@" --format yaml
 	touch "$@"
 
 ### HELM CHARTS ###
@@ -112,7 +114,13 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
+docs/static/downloads/dashboards/grafana:
+	mkdir -p "$@"
+	rm -f "$@/"*.json
+	$(PY_RUN) -m dashboards.render -o "$@" --format json
+	touch "$@"
+
 # Generate docs
-docs/public: $(shell find docs/content -type f)
+docs/public: $(shell find docs/content)
 	$(HUGO_BIN) --source docs --destination public
 	touch "$@"

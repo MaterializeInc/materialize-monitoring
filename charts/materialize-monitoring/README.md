@@ -135,16 +135,17 @@ Toggles for the dashboards, alerts, rules, and scrape configurations the
 chart ships. Underlying content is generated into `pre-rendered/` from
 the sources under `packages/` and embedded via `.Files.Get`.
 
-| Name                                        | Description                                                                                                                    | Value      |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| `configurations.dashboards.grafana.enabled` | Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.                          | `true`     |
-| `configurations.dashboards.datadog.enabled` | Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.                               | `false`    |
-| `configurations.dashboards.grafana.mode`    | Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance). | `operator` |
-| `configurations.rules.prometheus.enabled`   | Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.                                       | `true`     |
-| `configurations.rules.loki.enabled`         | Install the bundled Loki rules.                                                                                                | `false`    |
-| `configurations.rules.thanos.enabled`       | Install the bundled Thanos rules.                                                                                              | `false`    |
-| `configurations.alerts.enabled`             | Install the bundled Alertmanager routing and templates.                                                                        | `true`     |
-| `configurations.scrapers.enabled`           | Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.                                        | `true`     |
+| Name                                | Description                                                                                                                    | Value      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| `config.dashboards.grafana.enabled` | Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.                          | `true`     |
+| `config.dashboards.datadog.enabled` | Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.                               | `false`    |
+| `config.dashboards.grafana.mode`    | Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance). | `operator` |
+| `config.dashboards.selected`        | List of dashboard patterns to render                                                                                           | `[]`       |
+| `config.rules.prometheus.enabled`   | Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.                                       | `true`     |
+| `config.rules.loki.enabled`         | Install the bundled Loki rules.                                                                                                | `false`    |
+| `config.rules.thanos.enabled`       | Install the bundled Thanos rules.                                                                                              | `false`    |
+| `config.alerts.enabled`             | Install the bundled Alertmanager routing and templates.                                                                        | `true`     |
+| `config.scrapers.enabled`           | Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.                                        | `true`     |
 
 ### Subcharts
 

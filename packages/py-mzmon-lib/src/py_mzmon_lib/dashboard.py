@@ -119,7 +119,17 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         This is the main entrypoint for our generator.
         """
         dashboard = cls(**kwargs)
-        return JSONEncoder(indent=2).encode(dashboard)
+        api_target = "v2"
+        return JSONEncoder(indent=2).encode(
+            {
+                "kind": "Dashboard",
+                "apiVersion": f"dashboard.grafana.app/{api_target}",
+                "metadata": {
+                    "name": dashboard.uid,
+                },
+                "spec": dashboard,
+            }
+        )
 
     @abc.abstractmethod
     def build_layout(self):

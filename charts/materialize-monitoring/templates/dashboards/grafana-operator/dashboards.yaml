@@ -1,0 +1,39 @@
+{{/*
+Grafana Dashboards (operator format)
+*/}}
+{{- if ( and
+  $.Values.dashboards.config.grafana.enabled
+  ( eq $.Values.dashboards.config.grafana.mode "operator" )
+) }}
+  {{- $seenDashboard := list }}
+  {{- range $selectPattern := $.Values.dashboards.selected }}
+    {{- range $dashboardName, $_ := $.Files.Glob ( printf "pre-rendered/dashboards/grafana/%s.yaml" $selectPattern ) }}
+      {{- $dashboardName := base $dashboardName | trimSuffix ".yaml" | lower | replace "_" "-" }}
+      {{- if not ( has $dashboardName $seenDashboard ) }}
+        {{- $seenDashboard = append $seenDashboard $dashboardName }}
+        {{- $fullname := printf "%s-%s-dashboard" ( include "mzmon.fullname" $ ) $dashboardName }}
+        {{- $dashboardYaml := $.Files.Get ( printf "pre-rendered/dashboards/grafana/%s.yaml" $dashboardName ) | fromYaml }}
+        {{- $dashboardYaml = set $dashboardYaml "apiVersion" $.Values.dashboards.config.grafana.manifest.apiTarget }}
+kind: GrafanaManifest
+apiVersion: grafana.integreatly.org/v1beta1
+metadata:
+  name: {{ $fullname | quote }}
+  namespace: {{ $.Release.Namespace | quote }}
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+spec:
+  resyncPeriod: {{ $.Values.dashboards.config.grafana.manifest.resyncPeriod }}
+  {{- $selector := $.Values.dashboards.config.grafana.manifest.instanceSelector
+    | default ( dict
+      "matchLabels" $.Values.connections.grafana.labels
+    ) }}
+  instanceSelector:
+    {{- toYaml $selector | nindent 4 }}
+  template:
+    {{- $dashboardYaml | toYaml | nindent 4 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

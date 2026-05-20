@@ -101,6 +101,7 @@ dependencies:
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:
+      - bundled-backends
       - grafana-standalone
   - name: grafana-operator
     version: "^5.22.2"
