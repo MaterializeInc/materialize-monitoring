@@ -21,8 +21,8 @@ go.work.sum
 # Packaged charts
 *.tgz
 charts/*.tgz
-# Downloaded chart dependencies
-charts/*/charts/
+# vendored charts (git lfs)
+!charts/*/charts/*.tgz
 charts/*/Chart.lock
 # Local values overrides
 values.local.yaml
@@ -81,7 +81,6 @@ __pycache__/
 build/
 develop-eggs/
 dists/
-downloads/
 eggs/
 .eggs/
 lib64/

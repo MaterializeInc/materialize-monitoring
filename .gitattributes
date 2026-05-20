@@ -1,8 +1,1 @@
-charts/materialize-monitoring/charts/kube-state-metrics-7.3.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/loki-6.45.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/metrics-server-3.13.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/prometheus-operator-crds-20.0.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/thanos-0.11.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/alertmanager-1.25.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/alloy-1.8.0.tgz filter=lfs diff=lfs merge=lfs -text
-charts/materialize-monitoring/charts/grafana-12.3.3.tgz filter=lfs diff=lfs merge=lfs -text
+charts/materialize-monitoring/charts/*.tgz filter=lfs diff=lfs merge=lfs -text
