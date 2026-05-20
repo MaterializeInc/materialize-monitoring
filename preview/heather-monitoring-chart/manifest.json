@@ -1,0 +1,15 @@
+{
+  "name": "materialize-monitoring Documentation",
+  "short_name": "materialize-monitoring Documentation",
+  "start_url": "/preview/heather-monitoring-chart/",
+  "scope": "/preview/heather-monitoring-chart/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/preview/heather-monitoring-chart/favicon.svg",
+      "sizes": "512x512"
+    }
+  ]
+}
