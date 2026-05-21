@@ -8,7 +8,7 @@
 # Configuration specific to this project
 
 # make with no target invokes this (FIXME: binaries is a placeholder for now)
-.DEFAULT_GOAL := binaries
+.DEFAULT_GOAL := all
 
 # Helm chart names
 CHARTS = materialize-monitoring
@@ -50,14 +50,19 @@ charts: $(addprefix charts/,$(CHARTS))
 docs: docs/public
 .PHONY: docs
 
-grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana
+# Generate grafana dashboards
+grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/static/downloads/dashboards/grafana
 .PHONY: grafana-dashboards
 
+# Make all dashboards
 dashboards: grafana-dashboards
 .PHONY: dashboards
 
 synced: dashboards charts
 .PHONY: synced
+
+all: synced
+.PHONY: all
 
 ### REPO MAINTENANCE ###
 
@@ -79,9 +84,9 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 ### DASHBOARD SYNC ###
 
 SOURCES_py-mzmon-lib = $(shell find packages/py-mzmon-lib/src -type f)
-SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f)
+SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f) $(SOURCES_py-mzmon-lib)
 
-charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards) $(SOURCES_py-mzmon-lib)
+charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards)
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
 	$(PY_RUN) -m dashboards.render -o "$@" --format yaml
@@ -114,7 +119,7 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
-docs/static/downloads/dashboards/grafana:
+docs/static/downloads/dashboards/grafana: $(SOURCES_grafana-dashboards)
 	mkdir -p "$@"
 	rm -f "$@/"*.json
 	$(PY_RUN) -m dashboards.render -o "$@" --format json

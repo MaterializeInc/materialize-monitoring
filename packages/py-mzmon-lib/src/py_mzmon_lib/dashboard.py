@@ -13,12 +13,13 @@ from grafana_foundation_sdk.models.dashboard import Dashboard as DashboardV1
 from .config import GLOBAL_DASHBOARD_CONFIG
 from .models_v2 import dashboardv2
 
-T = typing.TypeVar("T")
 
+def _unique_list(items: Sequence[str]) -> list[str]:
+    """Return a list of unique items.
 
-def _unique_list[T](items: Sequence[T]) -> list[T]:
-    """Return a list of unique items."""
-    return list(set(items))
+    This is always returned in a stable order (sorted).
+    """
+    return sorted(set(items))
 
 
 @typing.runtime_checkable
