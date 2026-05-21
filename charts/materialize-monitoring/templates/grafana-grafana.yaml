@@ -1,0 +1,40 @@
+{{- if ( or
+  (eq $.Values.connections.grafana.mode "bundled")
+  (eq $.Values.connections.grafana.mode "external")
+  (eq $.Values.connections.grafana.mode "operator")
+) }}
+  {{- $fullname := printf "%s-grafana" ( include "mzmon.fullname" $ ) }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: {{ $fullname | quote }}
+  namespace: {{ $.Release.Namespace | quote }}
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    {{- $.Values.connections.grafana.labels | toYaml | nindent 4 }}
+spec:
+  external:
+  {{- if $.Values.connections.grafana.external.url }}
+    url: {{ $.Values.connections.grafana.external.url | quote }}
+  {{- else if ( eq $.Values.connections.grafana.mode "bundled" ) }}
+    url: {{ printf "http://%s-grafana.%s:3000" ( include "mzmon.fullname" $ ) $.Release.Namespace | quote }}
+  {{- end }}
+  {{- if $.Values.connections.grafana.external.apiKey }}
+    apiKey:
+      {{- $.Values.connections.grafana.external.apiKey | toYaml | nindent 6 }}
+  {{- else if $.Values.connections.grafana.external.adminPassword }}
+    adminPassword:
+      {{- $.Values.connections.grafana.external.adminPassword | toYaml | nindent 6 }}
+    adminUser:
+      {{- $.Values.connections.grafana.external.adminUser | required "adminUser is required with adminPassword" | toYaml | nindent 6 }}
+  {{- else if ( eq $.Values.connections.grafana.mode "bundled" ) }}
+    adminPassword:
+      name: {{- printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote | toYaml | nindent 6 }}
+      key: GF_SECURITY_ADMIN_PASSWORD
+    adminUser:
+      name: {{- printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote | toYaml | nindent 6 }}
+      key: GF_SECURITY_ADMIN_USER
+  {{- end }}
+{{- end }}

@@ -19,7 +19,7 @@ fi
 _ABS_TARGET=$(cd "${TARGET}" && pwd)
 
 # Set pwd to yarn project
-cd "$(dirname "$0")/../tools/helm-readme-sync"
+cd "$(dirname "$0")/../tools/helm-chart-sync"
 
 # Check for a given command existing in PATH
 _has_prog() {
@@ -68,7 +68,7 @@ _ensure_installed() {
 
 # Do generation and syncing
 _run_sync() {
-    readme-generator --chart "${_ABS_TARGET}" --output "${_ABS_TARGET}/README.md"
+    readme-generator --values "${_ABS_TARGET}/values.yaml" --readme "${_ABS_TARGET}/README.md"
 }
 
 # Run sync

@@ -7,17 +7,19 @@ import typing
 from collections.abc import Sequence
 
 from grafana_foundation_sdk.cog import builder as cogbuilder
+from grafana_foundation_sdk.cog.encoder import JSONEncoder
 from grafana_foundation_sdk.models.dashboard import Dashboard as DashboardV1
 
 from .config import GLOBAL_DASHBOARD_CONFIG
 from .models_v2 import dashboardv2
 
-T = typing.TypeVar("T")
 
+def _unique_list(items: Sequence[str]) -> list[str]:
+    """Return a list of unique items.
 
-def _unique_list[T](items: Sequence[T]) -> list[T]:
-    """Return a list of unique items."""
-    return list(set(items))
+    This is always returned in a stable order (sorted).
+    """
+    return sorted(set(items))
 
 
 @typing.runtime_checkable
@@ -112,12 +114,23 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         """Add variables to the dashboard."""
 
     @classmethod
-    def build(cls, **kwargs) -> dashboardv2.Dashboard:
-        """Build the dashboard with the given kwargs.
+    def render(cls, **kwargs) -> str:
+        """Render the dashboard with the given kwargs.
 
         This is the main entrypoint for our generator.
         """
-        return cls(**kwargs)
+        dashboard = cls(**kwargs)
+        api_target = "v2"
+        return JSONEncoder(indent=2).encode(
+            {
+                "kind": "Dashboard",
+                "apiVersion": f"dashboard.grafana.app/{api_target}",
+                "metadata": {
+                    "name": dashboard.uid,
+                },
+                "spec": dashboard,
+            }
+        )
 
     @abc.abstractmethod
     def build_layout(self):

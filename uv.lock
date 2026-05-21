@@ -105,6 +105,7 @@ dependencies = [
     { name = "grafana-foundation-sdk" },
     { name = "py-mzmon-lib" },
     { name = "pydantic" },
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -121,6 +122,7 @@ requires-dist = [
     { name = "grafana-foundation-sdk", specifier = "==0.0.12" },
     { name = "py-mzmon-lib", editable = "packages/py-mzmon-lib" },
     { name = "pydantic", specifier = ">=2.13.3" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [package.metadata.requires-dev]

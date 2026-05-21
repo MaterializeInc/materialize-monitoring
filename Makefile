@@ -8,7 +8,7 @@
 # Configuration specific to this project
 
 # make with no target invokes this (FIXME: binaries is a placeholder for now)
-.DEFAULT_GOAL := binaries
+.DEFAULT_GOAL := all
 
 # Helm chart names
 CHARTS = materialize-monitoring
@@ -50,6 +50,26 @@ charts: $(addprefix charts/,$(CHARTS))
 docs: docs/public
 .PHONY: docs
 
+# Generate grafana dashboards
+grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/static/downloads/dashboards/grafana
+.PHONY: grafana-dashboards
+
+# Make all dashboards
+dashboards: grafana-dashboards
+.PHONY: dashboards
+
+synced: dashboards charts
+.PHONY: synced
+
+all: synced
+.PHONY: all
+
+### REPO MAINTENANCE ###
+
+check-lfs:
+	./bin/check-lfs.sh
+.PHONY: check-lfs
+
 ### RUST TOOLING ###
 # Rust binary name
 BUILD_BIN_BASENAME = $(notdir $@)
@@ -61,6 +81,16 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 # target/release/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
 # 	cargo build --release --bin "$(BUILD_BIN_BASENAME)"
 
+### DASHBOARD SYNC ###
+
+SOURCES_py-mzmon-lib = $(shell find packages/py-mzmon-lib/src -type f)
+SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f) $(SOURCES_py-mzmon-lib)
+
+charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards)
+	mkdir -p "$@"
+	rm -f "$@/"*.yaml
+	$(PY_RUN) -m dashboards.render -o "$@" --format yaml
+	touch "$@"
 
 ### HELM CHARTS ###
 
@@ -70,11 +100,10 @@ CHART_NAME = $(dir $(patsubst charts/%,%,$@))
 # Update helm chart README
 # WARNING: if README.md is updated after values.yaml, this won't run
 charts/materialize-monitoring/README.md: charts/materialize-monitoring/values.yaml
-	bin/helm-readme-sync "$(CHART_NAME)"
+	bin/helm-readme-sync "charts/$(CHART_NAME)"
 	touch "$@"
 
-# TODO: helm package
-HELM_VERSION_materialize-monitoring = TODO.0.0
+HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring/README.md
 	helm package charts/materialize-monitoring --destination charts/
 	test -f "$@"
@@ -90,7 +119,13 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
+docs/static/downloads/dashboards/grafana: $(SOURCES_grafana-dashboards)
+	mkdir -p "$@"
+	rm -f "$@/"*.json
+	$(PY_RUN) -m dashboards.render -o "$@" --format json
+	touch "$@"
+
 # Generate docs
-docs/public: $(shell find docs/content -type f)
+docs/public: $(shell find docs/content)
 	$(HUGO_BIN) --source docs --destination public
 	touch "$@"

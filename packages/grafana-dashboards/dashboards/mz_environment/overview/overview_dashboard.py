@@ -82,6 +82,4 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
 
 if __name__ == "__main__":
-    from grafana_foundation_sdk.cog.encoder import JSONEncoder
-
-    print(JSONEncoder(indent=2).encode(EnvironmentOverviewDashboard()))  # noqa: T201
+    print(EnvironmentOverviewDashboard.render())  # noqa: T201
