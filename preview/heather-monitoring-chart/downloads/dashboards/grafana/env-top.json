@@ -7002,8 +7002,8 @@
     "links": [],
     "preload": false,
     "tags": [
-      "monitoring",
-      "materialize"
+      "materialize",
+      "monitoring"
     ],
     "timeSettings": {
       "from": "now-6h",
