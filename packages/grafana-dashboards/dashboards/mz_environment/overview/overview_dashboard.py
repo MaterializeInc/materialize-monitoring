@@ -16,7 +16,11 @@ from .summary import OverviewSummary
 
 
 class EnvironmentOverviewDashboard(MzDashboard):
-    """Overview of a Materialize Environment."""
+    """Overview of a Materialize Environment.
+
+    This provides a high-level summary to catch more obvious issues
+    that may require further investigation.
+    """
 
     TITLE = "Environment Overview"
 

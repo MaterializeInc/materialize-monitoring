@@ -51,7 +51,7 @@ docs: docs/public
 .PHONY: docs
 
 # Generate grafana dashboards
-grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/static/downloads/dashboards/grafana
+grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
 # Make all dashboards
@@ -119,7 +119,7 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
-docs/static/downloads/dashboards/grafana: $(SOURCES_grafana-dashboards)
+docs/assets/dashboards/grafana: $(SOURCES_grafana-dashboards)
 	mkdir -p "$@"
 	rm -f "$@/"*.json
 	$(PY_RUN) -m dashboards.render -o "$@" --format json

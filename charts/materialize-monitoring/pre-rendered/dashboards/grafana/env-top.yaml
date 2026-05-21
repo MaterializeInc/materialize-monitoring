@@ -5,7 +5,12 @@ metadata:
 spec:
   annotations: []
   cursorSync: 'Off'
-  description: Overview of a Materialize Environment.
+  description: 'Overview of a Materialize Environment.
+
+
+    This provides a high-level summary to catch more obvious issues
+
+    that may require further investigation.'
   editable: true
   elements:
     active-indexes:

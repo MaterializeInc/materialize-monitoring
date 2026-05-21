@@ -7289,7 +7289,7 @@
         }
       }
     ],
-    "description": "Overview of a Materialize Environment.",
+    "description": "Overview of a Materialize Environment.\n\nThis provides a high-level summary to catch more obvious issues\nthat may require further investigation.",
     "editable": true
   }
 }
