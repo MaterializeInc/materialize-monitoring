@@ -1,0 +1,52 @@
+{{/*
+  grafana-dashboards: renders a table of available Grafana dashboards.
+
+  Scans dashboard JSON files under assets/dashboards/grafana/,
+  filters to the Grafana v2 dashboard schema (Grafana 13+), and shows
+  the title, .spec.description, and a download link for each.
+
+  Params (optional):
+    pattern     Source directory, relative to the asset directory.
+                Defaults to "dashboards/grafana/*.json".
+    apiVersion  Dashboard apiVersion to include.
+                Defaults to "dashboard.grafana.app/v2".
+
+  Usage:
+    {{< grafana-dashboards >}}
+*/}}
+{{- $pattern := .Get "pattern" | default "dashboards/grafana/*.json" -}}
+{{- $apiVersion := .Get "apiVersion" | default "dashboard.grafana.app/v2" -}}
+{{- $found := resources.Match $pattern -}}
+{{- if not $found }}
+  <p>No matching dashboards found.</p>
+{{- else }}
+<table class="grafana-dashboards">
+  <thead>
+    <tr>
+      <th>Dashboard</th>
+      <th>Description</th>
+      <th>Download</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range $found }}
+      {{- $content := .Content }}
+      {{- $contentHash := hash.XxHash $content }}
+      {{- $data := transform.Unmarshal $content }}
+      {{- if eq $data.apiVersion $apiVersion }}
+        {{- $spec := $data.spec }}
+        {{- $href := printf "%s?xxhash=%s" .RelPermalink $contentHash | relURL }}
+        {{- /* Dedent docstring-style descriptions before markdownify. */ -}}
+        {{- $desc := $spec.description | default "" }}
+        {{- $uid := $data.metadata.name }}
+        {{- $downloadName := printf "%s-%s.json" $uid $contentHash }}
+    <tr>
+      <td>{{ $spec.title }}</td>
+      <td>{{ $desc | markdownify }}</td>
+      <td><a href="{{ $href }}" download="{{ $downloadName }}"><code>{{ $uid }}</code></a></td>
+    </tr>
+      {{- end }}
+    {{- end }}
+  </tbody>
+</table>
+{{- end }}

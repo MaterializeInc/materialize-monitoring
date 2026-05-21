@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import inspect
 import typing
 from collections.abc import Sequence
 
@@ -47,7 +48,9 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
             kwargs["title"] = f"{GLOBAL_DASHBOARD_CONFIG.title_prefix} {self.TITLE}"
         if not kwargs.get("description"):
             kwargs["description"] = (
-                self.__doc__ if self.DESCRIPTION == "__doc__" else self.DESCRIPTION
+                inspect.cleandoc(self.__doc__ or "<Missing Description>")
+                if self.DESCRIPTION == "__doc__"
+                else self.DESCRIPTION
             )
         if not kwargs.get("tags"):
             kwargs["tags"] = _unique_list(

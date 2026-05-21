@@ -11,7 +11,7 @@ that are recommended for managing Materialize and its infrastructure.
 
 ## Importing Dashboards via the Grafana UI
 
-Download one of the corresponding `.json` files from the "Download Dashboards" section below.
+Download one of the corresponding `.json` files from the [Download Dashboards](#download-dashboards) section below.
 
 From a Grafana instance, navigate to the "New" menu on any page
 or within a specific folder.
@@ -25,7 +25,12 @@ TODO: move some filters off of hidden variables.
 
 ## Importing Dashboards via `gcx` (grafana-cli)
 
-TODO
+[gcx](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/) is a CLI interface for managing Grafana from the command line.
+It is built for Dashboards-as-Code workflows and AI agent usage.
+
+1. Download one of the corresponding `.json` files from the [Download Dashboards](#download-dashboards) section below.
+2. If you are not logged in via `gcx`, run `gcx login --server YOUR_GRAFANA` to authenticate with your Grafana instance.
+3. Run `gcx dashboards create -f DOWNLOADED_FILE.json` to import the dashboard to your Grafana instance.
 
 ## Importing Dashboards via Grafana Operator
 
@@ -41,12 +46,16 @@ These dashboards use features from latest Grafana versions, so be sure to check 
 To check your Grafana version, navigate to the Grafana instance and click on the "Help" menu (represented by a question mark icon) in the left sidebar.
 Selecting it will show the current version.
 
-### Dashboard v2 (Grafana 13)
+### Grafana 13 (Dashboard Schema v2)
 
-TODO: environment table
+Right now, these are the only supported dashboards.
 
-[Environment Overview](../../downloads/dashboards/grafana/env-top.json)
+{{< grafana-dashboards pattern="dashboards/grafana/*.json" apiVersion="dashboard.grafana.app/v2" >}}
 
-### Dashboard v2beta1 (Grafana 12)
+### Grafana 12 (Dashboard Schema v2beta1)
 
-TODO: add links
+{{< grafana-dashboards pattern="dashboards/grafana-v2beta1/*.json" apiVersion="dashboard.grafana.app/v2beta1" >}}
+
+### Grafana 10 and 11 (Dashboard Schema v1)
+
+{{< grafana-dashboards pattern="dashboards/grafana-v1/*.json" apiVersion="" >}}
