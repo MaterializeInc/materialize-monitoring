@@ -33,6 +33,9 @@ PY_RUN := uv run
 # By default, we get the one from go.mod
 HUGO_BIN ?= GOFLAGS=-tags=extended $(GO) tool hugo
 
+# Invoke helm-docs as a tool (set HELM_DOCS=helm-docs to use brew)
+HELM_DOCS ?= $(GO) tool helm-docs
+
 # Whether brew can be used for installs (use ifneq)
 HAS_BREW := $(shell command -v brew 2> /dev/null)
 
@@ -97,11 +100,42 @@ charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana
 # Helm chart name
 CHART_NAME = $(dir $(patsubst charts/%,%,$@))
 
-# Update helm chart README
-# WARNING: if README.md is updated after values.yaml, this won't run
-charts/materialize-monitoring/README.md: charts/materialize-monitoring/values.yaml
-	bin/helm-readme-sync "charts/$(CHART_NAME)"
+# Shared sources that drive helm-docs regeneration
+HELM_DOCS_SOURCES_materialize-monitoring = \
+	charts/materialize-monitoring/values.yaml \
+	charts/materialize-monitoring/Chart.yaml
+
+# Generate the chart-local README.md from values.yaml + the README template.
+charts/materialize-monitoring/README.md: \
+		$(HELM_DOCS_SOURCES_materialize-monitoring) \
+		charts/materialize-monitoring/README.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root charts/materialize-monitoring \
+		--template-files README.md.gotmpl \
+		--output-file README.md \
+		--sort-values-order file \
+		--ignore-non-descriptions
 	touch "$@"
+
+# Generate the docsite values reference from the same values.yaml.
+# Output and template paths are relative to the chart directory, hence
+# the `../../` prefix.
+docs/content/reference/helm/materialize-monitoring-values.md: \
+		$(HELM_DOCS_SOURCES_materialize-monitoring) \
+		docs/content/reference/helm/materialize-monitoring-values.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root charts/materialize-monitoring \
+		--template-files ../../docs/content/reference/helm/materialize-monitoring-values.md.gotmpl \
+		--output-file ../../docs/content/reference/helm/materialize-monitoring-values.md \
+		--sort-values-order file \
+		--ignore-non-descriptions
+	touch "$@"
+
+# Convenience phony: regenerate both helm-docs outputs.
+helm-docs: \
+	charts/materialize-monitoring/README.md \
+	docs/content/reference/helm/materialize-monitoring-values.md
+.PHONY: helm-docs
 
 HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring/README.md
@@ -126,6 +160,8 @@ docs/assets/dashboards/grafana: $(SOURCES_grafana-dashboards)
 	touch "$@"
 
 # Generate docs
-docs/public: $(shell find docs/content)
+docs/public: \
+		$(shell find docs/content) \
+		docs/content/reference/helm/materialize-monitoring-values.md
 	$(HUGO_BIN) --source docs --destination public
 	touch "$@"

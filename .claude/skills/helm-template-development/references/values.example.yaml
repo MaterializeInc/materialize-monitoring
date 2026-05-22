@@ -1,123 +1,154 @@
-# This an example values.yaml file for reference.
-# This is annotated with comments to describe how things are used.
-# Note that readme-generator-for-helm skips over basic comments like these.
+# This is an example values.yaml file annotated for helm-docs.
+#
+# helm-docs picks up two kinds of comments:
+#   - `# -- <description>` directly above a key — documents that key.
+#   - `# @section -- <Name>` in the same comment block — assigns the
+#     key to a named section. Every documented key needs its own
+#     `# @section --`; there is no propagation.
+#   - `# @default -- <override>` overrides the displayed default. Use
+#     when the literal value is `{}` / `[]` / large / opaque.
+#
+# Lines that are NOT directly above a documented key (e.g. plain `#`
+# narrative comments) are ignored by helm-docs and do not pollute the
+# generated table.
 
-## @section Global Configuration
 global:
-  ## @param global.imageRegistry An override for all image registries
+  # -- An override for all image registries
+  # @section -- Global Configuration
   imageRegistry: ""
-  ## @param global.imagePullSecrets An array of image pull secrets to use
+  # -- An array of image pull secrets to use
+  # @section -- Global Configuration
   imagePullSecrets: []
 
-## @param fullnameOverride Override for the full name of resources
+# -- Override for the full name of resources
+# @section -- Global Configuration
 fullnameOverride: ""
-## @skip nameOverride
+# nameOverride is intentionally undocumented (helm-docs skips it).
 nameOverride: ""
 
-## @param commonLabels [object] Common labels to apply to all resources
+# -- Common labels to apply to all resources
+# @default -- `{}`
+# @section -- Global Configuration
 commonLabels: {}
-## @param commonAnnotations [object] Common annotations to apply to all resources
+# -- Common annotations to apply to all resources
+# @default -- `{}`
+# @section -- Global Configuration
 commonAnnotations: {}
-## @param extraDeploy [array] An array of arbitrary Kubernetes resources to deploy
+# -- An array of arbitrary Kubernetes resources to deploy
+# @default -- `[]`
+# @section -- Global Configuration
 extraDeploy: []
 
-## @section Example Component
 myComponent:
-  ## @param myComponent.enabled Whether to enable this component
+  # -- Whether to enable this component
+  # @section -- Example Component
   enabled: true
 
-  ## @param myComponent.replicaCount Number of replicas for this component. This is ignored if a auto-scaling is configured.
+  # -- Number of replicas for this component. Ignored when auto-scaling is configured.
+  # @section -- Example Component
   replicaCount: 1
 
   image:
-    ## @param myComponent.image.repository Container image repository for this component
+    # -- Container image repository for this component
+    # @section -- Example Component
     repository: "my-image-repo/my-component"
-    ## @param myComponent.image.tag Container image tag for this component. Defaults to AppVersion unless digest is set.
+    # -- Container image tag for this component. Defaults to AppVersion unless digest is set.
+    # @section -- Example Component
     tag: ""
-    ## @param myComponent.image.digest Container image digest for this component. This takes precedence over tag.
+    # -- Container image digest for this component. Takes precedence over tag.
+    # @section -- Example Component
     digest: ""
-    ## @param myComponent.image.pullPolicy Container image pull policy for this component
+    # -- Container image pull policy for this component
+    # @section -- Example Component
     pullPolicy: IfNotPresent
 
-  # Probes have a number of specific fields, but we really try to limit to configuring
-  # just failureThreshold and periodSeconds, as those are most common to the end user.
-  # If the user does need more control, they can specify their own probe.
-  # They can also set enabled: false to disable this probe.
-
-  ## @param myComponent.startupProbe.enabled Whether to enable a startup probe for this component
-  ## @param myComponent.startupProbe.failureThreshold Failure threshold for the probe
-  ## @param myComponent.startupProbe.periodSeconds Wait time between probes
-  ## @skip myComponent.startupProbe.customProbe [object] Run this probe instead of the default.
+  # Probes have a number of specific fields, but we limit configuration
+  # to failureThreshold and periodSeconds — the most common knobs. Users
+  # who need more control can set `customProbe` directly or disable the
+  # probe with `enabled: false`. customProbe is intentionally left
+  # undocumented (helm-docs skips it).
   startupProbe:
+    # -- Whether to enable a startup probe for this component
+    # @section -- Example Component
     enabled: true
+    # -- Failure threshold for the probe
+    # @section -- Example Component
     failureThreshold: 10
+    # -- Wait time between probes
+    # @section -- Example Component
     periodSeconds: 10
     customProbe: {}
 
-  ## @param myComponent.livenessProbe.enabled Whether to enable a liveness probe for this component
-  ## @param myComponent.livenessProbe.failureThreshold Failure threshold for the probe
-  ## @param myComponent.livenessProbe.periodSeconds Wait time between probes
-  ## @skip myComponent.livenessProbe.customProbe [object] Run this probe instead of the default.
   livenessProbe:
+    # -- Whether to enable a liveness probe for this component
+    # @section -- Example Component
     enabled: true
+    # -- Failure threshold for the probe
+    # @section -- Example Component
     failureThreshold: 10
+    # -- Wait time between probes
+    # @section -- Example Component
     periodSeconds: 10
     customProbe: {}
 
-  ## @param myComponent.readinessProbe.enabled Whether to enable a readiness probe for this component
-  ## @param myComponent.readinessProbe.failureThreshold Failure threshold for the probe
-  ## @param myComponent.readinessProbe.periodSeconds Wait time between probes
-  ## @skip myComponent.readinessProbe.customProbe [object] Run this probe instead of the default.
   readinessProbe:
+    # -- Whether to enable a readiness probe for this component
+    # @section -- Example Component
     enabled: true
+    # -- Failure threshold for the probe
+    # @section -- Example Component
     failureThreshold: 10
+    # -- Wait time between probes
+    # @section -- Example Component
     periodSeconds: 10
     customProbe: {}
 
-  # Best practices dictate that customers specify their own resources,
-  # but we provide our own reasonable defaults in the meantime
   resources:
-    ## @param myComponent.resources.limits [object] Resource limits for this component
+    # -- Resource limits for this component
+    # @default -- see `values.yaml`
+    # @section -- Example Component
     limits:
       cpu: "100m"
       memory: "128Mi"
-    ## @param myComponent.resources.requests [object] Resource requests for this component
+    # -- Resource requests for this component
+    # @default -- see `values.yaml`
+    # @section -- Example Component
     requests:
       cpu: "100m"
       memory: "128Mi"
 
-  # We default to the most secure configuration we allow
-
-  ## @param myComponent.podSecurityContext.enabled Whether to enable a pod security context for this component
-  ## @param myComponent.podSecurityContext.fsGroupChangePolicy Whether to change fsGroup
-  ## @skip myComponent.podSecurityContext.sysctls Additional sysctls to enable on the pod
-  ## @skip myComponent.podSecurityContext.supplementalGroups Additional supplemental groups to add to the pod
-  ## @param myComponent.podSecurityContext.fsGroup fsGroup to set on the pod.
+  # We default to the most secure configuration we allow.
   podSecurityContext:
+    # -- Whether to enable a pod security context for this component
+    # @section -- Example Component
     enabled: true
+    # -- Whether to change fsGroup
+    # @section -- Example Component
     fsGroupChangePolicy: OnRootMismatch
+    # -- fsGroup to set on the pod.
+    # @section -- Example Component
+    fsGroup: 1234
     sysctls: []
     supplementalGroups: []
-    fsGroup: 1234
 
-  ## @param myComponent.containerSecurityContext.enabled Whether to enable a container security context for this component
-  ## @param myComponent.containerSecurityContext.privileged Whether to run the container in privileged mode
-  ## @param myComponent.containerSecurityContext.runAsUser User ID to run the container as
-  ## @param myComponent.containerSecurityContext.runAsGroup Group ID to run the container as
-  ## @skip myComponent.containerSecurityContext.runAsNonRoot Whether to require running as non-root
-  ## @param myComponent.containerSecurityContext.readOnlyRootFilesystem Whether to set the root filesystem as read-only
-  ## @skip myComponent.containerSecurityContext.allowPrivilegeEscalation Whether to allow privilege escalation
-  ## @skip myComponent.containerSecurityContext.capabilities.drop Default capabilities to drop from the container
-  ## @skip myComponent.containerSecurityContext.capabilities.add Default capabilities to add to the container
-  ## @skip myComponent.containerSecurityContext.seccompProfile [object] Seccomp profile to apply to the container
   containerSecurityContext:
+    # -- Whether to enable a container security context for this component
+    # @section -- Example Component
     enabled: true
+    # -- Whether to run the container in privileged mode
+    # @section -- Example Component
     privileged: false
+    # -- User ID to run the container as
+    # @section -- Example Component
+    runAsUser: 1234
+    # -- Group ID to run the container as
+    # @section -- Example Component
+    runAsGroup: 1234
+    # -- Whether to set the root filesystem as read-only
+    # @section -- Example Component
+    readOnlyRootFilesystem: true
     capabilities:
       add: []
       drop: ["ALL"]
-    runAsUser: 1234
-    runAsGroup: 1234
-    readOnlyRootFilesystem: true
     seccompProfile:
       type: RuntimeDefault

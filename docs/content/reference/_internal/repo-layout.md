@@ -15,9 +15,7 @@ weight: 10
     * `ci-build`: Orchestrates artifact generation
     * `ci-test`: Orchestrates the test layers
     * `ci-publish`
-    * `helm-readme-sync`: Entrypoint for the README generator under tools/helm-readme-sync/
   * `tools/`: Ancillary projects with their own ecosystems, kept out of bin/
-    * `helm-readme-sync/`: Node-based readme-generator-for-helm; package.json and yarn.lock live here
     * `kind-assets/`: YAML assets used by the kind/ArgoCD/FluxCD CI matrix
   * `.github/`
     * `workflows/`: GitHub Actions workflow definitions; thin wrappers over bin/ scripts

@@ -2,7 +2,10 @@ module github.com/materializeinc/materialize-monitoring
 
 go 1.25.0
 
-tool github.com/gohugoio/hugo
+tool (
+	github.com/gohugoio/hugo
+	github.com/norwoodj/helm-docs/cmd/helm-docs
+)
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -26,6 +29,9 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.54.0 // indirect
 	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0 // indirect
+	github.com/Masterminds/goutils v1.1.1 // indirect
+	github.com/Masterminds/semver/v3 v3.2.1 // indirect
+	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.6 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.3 // indirect
@@ -110,6 +116,9 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hairyhenderson/go-codeowners v0.7.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/huandu/xstrings v1.4.0 // indirect
+	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jdkato/prose v1.2.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -118,6 +127,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/kyokomi/emoji/v2 v2.2.13 // indirect
 	github.com/magefile/mage v1.17.2 // indirect
+	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/makeworld-the-better-one/dither/v2 v2.4.0 // indirect
 	github.com/marekm4/color-extractor v1.2.1 // indirect
@@ -125,10 +135,13 @@ require (
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c // indirect
+	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/muesli/smartcrop v0.3.0 // indirect
 	github.com/niklasfasching/go-org v1.9.1 // indirect
+	github.com/norwoodj/helm-docs v1.14.2 // indirect
 	github.com/oasdiff/yaml v0.0.9 // indirect
 	github.com/oasdiff/yaml3 v0.0.12 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
@@ -144,12 +157,17 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/shopspring/decimal v1.3.1 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/fsync v0.10.1 // indirect
+	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/viper v1.16.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
+	github.com/subosito/gotenv v1.4.2 // indirect
 	github.com/tdewolff/minify/v2 v2.24.13 // indirect
 	github.com/tdewolff/parse/v2 v2.8.12 // indirect
 	github.com/tetratelabs/wazero v1.11.0 // indirect
@@ -185,7 +203,9 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	helm.sh/helm/v3 v3.15.2 // indirect
 	howett.net/plist v1.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.7.0 // indirect
