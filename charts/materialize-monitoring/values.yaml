@@ -248,9 +248,51 @@ loki: {}
   # enabled: true
 
 ## @param thanos [object] Bundled Thanos backend for long-term metrics.
-thanos: {}
+thanos:
   # Circuit breaker (precedence over `tags.bundled-backends` and `tags.thanos`):
   # enabled: true
+
+  global:
+    objstore:
+      createSecret: false
+      secretName: thanos-objstore-config
+      secretKey: objstore.yml
+    serviceMonitor:
+      enabled: true
+    serviceAccount:
+      annotations: {}
+      #   eks.amazonaws.com/role-arn: ""
+
+  ## @param thanos.query [object] Thanos Query configuration. Query provides a PromQL query endpoint.
+  query:
+    enabled: true
+
+  ## @param thanos.receive [object] Thanos receive configuration. Receive provides a Prometheus remote_write-compatible endpoint.
+  receive:
+    enabled: true
+    mode: standalone
+
+  ## @param thanos.storegateway [object] Thanos Store Gateway configuration. Store Gateway provides historical block querying.
+  storegateway:
+    enabled: true
+
+  ## @param thanos.compactor [object] Thanos Compactor configuration. Compactor provides block compaction and downsampling.
+  compactor:
+    enabled: true
+
+    retention:
+      resolutionRaw: 30d
+      resolution5m: 90d
+      resolution1h: 365d
+
+  ## @param thanos.queryFrontend [object] Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.
+  queryFrontend:
+    enabled: false
+
+  ## @param thanos.ruler [object] Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.
+  ruler:
+    enabled: false
+
 
 ## @param grafana-operator [object] Bundled Grafana-operator for dashboard rendering.
 # https://grafana.github.io/grafana-operator/docs/installation/helm/#values

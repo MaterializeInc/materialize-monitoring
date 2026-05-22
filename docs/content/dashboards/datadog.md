@@ -1,5 +1,5 @@
 ---
-title: "DataDog"
+title: "Datadog"
 weight: 20
 ---
 
