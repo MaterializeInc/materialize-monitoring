@@ -7,6 +7,8 @@ weight: 1
 ---
 # materialize-monitoring Documentation
 
+{{< wip >}}
+
 This documentation is for end users and developers of the Materialize monitoring stack.
 
 If you are looking for the main Materialize documentation, please see [materialize.com/docs](https://materialize.com/docs/).

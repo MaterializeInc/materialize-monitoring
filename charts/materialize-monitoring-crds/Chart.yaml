@@ -1,0 +1,36 @@
+apiVersion: v2
+name: materialize-monitoring-crds
+description: |
+  CRDs for Materialize Monitoring components.
+  This does not install any additional resources other than CRDs.
+type: application
+version: 0.0.1
+appVersion: "0.0.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/MaterializeInc/materialize-monitoring
+sources:
+  - https://github.com/MaterializeInc/materialize-monitoring
+maintainers:
+  - name: Materialize
+    email: support@materialize.com
+    url: https://materialize.com
+keywords:
+  - materialize
+  - observability
+  - monitoring
+  - prometheus
+  - crds
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial CRD chart skeleton.
+
+
+dependencies:
+  - name: prometheus-operator-crds
+    version: "^29.0.0"
+    repository: oci://ghcr.io/prometheus-community/charts
+    condition: prometheus-operator-crds.enabled
+    tags:
+      - crds
+      - prometheus-operator-crds

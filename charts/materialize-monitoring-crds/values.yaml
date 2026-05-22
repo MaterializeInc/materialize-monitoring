@@ -1,0 +1,6 @@
+# This chart does not install any other resources other than CRDs.
+
+prometheus-operator-crds:
+  crds:
+    annotations:
+      helm.sh/resource-policy: keep

@@ -13,7 +13,9 @@ metadata:
     {{- include "mzmon.annotations" $ | nindent 4 }}
   labels:
     {{- include "mzmon.labels" $ | nindent 4 }}
-    {{- $.Values.connections.grafana.labels | toYaml | nindent 4 }}
+    {{- if $.Values.connections.grafana.labels }}
+      {{- $.Values.connections.grafana.labels | toYaml | nindent 4 }}
+    {{- end }}
 spec:
   external:
   {{- if $.Values.connections.grafana.external.url }}
@@ -31,10 +33,10 @@ spec:
       {{- $.Values.connections.grafana.external.adminUser | required "adminUser is required with adminPassword" | toYaml | nindent 6 }}
   {{- else if ( eq $.Values.connections.grafana.mode "bundled" ) }}
     adminPassword:
-      name: {{- printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote | toYaml | nindent 6 }}
+      name: {{ printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote }}
       key: GF_SECURITY_ADMIN_PASSWORD
     adminUser:
-      name: {{- printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote | toYaml | nindent 6 }}
+      name: {{ printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote }}
       key: GF_SECURITY_ADMIN_USER
   {{- end }}
 {{- end }}
