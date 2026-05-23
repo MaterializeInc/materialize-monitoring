@@ -71,7 +71,7 @@ weight: 10
       * `metrics/`
       * `operating/`
       * `reference/`
-        * `_internal/`: Reference content for repo contributors and AI agents; not public-facing documentation
+        * `internal/`: Reference content for repo contributors and AI agents; not public-facing documentation
           * `dashboard/`: Stable conventions for dashboards-as-code project
           * `releasing.md`: Releasing process documentation (in progress)
           * `contract/`: Public-facing rendering of the contract docs

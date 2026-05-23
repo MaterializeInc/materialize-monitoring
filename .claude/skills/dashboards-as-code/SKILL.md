@@ -6,7 +6,7 @@ description: |
 
 # Dashboards as Code
 
-This skill is the entry point for the Materialize dashboards-as-code project. **Stable conventions live in the repo docsite** under [`docs/content/reference/_internal/dashboard/`](../../../docs/content/reference/_internal/dashboard/) — this file is intentionally slim and links into the docsite at heading-level granularity. The non-link content below is the **state snapshot**: what currently exists, what's in flight, and what's queued for cleanup.
+This skill is the entry point for the Materialize dashboards-as-code project. **Stable conventions live in the repo docsite** under [`docs/content/reference/internal/dashboard/`](../../../docs/content/reference/internal/dashboard/) — this file is intentionally slim and links into the docsite at heading-level granularity. The non-link content below is the **state snapshot**: what currently exists, what's in flight, and what's queued for cleanup.
 
 ## Audience reminder
 
@@ -18,28 +18,28 @@ The **docsite reference pages** target repo contributors (SRE, Field Engineering
 
 | Looking for… | Read |
 |---|---|
-| Grafana target versions, Dashboard v1/v2 schema state, SDK choices | [SDKs and Schemas](../../../docs/content/reference/_internal/dashboard/sdks.md) |
-| Code structure, UID conventions, push process, `gcx dashboards update` vs ad-hoc v2 API | [Generating and Pushing Dashboards](../../../docs/content/reference/_internal/dashboard/generating.md) |
-| Palettes, layouts, panel visualization, panel description voice, PromQL conventions, label families, metric quirks, PromQL recipes, module-level constants table | [Style Guidelines](../../../docs/content/reference/_internal/dashboard/style-guidelines.md) |
-| Testing conventions (currently sparse) | [Testing](../../../docs/content/reference/_internal/dashboard/testing.md) |
+| Grafana target versions, Dashboard v1/v2 schema state, SDK choices | [SDKs and Schemas](../../../docs/content/reference/internal/dashboard/sdks.md) |
+| Code structure, UID conventions, push process, `gcx dashboards update` vs ad-hoc v2 API | [Generating and Pushing Dashboards](../../../docs/content/reference/internal/dashboard/generating.md) |
+| Palettes, layouts, panel visualization, panel description voice, PromQL conventions, label families, metric quirks, PromQL recipes, module-level constants table | [Style Guidelines](../../../docs/content/reference/internal/dashboard/style-guidelines.md) |
+| Testing conventions (currently sparse) | [Testing](../../../docs/content/reference/internal/dashboard/testing.md) |
 
 Frequently needed deep links into the Style Guidelines:
 
-- [Tab-level theming](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#tab-level-theming)
-- [Multi-select variables in regex contexts](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#multi-select-variables-in-regex-contexts)
-- [Sparkline stats](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#sparkline-stats)
-- [Partitioned sparkline stats](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#partitioned-sparkline-stats)
-- [Writing panel descriptions](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#writing-panel-descriptions)
-- [Filtering by cluster / replica](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#filtering-by-cluster--replica)
-- [Materialize metric label families](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#materialize-metric-label-families)
-- [Known metric quirks and gotchas](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
-- [PromQL recipes](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#promql-recipes)
-- [Shared module-level constants and helpers](../../../docs/content/reference/_internal/dashboard/style-guidelines.md#shared-module-level-constants-and-helpers)
+- [Tab-level theming](../../../docs/content/reference/internal/dashboard/style-guidelines.md#tab-level-theming)
+- [Multi-select variables in regex contexts](../../../docs/content/reference/internal/dashboard/style-guidelines.md#multi-select-variables-in-regex-contexts)
+- [Sparkline stats](../../../docs/content/reference/internal/dashboard/style-guidelines.md#sparkline-stats)
+- [Partitioned sparkline stats](../../../docs/content/reference/internal/dashboard/style-guidelines.md#partitioned-sparkline-stats)
+- [Writing panel descriptions](../../../docs/content/reference/internal/dashboard/style-guidelines.md#writing-panel-descriptions)
+- [Filtering by cluster / replica](../../../docs/content/reference/internal/dashboard/style-guidelines.md#filtering-by-cluster--replica)
+- [Materialize metric label families](../../../docs/content/reference/internal/dashboard/style-guidelines.md#materialize-metric-label-families)
+- [Known metric quirks and gotchas](../../../docs/content/reference/internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
+- [PromQL recipes](../../../docs/content/reference/internal/dashboard/style-guidelines.md#promql-recipes)
+- [Shared module-level constants and helpers](../../../docs/content/reference/internal/dashboard/style-guidelines.md#shared-module-level-constants-and-helpers)
 
 And into Generating:
 
-- [PUT body shape](../../../docs/content/reference/_internal/dashboard/generating.md#put-body-shape) — required Kubernetes-style envelope when pushing v2 dashboards via `grafana_api_request`
-- [Service account permissions](../../../docs/content/reference/_internal/dashboard/generating.md#service-account-permissions) — decoding 403s
+- [PUT body shape](../../../docs/content/reference/internal/dashboard/generating.md#put-body-shape) — required Kubernetes-style envelope when pushing v2 dashboards via `grafana_api_request`
+- [Service account permissions](../../../docs/content/reference/internal/dashboard/generating.md#service-account-permissions) — decoding 403s
 
 ## Schema reference files
 
@@ -61,7 +61,7 @@ This section captures the live state of the dashboards in this repo so the next 
 
 | Family | Dashboard module | Class | Live UID |
 |---|---|---|---|
-| `mz_environment` | `overview.overview_dashboard` | `EnvironmentOverviewDashboard` | (auto-assigned at first upload; codified UID is `mz-mon-env-top`, but the live one diverged before that became authoritative — see [UID selection and behavior](../../../docs/content/reference/_internal/dashboard/generating.md#uid-selection-and-behavior)) |
+| `mz_environment` | `overview.overview_dashboard` | `EnvironmentOverviewDashboard` | (auto-assigned at first upload; codified UID is `mz-mon-env-top`, but the live one diverged before that became authoritative — see [UID selection and behavior](../../../docs/content/reference/internal/dashboard/generating.md#uid-selection-and-behavior)) |
 
 The `mz_environment/overview` dashboard has six tabs, in declared order:
 
