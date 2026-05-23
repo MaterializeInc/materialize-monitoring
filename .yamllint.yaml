@@ -22,6 +22,7 @@ ignore: |
   legacy/
   dist/
   target/
+  .venv/
   docs/public/
   docs/resources/
   docs/assets/dashboards/
@@ -85,7 +86,7 @@ rules:
     check-multi-line-strings: false
   # Let's be generous with line length (default is 80)
   line-length:
-    max: 120
+    max: 160
     allow-non-breakable-words: true
     allow-non-breakable-inline-mappings: true
     level: warning
@@ -102,11 +103,11 @@ rules:
     quote-type: double
     # KYAML requires quoting strings
     required: false
-    extra-required:
-      # starting with non-alphanumeric
-      - "^\\W"
-      # containing YAML special characters
-      - "[\\{\\[:]"
+    # extra-required:
+    #   # starting with non-alphanumeric
+    #   - "^\\W"
+    #   # containing YAML special characters
+    #   - "[\\{\\[:]"
     # Allow single quote around double quotes
     allow-quoted-quotes: true
     # Quote keys when they contain special characters

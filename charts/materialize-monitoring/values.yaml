@@ -232,21 +232,21 @@ _subchartSection: stub
 # -- (h4) Alloy collector instance running close to scrape targets. Pre-egress shaping happens here.
 # @notationType -- (sectionstart) Alloy Agent
 alloy-agent: {}
-  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
-  # enabled: true
+# Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
+# enabled: true
 
 # -- (h4) Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.
 # @notationType -- (sectionstart) Alloy Gateway
 # @default -- `{}`
 alloy-gateway: {}
-  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
-  # enabled: true
+# Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
+# enabled: true
 
 # -- (h4) Bundled Loki backend for logs.
 # @notationType -- (sectionstart) Loki
 loki: {}
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
-  # enabled: true
+# Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
+# enabled: true
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos
@@ -329,17 +329,17 @@ grafana:
 # -- (h4) Bundled Alertmanager for routing alerts emitted by the rule packages.
 # @notationType -- (sectionstart) Alertmanager
 alertmanager: {}
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.alertmanager`):
-  # enabled: true
+# Circuit breaker (precedence over `tags.bundled-backends` and `tags.alertmanager`):
+# enabled: true
 
 # -- (h4) kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.
 # @notationType -- (sectionstart) Kube State Metrics
 kube-state-metrics: {}
-  # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.kube-state-metrics`):
-  # enabled: true
+# Circuit breaker (precedence over `tags.cluster-metrics` and `tags.kube-state-metrics`):
+# enabled: true
 
 # -- (h4) metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
 # @notationType -- (sectionstart) Metrics Server
 metrics-server: {}
-  # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.metrics-server`):
-  # enabled: true
+# Circuit breaker (precedence over `tags.cluster-metrics` and `tags.metrics-server`):
+# enabled: true
