@@ -199,6 +199,14 @@ main.container {
   }
 }
 
+.markdown table.helm-values {
+  pre, code {
+    padding: rem(0.5);
+    font-size: rem(1.2);
+    overflow-x: auto;
+  }
+}
+
 .warning,
 .note,
 .info,

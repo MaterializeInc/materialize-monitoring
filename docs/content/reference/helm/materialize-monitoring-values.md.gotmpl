@@ -12,96 +12,19 @@ To update: edit `values.yaml` (or this template), then run
 `make docs/content/reference/helm/materialize-monitoring-values.md`.
 -->
 
+# `materialize-monitoring` Helm Reference
+
 {{ template "chart.description" . }}
 
-## Section guide
-
-The chart's values surface is organized into sections. This page walks
-each section's intent before listing every key in the [Values](#values)
-reference below.
-
-### Profile selection
-
-A profile chooses sensible defaults for which subcharts are enabled, how
-the Alloy pipeline is wired, and how telemetry egresses. Profiles never
-override an explicitly-set value: anything you set further down in
-`values.yaml` wins.
-
-Supported profiles:
-
-- `datadog-agent` — customer runs Datadog Agents; Alloy emits via the
-  local Agent's OpenMetrics check or DogStatsD. No bundled backends.
-- `prometheus-remote-write` — customer remote-writes to Datadog or any
-  Prometheus-compatible endpoint. Gateway applies cardinality reduction
-  before egress.
-- `otlp` — customer runs an OTel-native backend (Honeycomb-class). Alloy
-  emits OTLP to a customer-supplied collector endpoint.
-- `bundled-stack` — customer has no existing observability stack. This
-  chart deploys Loki + Thanos + Grafana + Alertmanager locally.
-
-### Subchart enablement (Helm tags)
-
-Subchart enablement has two layers, in precedence order:
-
-1. **Per-chart circuit breaker (`<chart>.enabled`).** Each subchart
-   dependency carries a `condition: <chart>.enabled` in `Chart.yaml`.
-   The corresponding `enabled:` key is left commented-out under each
-   subchart block in `values.yaml`; uncommenting it force-includes
-   (`true`) or force-excludes (`false`) that chart regardless of any
-   tag state. Helm evaluates `condition:` first and only falls through
-   to tags when the path is absent from values, so this is a hard
-   override.
-2. **Helm tags (the `tags:` block).** When no `<chart>.enabled` is set,
-   enablement is decided by tags. Each dependency in `Chart.yaml`
-   carries a *group tag* (e.g. `bundled-backends`) and a *per-chart
-   tag* (e.g. `loki`); a dependency is included if any of its tags
-   evaluates true (OR semantics). To opt one chart out of an
-   otherwise-enabled group, set the group tag false and flip the
-   per-chart tags individually — or use the circuit breaker.
-
-Group ↔ chart mapping:
-
-| Group tag          | Charts                                              |
-| ------------------ | --------------------------------------------------- |
-| `pipeline`         | `alloy-agent`, `alloy-gateway`                      |
-| `bundled-backends` | `loki`, `thanos`, `grafana`, `alertmanager`         |
-| `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
-| `crds`             | `prometheus-operator-crds`                          |
-
-The tag defaults match `profile=bundled-stack`. Other profiles flip
-`bundled-backends` off and the pipeline exporters appropriately; see
-the profile preset values files under `examples/`.
-
-### Materialize integration
-
-How this chart finds and labels the Materialize deployments it
-monitors. Service discovery details live in the Alloy pipeline
-configuration; the values here are the operator-facing knobs.
-
-### Pipeline configuration
-
-The Alloy pipeline is the flagship deliverable of this chart. Pipeline
-configuration is expressed in values, rendered into ConfigMaps under
-`templates/pipelines/`, and consumed by the Alloy agent and gateway
-release instances.
-
-### Monitoring configurations
-
-Toggles for the dashboards, alerts, rules, and scrape configurations
-the chart ships. Underlying content is generated into `pre-rendered/`
-from the sources under `packages/` and embedded via `.Files.Get`.
-
-### Subcharts
-
-Pass-through values for each subchart. Values nested under a subchart
-key are forwarded verbatim to that subchart; see the upstream chart's
-documentation for the full surface.
-
-Each block exposes a commented-out `enabled:` line: this is the
-per-chart circuit breaker described above. Uncomment it to override
-the tag-based defaults — `true` force-includes, `false` force-excludes.
-Leaving it commented defers to `tags:`.
+{{ template "chart.sourcesSection" . }}
 
 {{ template "chart.requirementsSection" . }}
 
-{{ template "chart.valuesSection" . }}
+{{/* This requires tools/chartlib/helm-docs-lib.gotmpl for auto-section support */}}
+{{- define "chart.valuesTableMd" }}
+  {{- template "helm-docs-lib.autoSectionTables" . }}
+{{- end }}
+
+{{ template "chart.valuesSectionMd" . }}
+
+{{ template "helm-docs.versionFooter" . }}

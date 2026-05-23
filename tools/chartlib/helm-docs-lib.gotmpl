@@ -1,0 +1,189 @@
+{{/* Helpers for rendering with helm-docs.
+
+The Makefile targets include this file for you.
+
+This is intended to not be specific to the materialize-monitoring repo,
+so it may be useful in other places in the future.
+
+Required helm-docs version: v1.14.3 (unreleased as of May 2026)
+
+Main features:
+- Support automatic sectioning of values using the (sectionstart) notation
+- Breaking long keys in hugo docs using <wbr> for better readability
+- Pretty json values
+
+TODO:
+- Add @key support to upstream helm-docs to allow for orphaned comments
+  with explicit keys
+- Add @autoSectionStart to upstream helm-docs to automatically section based
+  on following values+comments without section overrides
+*/}}
+
+{{/* Ensure keys are breakable by period. */}}
+{{- define "chart.valueKeyColumnRenderHtml" }}
+  {{- .Key | replace "." "<wbr>." }}
+{{- end }}
+
+{{/* Include a stable hugo anchor in Values header */}}
+{{- define "chart.valuesHeader" }}
+## Values {#values}
+{{- end }}
+
+{{/* Show github source for oci repos */}}
+{{ define "chart.requirementsTable" }}
+  {{- printf "| Repository | Name | Version |\n" }}
+  {{- printf "|------------|------|---------|\n" }}
+  {{- range .Dependencies }}
+    {{- $name := .Name }}
+    {{- if .Alias }}
+      {{- $name = printf "%s(%s)" .Name .Alias }}
+    {{- end }}
+    {{- $repo := .Repository }}
+    {{- if hasPrefix "oci://ghcr.io/prometheus-community/charts" $repo }}
+      {{- $repo = printf "[%s](%s)" .Repository ( .Repository | replace "oci://ghcr.io/prometheus-community/charts" "https://github.com/prometheus-community/helm-charts" ) }}
+    {{- else if hasPrefix "oci://ghcr.io/" $repo }}
+      {{- $repo = printf "[%s](%s)" .Repository ( .Repository | replace "oci://ghcr.io/" "https://github.com/" ) }}
+    {{- end }}
+    {{- printf "| %s | %s | %s |\n" $repo $name .Version }}
+  {{- end }}
+{{- end }}
+
+{{/* Additional requirements to render in */}}
+{{- define "chart.requirementsProse" }}
+  {{- template "chart.kubeVersionLine" . }}
+### Storage Requirements
+
+Using Thanos or Loki (in the default bundled-stack profile) requires
+object storage (such as an AWS S3 bucket) for long-term storage.
+
+In development, Thanos may use a PVC for less-reliable storage.
+Loki however will not run without object storage.
+You may consider Garage or RustFS or MinIO for manually provisioned object storage.
+{{- end }}
+
+{{/* Show an additional Dependencies header */}}
+{{- define "chart.requirementsSection" }}
+  {{- template "chart.requirementsHeader" . }}
+  {{- printf "\n" }}
+  {{- template "chart.requirementsProse" . }}
+  {{- printf "\n" }}
+  {{- if .Dependencies }}
+    {{- printf "## Included Subcharts\n\n" }}
+    {{- template "chart.requirementsTable" . }}
+  {{- end }}
+{{- end }}
+
+{{/* Handle default values. */}}
+{{- define "chart.valueDefaultColumnRenderHtml" }}
+  {{- $default := .Default }}
+  {{- $type := .Type }}
+  {{- if not $default }}
+    {{- $default = .AutoDefault }}
+  {{- end }}
+  {{- $default = $default | trimAll "`" }}
+  {{- if eq .NotationType "json" }}
+    {{- mustFromJson $default | toJson }}
+  {{- else if eq .NotationType "desc" }}
+    {{- printf "<em>" }}
+    {{- $default }}
+    {{- printf "</em>" }}
+  {{- else if eq $type "object" }}
+    {{- printf "<pre>\n" }}
+    {{- $default | mustFromJson | toPrettyJson }}
+    {{- printf "</pre>\n" }}
+  {{- else if eq $type "list" }}
+    {{- printf "<pre>\n" }}
+    {{- $default | mustFromJson | toPrettyJson }}
+    {{- printf "</pre>\n" }}
+  {{- else }}
+    {{- printf "<code>" }}
+    {{- $default | replace "," ", " }}
+    {{- printf "</code>" }}
+  {{- end }}
+{{- end }}
+
+{{/* Render detected sections as HTML tables. */}}
+{{- define "helm-docs-lib.renderValuesTableHtml" }}
+  {{- $sectionMap := .SectionMap }}
+  {{- $sectionOrder := .SectionOrder }}
+  {{/* Render sections with their items. */}}
+  {{- if $sectionMap }}
+    {{- range $sectionName := $sectionOrder }}
+      {{- $section := get $sectionMap $sectionName }}
+      {{- if eq $section.SectionLevel 4 }}
+        {{- printf "\n#### %s\n\n" $section.SectionName }}
+      {{- else if eq $section.SectionLevel 3 }}
+        {{- printf "\n### %s\n\n" $section.SectionName }}
+      {{- else }}
+        {{- printf "%s has %s" $section.SectionName $section.SectionLevel | fail }}
+      {{- end }}
+      {{- if $section.SectionDescription }}
+        {{- printf "%s\n\n" $section.SectionDescription }}
+      {{- end }}
+      {{- if $section.SectionItems }}
+        {{- printf "<table class=\"helm-values\">\n<thead>\n" }}
+        {{- printf "<th>Key</th><th>Type</th><th>Default</th><th>Description</th>\n" }}
+        {{- printf "</thead>\n<tbody>\n" }}
+        {{- range $section.SectionItems -}}
+          <tr><td> {{ template "chart.valueKeyColumnRenderHtml" . }} </td><td> {{ template "chart.valueTypeColumnRenderHtml" . }} </td><td> {{ template "chart.valueDefaultColumnRenderHtml" . }} </td><td> {{ template "chart.valueDescriptionColumnRenderHtml" . }} </td></tr>
+          {{- printf "\n" }}
+        {{- end }}
+        {{- printf "</tbody>\n</table>\n" }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{/* Detection sections and generate multiple tables based on them.
+
+YAGNI: support non-html?
+*/}}
+{{- define "helm-docs-lib.autoSectionTables" }}
+  {{- /* Extract notated sections */}}
+  {{- $sectionMap := dict }}
+  {{- $sectionOrder := list }}
+  {{- range .Sections.Sections }}
+    {{- $sectionMap = set $sectionMap .SectionName ( dict
+      "SectionName" .SectionName
+      "SectionItems" .SectionItems
+      "SectionDescription" ""
+      "SectionLevel" 3
+    ) }}
+    {{- $sectionOrder = append $sectionOrder .SectionName }}
+  {{- end }}
+  {{- $currentSection := "Other Values" }}
+  {{- if .Sections.DefaultSection }}
+    {{- range .Sections.DefaultSection.SectionItems }}
+      {{- $notation := .NotationType | default "" }}
+      {{- if hasPrefix "(sectionstart)" $notation }}
+        {{- $currentSection = trimPrefix "(sectionstart) " $notation }}
+        {{- $section := get $sectionMap $currentSection }}
+        {{- if not $section }}
+          {{- $section = ( dict
+            "SectionName" $currentSection
+            "SectionItems" ( list )
+            "SectionDescription" ( default .AutoDescription .Description )
+            "SectionLevel" ( ternary 4 3 ( eq "h4" .Type ) )
+          ) }}
+          {{- $sectionOrder = append $sectionOrder $currentSection }}
+        {{- end }}
+        {{- $sectionMap = set $sectionMap $currentSection $section }}
+      {{- else }}
+        {{- $section := get $sectionMap $currentSection | default ( dict
+          "SectionName" $currentSection
+          "SectionItems" ( list )
+          "SectionDescription" ""
+          "SectionLevel" 3
+        ) }}
+        {{- $section = set $section "SectionItems" ( append $section.SectionItems . ) }}
+        {{- $sectionMap = set $sectionMap $currentSection $section }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{/* Render sections with their items. */}}
+  {{- template "helm-docs-lib.renderValuesTableHtml" ( dict
+    "SectionMap" $sectionMap
+    "SectionOrder" $sectionOrder
+  ) }}
+{{- end }}

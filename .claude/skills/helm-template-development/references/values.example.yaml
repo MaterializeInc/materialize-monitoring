@@ -12,54 +12,50 @@
 # narrative comments) are ignored by helm-docs and do not pollute the
 # generated table.
 
+# -- Values that are passed to all subcharts
+# @notationType -- (sectionstart) Globals
 global:
   # -- An override for all image registries
-  # @section -- Global Configuration
   imageRegistry: ""
   # -- An array of image pull secrets to use
-  # @section -- Global Configuration
   imagePullSecrets: []
 
-# -- Override for the full name of resources
-# @section -- Global Configuration
+# -- Configuration for the main chart
+# @notationType -- (sectionstart) Main chart configuration
+__mainSection:
+
+# -- Standard Helm fullname override.
 fullnameOverride: ""
 # nameOverride is intentionally undocumented (helm-docs skips it).
 nameOverride: ""
 
 # -- Common labels to apply to all resources
-# @default -- `{}`
-# @section -- Global Configuration
 commonLabels: {}
 # -- Common annotations to apply to all resources
-# @default -- `{}`
-# @section -- Global Configuration
 commonAnnotations: {}
 # -- An array of arbitrary Kubernetes resources to deploy
-# @default -- `[]`
-# @section -- Global Configuration
 extraDeploy: []
 
+# -- An Example component
+# @notationType -- (sectionstart) Example Component
+# @raw
+#
+# Adding more lines to the description with a `@raw` annotation allows retaining Markdown.
 myComponent:
   # -- Whether to enable this component
-  # @section -- Example Component
   enabled: true
 
   # -- Number of replicas for this component. Ignored when auto-scaling is configured.
-  # @section -- Example Component
   replicaCount: 1
 
   image:
     # -- Container image repository for this component
-    # @section -- Example Component
     repository: "my-image-repo/my-component"
     # -- Container image tag for this component. Defaults to AppVersion unless digest is set.
-    # @section -- Example Component
     tag: ""
     # -- Container image digest for this component. Takes precedence over tag.
-    # @section -- Example Component
     digest: ""
     # -- Container image pull policy for this component
-    # @section -- Example Component
     pullPolicy: IfNotPresent
 
   # Probes have a number of specific fields, but we limit configuration
@@ -69,83 +65,66 @@ myComponent:
   # undocumented (helm-docs skips it).
   startupProbe:
     # -- Whether to enable a startup probe for this component
-    # @section -- Example Component
     enabled: true
     # -- Failure threshold for the probe
-    # @section -- Example Component
     failureThreshold: 10
     # -- Wait time between probes
-    # @section -- Example Component
     periodSeconds: 10
     customProbe: {}
 
   livenessProbe:
     # -- Whether to enable a liveness probe for this component
-    # @section -- Example Component
     enabled: true
     # -- Failure threshold for the probe
-    # @section -- Example Component
     failureThreshold: 10
     # -- Wait time between probes
-    # @section -- Example Component
     periodSeconds: 10
     customProbe: {}
 
   readinessProbe:
     # -- Whether to enable a readiness probe for this component
-    # @section -- Example Component
     enabled: true
     # -- Failure threshold for the probe
-    # @section -- Example Component
     failureThreshold: 10
     # -- Wait time between probes
-    # @section -- Example Component
     periodSeconds: 10
     customProbe: {}
 
   resources:
     # -- Resource limits for this component
-    # @default -- see `values.yaml`
-    # @section -- Example Component
     limits:
       cpu: "100m"
       memory: "128Mi"
     # -- Resource requests for this component
-    # @default -- see `values.yaml`
-    # @section -- Example Component
     requests:
       cpu: "100m"
       memory: "128Mi"
 
+  # -- (h4) Security configuration for this component
+  # @notationType -- (sectionstart) Security configuration
+  #
   # We default to the most secure configuration we allow.
+  # Our h4 indicates that we are a subheading under our Example Component section.
   podSecurityContext:
     # -- Whether to enable a pod security context for this component
-    # @section -- Example Component
     enabled: true
     # -- Whether to change fsGroup
-    # @section -- Example Component
     fsGroupChangePolicy: OnRootMismatch
     # -- fsGroup to set on the pod.
-    # @section -- Example Component
     fsGroup: 1234
     sysctls: []
     supplementalGroups: []
 
   containerSecurityContext:
     # -- Whether to enable a container security context for this component
-    # @section -- Example Component
     enabled: true
     # -- Whether to run the container in privileged mode
-    # @section -- Example Component
     privileged: false
     # -- User ID to run the container as
-    # @section -- Example Component
     runAsUser: 1234
     # -- Group ID to run the container as
-    # @section -- Example Component
     runAsGroup: 1234
     # -- Whether to set the root filesystem as read-only
-    # @section -- Example Component
     readOnlyRootFilesystem: true
     capabilities:
       add: []

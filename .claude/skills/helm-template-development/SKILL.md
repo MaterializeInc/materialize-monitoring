@@ -47,15 +47,14 @@ stay in sync with `values.yaml`.
 #### Annotation conventions
 
 - `# -- <description>` directly above a key documents that key.
-- `# @section -- <Section name>` placed in the same comment block as
-  the `# --` assigns the key to a named section in the rendered table.
-  **There is no propagation** — every documented key needs its own
-  `# @section --` if you want sections.
+- `# @notationType -- (sectionstart) <section title>` starts a new section automatically.
+  This is a feature that is not present in `helm-docs` but we implemented
+  within `tools/chartlib/helm-docs-lib.gotmpl` to allow for better organization of the generated documentation.
 - `# @default -- <override>` overrides the auto-rendered default
   (useful when the literal default is `{}` / `[]` or large/complex).
 - `# @raw` lets a description carry multi-line raw markdown.
 
-Section prose lives in the gotmpl templates, not in `values.yaml`.
+Section prose within `values.yaml`. It generally needs a `@raw` annotation.
 See [references/values.example.yaml](references/values.example.yaml)
 and [references/readme.example.md](references/readme.example.md) for
 the conventions in practice.

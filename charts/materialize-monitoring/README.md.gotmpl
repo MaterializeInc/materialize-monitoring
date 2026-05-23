@@ -27,4 +27,11 @@ on the docsite.
 
 {{ template "chart.requirementsSection" . }}
 
-{{ template "chart.valuesSection" . }}
+{{/* This requires tools/chartlib/helm-docs-lib.gotmpl for auto-section support */}}
+{{- define "chart.valuesTableMd" }}
+  {{- template "helm-docs-lib.autoSectionTables" . }}
+{{- end }}
+
+{{ template "chart.valuesSectionMd" . }}
+
+{{ template "helm-docs.versionFooter" . }}

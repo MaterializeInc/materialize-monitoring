@@ -9,9 +9,9 @@ type: application
 version: 0.0.1
 appVersion: "0.0.0"
 kubeVersion: ">=1.27.0-0"
-home: https://github.com/MaterializeInc/materialize-monitoring
+home: https://materializeinc.github.io/materialize-monitoring/
 sources:
-  - https://github.com/MaterializeInc/materialize-monitoring
+  - https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring
 maintainers:
   - name: Materialize
     email: support@materialize.com
@@ -131,10 +131,3 @@ dependencies:
     tags:
       - cluster-metrics
       - metrics-server
-  - name: prometheus-operator-crds
-    version: "^20.0.0"
-    repository: oci://ghcr.io/prometheus-community/charts
-    condition: prometheus-operator-crds.enabled
-    tags:
-      - crds
-      - prometheus-operator-crds

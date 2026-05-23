@@ -53,6 +53,11 @@ charts: $(addprefix charts/,$(CHARTS))
 docs: docs/public
 .PHONY: docs
 
+helm-docs: \
+	charts/materialize-monitoring/README.md \
+	docs/content/reference/helm/materialize-monitoring-values.md
+.PHONY: helm-docs
+
 # Generate grafana dashboards
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
@@ -108,34 +113,32 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 # Generate the chart-local README.md from values.yaml + the README template.
 charts/materialize-monitoring/README.md: \
 		$(HELM_DOCS_SOURCES_materialize-monitoring) \
+		tools/chartlib/helm-docs-lib.gotmpl \
 		charts/materialize-monitoring/README.md.gotmpl
 	$(HELM_DOCS) \
 		--chart-search-root charts/materialize-monitoring \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
 		--template-files README.md.gotmpl \
 		--output-file README.md \
 		--sort-values-order file \
+		--log-level debug \
 		--ignore-non-descriptions
-	touch "$@"
 
 # Generate the docsite values reference from the same values.yaml.
 # Output and template paths are relative to the chart directory, hence
 # the `../../` prefix.
 docs/content/reference/helm/materialize-monitoring-values.md: \
 		$(HELM_DOCS_SOURCES_materialize-monitoring) \
+		tools/chartlib/helm-docs-lib.gotmpl \
 		docs/content/reference/helm/materialize-monitoring-values.md.gotmpl
 	$(HELM_DOCS) \
 		--chart-search-root charts/materialize-monitoring \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
 		--template-files ../../docs/content/reference/helm/materialize-monitoring-values.md.gotmpl \
 		--output-file ../../docs/content/reference/helm/materialize-monitoring-values.md \
 		--sort-values-order file \
+		--log-level debug \
 		--ignore-non-descriptions
-	touch "$@"
-
-# Convenience phony: regenerate both helm-docs outputs.
-helm-docs: \
-	charts/materialize-monitoring/README.md \
-	docs/content/reference/helm/materialize-monitoring-values.md
-.PHONY: helm-docs
 
 HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring/README.md
