@@ -14,6 +14,21 @@ yaml-files:
   - "*.yml"
   - ".yamllint"
 
+# Paths to skip when yamllint walks a tree. Mirrors the canonical "do not
+# lint generated/legacy" set so `yamllint .` (CI) and pre-commit behave
+# the same. KYAML files are also skipped here — they're linted by the
+# stricter `.yamllint-kyaml.kyaml` config invoked separately.
+ignore: |
+  legacy/
+  dist/
+  target/
+  docs/public/
+  docs/resources/
+  docs/assets/dashboards/
+  charts/*/pre-rendered/
+  charts/*/templates/
+  *.kyaml
+
 rules:
   # Prefer to not use anchors, as they are only intended for power users
   # KYAML does not support anchors at all (but there's no forbid option)

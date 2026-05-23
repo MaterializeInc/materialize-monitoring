@@ -72,28 +72,44 @@ repos:
       - id: shellcheck
 
   # ── Shell: shfmt (formatter) ───────────────────────────────────────────
-  # -i 4: 4-space indent  -ci: indent switch cases  -bn: binary ops at line start
+  # Formatting (indent, switch case, binary ops) is read from .editorconfig
+  # via shfmt's native EditorConfig support — no CLI flags needed.
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.12.0-2
     hooks:
       - id: shfmt
-        args: [-i, "4", -ci, -bn, -w]
+        args: [-w]
 
   # ── YAML: yamllint (two configs) ───────────────────────────────────────
+  # The default `.yamllint.yaml` is auto-discovered by yamllint (no -c
+  # needed). The KYAML config has a non-default filename, so -c is
+  # required there.
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.37.1
     hooks:
       - id: yamllint
         name: yamllint (yaml)
-        args: [-c, .yamllint.yaml]
         # types: [yaml] matches *.yaml/*.yml via shebang/extension detection.
-        exclude: ^(charts/[^/]+/templates/|charts/[^/]+/pre-rendered/|.*\.kyaml$)
+        # Generated/legacy paths are handled by the `ignore:` block in
+        # .yamllint.yaml; the only routing concern left here is sending
+        # .kyaml files to the stricter config below.
+        exclude: \.kyaml$
       - id: yamllint
         name: yamllint (kyaml)
         alias: yamllint-kyaml
         args: [-c, .yamllint-kyaml.kyaml, --strict]
         files: \.kyaml$
         types: [file]
+
+  # ── EditorConfig consistency ──────────────────────────────────────────
+  # Enforces .editorconfig: charset, EOL, final newline, trailing
+  # whitespace, and indent_size across all file types. This is the
+  # canonical gate shared between local pre-commit and CI.
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.6.1
+    hooks:
+      - id: editorconfig-checker
+        alias: ec
 
   # ── Rust ───────────────────────────────────────────────────────────────
   # cargo fmt runs on every commit (fast, fixer).
