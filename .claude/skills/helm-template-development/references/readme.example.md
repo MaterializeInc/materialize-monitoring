@@ -1,49 +1,76 @@
 # An Example README for a Helm Chart
 
-This is an example README for a helm chart.
+This is an example of the README.md that [helm-docs](https://github.com/norwoodj/helm-docs)
+generates from a chart's `values.yaml` plus a `README.md.gotmpl` template.
 
-This needs to define a Parameters section so that `@bitnami/readme-generator-for-helm`
-can generate the README.md for this chart based on parameters in `values.yaml`.
+The README is fully generated — do not edit it by hand. Edit the
+template (`README.md.gotmpl`) for static prose and badges, or
+`values.yaml` for the parameter table content, then re-run
+`make charts/<chart>/README.md`.
 
-## Parameters Section
+Sections in the Values table come from per-key `# @section -- <Name>`
+comments in `values.yaml` (see [values.example.yaml](values.example.yaml)).
+
+## Example template
+
+A minimal `README.md.gotmpl`:
+
+```gotemplate
+{{ template "chart.header" . }}
+{{ template "chart.description" . }}
+
+{{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
+
+## TL;DR
+
+```bash
+helm install my-release oci://example.com/my-chart
+```
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
+```
+
+## Example output (Values section)
 
 ### Global Configuration
 
-| Name                      | Description                                          | Value |
-| ------------------------- | ---------------------------------------------------- | ----- |
-| `global.imageRegistry`    | An override for all image registries                 | `""`  |
-| `global.imagePullSecrets` | An array of image pull secrets to use                | `[]`  |
-| `fullnameOverride`        | Override for the full name of resources              | `""`  |
-| `commonLabels`            | Common labels to apply to all resources              | `{}`  |
-| `commonAnnotations`       | Common annotations to apply to all resources         | `{}`  |
-| `extraDeploy`             | An array of arbitrary Kubernetes resources to deploy | `[]`  |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| global.imageRegistry | string | `""` | An override for all image registries |
+| global.imagePullSecrets | list | `[]` | An array of image pull secrets to use |
+| fullnameOverride | string | `""` | Override for the full name of resources |
+| commonLabels | object | `{}` | Common labels to apply to all resources |
+| commonAnnotations | object | `{}` | Common annotations to apply to all resources |
+| extraDeploy | list | `[]` | An array of arbitrary Kubernetes resources to deploy |
 
 ### Example Component
 
-| Name                                                          | Description                                                                             | Value                        |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------- |
-| `myComponent.enabled`                                         | Whether to enable this component                                                        | `true`                       |
-| `myComponent.replicaCount`                                    | Number of replicas for this component. This is ignored if a auto-scaling is configured. | `1`                          |
-| `myComponent.image.repository`                                | Container image repository for this component                                           | `my-image-repo/my-component` |
-| `myComponent.image.tag`                                       | Container image tag for this component. Defaults to AppVersion unless digest is set.    | `""`                         |
-| `myComponent.image.digest`                                    | Container image digest for this component. This takes precedence over tag.              | `""`                         |
-| `myComponent.image.pullPolicy`                                | Container image pull policy for this component                                          | `IfNotPresent`               |
-| `myComponent.startupProbe.enabled`                            | Whether to enable a startup probe for this component                                    | `true`                       |
-| `myComponent.startupProbe.failureThreshold`                   | Failure threshold for the probe                                                         | `10`                         |
-| `myComponent.startupProbe.periodSeconds`                      | Wait time between probes                                                                | `10`                         |
-| `myComponent.livenessProbe.enabled`                           | Whether to enable a liveness probe for this component                                   | `true`                       |
-| `myComponent.livenessProbe.failureThreshold`                  | Failure threshold for the probe                                                         | `10`                         |
-| `myComponent.livenessProbe.periodSeconds`                     | Wait time between probes                                                                | `10`                         |
-| `myComponent.readinessProbe.enabled`                          | Whether to enable a readiness probe for this component                                  | `true`                       |
-| `myComponent.readinessProbe.failureThreshold`                 | Failure threshold for the probe                                                         | `10`                         |
-| `myComponent.readinessProbe.periodSeconds`                    | Wait time between probes                                                                | `10`                         |
-| `myComponent.resources.limits`                                | Resource limits for this component                                                      | `{}`                         |
-| `myComponent.resources.requests`                              | Resource requests for this component                                                    | `{}`                         |
-| `myComponent.podSecurityContext.enabled`                      | Whether to enable a pod security context for this component                             | `true`                       |
-| `myComponent.podSecurityContext.fsGroupChangePolicy`          | Whether to change fsGroup                                                               | `OnRootMismatch`             |
-| `myComponent.podSecurityContext.fsGroup`                      | fsGroup to set on the pod.                                                              | `1234`                       |
-| `myComponent.containerSecurityContext.enabled`                | Whether to enable a container security context for this component                       | `true`                       |
-| `myComponent.containerSecurityContext.privileged`             | Whether to run the container in privileged mode                                         | `false`                      |
-| `myComponent.containerSecurityContext.runAsUser`              | User ID to run the container as                                                         | `1234`                       |
-| `myComponent.containerSecurityContext.runAsGroup`             | Group ID to run the container as                                                        | `1234`                       |
-| `myComponent.containerSecurityContext.readOnlyRootFilesystem` | Whether to set the root filesystem as read-only                                         | `true`                       |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| myComponent.enabled | bool | `true` | Whether to enable this component |
+| myComponent.replicaCount | int | `1` | Number of replicas for this component. Ignored when auto-scaling is configured. |
+| myComponent.image.repository | string | `"my-image-repo/my-component"` | Container image repository for this component |
+| myComponent.image.tag | string | `""` | Container image tag for this component. Defaults to AppVersion unless digest is set. |
+| myComponent.image.digest | string | `""` | Container image digest for this component. Takes precedence over tag. |
+| myComponent.image.pullPolicy | string | `"IfNotPresent"` | Container image pull policy for this component |
+| myComponent.startupProbe.enabled | bool | `true` | Whether to enable a startup probe for this component |
+| myComponent.startupProbe.failureThreshold | int | `10` | Failure threshold for the probe |
+| myComponent.startupProbe.periodSeconds | int | `10` | Wait time between probes |
+| myComponent.livenessProbe.enabled | bool | `true` | Whether to enable a liveness probe for this component |
+| myComponent.livenessProbe.failureThreshold | int | `10` | Failure threshold for the probe |
+| myComponent.livenessProbe.periodSeconds | int | `10` | Wait time between probes |
+| myComponent.readinessProbe.enabled | bool | `true` | Whether to enable a readiness probe for this component |
+| myComponent.readinessProbe.failureThreshold | int | `10` | Failure threshold for the probe |
+| myComponent.readinessProbe.periodSeconds | int | `10` | Wait time between probes |
+| myComponent.resources.limits | object | see `values.yaml` | Resource limits for this component |
+| myComponent.resources.requests | object | see `values.yaml` | Resource requests for this component |
+| myComponent.podSecurityContext.enabled | bool | `true` | Whether to enable a pod security context for this component |
+| myComponent.podSecurityContext.fsGroupChangePolicy | string | `"OnRootMismatch"` | Whether to change fsGroup |
+| myComponent.podSecurityContext.fsGroup | int | `1234` | fsGroup to set on the pod. |
+| myComponent.containerSecurityContext.enabled | bool | `true` | Whether to enable a container security context for this component |
+| myComponent.containerSecurityContext.privileged | bool | `false` | Whether to run the container in privileged mode |
+| myComponent.containerSecurityContext.runAsUser | int | `1234` | User ID to run the container as |
+| myComponent.containerSecurityContext.runAsGroup | int | `1234` | Group ID to run the container as |
+| myComponent.containerSecurityContext.readOnlyRootFilesystem | bool | `true` | Whether to set the root filesystem as read-only |

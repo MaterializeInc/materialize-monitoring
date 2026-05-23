@@ -31,10 +31,33 @@ where we document all parameters that are exposed to a chart's README.md.
 
 ### README.md Generation from values.yaml
 
-We use `@bitnami/readme-generator-for-helm` to generate README.md files for our charts
-based on the parameters defined in `values.yaml`.
+We use [`helm-docs`](https://github.com/norwoodj/helm-docs) to generate
+`README.md` (and the docsite values reference page) from each chart's
+`values.yaml` plus a `README.md.gotmpl` template.
 
-`bin/helm-readme-sync` is a thin script around this tool.
+`helm-docs` is pinned via the `tool` directive in `go.mod` and invoked
+through Make: `make charts/<chart>/README.md` regenerates the chart
+README, and `make helm-docs` regenerates all helm-docs outputs (chart
+README + docsite reference).
+
+The pre-commit hook in `.pre-commit-config.yaml` reruns the same Make
+targets when any of the source files change, so the generated outputs
+stay in sync with `values.yaml`.
+
+#### Annotation conventions
+
+- `# -- <description>` directly above a key documents that key.
+- `# @notationType -- (sectionstart) <section title>` starts a new section automatically.
+  This is a feature that is not present in `helm-docs` but we implemented
+  within `tools/chartlib/helm-docs-lib.gotmpl` to allow for better organization of the generated documentation.
+- `# @default -- <override>` overrides the auto-rendered default
+  (useful when the literal default is `{}` / `[]` or large/complex).
+- `# @raw` lets a description carry multi-line raw markdown.
+
+Section prose within `values.yaml`. It generally needs a `@raw` annotation.
+See [references/values.example.yaml](references/values.example.yaml)
+and [references/readme.example.md](references/readme.example.md) for
+the conventions in practice.
 
 ## Helm Template Best Practices
 
