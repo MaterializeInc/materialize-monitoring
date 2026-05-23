@@ -30,4 +30,3 @@ Kubernetes: `>=1.27.0-0`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | prometheus-operator-crds.crds.annotations."helm.sh/resource-policy" | string | `"keep"` |  |
-

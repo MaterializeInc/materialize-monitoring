@@ -51,8 +51,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 ## Values {#values}
 
- 
- 
+
+
 ### Globals
 
 Values that are passed to all subcharts
@@ -412,4 +412,3 @@ kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize
 #### Metrics Server
 
 metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
-

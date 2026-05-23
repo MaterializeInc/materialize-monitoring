@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+# shellcheck shell=bash
 # Common functions for bash scripts
 #
 # Usage::
@@ -7,7 +7,6 @@
 #   set -o errexit -o errtrace -o nounset -o pipefail
 #
 # Author: Heather Lapointe
-
 
 # Writes a message to stderr
 # $* is the message to be echo'd.
@@ -53,12 +52,12 @@ function _show_traceback() {
     local fail_file=$1
     local file_line=$2
     # traceback locals
-    local line_idx;
-    local filename;
+    local line_idx
+    local filename
     # FUNCNAME is an array of functions
     local frame=${#FUNCNAME[@]}
     # skip "main" frame
-    frame=$(( frame - 1 ))
+    frame=$((frame - 1))
 
     _warning "Subcommand failed with code=$rc. Bash traceback:"
     # Roughly an enumeration like::
@@ -69,7 +68,7 @@ function _show_traceback() {
         # BASH_SOURCE is +1 from BASH_LINENO and FUNCNAME index
         filename="${BASH_SOURCE[$frame]:-"<script>"}"
         # decrement after getting source, which is +1 of the rest
-        frame=$(( frame - 1 ))
+        frame=$((frame - 1))
         line_idx="${BASH_LINENO[$frame]}"
         func="${FUNCNAME[$frame]}"
         _log "In $filename, line $line_idx:"

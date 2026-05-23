@@ -26,7 +26,30 @@ that enforce these best practices.
 
 ### YAML Linting
 
-Use `yamllint` to ensure YAML files are properly formatted and follow our best practices.
+`yamllint` enforces these best practices and runs automatically via
+[pre-commit](../../../.pre-commit-config.yaml) on `.yaml` / `.yml`
+files. Configuration lives in `.yamllint.yaml` at the repo root.
+
+Notes on the configuration intentionally trade enforcement for lower toil:
+
+- **`quoted-strings` is demoted to a warning.** The convention is still
+  double-quoted values for strings containing YAML metacharacters
+  (`{`, `[`, `:`) or starting with a non-alphanumeric, but it does not
+  block commits.
+- **`empty-values: forbid-in-block-mappings` is disabled.** This allows
+  idiomatic empty block keys like `pull_request:` in GitHub Actions
+  workflows and `__mainSection:` sentinels used by helm-docs. Flow
+  mappings and sequences are still checked, so `{key:}` or trailing `- `
+  in a sequence will still fail.
+- **`line-length` is a warning** (max 120, with non-breakable-word allowance).
+- Helm chart templates under `charts/*/templates/` are excluded since
+  Go templating syntax is not valid YAML. Helm `values.yaml` is **not**
+  excluded — author with the conventions above in mind.
+- Generated YAML under `charts/*/pre-rendered/` and `docs/assets/dashboards/`
+  is excluded globally.
+
+When in doubt, run `uv run yamllint -c .yamllint.yaml <path>` locally
+to preview what the hook will say.
 
 ## KYAML Best Practices
 
@@ -37,5 +60,8 @@ or as JSON with comments, multiple documents, and trailing commas.
 
 ## KYAML Linting
 
-Use `yamllint` with the `.yamllint-kyaml.kyaml` configuration to ensure KYAML
-files are properly formatted and follow our best practices for KYAML files.
+KYAML files (`.kyaml` extension) are linted with the stricter
+`.yamllint-kyaml.kyaml` configuration via a separate pre-commit hook
+entry. KYAML enforcement is run with `--strict`, so warnings (such as
+`line-length`) also block — the lower-toil relaxations applied to
+regular YAML do **not** apply here. Write KYAML to the letter.

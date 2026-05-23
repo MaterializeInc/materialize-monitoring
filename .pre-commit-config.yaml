@@ -1,0 +1,126 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+#
+# Install:  uv run pre-commit install        (wires both pre-commit and pre-push)
+# Run all:  uv run pre-commit run --all-files
+# Update:   uv run pre-commit autoupdate
+
+# Install both stages with a single `pre-commit install` invocation.
+default_install_hook_types: [pre-commit, pre-push]
+
+# Skip build output, vendored code, generated dashboards, and legacy/.
+exclude: |
+  (?x)^(
+    legacy/.*
+    | dist/.*
+    | target/.*
+    | docs/public/.*
+    | docs/resources/.*
+    | docs/assets/dashboards/.*
+    | charts/[^/]+/pre-rendered/.*
+    | .*\.min\.(js|css)
+  )$
+
+repos:
+  # ── generic hygiene ────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-yaml
+        # Helm templates contain Go template syntax and are not valid YAML.
+        exclude: ^charts/[^/]+/templates/
+
+  # ── Python: ruff (lint + format) ───────────────────────────────────────
+  # Pinned to match ruff>=0.15.12 in pyproject.toml [dependency-groups].dev
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # ── Python: pyright (type check) ───────────────────────────────────────
+  # Runs via `uv run` so it sees the workspace venv (the upstream
+  # pyright-python pre-commit hook installs into its own env and misses
+  # workspace deps). Runs on both pre-commit and pre-push; demote to
+  # pre-push only if the pre-commit latency becomes painful.
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+  # ── Shell: shellcheck (vendored binary, no docker/system install) ──────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+  # ── Shell: shfmt (formatter) ───────────────────────────────────────────
+  # -i 4: 4-space indent  -ci: indent switch cases  -bn: binary ops at line start
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.12.0-2
+    hooks:
+      - id: shfmt
+        args: [-i, "4", -ci, -bn, -w]
+
+  # ── YAML: yamllint (two configs) ───────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        name: yamllint (yaml)
+        args: [-c, .yamllint.yaml]
+        # types: [yaml] matches *.yaml/*.yml via shebang/extension detection.
+        exclude: ^(charts/[^/]+/templates/|charts/[^/]+/pre-rendered/|.*\.kyaml$)
+      - id: yamllint
+        name: yamllint (kyaml)
+        alias: yamllint-kyaml
+        args: [-c, .yamllint-kyaml.kyaml, --strict]
+        files: \.kyaml$
+        types: [file]
+
+  # ── Rust ───────────────────────────────────────────────────────────────
+  # cargo fmt runs on every commit (fast, fixer).
+  # cargo clippy runs on pre-push only (slow; would block every commit).
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Existing helm-docs hook (unchanged)
+      - id: helm-docs
+        name: Regenerate helm chart docs
+        # helm-docs is pinned in go.mod; this defers to the Makefile so the
+        # invocation, output paths, and flag set stay in one place.
+        entry: make helm-docs
+        language: system
+        pass_filenames: false
+        files: ^(charts/materialize-monitoring/(values\.yaml|Chart\.yaml|README\.md\.gotmpl)|docs/content/reference/helm/materialize-monitoring-values\.md\.gotmpl)$

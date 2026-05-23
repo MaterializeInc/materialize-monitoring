@@ -5,7 +5,7 @@ set -e -o pipefail
 PROG=$(basename "$0")
 
 # Set pwd to project root
-cd $(dirname "$0")/..
+cd "$(dirname "$0")/.."
 
 make -s "target/debug/${PROG}"
 

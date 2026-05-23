@@ -38,11 +38,11 @@ _parse_args() {
         arg="$1"
         shift
         case "$arg" in
-            --help|-h)
+            --help | -h)
                 _usage
                 exit 0
                 ;;
-            -J|--jpath)
+            -J | --jpath)
                 if [ -z "$1" ]; then
                     _log "Error: $arg requires an argument"
                     exit 1

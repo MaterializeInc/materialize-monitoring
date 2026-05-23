@@ -12,7 +12,7 @@ This guide is for users who are using `materialize-terraform-self-managed` to se
 {{% hint warning %}}
 materialize-monitoring is not available in `materialize-terraform-self-managed` yet (As of May 2026), but it will be enabled by default in the future.
 
-In the meantime, you can use the [Helm instructions](./helm) to set
+In the meantime, you can use the [Helm instructions](../helm) to set
 up your observability infrastructure.
 {{% /hint %}}
 

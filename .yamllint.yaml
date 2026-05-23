@@ -43,9 +43,11 @@ rules:
     level: warning
   # Empty lines are encouraged in values.yaml for readability between sections
   empty-lines: disable
-  # Stricter checks than default for accidental colons/commas
+  # Stricter checks than default for accidental colons/commas.
+  # forbid-in-block-mappings disabled: `pull_request:` (GH Actions) and
+  # `__mainSection:` (helm-docs sentinels) are idiomatic empty block keys.
   empty-values:
-    forbid-in-block-mappings: true
+    forbid-in-block-mappings: false
     forbid-in-flow-mappings: true
     forbid-in-block-sequences: true
   # Stricter than default for floats
@@ -77,8 +79,11 @@ rules:
   octal-values:
     forbid-implicit-octal: true
     forbid-explicit-octal: true
-  # Bring opinions about quotes where possible
+  # Bring opinions about quotes where possible.
+  # Demoted to warning: enforces guidance without blocking commits — the
+  # stricter .yamllint-kyaml.kyaml config keeps quoting strict for KYAML.
   quoted-strings:
+    level: warning
     quote-type: double
     # KYAML requires quoting strings
     required: false
