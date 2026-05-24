@@ -51,8 +51,6 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 ## Values {#values}
 
-
-
 ### Globals
 
 Values that are passed to all subcharts
