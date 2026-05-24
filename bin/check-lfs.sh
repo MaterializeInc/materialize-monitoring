@@ -8,7 +8,6 @@ cd "$(dirname "$0")/../" || exit 1
 source "tools/shlib/common.sh"
 set -o errexit -o errtrace -o nounset -o pipefail
 
-
 AUTO_FIX=${AUTO_FIX:-false}
 
 # Auto attempt to fix git lfs issues. This is used for CI or when --fix is manually passed.
@@ -111,7 +110,7 @@ function _parse_args() {
             --fix)
                 AUTO_FIX=true
                 ;;
-            -h|--help)
+            -h | --help)
                 echo "Usage: $PROG [--fix]"
                 echo "Checks that Git LFS is installed, initialized, and that all LFS files are present."
                 exit 0

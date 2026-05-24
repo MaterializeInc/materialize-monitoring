@@ -34,4 +34,3 @@ thanos:
     serviceAccount:
       annotations:
         eks.amazonaws.com/role-arn: "arn:aws:iam::012345678901:role/YourThanosRole"
-

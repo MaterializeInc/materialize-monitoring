@@ -1,0 +1,19 @@
+{
+  "_comment": "editorconfig-checker config. Indent_size/Indentation checks are disabled because language tools (ruff, rustfmt, shfmt, prettier) own that; editorconfig-checker enforces the un-controversial hygiene (EOL, final newline, trailing whitespace, charset). Exclude list mirrors the generated/legacy paths in .pre-commit-config.yaml that .gitignore doesn't already cover.",
+  "Disable": {
+    "IndentSize": true,
+    "Indentation": true,
+    "MaxLineLength": true
+  },
+  "Exclude": [
+    "^legacy/",
+    "^dist/",
+    "^docs/assets/dashboards/",
+    "^charts/[^/]+/pre-rendered/",
+    "\\.min\\.(js|css)$",
+    "^go\\.sum$",
+    "^uv\\.lock$",
+    "^Cargo\\.lock$",
+    "^LICENSE$"
+  ]
+}

@@ -27,11 +27,11 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: "1.26"
 
       - uses: peaceiris/actions-hugo@v3
         with:
-          hugo-version: '0.161.1'
+          hugo-version: "0.161.1"
           extended: true
 
       - name: Cache Hugo module downloads

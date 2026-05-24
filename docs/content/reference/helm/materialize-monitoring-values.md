@@ -51,22 +51,29 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 ## Values {#values}
 
- 
- 
 ### Globals
 
 Values that are passed to all subcharts
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> global<wbr>.imageRegistry </td><td> string </td><td> <code>""</code> </td><td> Override the registry for all images in this chart and its subcharts. Leave empty to use upstream defaults. </td></tr>
-<tr><td> global<wbr>.imagePullSecrets </td><td> list </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>global<wbr>.imageRegistry</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>Override the registry for all images in this chart and its subcharts. Leave empty to use upstream defaults.</td>
+    </tr>
+    <tr>
+      <td>global<wbr>.imagePullSecrets</td>
+      <td>list</td>
+      <td><pre>
 []</pre>
- </td><td> Image pull secrets applied to every workload in this chart and its subcharts. </td></tr>
-</tbody>
+</td>
+      <td>Image pull secrets applied to every workload in this chart and its subcharts.</td>
+    </tr>
+  </tbody>
 </table>
 
 ### Main chart configuration
@@ -74,14 +81,28 @@ Values that are passed to all subcharts
 Configuration for the main chart
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> nameOverride </td><td> string </td><td> <code>""</code> </td><td> Standard Helm name override. </td></tr>
-<tr><td> fullnameOverride </td><td> string </td><td> <code>""</code> </td><td> Standard Helm fullname override. </td></tr>
-<tr><td> profile </td><td> string </td><td> <code>"bundled-stack"</code> </td><td> Deployment profile that drives subchart enablement and pipeline defaults. </td></tr>
-</tbody>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>nameOverride</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>Standard Helm name override.</td>
+    </tr>
+    <tr>
+      <td>fullnameOverride</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>Standard Helm fullname override.</td>
+    </tr>
+    <tr>
+      <td>profile</td>
+      <td>string</td>
+      <td><code>"bundled-stack"</code></td>
+      <td>Deployment profile that drives subchart enablement and pipeline defaults.</td>
+    </tr>
+  </tbody>
 </table>
 
 ### Subchart enablement (Helm tags)
@@ -119,25 +140,94 @@ The tag defaults match `profile=bundled-stack`. Other profiles flip
 the profile preset values files under `examples/`.
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> tags<wbr>.pipeline </td><td> bool </td><td> <code>true</code> </td><td> Enable both Alloy releases (agent + gateway). </td></tr>
-<tr><td> tags<wbr>.bundled-backends </td><td> bool </td><td> <code>true</code> </td><td> Enable Loki, Thanos, Grafana, and Alertmanager as a group. </td></tr>
-<tr><td> tags<wbr>.cluster-metrics </td><td> bool </td><td> <code>false</code> </td><td> Enable kube-state-metrics and metrics-server as a group. </td></tr>
-<tr><td> tags<wbr>.crds </td><td> bool </td><td> <code>false</code> </td><td> Install Prometheus Operator CRDs. </td></tr>
-<tr><td> tags<wbr>.alloy-agent </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just the Alloy agent. OR'd with `tags.pipeline`. </td></tr>
-<tr><td> tags<wbr>.alloy-gateway </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just the Alloy gateway. OR'd with `tags.pipeline`. </td></tr>
-<tr><td> tags<wbr>.loki </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just Loki. OR'd with `tags.bundled-backends`. </td></tr>
-<tr><td> tags<wbr>.thanos </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just Thanos. OR'd with `tags.bundled-backends`. </td></tr>
-<tr><td> tags<wbr>.grafana-standalone </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just Grafana standalone. OR'd with `tags.bundled-backends`. </td></tr>
-<tr><td> tags<wbr>.grafana-operator </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just Grafana operator. OR'd with `tags.bundled-backends`. </td></tr>
-<tr><td> tags<wbr>.alertmanager </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just Alertmanager. OR'd with `tags.bundled-backends`. </td></tr>
-<tr><td> tags<wbr>.kube-state-metrics </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just kube-state-metrics. OR'd with `tags.cluster-metrics`. </td></tr>
-<tr><td> tags<wbr>.metrics-server </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`. </td></tr>
-<tr><td> tags<wbr>.prometheus-operator-crds </td><td> bool </td><td> <code>false</code> </td><td> Per-chart override: enable just the Prometheus Operator CRDs. OR'd with `tags.crds`. </td></tr>
-</tbody>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>tags<wbr>.pipeline</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Enable both Alloy releases (agent + gateway).</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.bundled-backends</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Enable Loki, Thanos, Grafana, and Alertmanager as a group.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.cluster-metrics</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Enable kube-state-metrics and metrics-server as a group.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.crds</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Install Prometheus Operator CRDs.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.alloy-agent</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just the Alloy agent. OR'd with `tags.pipeline`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.alloy-gateway</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just the Alloy gateway. OR'd with `tags.pipeline`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.loki</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just Loki. OR'd with `tags.bundled-backends`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.thanos</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just Thanos. OR'd with `tags.bundled-backends`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.grafana-standalone</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just Grafana standalone. OR'd with `tags.bundled-backends`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.grafana-operator</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just Grafana operator. OR'd with `tags.bundled-backends`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.alertmanager</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just Alertmanager. OR'd with `tags.bundled-backends`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.kube-state-metrics</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just kube-state-metrics. OR'd with `tags.cluster-metrics`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.metrics-server</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.</td>
+    </tr>
+    <tr>
+      <td>tags<wbr>.prometheus-operator-crds</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Per-chart override: enable just the Prometheus Operator CRDs. OR'd with `tags.crds`.</td>
+    </tr>
+  </tbody>
 </table>
 
 ### Materialize Integration
@@ -145,22 +235,46 @@ the profile preset values files under `examples/`.
 Materialize-specific configuration values.
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> materialize<wbr>.namespaces </td><td> list </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>materialize<wbr>.namespaces</td>
+      <td>list</td>
+      <td><pre>
 []</pre>
- </td><td> Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read. </td></tr>
-<tr><td> materialize<wbr>.environmentLabel </td><td> string </td><td> <code>""</code> </td><td> Logical environment label applied to all scraped Materialize telemetry. </td></tr>
-<tr><td> materialize<wbr>.podMonitor<wbr>.enabled </td><td> bool </td><td> <code>true</code> </td><td> Deploy a PodMonitor to collect Materialize metrics. </td></tr>
-<tr><td> materialize<wbr>.podMonitor<wbr>.environmentdEndpoints </td><td> list </td><td> <pre>
+</td>
+      <td>Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read.</td>
+    </tr>
+    <tr>
+      <td>materialize<wbr>.environmentLabel</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>Logical environment label applied to all scraped Materialize telemetry.</td>
+    </tr>
+    <tr>
+      <td>materialize<wbr>.podMonitor<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Deploy a PodMonitor to collect Materialize metrics.</td>
+    </tr>
+    <tr>
+      <td>materialize<wbr>.podMonitor<wbr>.environmentdEndpoints</td>
+      <td>list</td>
+      <td><pre>
 [
   "/metrics/public"
 ]</pre>
- </td><td> Which endpoints to scrape on environmentd pods. Note that `/metrics/public` did not become available until v26.25. For earlier versions, you may wish to use `/metrics` instead. </td></tr>
-<tr><td> materialize<wbr>.deploymentMode </td><td> string </td><td> <code>"self-managed"</code> </td><td> Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline. </td></tr>
-</tbody>
+</td>
+      <td>Which endpoints to scrape on environmentd pods. Note that `/metrics/public` did not become available until v26.25. For earlier versions, you may wish to use `/metrics` instead.</td>
+    </tr>
+    <tr>
+      <td>materialize<wbr>.deploymentMode</td>
+      <td>string</td>
+      <td><code>"self-managed"</code></td>
+      <td>Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.</td>
+    </tr>
+  </tbody>
 </table>
 
 ### Pipeline configuration
@@ -177,20 +291,29 @@ release instances.
 Configuration for cardinality reduction in Alloy gateway
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> pipeline<wbr>.cardinalityReduction<wbr>.enabled </td><td> bool </td><td> <code>true</code> </td><td> Whether the gateway applies cardinality-reduction relabeling before egress. </td></tr>
-<tr><td> pipeline<wbr>.cardinalityReduction<wbr>.demoteLabels </td><td> list </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>pipeline<wbr>.cardinalityReduction<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Whether the gateway applies cardinality-reduction relabeling before egress.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.cardinalityReduction<wbr>.demoteLabels</td>
+      <td>list</td>
+      <td><pre>
 [
   "pod",
   "node",
   "zone",
   "region"
 ]</pre>
- </td><td> Labels demoted from metric labels to structured metadata (Loki) or dropped (Datadog/Prometheus remote-write). Default mirrors the Cloud team's policy. </td></tr>
-</tbody>
+</td>
+      <td>Labels demoted from metric labels to structured metadata (Loki) or dropped (Datadog/Prometheus remote-write). Default mirrors the Cloud team's policy.</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Exporter configuration
@@ -198,22 +321,56 @@ Configuration for cardinality reduction in Alloy gateway
 Configuration for exporters attached to the Alloy gateway
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.enabled </td><td> bool </td><td> <code>false</code> </td><td> Enable Prometheus remote_write exporter on the gateway. </td></tr>
-<tr><td> pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.endpoint </td><td> string </td><td> <code>""</code> </td><td> Prometheus-compatible remote_write endpoint URL. </td></tr>
-<tr><td> pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.usernameSecret </td><td> object </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Enable Prometheus remote_write exporter on the gateway.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.endpoint</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>Prometheus-compatible remote_write endpoint URL.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.usernameSecret</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Secret reference for remote_write basic-auth username. `{name, key}` form. </td></tr>
-<tr><td> pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.passwordSecret </td><td> object </td><td> <pre>
+</td>
+      <td>Secret reference for remote_write basic-auth username. `{name, key}` form.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.passwordSecret</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Secret reference for remote_write basic-auth password. `{name, key}` form. </td></tr>
-<tr><td> pipeline<wbr>.exporters<wbr>.otlp<wbr>.enabled </td><td> bool </td><td> <code>false</code> </td><td> Enable OTLP exporter on the gateway. </td></tr>
-<tr><td> pipeline<wbr>.exporters<wbr>.otlp<wbr>.endpoint </td><td> string </td><td> <code>""</code> </td><td> OTLP gRPC endpoint URL. </td></tr>
-<tr><td> pipeline<wbr>.exporters<wbr>.bundled<wbr>.enabled </td><td> bool </td><td> <code>false</code> </td><td> Enable export to the bundled Loki / Thanos backends. Implied when `profile=bundled-stack`. </td></tr>
-</tbody>
+</td>
+      <td>Secret reference for remote_write basic-auth password. `{name, key}` form.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.otlp<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Enable OTLP exporter on the gateway.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.otlp<wbr>.endpoint</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>OTLP gRPC endpoint URL.</td>
+    </tr>
+    <tr>
+      <td>pipeline<wbr>.exporters<wbr>.bundled<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Enable export to the bundled Loki / Thanos backends. Implied when `profile=bundled-stack`.</td>
+    </tr>
+  </tbody>
 </table>
 
 ### Monitoring configurations
@@ -224,24 +381,58 @@ Underlying content is generated into `pre-rendered/`
 from the sources under `packages/` and embedded via `.Files.Get`.
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> dashboards<wbr>.config<wbr>.grafana<wbr>.enabled </td><td> bool </td><td> <code>true</code> </td><td> Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance. </td></tr>
-<tr><td> dashboards<wbr>.config<wbr>.grafana<wbr>.mode </td><td> string </td><td> <code>"operator"</code> </td><td> Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance). </td></tr>
-<tr><td> dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.resyncPeriod </td><td> string </td><td> <code>"5m"</code> </td><td> Time to sync the dashboard from the manifest </td></tr>
-<tr><td> dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.instanceSelector </td><td> object </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>dashboards<wbr>.config<wbr>.grafana<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.</td>
+    </tr>
+    <tr>
+      <td>dashboards<wbr>.config<wbr>.grafana<wbr>.mode</td>
+      <td>string</td>
+      <td><code>"operator"</code></td>
+      <td>Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).</td>
+    </tr>
+    <tr>
+      <td>dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.resyncPeriod</td>
+      <td>string</td>
+      <td><code>"5m"</code></td>
+      <td>Time to sync the dashboard from the manifest</td>
+    </tr>
+    <tr>
+      <td>dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.instanceSelector</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Non-default label selector for a Grafana-operator Grafana instance </td></tr>
-<tr><td> dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget </td><td> string </td><td> <code>"dashboard.grafana.app/v2"</code> </td><td> Dashboard API Version (v2 or v2beta1) </td></tr>
-<tr><td> dashboards<wbr>.config<wbr>.datadog<wbr>.enabled </td><td> bool </td><td> <code>false</code> </td><td> Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band. </td></tr>
-<tr><td> dashboards<wbr>.selected </td><td> list </td><td> <pre>
+</td>
+      <td>Non-default label selector for a Grafana-operator Grafana instance</td>
+    </tr>
+    <tr>
+      <td>dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
+      <td>string</td>
+      <td><code>"dashboard.grafana.app/v2"</code></td>
+      <td>Dashboard API Version (v2 or v2beta1)</td>
+    </tr>
+    <tr>
+      <td>dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.</td>
+    </tr>
+    <tr>
+      <td>dashboards<wbr>.selected</td>
+      <td>list</td>
+      <td><pre>
 [
   "env-*"
 ]</pre>
- </td><td> List of dashboard patterns to render </td></tr>
-</tbody>
+</td>
+      <td>List of dashboard patterns to render</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Rule configuration
@@ -249,14 +440,28 @@ from the sources under `packages/` and embedded via `.Files.Get`.
 Configuration for rules
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> config<wbr>.rules<wbr>.prometheus<wbr>.enabled </td><td> bool </td><td> <code>true</code> </td><td> Install the bundled Prometheus recording and alerting rules as PrometheusRule resources. </td></tr>
-<tr><td> config<wbr>.rules<wbr>.loki<wbr>.enabled </td><td> bool </td><td> <code>false</code> </td><td> Install the bundled Loki rules. </td></tr>
-<tr><td> config<wbr>.rules<wbr>.thanos<wbr>.enabled </td><td> bool </td><td> <code>false</code> </td><td> Install the bundled Thanos rules. </td></tr>
-</tbody>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>config<wbr>.rules<wbr>.prometheus<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.</td>
+    </tr>
+    <tr>
+      <td>config<wbr>.rules<wbr>.loki<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Install the bundled Loki rules.</td>
+    </tr>
+    <tr>
+      <td>config<wbr>.rules<wbr>.thanos<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Install the bundled Thanos rules.</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Alert configuration
@@ -264,12 +469,16 @@ Configuration for rules
 Configuration for alerts
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> config<wbr>.alerts<wbr>.enabled </td><td> bool </td><td> <code>true</code> </td><td> Install the bundled Alertmanager routing and templates. </td></tr>
-</tbody>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>config<wbr>.alerts<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Install the bundled Alertmanager routing and templates.</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Scraper configuration
@@ -277,12 +486,16 @@ Configuration for alerts
 Configuration for scrapers
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> config<wbr>.scrapers<wbr>.enabled </td><td> bool </td><td> <code>true</code> </td><td> Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components. </td></tr>
-</tbody>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>config<wbr>.scrapers<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Grafana connection configuration
@@ -290,25 +503,54 @@ Configuration for scrapers
 How to talk to a grafana instance
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> connections<wbr>.grafana<wbr>.mode </td><td> string </td><td> <code>"bundled"</code> </td><td> How this establishes its connection to Grafana. `bundled` means it uses the grafana provisioning chart. </td></tr>
-<tr><td> connections<wbr>.grafana<wbr>.labels </td><td> object </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>connections<wbr>.grafana<wbr>.mode</td>
+      <td>string</td>
+      <td><code>"bundled"</code></td>
+      <td>How this establishes its connection to Grafana. `bundled` means it uses the grafana provisioning chart.</td>
+    </tr>
+    <tr>
+      <td>connections<wbr>.grafana<wbr>.labels</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Labels applied to Grafana instance </td></tr>
-<tr><td> connections<wbr>.grafana<wbr>.external<wbr>.url </td><td> string </td><td> <code>""</code> </td><td> External grafana uri </td></tr>
-<tr><td> connections<wbr>.grafana<wbr>.external<wbr>.adminPassword </td><td> object </td><td> <pre>
+</td>
+      <td>Labels applied to Grafana instance</td>
+    </tr>
+    <tr>
+      <td>connections<wbr>.grafana<wbr>.external<wbr>.url</td>
+      <td>string</td>
+      <td><code>""</code></td>
+      <td>External grafana uri</td>
+    </tr>
+    <tr>
+      <td>connections<wbr>.grafana<wbr>.external<wbr>.adminPassword</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Secret for Grafana admin password </td></tr>
-<tr><td> connections<wbr>.grafana<wbr>.external<wbr>.adminUser </td><td> object </td><td> <pre>
+</td>
+      <td>Secret for Grafana admin password</td>
+    </tr>
+    <tr>
+      <td>connections<wbr>.grafana<wbr>.external<wbr>.adminUser</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Secret for Grafana admin user </td></tr>
-<tr><td> connections<wbr>.grafana<wbr>.external<wbr>.apiKey </td><td> object </td><td> <pre>
+</td>
+      <td>Secret for Grafana admin user</td>
+    </tr>
+    <tr>
+      <td>connections<wbr>.grafana<wbr>.external<wbr>.apiKey</td>
+      <td>object</td>
+      <td><pre>
 {}</pre>
- </td><td> Secret for Grafana API key </td></tr>
-</tbody>
+</td>
+      <td>Secret for Grafana API key</td>
+    </tr>
+  </tbody>
 </table>
 
 ### Bundled subchart configurations
@@ -332,45 +574,79 @@ Bundled Loki backend for logs.
 Bundled Thanos backend for long-term metrics.
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> thanos<wbr>.query </td><td> object </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>thanos<wbr>.query</td>
+      <td>object</td>
+      <td><pre>
 {
   "enabled": true
 }</pre>
- </td><td> Thanos Query configuration. Query provides a PromQL query endpoint. </td></tr>
-<tr><td> thanos<wbr>.receive </td><td> object </td><td> <pre>
+</td>
+      <td>Thanos Query configuration. Query provides a PromQL query endpoint.</td>
+    </tr>
+    <tr>
+      <td>thanos<wbr>.receive</td>
+      <td>object</td>
+      <td><pre>
 {
   "enabled": true,
   "mode": "standalone"
 }</pre>
- </td><td> Thanos receive configuration. Receive provides a Prometheus remote_write-compatible endpoint. </td></tr>
-<tr><td> thanos<wbr>.storegateway </td><td> object </td><td> <pre>
+</td>
+      <td>Thanos receive configuration. Receive provides a Prometheus remote_write-compatible endpoint.</td>
+    </tr>
+    <tr>
+      <td>thanos<wbr>.storegateway</td>
+      <td>object</td>
+      <td><pre>
 {
   "enabled": true
 }</pre>
- </td><td> Thanos Store Gateway configuration. Store Gateway provides historical block querying. </td></tr>
-<tr><td> thanos<wbr>.compactor </td><td> object </td><td> <em>enabled with default retention policies</em> </td><td> Thanos Compactor configuration. Compactor provides block compaction and downsampling. </td></tr>
-<tr><td> thanos<wbr>.compactor<wbr>.retention </td><td> object </td><td> <pre>
+</td>
+      <td>Thanos Store Gateway configuration. Store Gateway provides historical block querying.</td>
+    </tr>
+    <tr>
+      <td>thanos<wbr>.compactor</td>
+      <td>object</td>
+      <td><em>enabled with default retention policies</em></td>
+      <td>Thanos Compactor configuration. Compactor provides block compaction and downsampling.</td>
+    </tr>
+    <tr>
+      <td>thanos<wbr>.compactor<wbr>.retention</td>
+      <td>object</td>
+      <td><pre>
 {
   "resolution1h": "365d",
   "resolution5m": "90d",
   "resolutionRaw": "30d"
 }</pre>
- </td><td> Retention policies for Thanos Compactor downsampled data </td></tr>
-<tr><td> thanos<wbr>.queryFrontend </td><td> object </td><td> <pre>
+</td>
+      <td>Retention policies for Thanos Compactor downsampled data</td>
+    </tr>
+    <tr>
+      <td>thanos<wbr>.queryFrontend</td>
+      <td>object</td>
+      <td><pre>
 {
   "enabled": false
 }</pre>
- </td><td> Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production. </td></tr>
-<tr><td> thanos<wbr>.ruler </td><td> object </td><td> <pre>
+</td>
+      <td>Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.</td>
+    </tr>
+    <tr>
+      <td>thanos<wbr>.ruler</td>
+      <td>object</td>
+      <td><pre>
 {
   "enabled": false
 }</pre>
- </td><td> Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation. </td></tr>
-</tbody>
+</td>
+      <td>Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Grafana Operator
@@ -382,16 +658,20 @@ Upstream references:
   * https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml
 
 <table class="helm-values">
-<thead>
-<th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-</thead>
-<tbody>
-<tr><td> grafana-operator<wbr>.crds </td><td> object </td><td> <pre>
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>grafana-operator<wbr>.crds</td>
+      <td>object</td>
+      <td><pre>
 {
   "immutable": false
 }</pre>
- </td><td> CRD behavior </td></tr>
-</tbody>
+</td>
+      <td>CRD behavior</td>
+    </tr>
+  </tbody>
 </table>
 
 #### Grafana Instance
@@ -413,3 +693,15 @@ kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize
 
 metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
 
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>metrics-server<wbr>.replicas</td>
+      <td>int</td>
+      <td><code>1</code></td>
+      <td>Number of replicas for metrics-server.</td>
+    </tr>
+  </tbody>
+</table>

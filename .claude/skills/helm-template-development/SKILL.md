@@ -22,6 +22,16 @@ which generally applies to helm templates.
 Do note that helm templates are not strictly valid YAML files and helm template rules
 supercede normal YAML rules.
 
+### Linting scope
+
+- `charts/*/templates/**` is **excluded** from `check-yaml` and `yamllint`
+  (Go template syntax is not valid YAML).
+- `charts/*/values.yaml`, `Chart.yaml`, and `examples/*.values.yaml` **are**
+  linted by yamllint with the repo's default config — write them as
+  valid YAML. The `__mainSection:` helm-docs sentinel pattern is
+  explicitly allowed (see [yaml-development](../yaml-development/SKILL.md#yaml-linting)).
+- `charts/*/pre-rendered/**` is excluded globally as generated output.
+
 ## Helm Values Best Practices
 
 Helm values (`values.yaml`) are the main inputs for a user to configure a chart.

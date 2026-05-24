@@ -38,24 +38,24 @@ _parse_args() {
         arg="$1"
         shift
         case "$arg" in
-            --help|-h)
-                _usage
-                exit 0
-                ;;
-            -J|--jpath)
-                if [ -z "$1" ]; then
-                    _log "Error: $arg requires an argument"
-                    exit 1
-                fi
-                # YAGNI: prefix into JSONNET_PATH as well?
-                _log "Adding $1 to search"
-                RENDER_ARGS+=("$arg" "$1")
-                shift
-                ;;
-            *)
-                # YAGNI: we don't need to be too argument aware _YET_
-                RENDER_ARGS+=("$arg")
-                ;;
+        --help | -h)
+            _usage
+            exit 0
+            ;;
+        -J | --jpath)
+            if [ -z "$1" ]; then
+                _log "Error: $arg requires an argument"
+                exit 1
+            fi
+            # YAGNI: prefix into JSONNET_PATH as well?
+            _log "Adding $1 to search"
+            RENDER_ARGS+=("$arg" "$1")
+            shift
+            ;;
+        *)
+            # YAGNI: we don't need to be too argument aware _YET_
+            RENDER_ARGS+=("$arg")
+            ;;
         esac
     done
     if [ "${#RENDER_ARGS[@]}" -lt 1 ]; then

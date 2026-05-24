@@ -73,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         with open(output_path, "w") as handle:
             if args.format == "json":
                 handle.write(rendered_dashboard)
+                handle.write("\n")
             elif args.format == "yaml":
                 # HACK: we need the json encoder to handle cog internals
                 # but to convert, we decode and re-encode as yaml

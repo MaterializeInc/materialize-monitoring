@@ -1,0 +1,158 @@
+name: lint
+
+# Native invocations of each tool, mirroring the areas enforced locally by
+# .pre-commit-config.yaml. We deliberately do NOT shell out to pre-commit
+# itself: each tool reads its canonical config (.editorconfig, .yamllint.yaml,
+# rustfmt defaults, pyproject.toml, .shellcheckrc, etc.) so behavior is the
+# same regardless of how the tool is invoked.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  editorconfig:
+    name: editorconfig
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install editorconfig-checker
+        run: |
+          curl -sSL \
+            "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v3.6.1/ec-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp
+          sudo install -m 0755 /tmp/bin/ec-linux-amd64 /usr/local/bin/editorconfig-checker
+      # Reads .editorconfig and .ecrc.
+      - run: editorconfig-checker
+
+  python:
+    name: python (ruff + pyright)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync
+      # All three tools read [tool.ruff] / [tool.pyright] (when present) in
+      # pyproject.toml. No flags duplicated from the pre-commit config.
+      - name: ruff check
+        run: uv run ruff check
+      - name: ruff format (check mode)
+        run: uv run ruff format --check
+      - name: pyright
+        run: uv run pyright
+
+  rust:
+    name: rust (fmt + clippy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      # rustfmt picks up rustfmt.toml if present (none today; defaults apply).
+      - name: cargo fmt (check mode)
+        run: cargo fmt --all -- --check
+      # -D warnings is a policy gate (CI/pre-push only); we don't want
+      # local `cargo build` to fail on every WIP warning, so it stays on
+      # the invocation rather than going into [workspace.lints.rust].
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  shell:
+    name: shell (shellcheck + shfmt)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      # shellcheck is preinstalled on ubuntu-24.04 runners.
+      - name: Install shfmt
+        run: |
+          curl -sSL \
+            "https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64" \
+            -o /tmp/shfmt
+          sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+      - name: Discover shell files
+        # Match the same scope pre-commit's `types: [shell]` does: explicit
+        # extensions plus shebang detection on extensionless executables.
+        shell: bash
+        run: |
+          : > shfiles.txt
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.sh|*.bash) echo "$f" >> shfiles.txt ;;
+              *)
+                if head -c 64 "$f" 2>/dev/null | grep -qE '^#!.*(bash|sh)\b'; then
+                  echo "$f" >> shfiles.txt
+                fi
+                ;;
+            esac
+          done < <(git ls-files '*.sh' '*.bash' 'bin/*' 'tools/shlib/*' | grep -v legacy)
+          echo "Found $(wc -l < shfiles.txt) shell files:"
+          cat shfiles.txt
+      - name: shellcheck
+        # No CLI flags; shellcheck reads .shellcheckrc if present.
+        run: xargs -a shfiles.txt shellcheck
+      - name: shfmt (diff mode)
+        # Indent size, switch_case_indent, and binary_next_line come from
+        # .editorconfig via shfmt's native EditorConfig support.
+        run: xargs -a shfiles.txt shfmt -d
+
+  yaml:
+    name: yaml (yamllint)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: Install yamllint
+        # Pinned to match the pre-commit hook rev for predictability.
+        run: uv tool install yamllint==1.37.1
+      - name: yamllint (default config)
+        # .yamllint.yaml is auto-discovered; the `ignore:` block in it
+        # handles generated/legacy paths and routes .kyaml elsewhere.
+        run: yamllint .
+      - name: yamllint (kyaml, strict)
+        shell: bash
+        run: |
+          mapfile -t files < <(git ls-files '*.kyaml')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No .kyaml files found; skipping."
+            exit 0
+          fi
+          yamllint -c .yamllint-kyaml.kyaml --strict "${files[@]}"
+
+  helm:
+    name: helm (lint + helm-docs freshness)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # LFS-tracked subchart tarballs under charts/*/charts/*.tgz are
+          # needed for `helm lint` to resolve declared dependencies and for
+          # helm-docs to render any subchart-aware sections.
+          lfs: true
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: |
+          helm lint charts/materialize-monitoring
+          helm lint charts/materialize-monitoring-crds
+      - name: helm-docs is up to date
+        # Regenerate then assert no diff. Detects stale chart README or
+        # docsite values reference. helm-docs version comes from go.mod.
+        run: |
+          make helm-docs
+          if ! git diff --exit-code; then
+            echo "::error::helm-docs output is stale. Run 'make helm-docs' locally and commit."
+            exit 1
+          fi
