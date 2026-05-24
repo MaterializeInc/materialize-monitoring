@@ -2,9 +2,9 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/mz-monitoring-build",
-    "crates/mz-monitoring-check",
-    "crates/mz-monitoring-pipelines",
+    "packages/mz-monitoring-build",
+    "packages/mz-monitoring-check",
+    "packages/mzmon-lib",
 ]
 
 [workspace.package]

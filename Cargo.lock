@@ -11,5 +11,5 @@ name = "mz-monitoring-check"
 version = "0.1.0"
 
 [[package]]
-name = "mz-monitoring-pipelines"
+name = "mzmon-lib"
 version = "0.1.0"

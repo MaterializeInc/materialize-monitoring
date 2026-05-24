@@ -16,8 +16,9 @@ CHARTS = materialize-monitoring
 # Rust targets
 ALL_BINARIES = mz-monitoring-build mz-monitoring-check
 # Rust sources
-SOURCES_mz-monitoring-build = $(shell find crates/mz-monitoring-build -type f)
-SOURCES_mz-monitoring-check = $(shell find crates/mz-monitoring-check -type f)
+SOURCES_mzmon-lib = $(shell find packages/mzmon-lib -type f)
+SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
+SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -82,11 +83,11 @@ check-lfs:
 # Rust binary name
 BUILD_BIN_BASENAME = $(notdir $@)
 
-target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
+target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib)
 	cargo build --bin "$(BUILD_BIN_BASENAME)"
 
 ## YAGNI
-# target/release/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
+# target/release/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib)
 # 	cargo build --release --bin "$(BUILD_BIN_BASENAME)"
 
 ### DASHBOARD SYNC ###

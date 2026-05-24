@@ -7,9 +7,6 @@ weight: 10
 * `materialize-monitoring/`
   * `Cargo.toml`: Top-level Rust workspace
   * `Cargo.lock`
-  * `crates/`: Rust workspace members
-    * `mz-monitoring-build/`: Build orchestration: reads YAML, drives Jsonnet, emits artifacts
-    * `mz-monitoring-check/`: Schema validation, label-contract conformance, cross-artifact consistency
   * `bin/`: Bash CI/dev entrypoints (flat; no subdirectories)
     * `ci-lint`: Orchestrates linters; calls Rust binaries where logic is needed
     * `ci-build`: Orchestrates artifact generation
@@ -25,6 +22,9 @@ weight: 10
     * `datadog-dashboards/`: Datadog SDK-sourced dashboards
     * `mz-monitoring/`: monitoring definitions (alerts, rules, queries, pipelines)
     * `py-mzmon-lib/`: Python helpers for dashboard generation; imported by other packages but not consumed by customers
+    * `mz-monitoring-build/`: Build orchestration: reads YAML, drives Jsonnet, emits artifacts
+    * `mz-monitoring-check/`: Schema validation, label-contract conformance, cross-artifact consistency
+    * `mzmon-lib/`: Rust library for helpers in mz-monitoring-build and mz-monitoring-check; not consumed by customers
   * `charts/`
     * `materialize-monitoring/`: Umbrella chart
       * `Chart.yaml`
