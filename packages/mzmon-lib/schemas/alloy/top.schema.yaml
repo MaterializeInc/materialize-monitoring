@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for top-level configuration of alloy pipeline definitions
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/top.schema.yaml"
+title: "Alloy top-level configuration schema"
+description: |
+  A schema for top-level configuration in Alloy pipeline definitions.
+
+  This is to be limited to the set we want to support; it doesn't need
+  to handle every case.
+  raw: can be used to escape this schema.
+
+  See: https://grafana.com/docs/alloy/latest/reference/config-blocks/
+type: object
+properties:
+  description:
+    type: string
+    description: A human-friendly description of the pipeline.
+  logging:
+    $ref: "#/$defs/logging"
+  livedebugging:
+    $ref: "#/$defs/livedebugging"
+  blocks:
+    description: |
+      The list of blocks that make up this pipeline.
+    type: array
+    items:
+      oneOf:
+        - $ref: "./raw.schema.yaml"
+
+$defs:
+  logging:
+    x-component-name: logging
+    description: |
+      Configure logging for this alloy instance.
+    properties:
+      level:
+        type: string
+        enum:
+          - error
+          - warn
+          - info
+          - debug
+        description: The log level to use for alloy.
+      format:
+        type: string
+        enum:
+          - json
+          - logfmt
+        description: The log format to use for alloy.
+      # YAGNI: write_to?
+    additionalProperties: false
+  livedebugging:
+    x-component-name: livedebugging
+    properties:
+      enabled:
+        type: boolean
+        description: |
+          Whether to enable livedebugging in the UI.
+    additionalProperties: false

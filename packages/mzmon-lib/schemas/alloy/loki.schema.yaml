@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for loki blocks in alloy pipeline definitions
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/loki.schema.yaml"
+title: "Alloy Loki block schema"
+description: |
+  A schema for loki blocks in Alloy pipeline definitions.
+
+  This is to be limited to the set we want to support; it doesn't need
+  to handle every case.
+  raw: can be used to escape this schema.
+
+  See: https://grafana.com/docs/alloy/latest/reference/components/loki/
+type: object
+properties:
+  loki.echo:
+    x-component-name: loki.echo
+    properties:
+      label:
+        $ref: "./raw.schema.yaml#/$defs/label"
