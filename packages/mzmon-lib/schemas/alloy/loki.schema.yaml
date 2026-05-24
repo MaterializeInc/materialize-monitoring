@@ -15,6 +15,13 @@ type: object
 properties:
   loki.echo:
     x-component-name: loki.echo
+    type: object
     properties:
       label:
-        $ref: "./raw.schema.yaml#/$defs/label"
+        $ref: "#/$defs/label"
+
+$defs:
+  comment:
+    type: string
+  label:
+    type: string

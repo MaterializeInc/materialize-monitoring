@@ -35,6 +35,7 @@ $defs:
   block:
     description: |
       A block unit of configuration.
+    type: object
     properties:
       component:
         type: string
@@ -58,8 +59,7 @@ $defs:
     description: |
       A raw attribute object/map/hash/dictionary.
     type: object
-    object:
-      type: object
+    properties:
       $comment:
         $ref: "#/$defs/comment"
       additionalProperties:

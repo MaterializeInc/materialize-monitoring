@@ -6,3 +6,7 @@ description: |
   This file defines the pipelines that run on alloy-gateway.
   alloy-gateway is responsible for receiving data from alloy-agent
   and processing it before forwarding it to an appropriate destination.
+
+blocks:
+  - loki.echo:
+      label: "echo"

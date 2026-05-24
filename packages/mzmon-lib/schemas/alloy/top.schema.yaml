@@ -26,11 +26,13 @@ properties:
     type: array
     items:
       oneOf:
-        - $ref: "./raw.schema.yaml"
+        # - $ref: "./raw.schema.yaml"
+        - $ref: "./loki.schema.yaml"
 
 $defs:
   logging:
     x-component-name: logging
+    type: object
     description: |
       Configure logging for this alloy instance.
     properties:
@@ -52,6 +54,7 @@ $defs:
     additionalProperties: false
   livedebugging:
     x-component-name: livedebugging
+    type: object
     properties:
       enabled:
         type: boolean

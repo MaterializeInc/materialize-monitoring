@@ -1,6 +1,10 @@
 [package]
 name = "mzmon-lib"
+description = "Common library for Materialize monitoring tools."
 version = "0.1.0"
 edition = "2024"
+publish = false
 
 [dependencies]
+indexmap = { version = "2.14.0", features = ["serde"] }
+serde = { version = "1.0.228", features = ["derive"] }
