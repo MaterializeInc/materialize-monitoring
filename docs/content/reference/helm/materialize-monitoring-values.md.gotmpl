@@ -25,6 +25,4 @@ To update: edit `values.yaml` (or this template), then run
   {{- template "helm-docs-lib.autoSectionTables" . }}
 {{- end }}
 
-{{ template "chart.valuesSectionMd" . }}
-
-{{ template "helm-docs.versionFooter" . }}
+{{- template "chart.valuesSectionMd" . -}}

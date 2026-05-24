@@ -340,6 +340,8 @@ kube-state-metrics: {}
 
 # -- (h4) metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
 # @notationType -- (sectionstart) Metrics Server
-metrics-server: {}
-# Circuit breaker (precedence over `tags.cluster-metrics` and `tags.metrics-server`):
-# enabled: true
+metrics-server:
+  # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.metrics-server`):
+  # enabled: true
+  # -- Number of replicas for metrics-server.
+  replicas: 1

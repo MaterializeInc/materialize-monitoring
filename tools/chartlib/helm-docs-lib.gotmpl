@@ -121,14 +121,18 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
         {{- printf "%s\n\n" $section.SectionDescription }}
       {{- end }}
       {{- if $section.SectionItems }}
-        {{- printf "<table class=\"helm-values\">\n<thead>\n" }}
-        {{- printf "<th>Key</th><th>Type</th><th>Default</th><th>Description</th>\n" }}
-        {{- printf "</thead>\n<tbody>\n" }}
-        {{- range $section.SectionItems -}}
-          <tr><td> {{ template "chart.valueKeyColumnRenderHtml" . }} </td><td> {{ template "chart.valueTypeColumnRenderHtml" . }} </td><td> {{ template "chart.valueDefaultColumnRenderHtml" . }} </td><td> {{ template "chart.valueDescriptionColumnRenderHtml" . }} </td></tr>
+        {{- printf "<table class=\"helm-values\">\n  <thead>\n" }}
+        {{- printf "    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>\n" }}
+        {{- printf "  </thead>\n  <tbody>" }}
+        {{- range $section.SectionItems }}    <tr>
+      <td>{{ template "chart.valueKeyColumnRenderHtml" . }}</td>
+      <td>{{ template "chart.valueTypeColumnRenderHtml" . }}</td>
+      <td>{{ template "chart.valueDefaultColumnRenderHtml" . }}</td>
+      <td>{{ template "chart.valueDescriptionColumnRenderHtml" . }}</td>
+    </tr>
           {{- printf "\n" }}
         {{- end }}
-        {{- printf "</tbody>\n</table>\n" }}
+        {{- printf "  </tbody>\n</table>\n" }}
       {{- end }}
     {{- end }}
   {{- end }}
@@ -186,4 +190,9 @@ YAGNI: support non-html?
     "SectionMap" $sectionMap
     "SectionOrder" $sectionOrder
   ) }}
+{{- end }}
+
+{{/* This leaks a double new line at end of file by default. */}}
+{{- define "chart.valuesSectionMd" }}
+  {{- template "chart.valuesSection" . }}
 {{- end }}
