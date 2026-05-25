@@ -50,8 +50,11 @@ $defs:
         type: object
         additionalProperties:
           $ref: "#/$defs/attributeValue"
-      body:
-        $ref: "#/$defs/body"
+      blocks:
+        type: array
+        description: A list of nested blocks.
+        items:
+          $ref: "#/$defs/block"
     required:
       - component
 
@@ -154,12 +157,15 @@ $defs:
     description: |
       The body of a block.
       This can be nested blocks or attributes.
-    oneOf:
-      - type: array
+    type: object
+    properties:
+      blocks:
+        type: array
         description: A list of nested blocks.
         items:
           $ref: "#/$defs/block"
-      - type: object
+      assignments:
+        type: object
         description: A set of attributes.
         additionalProperties:
           $ref: "#/$defs/attributeValue"

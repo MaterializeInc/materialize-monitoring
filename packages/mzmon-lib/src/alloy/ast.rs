@@ -10,44 +10,50 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-// Identifiers are used as LHS or labels and may get special treatment
 type Identifier = String;
-// Durations are a common type of string with temporal units
-type Duration = String;
 
 // An Alloy block describing a component and its contents
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     // type of the component
     pub component: String,
     // label (generally recommended, but not technically required for single instances of a component)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub label: Option<Identifier>,
     // top-level assignments, which could be defined in the body, but are rendered slightly neaterly
     #[serde(default)]
     pub attributes: IndexMap<Identifier, AttributeValue>,
-    // Nested blocks and assignments
     #[serde(default)]
-    pub body: Body,
+    pub blocks: Vec<Block>,
 }
 
 // The RHS "value" of an assignment
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
 pub enum AttributeValue {
-    String(String),
+    Null,
+    Bool(bool),
     Number(f64),
-    Boolean(bool),
-    Duration(Duration),
-    Array(Vec<AttributeValue>),
-    Empty,
-    Object(IndexMap<Identifier, AttributeValue>),
     // TODO: expression
+    String(String),
+    Array(Vec<AttributeValue>),
+    Object(IndexMap<Identifier, AttributeValue>),
 }
 
-// The content of a Block
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub enum Body {
-    #[default]
-    Empty,
-    Blocks(Vec<Block>),
-    Assignment(IndexMap<Identifier, AttributeValue>),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_simple_block() {
+        let yaml = r#"
+            component: loki.echo
+            label: stub
+            attributes:
+              forward_to: ["loki.write.example.receiver"]
+        "#;
+        let block: Block = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(block.component, "loki.echo");
+        assert_eq!(block.label.as_deref(), Some("stub"));
+    }
 }
