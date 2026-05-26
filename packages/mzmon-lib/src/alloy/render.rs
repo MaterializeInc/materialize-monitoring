@@ -123,6 +123,7 @@ impl Block {
             // `<indent>ComponentName {`
             write!(str_buff, "{} {{", self.component)?;
         }
+
         if self.blocks.is_empty() && self.attributes.is_empty() {
             // if no content, collapse to `<indent>ComponentName {}`
             write!(str_buff, "}}")?;
@@ -130,6 +131,7 @@ impl Block {
             // We have content, write a newline and start building the body
             // We have exactly one level of indentation for our body
             writeln!(str_buff)?;
+
             if !self.attributes.is_empty() {
                 // Write attributes one per line
                 // Note that attributes do not use trailing commas (except within their values-- arrays or objects)
@@ -154,8 +156,19 @@ impl Block {
                     writeln!(str_buff)?;
                 }
             }
+
             if !self.blocks.is_empty() {
-                panic!("Nested blocks not implemented yet: {:?}", self.blocks);
+                // Write blocks, separated by a blank line
+                for (i, block) in self.blocks.iter().enumerate() {
+                    if i > 0 {
+                        writeln!(str_buff)?; // blank line between blocks
+                    }
+                    str_buff.push_str(INDENT);
+                    // Render the block and indent all lines by one level
+                    let rendered_block = block.render()?;
+                    str_buff.push_str(&indent_trailing_content(&rendered_block)?);
+                    writeln!(str_buff)?; // newline after block
+                }
             }
             // write footer
             write!(str_buff, "}}")?;
@@ -185,7 +198,6 @@ fn format_value_string(s: &str) -> String {
             _ => out.push(c),
         }
     }
-    // TODO: replace escapes
     out.push('"');
     out
 }
@@ -244,6 +256,7 @@ impl AttributeValue {
             AttributeValue::String(s) => Ok(format_value_string(s)), // quote strings
             AttributeValue::Array(arr) => format_value_array(arr),
             AttributeValue::Object(obj) => format_value_object(obj),
+            // TODO: expression
         }
     }
 }
@@ -357,6 +370,7 @@ mod tests {
         // also gives "1", and `format!("{}", 0.1)` gives "0.1". Verify
         // against alloy fmt — you may need to special-case the integer path.
     }
+
     // -------- 4. String escaping --------
 
     #[test]
@@ -474,6 +488,66 @@ mod tests {
                 "\tmapping = {\n",
                 "\t\tmsg   = \"message\",\n",
                 "\t\tlevel = \"severity\",\n",
+                "\t}\n",
+                "}",
+            ),
+        );
+    }
+
+    // -------- 7. Nested blocks --------
+
+    #[test]
+    fn nested_block_indents_by_one_tab() {
+        let inner = Block {
+            attributes: attrs(&[(
+                "drop_counter_reason",
+                AttributeValue::String("backlog > 12hr".into()),
+            )]),
+            ..block("stage.drop")
+        };
+        let outer = Block {
+            blocks: vec![inner],
+            ..block("loki.process")
+        };
+        assert_eq!(
+            outer.render().unwrap(),
+            concat!(
+                "loki.process {\n",
+                "\tstage.drop {\n",
+                "\t\tdrop_counter_reason = \"backlog > 12hr\"\n",
+                "\t}\n",
+                "}",
+            ),
+        );
+    }
+
+    #[test]
+    fn attributes_and_nested_blocks_are_separated_by_blank_line() {
+        // This is the one place a newline acts as a separator — between
+        // the attributes group and the nested-blocks group inside a block.
+        // Inside the nested-blocks group, adjacent siblings also get a
+        // blank line between them.
+        let stage = Block {
+            attributes: attrs(&[("older_than", AttributeValue::String("12h".into()))]),
+            ..block("stage.drop")
+        };
+        let outer = Block {
+            attributes: attrs(&[("forward_to", AttributeValue::String("x".into()))]),
+            blocks: vec![stage.clone(), stage],
+            ..block("loki.process")
+        };
+        assert_eq!(
+            outer.render().unwrap(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = \"x\"\n",
+                "\n", // blank line: attrs → blocks
+                "\tstage.drop {\n",
+                "\t\tolder_than = \"12h\"\n",
+                "\t}\n",
+                "\n", // blank line: block → block
+                "\tstage.drop {\n",
+                "\t\tolder_than = \"12h\"\n",
                 "\t}\n",
                 "}",
             ),
