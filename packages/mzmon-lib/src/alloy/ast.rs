@@ -10,10 +10,12 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+use crate::alloy::error::Result;
+
 pub type Identifier = String;
 
 // An Alloy block describing a component and its contents
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     // type of the component
     pub component: String,
@@ -25,6 +27,19 @@ pub struct Block {
     pub attributes: IndexMap<Identifier, AttributeValue>,
     #[serde(default)]
     pub blocks: Vec<Block>,
+}
+
+impl Block {
+    pub fn new(component: impl Into<String>) -> Self {
+        Self {
+            component: component.into(),
+            ..Default::default()
+        }
+    }
+}
+
+pub trait ToBlock {
+    fn to_block(&self) -> Result<Block>;
 }
 
 // The RHS "value" of an assignment

@@ -17,6 +17,12 @@ pub enum Error {
     #[error("formatter error")]
     Fmt(#[from] fmt::Error),
 
+    #[error("YAML error: {0}")]
+    YamlError(#[from] serde_yaml_ng::Error),
+
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
     #[error("rendering error: {0}")]
     Render(String),
 

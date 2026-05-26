@@ -9,4 +9,9 @@
 
 pub mod ast;
 pub mod error;
+pub mod pipeline;
 pub mod render;
+
+pub mod components {
+    pub mod top;
+}
