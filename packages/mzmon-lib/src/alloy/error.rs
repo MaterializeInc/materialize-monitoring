@@ -16,6 +16,12 @@ pub enum Error {
 
     #[error("formatter error")]
     Fmt(#[from] fmt::Error),
+
+    #[error("rendering error: {0}")]
+    Render(String),
+
+    #[error("multiple errors")]
+    Multiple(Vec<Error>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
