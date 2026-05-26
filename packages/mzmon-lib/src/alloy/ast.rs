@@ -10,7 +10,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-type Identifier = String;
+pub type Identifier = String;
 
 // An Alloy block describing a component and its contents
 #[derive(Serialize, Deserialize, Debug, Clone)]

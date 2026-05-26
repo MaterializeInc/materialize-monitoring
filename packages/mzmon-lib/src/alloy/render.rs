@@ -7,51 +7,12 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-use crate::alloy::ast::{AttributeValue, Block};
+use crate::alloy::ast::{AttributeValue, Block, Identifier};
 use crate::alloy::error::{Error, Result};
 
-use std::fmt::Write;
+use std::fmt;
 
 const INDENT: &str = "\t";
-
-/// Prefix each subsequent non-empty line of `s` with an indent
-///
-/// TODO: consider handling indents more closely to their renderers
-fn indent_trailing_content(s: &str) -> Result<String> {
-    let mut out = String::new();
-    // First line does not get indented (and we want indents between each line)
-    let mut first_line = true;
-    // HACK: if we see a "= `", we want to leave content as is until we see another "`"
-    let mut inside_raw_string = false;
-    for line in s.lines() {
-        if !first_line {
-            out.push('\n');
-        }
-        // Do not indent blank lines (nor the first line)
-        if !first_line && !line.is_empty() && !inside_raw_string {
-            out.push_str(INDENT);
-        }
-        out.push_str(line);
-        // Toggle raw string state if we encounter a backtick
-        if inside_raw_string {
-            if line.contains('`') {
-                inside_raw_string = false;
-            }
-        } else {
-            // if we contain a "= `", this is an RHS assignment to a raw string
-            // if we start with a backtick, this is the RHS by itself
-            if line.contains("= `") || line.starts_with('`') {
-                // if we have two backticks, the raw string is terminated in the same line
-                // (this shouldn't happen though, since we only use raw strings for multiline contexts)
-                if line.chars().filter(|&c| c == '`').count() == 1 {
-                    inside_raw_string = true;
-                }
-            }
-        }
-        first_line = false;
-    }
-    Ok(out)
-}
 
 /// Quote a key if needed
 /// See: https://grafana.com/docs/alloy/latest/get-started/syntax/#identifiers
@@ -77,32 +38,30 @@ fn format_key(ident: &str) -> Result<String> {
     })
 }
 
-/// Pre-format an IndexMap of attributes
+/// Pre-format the keys of an IndexMap of attributes
 /// This is used in both block-level attributes and object values
 /// since key alignment determines how they are rendered
 ///
 /// This aggregates errors and reports a single error
-fn preformat_attributes(
-    attributes: &indexmap::IndexMap<String, AttributeValue>,
-) -> Result<Vec<(String, String)>> {
-    let mut formatted_attribs: Vec<(String, String)> = Vec::new();
+fn preformat_attribute_keys<'a>(
+    attributes: &'a indexmap::IndexMap<Identifier, AttributeValue>,
+) -> Result<Vec<(String, &'a AttributeValue)>> {
+    let mut formatted_key_map: Vec<(String, &'a AttributeValue)> = Vec::new();
     let mut formatting_errors: Vec<Error> = Vec::new();
-    for (k, v) in attributes.iter() {
-        let formatted_key = format_key(k);
-        let rendered_value = v.render();
-        match (formatted_key, rendered_value) {
-            (Ok(k), Ok(v)) => formatted_attribs.push((k, v)),
-            (Err(e), _) | (_, Err(e)) => formatting_errors.push(e),
+    for (key, value) in attributes.iter() {
+        match format_key(key) {
+            Ok(formatted_key) => formatted_key_map.push((formatted_key, value)),
+            Err(e) => formatting_errors.push(e),
         }
     }
     if !formatting_errors.is_empty() {
         return Err(Error::Multiple(formatting_errors));
     }
-    Ok(formatted_attribs)
+    Ok(formatted_key_map)
 }
 
 /// Calculate the length of the longest pre-formatted key, for alignment purposes
-fn longest_preformatted_key(formatted_attribs: &[(String, String)]) -> usize {
+fn longest_preformatted_key(formatted_attribs: &[(String, &AttributeValue)]) -> usize {
     formatted_attribs
         .iter()
         .map(|(key, _)| key.len())
@@ -114,46 +73,60 @@ impl Block {
     /// Render this block as a `config.alloy` snippet, starting at column 0.
     pub fn render(&self) -> Result<String> {
         let mut str_buff = String::new();
+        self.write_to(&mut str_buff, 0)?;
+        Ok(str_buff)
+    }
+
+    pub fn write_to(&self, out: &mut impl fmt::Write, indent: usize) -> Result<()> {
         // write header
         if let Some(label) = &self.label {
             // `<indent>ComponentName "Label" {`
             // component names are never quoted, labels are always quoted
-            write!(str_buff, "{} \"{}\" {{", self.component, label)?;
+            write!(
+                out,
+                "{}{} \"{}\" {{",
+                INDENT.repeat(indent),
+                self.component,
+                label
+            )?;
         } else {
             // `<indent>ComponentName {`
-            write!(str_buff, "{} {{", self.component)?;
+            write!(out, "{}{} {{", INDENT.repeat(indent), self.component)?;
         }
 
         if self.blocks.is_empty() && self.attributes.is_empty() {
-            // if no content, collapse to `<indent>ComponentName {}`
-            write!(str_buff, "}}")?;
+            // if no content, collapse to `<indent>ComponentName {}` on same line
+            write!(out, "}}")?;
         } else {
             // We have content, write a newline and start building the body
             // We have exactly one level of indentation for our body
-            writeln!(str_buff)?;
+            writeln!(out)?;
 
             if !self.attributes.is_empty() {
+                let inner_prefix = INDENT.repeat(indent + 1);
                 // Write attributes one per line
                 // Note that attributes do not use trailing commas (except within their values-- arrays or objects)
                 // need to precalculate formatting for alignment
-                let formatted_attribs = preformat_attributes(&self.attributes)?;
+                let formatted_attribs = preformat_attribute_keys(&self.attributes)?;
                 // calculate longest key for alignment
                 let longest_key_len = longest_preformatted_key(&formatted_attribs);
                 // finally output formatted attributes
-                for (key, value) in &formatted_attribs {
-                    let ljust = longest_key_len - key.len();
-                    writeln!(
-                        str_buff,
-                        "{}{}{} = {}",
-                        INDENT,
-                        key,
+                for (formatted_key, value) in &formatted_attribs {
+                    let ljust = longest_key_len - formatted_key.len();
+                    // NOTE: no trailing newline (yet) or trailing comma
+                    write!(
+                        out,
+                        "{}{}{} = ",
+                        inner_prefix,
+                        formatted_key,
                         " ".repeat(ljust),
-                        indent_trailing_content(value)?
                     )?;
+                    value.write_to(out, indent + 1)?;
+                    writeln!(out)?; // newline after each attribute
                 }
                 if !self.blocks.is_empty() {
                     // blank line between attributes and blocks
-                    writeln!(str_buff)?;
+                    writeln!(out)?;
                 }
             }
 
@@ -161,19 +134,17 @@ impl Block {
                 // Write blocks, separated by a blank line
                 for (i, block) in self.blocks.iter().enumerate() {
                     if i > 0 {
-                        writeln!(str_buff)?; // blank line between blocks
+                        writeln!(out)?; // blank line between blocks
                     }
-                    str_buff.push_str(INDENT);
                     // Render the block and indent all lines by one level
-                    let rendered_block = block.render()?;
-                    str_buff.push_str(&indent_trailing_content(&rendered_block)?);
-                    writeln!(str_buff)?; // newline after block
+                    block.write_to(out, indent + 1)?;
+                    writeln!(out)?; // newline after each block
                 }
             }
             // write footer
-            write!(str_buff, "}}")?;
+            write!(out, "{}}}", INDENT.repeat(indent))?;
         }
-        Ok(str_buff)
+        Ok(())
     }
 }
 
@@ -182,8 +153,8 @@ impl Block {
 /// https://grafana.com/docs/alloy/latest/get-started/expressions/types_and_values/#strings
 /// https://grafana.com/docs/alloy/latest/get-started/expressions/types_and_values/#raw-strings
 fn format_value_string(s: &str) -> String {
-    if s.contains('\n') {
-        // If the string contains newlines, use backtick raw-string syntax with no escapes.
+    if s.contains('\n') && !s.contains('`') {
+        // If the string contains newlines, prefer backtick raw-string syntax with no escapes.
         return format!("`{s}`");
     }
     let mut out = String::with_capacity(s.len() + 2);
@@ -203,61 +174,86 @@ fn format_value_string(s: &str) -> String {
 }
 
 /// Render an attribute array value
-fn format_value_array(arr: &[AttributeValue]) -> Result<String> {
-    let mut out = String::new();
-    out.push('[');
-    if !arr.is_empty() {
-        out.push('\n');
+fn write_value_array(
+    out: &mut impl fmt::Write,
+    arr: &[AttributeValue],
+    indent: usize,
+) -> Result<()> {
+    // caller is responsible for leading indents
+    if arr.is_empty() {
+        // empty arrays are rendered inline as `[]`
+        write!(out, "[]")?;
+        return Ok(());
     }
+    writeln!(out, "[")?;
+    let inner_prefix = INDENT.repeat(indent + 1);
     for item in arr.iter() {
-        // We only write a single indent (indent_trailing_content will adjust later)
-        out.push_str(INDENT);
-        out.push_str(&item.render()?);
-        // Always include a trailing comma
-        out.push_str(",\n");
+        write!(out, "{}", inner_prefix)?;
+        item.write_to(out, indent + 1)?;
+        writeln!(out, ",")?; // trailing comma on every item
     }
-    out.push(']');
-    Ok(out)
+    write!(out, "{}]", INDENT.repeat(indent))?;
+    Ok(())
 }
 
 /// Render an attribute object value
 ///
 /// These render kinda like block attributes, except they have trailing commas
-fn format_value_object(obj: &indexmap::IndexMap<String, AttributeValue>) -> Result<String> {
-    let mut out = String::new();
-    out.push('{');
-    if !obj.is_empty() {
-        out.push('\n');
+fn write_value_object(
+    out: &mut impl fmt::Write,
+    obj: &indexmap::IndexMap<String, AttributeValue>,
+    indent: usize,
+) -> Result<()> {
+    // caller is responsible for leading indents
+    if obj.is_empty() {
+        // empty objects are rendered inline as `{}`
+        write!(out, "{{}}")?;
+        return Ok(());
     }
-    let formatted_items = preformat_attributes(obj)?;
+    writeln!(out, "{{")?;
+    let inner_prefix = INDENT.repeat(indent + 1);
+    let formatted_items = preformat_attribute_keys(obj)?;
     let longest_key_len = longest_preformatted_key(&formatted_items);
 
-    for (key, value) in formatted_items {
-        let ljust = longest_key_len - key.len();
-        out.push_str(INDENT);
-        out.push_str(&key);
-        out.push_str(&" ".repeat(ljust));
-        out.push_str(" = ");
-        out.push_str(&indent_trailing_content(&value)?);
-        out.push_str(",\n");
+    for (formatted_key, value) in formatted_items {
+        let ljust = longest_key_len - formatted_key.len();
+        write!(
+            out,
+            "{}{}{} = ",
+            inner_prefix,
+            formatted_key,
+            " ".repeat(ljust)
+        )?;
+        value.write_to(out, indent + 1)?;
+        writeln!(out, ",")?; // trailing comma on every item
     }
-    out.push('}');
-    Ok(out)
+    write!(out, "{}}}", INDENT.repeat(indent))?;
+    Ok(())
 }
 
 impl AttributeValue {
     /// Render a top-level attribute value (RHS) of a block.
     /// This does not include a trailing newline or comma.
     pub fn render(&self) -> Result<String> {
+        let mut out = String::new();
+        self.write_to(&mut out, 0)?;
+        Ok(out)
+    }
+
+    /// Write the RHS of an attribute assignment
+    /// There is going to be a preceding `= ` that is responsible for the caller to write
+    /// This also doesn't write the trailing newline or comma
+    pub fn write_to(&self, out: &mut impl fmt::Write, indent: usize) -> Result<()> {
         match self {
-            AttributeValue::Null => Ok("null".into()),
-            AttributeValue::Bool(b) => Ok(b.to_string()),
-            AttributeValue::Number(n) => Ok(n.to_string()),
-            AttributeValue::String(s) => Ok(format_value_string(s)), // quote strings
-            AttributeValue::Array(arr) => format_value_array(arr),
-            AttributeValue::Object(obj) => format_value_object(obj),
+            AttributeValue::Null => write!(out, "null")?,
+            AttributeValue::Bool(b) => write!(out, "{}", b)?,
+            AttributeValue::Number(n) => write!(out, "{}", n)?,
+            AttributeValue::String(s) => write!(out, "{}", format_value_string(s))?, // quote strings
+            AttributeValue::Array(arr) => write_value_array(out, arr, indent)?,
+            AttributeValue::Object(obj) => write_value_object(out, obj, indent)?,
             // TODO: expression
         }
+        Ok(())
     }
 }
 
