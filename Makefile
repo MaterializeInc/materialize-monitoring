@@ -21,7 +21,7 @@ SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
 SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 
 # Alloy targets
-ALLOY_TARGETS = alloy-gateway alloy-agent
+ALLOY_TARGETS = gateway agent
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -114,13 +114,13 @@ charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana
 
 ### PIPELINE SYNC ###
 
-ALLOY_TARGET = $(patsubst %.alloy,%,$(basename $@))
+ALLOY_TARGET = $(patsubst %.alloy,%,$(notdir $@))
 
 # TODO: invoke
-charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: target/debug/mz-monitoring-build
+charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
 	mkdir -p "$(@D)"
-#	target/debug/mz-monitoring-build gen-pipelines --output-dir "$(@D)" --target "$(ALLOY_TARGET)"
-#	alloy validate "$@"
+	target/debug/mz-monitoring-build gen-pipelines --output-dir "$(@D)" --target "$(ALLOY_TARGET)"
+	alloy validate "$@"
 
 charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materialize-monitoring/pre-rendered/pipelines/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
 	touch "$@"

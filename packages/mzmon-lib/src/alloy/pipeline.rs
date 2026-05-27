@@ -156,7 +156,7 @@ mod tests {
                   label: stub
         "#;
         let pipeline = Pipeline::from_yaml_str(yaml).unwrap();
-        assert_eq!(pipeline.render().unwrap(), "loki.echo \"stub\" {}\n",);
+        assert_eq!(pipeline.render().unwrap(), "loki.echo \"stub\" { }\n",);
     }
 
     #[test]

@@ -95,8 +95,8 @@ impl Block {
         }
 
         if self.blocks.is_empty() && self.attributes.is_empty() {
-            // if no content, collapse to `<indent>ComponentName {}` on same line
-            write!(out, "}}")?;
+            // if no content, collapse to `<indent>ComponentName { }` on same line
+            write!(out, " }}")?;
         } else {
             // We have content, write a newline and start building the body
             // We have exactly one level of indentation for our body
@@ -283,8 +283,9 @@ mod tests {
 
     #[test]
     fn empty_block_uses_compact_braces() {
-        // A bare block with no content collapses to `component {}` on one line.
-        assert_eq!(block("loki.echo").render().unwrap(), "loki.echo {}");
+        // A bare block with no content collapses to `component { }` on one line
+        // (alloy fmt space-pads an empty block body).
+        assert_eq!(block("loki.echo").render().unwrap(), "loki.echo { }");
     }
 
     #[test]
@@ -293,7 +294,7 @@ mod tests {
             label: Some("stub".into()),
             ..block("loki.echo")
         };
-        assert_eq!(b.render().unwrap(), r#"loki.echo "stub" {}"#);
+        assert_eq!(b.render().unwrap(), r#"loki.echo "stub" { }"#);
     }
 
     // -------- 2. Statement-level attributes (no commas) --------
