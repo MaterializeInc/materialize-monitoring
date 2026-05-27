@@ -12,6 +12,9 @@ pub mod error;
 pub mod pipeline;
 pub mod render;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub mod components {
     pub mod top;
 }

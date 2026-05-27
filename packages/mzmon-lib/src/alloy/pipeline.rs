@@ -120,6 +120,7 @@ fn write_description_comment(out: &mut impl fmt::Write, desc: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::alloy::test_support::assert_renders;
 
     #[test]
     fn pipeline_with_description_and_logging() {
@@ -133,8 +134,8 @@ mod tests {
             blocks: []
         "#;
         let pipeline = Pipeline::from_yaml_str(yaml).unwrap();
-        assert_eq!(
-            pipeline.render().unwrap(),
+        assert_renders(
+            pipeline.render(),
             concat!(
                 "// first line\n",
                 "//\n",
@@ -156,7 +157,7 @@ mod tests {
                   label: stub
         "#;
         let pipeline = Pipeline::from_yaml_str(yaml).unwrap();
-        assert_eq!(pipeline.render().unwrap(), "loki.echo \"stub\" { }\n",);
+        assert_renders(pipeline.render(), "loki.echo \"stub\" { }\n");
     }
 
     #[test]

@@ -14,37 +14,64 @@ use std::fmt;
 
 const INDENT: &str = "\t";
 
-/// Quote a key if needed
+/// Returns true if `ident` is a bare alloy identifier: a non-empty run of
+/// ASCII letters, digits, and underscores that does not start with a digit.
+///
 /// See: https://grafana.com/docs/alloy/latest/get-started/syntax/#identifiers
-fn format_key(ident: &str) -> Result<String> {
-    // Cannot be empty
+fn is_bare_identifier(ident: &str) -> bool {
+    let mut chars = ident.chars();
+    match chars.next() {
+        // first char must be a letter or underscore (so: non-empty, no leading digit)
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Format a *block attribute* key — the LHS of `=` directly inside a block body.
+///
+/// These MUST be bare identifiers. Alloy rejects both quoted keys
+/// (`"weird key" = ...` → "expected identifier, got STRING") and dotted keys
+/// (`foo.bar = ...` → "attribute names may only consist of a single identifier").
+/// Quoting cannot rescue an invalid key in this context, so we error instead.
+fn format_attribute_key(ident: &str) -> Result<String> {
+    if is_bare_identifier(ident) {
+        Ok(ident.to_string())
+    } else {
+        Err(Error::InvalidIdentifier(format!(
+            "attribute key {ident:?} must be a single bare identifier \
+             (letters, digits, underscores; not starting with a digit); \
+             alloy does not allow quoted or dotted attribute keys"
+        )))
+    }
+}
+
+/// Format an *object-literal* key — the LHS of `=` inside a `{ }` value.
+///
+/// Bare identifiers are emitted unquoted; anything else (spaces, dots, ...) is
+/// quoted, which alloy accepts in object-literal context.
+fn format_object_key(ident: &str) -> Result<String> {
     if ident.is_empty() {
         return Err(Error::InvalidIdentifier(
-            "Identifier cannot be empty".into(),
+            "object key cannot be empty".into(),
         ));
     }
-    // Cannot start with a digit
-    if ident.starts_with(|c: char| c.is_ascii_digit()) {
-        return Err(Error::InvalidIdentifier(format!(
-            "Identifier {} cannot start with a digit",
-            ident
-        )));
-    }
-    // If it contains a space or period, it must be quoted
-    Ok(if ident.contains(|c: char| c.is_whitespace() || c == '.') {
-        format!("\"{}\"", ident)
-    } else {
+    Ok(if is_bare_identifier(ident) {
         ident.to_string()
+    } else {
+        format!("\"{ident}\"")
     })
 }
 
-/// Pre-format the keys of an IndexMap of attributes
-/// This is used in both block-level attributes and object values
-/// since key alignment determines how they are rendered
+/// Pre-format the keys of an IndexMap of attributes, using the supplied
+/// context-specific key formatter (`format_attribute_key` for block bodies,
+/// `format_object_key` for object literals — they have different syntax rules).
+/// Key alignment is computed by the caller, so we return the formatted keys.
 ///
 /// This aggregates errors and reports a single error
 fn preformat_attribute_keys<'a>(
     attributes: &'a indexmap::IndexMap<Identifier, AttributeValue>,
+    format_key: fn(&str) -> Result<String>,
 ) -> Result<Vec<(String, &'a AttributeValue)>> {
     let mut formatted_key_map: Vec<(String, &'a AttributeValue)> = Vec::new();
     let mut formatting_errors: Vec<Error> = Vec::new();
@@ -107,7 +134,8 @@ impl Block {
                 // Write attributes one per line
                 // Note that attributes do not use trailing commas (except within their values-- arrays or objects)
                 // need to precalculate formatting for alignment
-                let formatted_attribs = preformat_attribute_keys(&self.attributes)?;
+                let formatted_attribs =
+                    preformat_attribute_keys(&self.attributes, format_attribute_key)?;
                 // calculate longest key for alignment
                 let longest_key_len = longest_preformatted_key(&formatted_attribs);
                 // finally output formatted attributes
@@ -212,7 +240,7 @@ fn write_value_object(
     }
     writeln!(out, "{{")?;
     let inner_prefix = INDENT.repeat(indent + 1);
-    let formatted_items = preformat_attribute_keys(obj)?;
+    let formatted_items = preformat_attribute_keys(obj, format_object_key)?;
     let longest_key_len = longest_preformatted_key(&formatted_items);
 
     for (formatted_key, value) in formatted_items {
@@ -260,6 +288,8 @@ impl AttributeValue {
 #[cfg(test)]
 mod tests {
     use crate::alloy::ast::{AttributeValue, Block};
+    use crate::alloy::error::Error;
+    use crate::alloy::test_support::assert_renders;
     use indexmap::IndexMap;
 
     // small helper so tests read like data, not constructor noise
@@ -285,7 +315,7 @@ mod tests {
     fn empty_block_uses_compact_braces() {
         // A bare block with no content collapses to `component { }` on one line
         // (alloy fmt space-pads an empty block body).
-        assert_eq!(block("loki.echo").render().unwrap(), "loki.echo { }");
+        assert_renders(block("loki.echo").render(), "loki.echo { }");
     }
 
     #[test]
@@ -294,7 +324,7 @@ mod tests {
             label: Some("stub".into()),
             ..block("loki.echo")
         };
-        assert_eq!(b.render().unwrap(), r#"loki.echo "stub" { }"#);
+        assert_renders(b.render(), r#"loki.echo "stub" { }"#);
     }
 
     // -------- 2. Statement-level attributes (no commas) --------
@@ -305,8 +335,8 @@ mod tests {
             attributes: attrs(&[("source", AttributeValue::String("ts".into()))]),
             ..block("stage.timestamp")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!("stage.timestamp {\n", "\tsource = \"ts\"\n", "}",),
         );
     }
@@ -323,8 +353,8 @@ mod tests {
             ]),
             ..block("loki.process")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
                 "loki.process {\n",
                 "\tforward_to = \"x\"\n",
@@ -350,8 +380,8 @@ mod tests {
             ]),
             ..block("stage.limit")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
                 "stage.limit {\n",
                 "\tcount = 42\n", // not 42.0 — integers shouldn't get a .0 tail
@@ -381,8 +411,8 @@ mod tests {
         };
         // Inner quotes become \", literal backslash becomes \\.
         // Note: the input contains literal `\` and `n`, NOT a newline.
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
                 "stage.regex {\n",
                 "\texpression = \"hello \\\"world\\\" \\\\n\"\n",
@@ -402,8 +432,8 @@ mod tests {
             )]),
             ..block("stage.template")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
                 "stage.template {\n",
                 "\ttemplate = `line one\nline two`\n",
@@ -420,8 +450,8 @@ mod tests {
             attributes: attrs(&[("forward_to", AttributeValue::Array(vec![]))]),
             ..block("loki.process")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!("loki.process {\n", "\tforward_to = []\n", "}",),
         );
     }
@@ -439,8 +469,8 @@ mod tests {
             )]),
             ..block("loki.process")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
                 "loki.process {\n",
                 "\tforward_to = [\n",
@@ -460,8 +490,8 @@ mod tests {
             attributes: attrs(&[("values", AttributeValue::Object(IndexMap::new()))]),
             ..block("stage.labels")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!("stage.labels {\n", "\tvalues = {}\n", "}",),
         );
     }
@@ -478,8 +508,8 @@ mod tests {
         // Object literals also align `=` and use trailing commas — same rules
         // as block-level attributes EXCEPT for the commas. Keys here are
         // `msg` (3) and `level` (5), so `msg` pads to 5.
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
                 "stage.json {\n",
                 "\tmapping = {\n",
@@ -506,8 +536,8 @@ mod tests {
             blocks: vec![inner],
             ..block("loki.process")
         };
-        assert_eq!(
-            outer.render().unwrap(),
+        assert_renders(
+            outer.render(),
             concat!(
                 "loki.process {\n",
                 "\tstage.drop {\n",
@@ -533,8 +563,8 @@ mod tests {
             blocks: vec![stage.clone(), stage],
             ..block("loki.process")
         };
-        assert_eq!(
-            outer.render().unwrap(),
+        assert_renders(
+            outer.render(),
             concat!(
                 "loki.process {\n",
                 "\tforward_to = \"x\"\n",
@@ -554,26 +584,92 @@ mod tests {
     // -------- 8. Identifiers that need quoting --------
 
     #[test]
-    fn identifier_with_space_or_special_chars_is_quoted() {
-        // A key like `service name` or `weird:key` isn't a bare alloy identifier
-        // and must be quoted. Plain dots are OK unquoted (loki.echo, stage.drop).
+    fn quoted_key_in_object_literal() {
+        // Inside an OBJECT literal, a key that isn't a bare identifier (space, dot)
+        // is valid when quoted — `alloy fmt` accepts `"weird key" = ...` here.
+        // The quoted key is 11 chars including quotes; normal_key is 10, so it
+        // pads to 11 to align the `=` signs.
+        //
+        // NOTE: this is NOT true for block-level *attribute* keys, which must be
+        // bare single identifiers (alloy rejects both `"weird key" =` and
+        // `foo.bar =`). See the format_key context-split finding.
+        let mut values = IndexMap::new();
+        values.insert("normal_key".into(), AttributeValue::String("v".into()));
+        values.insert("weird key".into(), AttributeValue::String("v".into()));
         let b = Block {
-            attributes: attrs(&[
-                ("normal_key", AttributeValue::String("v".into())),
-                ("weird key", AttributeValue::String("v".into())),
-            ]),
-            ..block("loki.process")
+            attributes: attrs(&[("values", AttributeValue::Object(values))]),
+            ..block("stage.labels")
         };
-        assert_eq!(
-            b.render().unwrap(),
+        assert_renders(
+            b.render(),
             concat!(
-                "loki.process {\n",
-                // The quoted key is 11 chars including quotes; normal_key is 10.
-                // So `normal_key` pads to 11.
-                "\tnormal_key  = \"v\"\n",
-                "\t\"weird key\" = \"v\"\n",
+                "stage.labels {\n",
+                "\tvalues = {\n",
+                "\t\tnormal_key  = \"v\",\n",
+                "\t\t\"weird key\" = \"v\",\n",
+                "\t}\n",
                 "}",
             ),
         );
+    }
+
+    #[test]
+    fn dotted_key_in_object_literal_is_quoted() {
+        // A dotted key is also fine in object-literal context, quoted.
+        let mut values = IndexMap::new();
+        values.insert("foo.bar".into(), AttributeValue::String("v".into()));
+        let b = Block {
+            attributes: attrs(&[("values", AttributeValue::Object(values))]),
+            ..block("stage.labels")
+        };
+        assert_renders(
+            b.render(),
+            concat!(
+                "stage.labels {\n",
+                "\tvalues = {\n",
+                "\t\t\"foo.bar\" = \"v\",\n",
+                "\t}\n",
+                "}",
+            ),
+        );
+    }
+
+    // -------- 9. Attribute keys must be bare identifiers --------
+
+    /// A render result should fail with a single InvalidIdentifier (wrapped in
+    /// the error-collecting `Multiple`).
+    fn assert_invalid_identifier(result: crate::alloy::error::Result<String>) {
+        match result {
+            Err(Error::Multiple(errs)) => {
+                assert_eq!(errs.len(), 1, "expected exactly one error, got {errs:?}");
+                assert!(
+                    matches!(errs[0], Error::InvalidIdentifier(_)),
+                    "expected InvalidIdentifier, got {:?}",
+                    errs[0],
+                );
+            }
+            other => panic!("expected Multiple([InvalidIdentifier]), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn attribute_key_with_space_is_rejected() {
+        // alloy rejects `"weird key" = ...` as an attribute key — quoting can't
+        // rescue it, so the renderer must error rather than emit invalid output.
+        let b = Block {
+            attributes: attrs(&[("weird key", AttributeValue::String("v".into()))]),
+            ..block("loki.process")
+        };
+        assert_invalid_identifier(b.render());
+    }
+
+    #[test]
+    fn attribute_key_with_dot_is_rejected() {
+        // alloy: "attribute names may only consist of a single identifier with no '.'"
+        let b = Block {
+            attributes: attrs(&[("foo.bar", AttributeValue::String("v".into()))]),
+            ..block("loki.process")
+        };
+        assert_invalid_identifier(b.render());
     }
 }
