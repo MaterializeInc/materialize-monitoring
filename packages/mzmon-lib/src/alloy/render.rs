@@ -259,6 +259,62 @@ fn write_value_object(
     Ok(())
 }
 
+/// Render an expression value
+fn write_expression(
+    out: &mut impl fmt::Write,
+    expr: &crate::alloy::ast::Expression,
+    indent: usize,
+) -> Result<()> {
+    let mut rendered_expr = false;
+    if let Some(env_var) = &expr.env {
+        // TODO: validate characters?
+        write!(out, "sys.env(\"{}\")", env_var)?;
+        rendered_expr = true;
+    }
+    if let Some(raw) = &expr.raw {
+        if rendered_expr {
+            return Err(Error::Render("Too many expressions".into()));
+        }
+        write!(out, "{}", raw)?;
+        rendered_expr = true;
+    }
+    if let Some(func) = &expr.function {
+        if rendered_expr {
+            return Err(Error::Render("Too many expressions".into()));
+        }
+        write!(out, "{}(", func)?;
+        for (i, arg) in expr.arguments.iter().enumerate() {
+            if i > 0 {
+                write!(out, ", ")?;
+            }
+            // TODO: when do we break to multiple lines?
+            arg.write_to(out, indent + 1)?;
+        }
+        write!(out, ")")?;
+        rendered_expr = true;
+    }
+    if let Some(ref_name) = &expr.ref_name {
+        if rendered_expr {
+            return Err(Error::Render("Too many expressions".into()));
+        }
+        // TODO: validate ref exists on second pass?
+        write!(out, "{}", ref_name)?;
+        rendered_expr = true;
+    }
+    if let Some(oper) = &expr.operator {
+        if rendered_expr {
+            return Err(Error::Render("Too many expressions".into()));
+        }
+        // TODO: implement
+        let _ = oper;
+        return Err(Error::Render("Operator is not yet implemented".into()));
+    }
+    if !rendered_expr {
+        return Err(Error::Render("Expression had no body".into()));
+    }
+    Ok(())
+}
+
 impl AttributeValue {
     /// Render a top-level attribute value (RHS) of a block.
     /// This does not include a trailing newline or comma.
@@ -279,7 +335,7 @@ impl AttributeValue {
             AttributeValue::String(s) => write!(out, "{}", format_value_string(s))?, // quote strings
             AttributeValue::Array(arr) => write_value_array(out, arr, indent)?,
             AttributeValue::Object(obj) => write_value_object(out, obj, indent)?,
-            // TODO: expression
+            AttributeValue::Expression(expr) => write_expression(out, expr, indent)?,
         }
         Ok(())
     }
@@ -287,7 +343,7 @@ impl AttributeValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::alloy::ast::{AttributeValue, Block};
+    use crate::alloy::ast::{AttributeValue, Block, Expression};
     use crate::alloy::error::Error;
     use crate::alloy::test_support::assert_renders;
     use indexmap::IndexMap;
@@ -671,5 +727,172 @@ mod tests {
             ..block("loki.process")
         };
         assert_invalid_identifier(b.render());
+    }
+
+    // -------- 10. Expressions --------
+
+    /// Build a block `stage.expr { <key> = <expr> }` for exercising expression
+    /// rendering as the RHS of an attribute.
+    fn expr_block(key: &str, expr: Expression) -> Block {
+        Block {
+            attributes: attrs(&[(key, AttributeValue::Expression(expr))]),
+            ..block("stage.expr")
+        }
+    }
+
+    #[test]
+    fn expression_env_renders_sys_env() {
+        let b = expr_block(
+            "target",
+            Expression {
+                env: Some("MZ_TARGET".into()),
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!("stage.expr {\n", "\ttarget = sys.env(\"MZ_TARGET\")\n", "}"),
+        );
+    }
+
+    #[test]
+    fn expression_raw_renders_verbatim() {
+        // The primary tunable path: a free-form raw expression passed through as-is.
+        let b = expr_block(
+            "sum",
+            Expression {
+                raw: Some("1 + 2".into()),
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!("stage.expr {\n", "\tsum = 1 + 2\n", "}"),
+        );
+    }
+
+    #[test]
+    fn expression_ref_renders_verbatim() {
+        // A component reference is emitted as a bare dotted path (unquoted).
+        let b = expr_block(
+            "forward_to",
+            Expression {
+                ref_name: Some("loki.write.default.receiver".into()),
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!(
+                "stage.expr {\n",
+                "\tforward_to = loki.write.default.receiver\n",
+                "}",
+            ),
+        );
+    }
+
+    #[test]
+    fn expression_function_with_args() {
+        // function + arguments: args are comma-separated, string args quoted.
+        let b = expr_block(
+            "name",
+            Expression {
+                function: Some("concat".into()),
+                arguments: vec![
+                    AttributeValue::String("x".into()),
+                    AttributeValue::String("y".into()),
+                ],
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!("stage.expr {\n", "\tname = concat(\"x\", \"y\")\n", "}"),
+        );
+    }
+
+    #[test]
+    fn expression_function_without_args_uses_empty_parens() {
+        let b = expr_block(
+            "ts",
+            Expression {
+                function: Some("coalesce".into()),
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!("stage.expr {\n", "\tts = coalesce()\n", "}"),
+        );
+    }
+
+    #[test]
+    fn expression_function_with_env_arg() {
+        // An argument can itself be an expression (here, a nested sys.env).
+        let b = expr_block(
+            "name",
+            Expression {
+                function: Some("concat".into()),
+                arguments: vec![
+                    AttributeValue::Expression(Expression {
+                        env: Some("PREFIX".into()),
+                        ..Default::default()
+                    }),
+                    AttributeValue::String("-suffix".into()),
+                ],
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!(
+                "stage.expr {\n",
+                "\tname = concat(sys.env(\"PREFIX\"), \"-suffix\")\n",
+                "}",
+            ),
+        );
+    }
+
+    #[test]
+    fn expression_with_no_head_errors() {
+        // An expression with none of raw/env/function/ref/operator set is invalid.
+        let b = expr_block("x", Expression::default());
+        assert!(
+            matches!(b.render(), Err(Error::Render(_))),
+            "empty expression should be a render error"
+        );
+    }
+
+    #[test]
+    fn expression_with_multiple_heads_errors() {
+        // Exactly one head may be set; raw + env together is ambiguous.
+        let b = expr_block(
+            "x",
+            Expression {
+                env: Some("FOO".into()),
+                raw: Some("1 + 2".into()),
+                ..Default::default()
+            },
+        );
+        assert!(
+            matches!(b.render(), Err(Error::Render(_))),
+            "multi-head expression should be a render error"
+        );
+    }
+
+    #[test]
+    fn expression_operator_is_unimplemented() {
+        // operator rendering is intentionally not implemented yet; it errors.
+        let b = expr_block(
+            "x",
+            Expression {
+                operator: Some("+".into()),
+                ..Default::default()
+            },
+        );
+        assert!(
+            matches!(b.render(), Err(Error::Render(_))),
+            "operator expression should currently error"
+        );
     }
 }

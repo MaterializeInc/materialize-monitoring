@@ -19,6 +19,12 @@ properties:
     properties:
       label:
         $ref: "#/$defs/label"
+    additionalProperties: false
+# Require the discriminator key and forbid anything else so this branch is
+# disjoint from raw.schema.yaml in the top-level `blocks` oneOf.
+required:
+  - loki.echo
+additionalProperties: false
 
 $defs:
   comment:

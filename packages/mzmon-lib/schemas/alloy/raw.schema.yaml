@@ -14,6 +14,9 @@ properties:
     $ref: "#/$defs/block"
 required:
   - raw
+# Forbid extra keys so this branch is disjoint from loki.schema.yaml's
+# `loki.echo` branch in the top-level `blocks` oneOf.
+additionalProperties: false
 $defs:
   comment:
     description: |
@@ -111,6 +114,9 @@ $defs:
     properties:
       raw:
         $ref: "#/$defs/freeFormExpression"
+      env:
+        type: string
+        description: Sugar access to sys.env(VAR_NAME)
       function:
         type: string
         description: |

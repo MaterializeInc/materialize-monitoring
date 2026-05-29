@@ -26,6 +26,9 @@ pub enum Error {
     #[error("rendering error: {0}")]
     Render(String),
 
+    #[error("schema violation at `{path}`: {message}")]
+    Schema { path: String, message: String },
+
     #[error("multiple errors")]
     Multiple(Vec<Error>),
 }

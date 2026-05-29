@@ -42,6 +42,23 @@ pub trait ToBlock {
     fn to_block(&self) -> Result<Block>;
 }
 
+/// Expressions
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+pub struct Expression {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub raw: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub function: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "ref", default)]
+    pub ref_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub operator: Option<String>,
+    #[serde(default)]
+    pub arguments: Vec<AttributeValue>,
+}
+
 // The RHS "value" of an assignment
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -49,7 +66,7 @@ pub enum AttributeValue {
     Null,
     Bool(bool),
     Number(f64),
-    // TODO: expression
+    Expression(Expression),
     String(String),
     Array(Vec<AttributeValue>),
     Object(IndexMap<Identifier, AttributeValue>),

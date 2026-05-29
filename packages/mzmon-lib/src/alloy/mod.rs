@@ -11,6 +11,7 @@ pub mod ast;
 pub mod error;
 pub mod pipeline;
 pub mod render;
+pub mod validate;
 
 #[cfg(test)]
 pub(crate) mod test_support;

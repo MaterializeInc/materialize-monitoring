@@ -99,7 +99,10 @@ impl Pipeline {
     pub fn from_yaml_str(yaml: &str) -> Result<Self> {
         // 1. YAML → generic JSON value (structure only; no enum dispatch happens here)
         let value: serde_json::Value = serde_yaml_ng::from_str(yaml)?;
-        // 2. JSON value → typed Pipeline (serde_json drives enum dispatch = map form)
+        // 2. Validate against the embedded JSONSchema, collecting *all* violations
+        //    with their instance paths before we attempt to deserialize.
+        crate::alloy::validate::validate(&value)?;
+        // 3. JSON value → typed Pipeline (serde_json drives enum dispatch = map form)
         Ok(serde_json::from_value(value)?)
     }
 }
@@ -120,7 +123,31 @@ fn write_description_comment(out: &mut impl fmt::Write, desc: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::alloy::error::Error;
     use crate::alloy::test_support::assert_renders;
+
+    /// Assert that `from_yaml_str` failed because of *schema* validation (an
+    /// `Error::Multiple` containing at least one `Error::Schema`), not a serde
+    /// deserialization error. Returns the schema-violation paths for inspection.
+    fn assert_schema_rejected(yaml: &str) -> Vec<String> {
+        match Pipeline::from_yaml_str(yaml) {
+            Err(Error::Multiple(errs)) => {
+                let paths: Vec<String> = errs
+                    .iter()
+                    .filter_map(|e| match e {
+                        Error::Schema { path, .. } => Some(path.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    !paths.is_empty(),
+                    "expected at least one schema violation, got {errs:?}"
+                );
+                paths
+            }
+            other => panic!("expected Multiple([Schema, ...]), got {other:?}"),
+        }
+    }
 
     #[test]
     fn pipeline_with_description_and_logging() {
@@ -161,11 +188,67 @@ mod tests {
     }
 
     #[test]
-    fn unknown_top_field_is_rejected() {
+    fn pipeline_with_loki_echo_sugar_block() {
+        // The `loki.echo` sugar branch of the blocks oneOf validates and parses.
         let yaml = r#"
+            blocks:
+              - loki.echo:
+                  label: echo
+        "#;
+        // Currently only the `raw` variant is wired into the Rust enum, so this
+        // validates against the schema; full sugar deserialization is Phase 3b.
+        let value: serde_json::Value = serde_yaml_ng::from_str(yaml).unwrap();
+        assert!(
+            crate::alloy::validate::validate(&value).is_ok(),
+            "loki.echo block should pass schema validation"
+        );
+    }
+
+    #[test]
+    fn unknown_top_field_is_rejected_by_schema() {
+        // `unevaluatedProperties: false` in top.schema.yaml rejects this at the
+        // schema layer (before serde would), pointing at the document root.
+        let paths = assert_schema_rejected(
+            r#"
             blocks: []
             mystery_field: 42
-        "#;
-        assert!(Pipeline::from_yaml_str(yaml).is_err());
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p.is_empty() || p == "/"),
+            "expected a root-level violation, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn bad_logging_level_is_rejected_by_schema() {
+        // `level` is constrained to an enum; "bogus" is not a member.
+        let paths = assert_schema_rejected(
+            r#"
+            logging:
+              level: bogus
+            blocks: []
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p == "/logging/level"),
+            "expected /logging/level violation, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn raw_block_missing_component_is_rejected_by_schema() {
+        // `component` is required on a raw block.
+        let paths = assert_schema_rejected(
+            r#"
+            blocks:
+              - raw:
+                  label: stub
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p.starts_with("/blocks/0")),
+            "expected a /blocks/0 violation, got {paths:?}"
+        );
     }
 }
