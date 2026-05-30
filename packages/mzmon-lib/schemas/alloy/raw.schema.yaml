@@ -111,6 +111,7 @@ $defs:
         a reference to another component
         a mathematical expression
     type: object
+    additionalProperties: false
     properties:
       raw:
         $ref: "#/$defs/freeFormExpression"

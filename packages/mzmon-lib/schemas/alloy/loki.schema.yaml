@@ -2,9 +2,16 @@
 # JSONSchema for loki.* components in alloy pipeline definitions.
 #
 # DESIGN NOTE: typed schemas are strict (additionalProperties: false on each
-# typed block AND its `attributes`). Undocumented attributes are rejected
-# deliberately — extend the relevant $def to add one, or wrap the whole block
-# in a `raw:` escape (see raw.schema.yaml).
+# typed block). Undocumented attributes are rejected deliberately — extend the
+# relevant $def to add one, or wrap the whole block in a `raw:` escape (see
+# raw.schema.yaml).
+#
+# The typed shape is intentionally FLAT — attributes live directly under the
+# discriminator key alongside `label` and (where applicable) `blocks`. This
+# differs from the raw shape, which keeps a `component / label / attributes /
+# blocks` partition because raw needs `component` as its own discriminator.
+# Typed sugar encodes the component via the YAML key, so the `attributes:`
+# nesting buys nothing and is dropped.
 #
 # Schemas grow with usage; they are not meant to mirror alloy upstream
 # exhaustively. The full policy lives in:
@@ -89,14 +96,10 @@ $defs:
     properties:
       label:
         $ref: "#/$defs/label"
-      attributes:
-        type: object
-        properties:
-          forward_to:
-            description: |
-              Loki receivers to forward processed entries to.
-            type: array
-        additionalProperties: false
+      forward_to:
+        description: |
+          Loki receivers to forward processed entries to.
+        type: array
       blocks:
         description: |
           Stages applied in order to each entry.
@@ -114,19 +117,15 @@ $defs:
     properties:
       label:
         $ref: "#/$defs/label"
-      attributes:
-        type: object
-        properties:
-          forward_to:
-            description: Loki receivers to forward relabeled entries to.
-            type: array
-          max_cache_size:
-            description: |
-              Maximum number of relabeling results to cache.
-              Defaults to 10,000.
-            type: number
-            examples: [10000]
-        additionalProperties: false
+      forward_to:
+        description: Loki receivers to forward relabeled entries to.
+        type: array
+      max_cache_size:
+        description: |
+          Maximum number of relabeling results to cache.
+          Defaults to 10,000.
+        type: number
+        examples: [10000]
       blocks:
         description: |
           One or more `rule` blocks defining a relabel step.
@@ -144,37 +143,43 @@ $defs:
     properties:
       label:
         $ref: "#/$defs/label"
-      attributes:
+      forward_to:
+        description: Loki receivers to forward journal entries to.
+        type: array
+        items:
+          type: string
+      path:
+        description: |
+          Path to the journal directory.
+          Defaults to the host's standard journal location.
+        type: string
+      matches:
+        description: |
+          Journal match filter.
+        type: string
+        examples:
+          - "_SYSTEMD_UNIT=foo.service"
+          - "_TRANSPORT=kernel"
+      labels:
+        description: |
+          Static labels to attach to every journal entry.
         type: object
-        properties:
-          forward_to:
-            description: Loki receivers to forward journal entries to.
-            type: array
-          path:
-            description: |
-              Path to the journal directory.
-              Defaults to the host's standard journal location.
-            type: string
-          matches:
-            description: |
-              Journal match filter.
-            type: string
-            examples:
-              - "_SYSTEMD_UNIT=foo.service"
-              - "_TRANSPORT=kernel"
-          labels:
-            description: |
-              Static labels to attach to every journal entry.
-            type: object
-          format_as_json:
-            description: |
-              When true, the entire journal record is forwarded as a JSON string.
-            type: boolean
-          relabel_rules:
-            description: |
-              Expression referencing a discovery.relabel rule set.
-            type: string
-        additionalProperties: false
+      max_age:
+        description: |
+          Maximum age of journal entries to read.
+          Defaults to 7h.
+        type: string
+        format: go-duration
+      format_as_json:
+        description: |
+          When true, the entire journal record is forwarded as a JSON string.
+        type: boolean
+      relabel_rules:
+        description: |
+          Expression referencing a discovery.relabel rule set.
+        type: string
+    required:
+      - forward_to
     additionalProperties: false
 
   loki.source.file:
@@ -186,27 +191,23 @@ $defs:
     properties:
       label:
         $ref: "#/$defs/label"
-      attributes:
-        type: object
-        properties:
-          targets:
-            description: |
-              File targets to tail.
-              Each entry is an object with `__path__` plus any label keys to attach.
-            type: array
-          forward_to:
-            description: Loki receivers to forward tailed entries to.
-            type: array
-          tail_from_end:
-            description: |
-              When true, only lines added after start are tailed (existing content is skipped).
-            type: boolean
-          encoding:
-            description: |
-              Character encoding override.
-              Defaults to UTF-8.
-            type: string
-        additionalProperties: false
+      targets:
+        description: |
+          File targets to tail.
+          Each entry is an object with `__path__` plus any label keys to attach.
+        type: array
+      forward_to:
+        description: Loki receivers to forward tailed entries to.
+        type: array
+      tail_from_end:
+        description: |
+          When true, only lines added after start are tailed (existing content is skipped).
+        type: boolean
+      encoding:
+        description: |
+          Character encoding override.
+          Defaults to UTF-8.
+        type: string
     additionalProperties: false
 
   # ============================================================
@@ -321,37 +322,33 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagematch-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          selector:
-            description: LogQL selector matched against entry labels.
-            type: string
-            examples:
-              - '{app="alloy"}'
-              - '{namespace="mz-system", container=~"environmentd|clusterd"}'
-          action:
-            description: |
-              `keep` (default) runs the nested stages on matching entries.
-              `drop` discards matching entries before any nested stage runs.
-            type: string
-            enum: [keep, drop]
-          pipeline_name:
-            description: |
-              Identifier surfaced in stage metrics for this match group.
-            type: string
-          drop_counter_reason:
-            description: |
-              Counter label used when `action: drop` discards an entry.
-            type: string
-        required: [selector]
-        additionalProperties: false
+      selector:
+        description: LogQL selector matched against entry labels.
+        type: string
+        examples:
+          - '{app="alloy"}'
+          - '{namespace="mz-system", container=~"environmentd|clusterd"}'
+      action:
+        description: |
+          `keep` (default) runs the nested stages on matching entries.
+          `drop` discards matching entries before any nested stage runs.
+        type: string
+        enum: [keep, drop]
+      pipeline_name:
+        description: |
+          Identifier surfaced in stage metrics for this match group.
+        type: string
+      drop_counter_reason:
+        description: |
+          Counter label used when `action: drop` discards an entry.
+        type: string
       blocks:
         description: |
           Nested stages applied to matched entries when `action: keep`.
         type: array
         items:
           $ref: "#/$defs/stageBlock"
+    required: [selector]
     additionalProperties: false
 
   stage.drop:
@@ -361,41 +358,37 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagedrop-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          source:
-            description: |
-              Extracted field whose value the condition is matched against.
-              Required when matching `expression` or `value` against a parsed field.
-            type: string
-          expression:
-            description: |
-              Regular expression that must match for the entry to be dropped.
-            type: string
-          value:
-            description: |
-              Literal value that must equal the source for the entry to be dropped.
-            type: string
-          older_than:
-            description: |
-              Entries older than this duration are dropped.
-            type: string
-            # `format: duration` is currently informational.
-            # The validator will eventually wire a Go-duration hook against it
-            # — see the duration-format-validator task.
-            format: duration
-            examples: ["12h", "30m", "1d", "90s"]
-          longer_than:
-            description: |
-              Entries whose line is longer than this byte length are dropped.
-            type: string
-            examples: ["1MB", "100KB", "5GB"]
-          drop_counter_reason:
-            description: |
-              Label applied to the drop counter for observability.
-            type: string
-        additionalProperties: false
+      source:
+        description: |
+          Extracted field whose value the condition is matched against.
+          Required when matching `expression` or `value` against a parsed field.
+        type: string
+      expression:
+        description: |
+          Regular expression that must match for the entry to be dropped.
+        type: string
+      value:
+        description: |
+          Literal value that must equal the source for the entry to be dropped.
+        type: string
+      older_than:
+        description: |
+          Entries older than this duration are dropped.
+        type: string
+        # `format: duration` is currently informational.
+        # The validator will eventually wire a Go-duration hook against it
+        # — see the duration-format-validator task.
+        format: duration
+        examples: ["12h", "30m", "1d", "90s"]
+      longer_than:
+        description: |
+          Entries whose line is longer than this byte length are dropped.
+        type: string
+        examples: ["1MB", "100KB", "5GB"]
+      drop_counter_reason:
+        description: |
+          Label applied to the drop counter for observability.
+        type: string
     additionalProperties: false
 
   stage.limit:
@@ -405,27 +398,23 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagelimit-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          rate:
-            description: Lines allowed per second.
-            type: number
-          burst:
-            description: Lines allowed in a short burst before throttling kicks in.
-            type: number
-          drop:
-            description: |
-              When true, excess lines are dropped immediately.
-              When false (default), they are queued for back-pressure.
-            type: boolean
-          by_label_name:
-            description: |
-              Apply the limit independently per distinct value of this label.
-            type: string
-            examples: ["namespace", "tenant"]
-        required: [rate, burst]
-        additionalProperties: false
+      rate:
+        description: Lines allowed per second.
+        type: number
+      burst:
+        description: Lines allowed in a short burst before throttling kicks in.
+        type: number
+      drop:
+        description: |
+          When true, excess lines are dropped immediately.
+          When false (default), they are queued for back-pressure.
+        type: boolean
+      by_label_name:
+        description: |
+          Apply the limit independently per distinct value of this label.
+        type: string
+        examples: ["namespace", "tenant"]
+    required: [rate, burst]
     additionalProperties: false
 
   stage.regex:
@@ -437,23 +426,19 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stageregex-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          expression:
-            description: |
-              RE2 regular expression with named captures.
-            type: string
-            examples:
-              - '(?P<level>[A-Z]+)\s+(?P<msg>.*)'
-              - '^(?P<ts>\S+)\s+(?P<level>\w+)\s+(?P<msg>.*)$'
-          source:
-            description: |
-              Field to apply the expression to.
-              Defaults to the raw log line.
-            type: string
-        required: [expression]
-        additionalProperties: false
+      expression:
+        description: |
+          RE2 regular expression with named captures.
+        type: string
+        examples:
+          - '(?P<level>[A-Z]+)\s+(?P<msg>.*)'
+          - '^(?P<ts>\S+)\s+(?P<level>\w+)\s+(?P<msg>.*)$'
+      source:
+        description: |
+          Field to apply the expression to.
+          Defaults to the raw log line.
+        type: string
+    required: [expression]
     additionalProperties: false
 
   stage.replace:
@@ -463,26 +448,22 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagereplace-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          expression:
-            description: RE2 regular expression to match against the source.
-            type: string
-            examples:
-              - '(?i)^(fatal|critical|crit|f)$'
-          source:
-            description: |
-              Field to apply the replacement to.
-              Defaults to the raw log line.
-            type: string
-          replace:
-            description: |
-              Replacement string.
-              Supports backreferences like `$1`.
-            type: string
-        required: [expression]
-        additionalProperties: false
+      expression:
+        description: RE2 regular expression to match against the source.
+        type: string
+        examples:
+          - '(?i)^(fatal|critical|crit|f)$'
+      source:
+        description: |
+          Field to apply the replacement to.
+          Defaults to the raw log line.
+        type: string
+      replace:
+        description: |
+          Replacement string.
+          Supports backreferences like `$1`.
+        type: string
+    required: [expression]
     additionalProperties: false
 
   stage.template:
@@ -492,21 +473,17 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagetemplate-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          source:
-            description: Field to write the template's result into.
-            type: string
-          template:
-            description: |
-              Go template body.
-              `{{ .Value }}` refers to the current source value.
-            type: string
-            examples:
-              - '{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}'
-        required: [source, template]
-        additionalProperties: false
+      source:
+        description: Field to write the template's result into.
+        type: string
+      template:
+        description: |
+          Go template body.
+          `{{ .Value }}` refers to the current source value.
+        type: string
+        examples:
+          - '{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}'
+    required: [source, template]
     additionalProperties: false
 
   stage.logfmt:
@@ -516,21 +493,17 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagelogfmt-block
     type: object
     properties:
-      attributes:
+      mapping:
+        description: |
+          Map of output keys to logfmt keys.
+          An empty value means "use the same key name as the output".
         type: object
-        properties:
-          mapping:
-            description: |
-              Map of output keys to logfmt keys.
-              An empty value means "use the same key name as the output".
-            type: object
-          source:
-            description: |
-              Field to parse.
-              Defaults to the raw log line.
-            type: string
-        required: [mapping]
-        additionalProperties: false
+      source:
+        description: |
+          Field to parse.
+          Defaults to the raw log line.
+        type: string
+    required: [mapping]
     additionalProperties: false
 
   stage.json:
@@ -540,24 +513,20 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagejson-block
     type: object
     properties:
-      attributes:
+      expressions:
+        description: |
+          Map of output keys to JMESPath expressions over the JSON document.
         type: object
-        properties:
-          expressions:
-            description: |
-              Map of output keys to JMESPath expressions over the JSON document.
-            type: object
-          source:
-            description: |
-              Field to parse.
-              Defaults to the raw log line.
-            type: string
-          drop_malformed:
-            description: |
-              When true, entries with unparseable JSON are dropped.
-            type: boolean
-        required: [expressions]
-        additionalProperties: false
+      source:
+        description: |
+          Field to parse.
+          Defaults to the raw log line.
+        type: string
+      drop_malformed:
+        description: |
+          When true, entries with unparseable JSON are dropped.
+        type: boolean
+    required: [expressions]
     additionalProperties: false
 
   stage.timestamp:
@@ -567,36 +536,32 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagetimestamp-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          source:
-            description: Extracted field containing the timestamp string.
-            type: string
-          format:
-            description: |
-              Named format (`RFC3339`, `RFC3339Nano`, `Unix`, ...) or a Go time layout string.
-            type: string
-            examples:
-              - "RFC3339"
-              - "RFC3339Nano"
-              - "Unix"
-              - "2006-01-02T15:04:05.000Z"
-          fallback_formats:
-            description: |
-              Additional formats to try in order if `format` doesn't match.
-            type: array
-          location:
-            description: |
-              IANA timezone applied to ambiguous timestamps.
-            type: string
-          action_on_failure:
-            description: |
-              `fudge` (default), `skip`, or `drop`.
-            type: string
-            enum: [fudge, skip, drop]
-        required: [source, format]
-        additionalProperties: false
+      source:
+        description: Extracted field containing the timestamp string.
+        type: string
+      format:
+        description: |
+          Named format (`RFC3339`, `RFC3339Nano`, `Unix`, ...) or a Go time layout string.
+        type: string
+        examples:
+          - "RFC3339"
+          - "RFC3339Nano"
+          - "Unix"
+          - "2006-01-02T15:04:05.000Z"
+      fallback_formats:
+        description: |
+          Additional formats to try in order if `format` doesn't match.
+        type: array
+      location:
+        description: |
+          IANA timezone applied to ambiguous timestamps.
+        type: string
+      action_on_failure:
+        description: |
+          `fudge` (default), `skip`, or `drop`.
+        type: string
+        enum: [fudge, skip, drop]
+    required: [source, format]
     additionalProperties: false
 
   stage.labels:
@@ -609,16 +574,12 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagelabels-block
     type: object
     properties:
-      attributes:
+      values:
+        description: |
+          Map of label names to extracted-field names.
+          An empty value means "use the same key name as the extracted field".
         type: object
-        properties:
-          values:
-            description: |
-              Map of label names to extracted-field names.
-              An empty value means "use the same key name as the extracted field".
-            type: object
-        required: [values]
-        additionalProperties: false
+    required: [values]
     additionalProperties: false
 
   stage.static_labels:
@@ -628,15 +589,11 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagestatic_labels-block
     type: object
     properties:
-      attributes:
+      values:
+        description: |
+          Map of label names to constant string values.
         type: object
-        properties:
-          values:
-            description: |
-              Map of label names to constant string values.
-            type: object
-        required: [values]
-        additionalProperties: false
+    required: [values]
     additionalProperties: false
 
   stage.label_drop:
@@ -646,14 +603,10 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagelabel_drop-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          values:
-            description: List of label names to drop.
-            type: array
-        required: [values]
-        additionalProperties: false
+      values:
+        description: List of label names to drop.
+        type: array
+    required: [values]
     additionalProperties: false
 
   stage.structured_metadata:
@@ -665,16 +618,12 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagestructured_metadata-block
     type: object
     properties:
-      attributes:
+      values:
+        description: |
+          Map of metadata names to extracted-field names.
+          An empty value means "use the same key name as the extracted field".
         type: object
-        properties:
-          values:
-            description: |
-              Map of metadata names to extracted-field names.
-              An empty value means "use the same key name as the extracted field".
-            type: object
-        required: [values]
-        additionalProperties: false
+    required: [values]
     additionalProperties: false
 
   stage.structured_metadata_drop:
@@ -684,14 +633,10 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagestructured_metadata_drop-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          values:
-            description: List of structured-metadata field names to drop.
-            type: array
-        required: [values]
-        additionalProperties: false
+      values:
+        description: List of structured-metadata field names to drop.
+        type: array
+    required: [values]
     additionalProperties: false
 
   stage.sampling:
@@ -701,19 +646,15 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagesampling-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          rate:
-            description: |
-              Fraction of entries to keep, between 0.0 and 1.0.
-            type: number
-          drop_counter_reason:
-            description: |
-              Label applied to the drop counter for observability.
-            type: string
-        required: [rate]
-        additionalProperties: false
+      rate:
+        description: |
+          Fraction of entries to keep, between 0.0 and 1.0.
+        type: number
+      drop_counter_reason:
+        description: |
+          Label applied to the drop counter for observability.
+        type: string
+    required: [rate]
     additionalProperties: false
 
   # ============================================================
@@ -743,52 +684,48 @@ $defs:
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.relabel/#rule-block
     type: object
     properties:
-      attributes:
-        type: object
-        properties:
-          action:
-            description: |
-              How to transform.
-              Defaults to `replace`.
-            type: string
-            enum:
-              - replace
-              - keep
-              - drop
-              - keepequal
-              - dropequal
-              - hashmod
-              - labelmap
-              - labeldrop
-              - labelkeep
-              - lowercase
-              - uppercase
-          source_labels:
-            description: |
-              Labels concatenated (joined by `separator`) to form the input value.
-            type: array
-          separator:
-            description: |
-              Joiner between `source_labels` values.
-              Defaults to `;`.
-            type: string
-          target_label:
-            description: |
-              Label to write the result to (for `replace`/`hashmod`).
-            type: string
-          regex:
-            description: |
-              Regex matched against the input value.
-              Defaults to `.*`.
-            type: string
-          replacement:
-            description: |
-              Replacement value (supports `$1`-style backreferences).
-              Defaults to `$1`.
-            type: string
-          modulus:
-            description: |
-              Modulus for `action: hashmod`.
-            type: number
-        additionalProperties: false
+      action:
+        description: |
+          How to transform.
+          Defaults to `replace`.
+        type: string
+        enum:
+          - replace
+          - keep
+          - drop
+          - keepequal
+          - dropequal
+          - hashmod
+          - labelmap
+          - labeldrop
+          - labelkeep
+          - lowercase
+          - uppercase
+      source_labels:
+        description: |
+          Labels concatenated (joined by `separator`) to form the input value.
+        type: array
+      separator:
+        description: |
+          Joiner between `source_labels` values.
+          Defaults to `;`.
+        type: string
+      target_label:
+        description: |
+          Label to write the result to (for `replace`/`hashmod`).
+        type: string
+      regex:
+        description: |
+          Regex matched against the input value.
+          Defaults to `.*`.
+        type: string
+      replacement:
+        description: |
+          Replacement value (supports `$1`-style backreferences).
+          Defaults to `$1`.
+        type: string
+      modulus:
+        description: |
+          Modulus for `action: hashmod`.
+        type: number
     additionalProperties: false

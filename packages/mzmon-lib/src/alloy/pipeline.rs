@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{Block, ToBlock};
-use crate::alloy::components::top;
+use crate::alloy::components::{loki, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -28,15 +28,21 @@ pub struct Pipeline {
 
 // All-available blocks
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "snake_case")]
 pub enum ComponentBlock {
+    #[serde(rename = "raw")]
     Raw(Block),
+    #[serde(rename = "loki.echo")]
+    LokiEcho(loki::LokiEchoBlock),
+    #[serde(rename = "loki.source.journal")]
+    LokiSourceJournal(loki::LokiSourceJournalBlock),
 }
 
 impl ToBlock for ComponentBlock {
     fn to_block(&self) -> Result<Block> {
         match self {
             ComponentBlock::Raw(rb) => Ok(rb.clone()),
+            ComponentBlock::LokiEcho(le) => le.to_block(),
+            ComponentBlock::LokiSourceJournal(lsj) => lsj.to_block(),
         }
     }
 }
@@ -212,36 +218,32 @@ mod tests {
     fn pipeline_with_loki_process_and_nested_stages() {
         // Exercises the recursive case: loki.process body contains stage.match,
         // which itself nests further stages. Also confirms the `raw` escape inside
-        // a stage list works alongside typed stages.
+        // a stage list works alongside typed stages. Typed blocks are FLAT
+        // (attributes live directly under the discriminator); only `raw:` keeps
+        // the `attributes:` partition.
         assert_schema_ok(
             r#"
             blocks:
               - loki.process:
                   label: processor
-                  attributes:
-                    forward_to: []
+                  forward_to: []
                   blocks:
                     - stage.drop:
-                        attributes:
-                          older_than: "12h"
-                          drop_counter_reason: "backlog > 12hr"
+                        older_than: "12h"
+                        drop_counter_reason: "backlog > 12hr"
                     - stage.match:
-                        attributes:
-                          selector: '{app="alloy"}'
+                        selector: '{app="alloy"}'
                         blocks:
                           - stage.logfmt:
-                              attributes:
-                                mapping:
-                                  msg: msg
-                                  level: level
+                              mapping:
+                                msg: msg
+                                level: level
                           - stage.timestamp:
-                              attributes:
-                                source: ts
-                                format: RFC3339Nano
+                              source: ts
+                              format: RFC3339Nano
                     - stage.labels:
-                        attributes:
-                          values:
-                            level: level
+                        values:
+                          level: level
                     - raw:
                         component: stage.label_keep
                         attributes:
@@ -258,19 +260,16 @@ mod tests {
             r#"
             blocks:
               - discovery.relabel:
-                  attributes:
-                    targets: []
+                  targets: []
                   blocks:
                     - rule:
-                        attributes:
-                          action: keep
-                          source_labels: [__meta_kubernetes_pod_label_app]
-                          regex: "loki|alloy"
+                        action: keep
+                        source_labels: [__meta_kubernetes_pod_label_app]
+                        regex: "loki|alloy"
                     - rule:
-                        attributes:
-                          action: replace
-                          source_labels: [__meta_kubernetes_namespace]
-                          target_label: namespace
+                        action: replace
+                        source_labels: [__meta_kubernetes_namespace]
+                        target_label: namespace
         "#,
         );
     }
@@ -278,12 +277,13 @@ mod tests {
     #[test]
     fn unknown_attribute_on_typed_block_is_rejected_by_schema() {
         // Typed blocks are strict: undocumented attributes must use `raw:` instead.
+        // After the flatten, the undocumented attribute appears directly under the
+        // typed block (no `attributes:` nesting in typed sugar).
         let yaml = r#"
             blocks:
               - loki.process:
-                  attributes:
-                    forward_to: []
-                    mystery_attr: 42
+                  forward_to: []
+                  mystery_attr: 42
         "#;
         let paths = assert_schema_rejected(yaml);
         assert!(
@@ -300,9 +300,8 @@ mod tests {
         let yaml = r#"
             blocks:
               - loki.process:
-                  attributes:
-                    forward_to: []
-                    mystery_attr: 42
+                  forward_to: []
+                  mystery_attr: 42
         "#;
         let err = Pipeline::from_yaml_str(yaml).unwrap_err();
         let messages: Vec<String> = match err {
@@ -369,6 +368,48 @@ mod tests {
         assert!(
             paths.iter().any(|p| p.starts_with("/blocks/0")),
             "expected a /blocks/0 violation, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn loki_echo_sugar_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+        blocks:
+          - loki.echo:
+              label: stub
+        "#,
+        )
+        .unwrap();
+        assert_renders(pipeline.render(), "loki.echo \"stub\" { }\n");
+    }
+
+    #[test]
+    fn loki_source_journal_sugar_renders_refs_and_attrs() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+        blocks:
+          - loki.source.journal:
+              forward_to: ["loki.write.gateway.receiver"]
+              max_age: "7h"
+              labels:
+                job: "systemd-journal"
+        "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.source.journal {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n", // bare ref, NOT quoted
+                "\t]\n",
+                "\tlabels = {\n",
+                "\t\tjob = \"systemd-journal\",\n",
+                "\t}\n",
+                "\tmax_age = \"7h\"\n",
+                "}\n",
+            ),
         );
     }
 }

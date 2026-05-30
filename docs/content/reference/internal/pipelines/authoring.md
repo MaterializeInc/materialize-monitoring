@@ -20,20 +20,16 @@ logging:
 blocks:
   - loki.process:
       label: input_processor
-      attributes:
-        forward_to: [{ref: "loki.write.gateway.receiver"}]
+      forward_to: [{ref: "loki.write.gateway.receiver"}]
       blocks:
         - stage.drop:
-            attributes:
-              older_than: "12h"
-              drop_counter_reason: "backlog > 12hr"
+            older_than: "12h"
+            drop_counter_reason: "backlog > 12hr"
         - stage.match:
-            attributes:
-              selector: '{app="alloy"}'
+            selector: '{app="alloy"}'
             blocks:
               - stage.logfmt:
-                  attributes:
-                    mapping: { msg: msg, level: level }
+                  mapping: { msg: msg, level: level }
 ```
 
 Each entry in `blocks` is a **single-key object** whose key is either:
@@ -43,18 +39,19 @@ Each entry in `blocks` is a **single-key object** whose key is either:
 
 The same rule applies recursively to nested sub-blocks (e.g. stages inside `loki.process`, rules inside `discovery.relabel`).
 
+**Typed blocks are flat** — attributes live directly under the discriminator key alongside `label` and (where applicable) `blocks`. **Raw blocks keep the `component / label / attributes / blocks` partition** because raw needs `component` as its own discriminator and serves as a generic container.
+
 ## The strict-attributes / raw-escape policy
 
-Each typed component declares `additionalProperties: false` on both the block body **and** the inner `attributes` map. **Undocumented attributes are rejected by design.**
+Each typed component declares `additionalProperties: false` on the block body. **Undocumented attributes are rejected by design.**
 
 When the validator says
 
 ```
-schema violation at `/blocks/0/loki.process/attributes`:
+schema violation at `/blocks/0/loki.process`:
   Additional properties are not allowed ('drop_malformed' was unexpected)
-  hint: this attribute isn't typed in the schema. Either wrap the
-        surrounding block in `raw:` ..., or add the attribute to its
-        schema $def if it's worth documenting.
+  hint: this key isn't typed in the schema. Either use a `raw:` block
+        for one-off usage, or extend the relevant schema $def to add it.
 ```
 
 …you have two choices, depending on whether the attribute is reusable:
@@ -111,28 +108,26 @@ Adding a new attribute to an existing stage, say `drop_malformed` on `stage.json
 
 1. Open `packages/mzmon-lib/schemas/alloy/loki.schema.yaml`.
 2. Find the `stage.json` `$def` under `$defs`.
-3. Add the attribute under `attributes.properties`:
+3. Add the attribute alongside the existing properties (typed schemas are flat — no `attributes:` nesting):
 
    ```yaml
    stage.json:
      # ...
+     type: object
      properties:
-       attributes:
-         type: object
-         properties:
-           expressions: { ... }
-           source: { ... }
-           drop_malformed:                   # ← new
-             description: |
-               When true, entries with unparseable JSON are dropped.
-             type: boolean
-             examples: [true]
-         required: [expressions]
-         additionalProperties: false
+       expressions: { ... }
+       source: { ... }
+       drop_malformed:                  # ← new
+         description: |
+           When true, entries with unparseable JSON are dropped.
+         type: boolean
+         examples: [true]
+     required: [expressions]
+     additionalProperties: false
    ```
 
 4. Add or extend a test in `packages/mzmon-lib/src/alloy/pipeline.rs` that exercises the new attribute through `Pipeline::from_yaml_str`.
-5. Run `cargo test -p mzmon-lib` and `make pipelines`.
+5. Run `cargo test -p mzmon-lib`, `cargo fmt`, and `make pipelines`.
 
 Adding a whole new typed component (e.g., a new `prometheus.*` family) is the same shape one level up: a new file `prometheus.schema.yaml`, registered in `validate.rs`, referenced from `top.schema.yaml`'s `blocks` `oneOf`, with `$defs` per component and per sub-block. Mirror the `loki.schema.yaml` structure.
 

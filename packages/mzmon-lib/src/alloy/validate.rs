@@ -106,27 +106,19 @@ pub fn validate(instance: &Value) -> Result<()> {
 /// (no functional impact).
 ///
 /// See: docs/content/reference/internal/pipelines/authoring.md
-fn schema_hint(path: &str, message: &str) -> Option<&'static str> {
+fn schema_hint(_path: &str, message: &str) -> Option<&'static str> {
     let msg = message.to_ascii_lowercase();
 
-    // The most actionable case: `additionalProperties: false` rejected something.
+    // The most actionable case: `additionalProperties: false` rejected an
+    // undocumented key (either an unknown attribute on a typed block, or an
+    // unknown component / sub-block).
     if msg.contains("additional properties are not allowed")
         || msg.contains("additional properties are not permitted")
     {
-        // Inside a typed block's `attributes` map: an undocumented attribute.
-        if path.contains("/attributes") {
-            return Some(
-                "this attribute isn't typed in the schema. \
-                 Either wrap the surrounding block in `raw:` (escape hatch in raw.schema.yaml), \
-                 or add the attribute to its schema $def if it's worth documenting. \
-                 See: docs/content/reference/internal/pipelines/authoring.md",
-            );
-        }
-        // Otherwise: an unknown top-level key, or an unrecognized sub-block.
         return Some(
             "this key isn't typed in the schema. \
              Either use a `raw:` block for one-off usage, \
-             or add the key to its schema if it's reusable. \
+             or extend the relevant schema $def to add it. \
              See: docs/content/reference/internal/pipelines/authoring.md",
         );
     }

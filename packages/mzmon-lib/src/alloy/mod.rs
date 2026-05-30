@@ -17,5 +17,6 @@ pub mod validate;
 pub(crate) mod test_support;
 
 pub mod components {
+    pub mod loki;
     pub mod top;
 }

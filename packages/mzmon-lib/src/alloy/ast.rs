@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use crate::alloy::error::Result;
 
 pub type Identifier = String;
+// TODO: struct with more checks
+pub type GoDuration = String;
 
 // An Alloy block describing a component and its contents
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]

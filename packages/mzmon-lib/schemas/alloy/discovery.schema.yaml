@@ -2,9 +2,14 @@
 # JSONSchema for discovery.* components in alloy pipeline definitions.
 #
 # DESIGN NOTE: typed schemas are strict (additionalProperties: false on each
-# typed block AND its `attributes`). Undocumented attributes are rejected
-# deliberately — extend the relevant $def to add one, or wrap the whole block
-# in a `raw:` escape (see raw.schema.yaml).
+# typed block). Undocumented attributes are rejected deliberately — extend the
+# relevant $def to add one, or wrap the whole block in a `raw:` escape (see
+# raw.schema.yaml).
+#
+# The typed shape is intentionally FLAT — attributes live directly under the
+# discriminator key alongside `label` and (where applicable) `blocks`. This
+# differs from the raw shape, which keeps a `component / label / attributes /
+# blocks` partition because raw needs `component` as its own discriminator.
 #
 # Schemas grow with usage; they are not meant to mirror alloy upstream
 # exhaustively. The full policy lives in:
@@ -57,33 +62,28 @@ $defs:
     properties:
       label:
         $ref: "#/$defs/label"
-      attributes:
-        type: object
-        properties:
-          role:
-            description: |
-              Kubernetes object type to discover targets from.
-            type: string
-            enum:
-              - pod
-              - service
-              - endpoints
-              - endpointslice
-              - ingress
-              - node
-            examples: ["pod"]
-          kubeconfig_file:
-            description: |
-              Path to a kubeconfig file.
-              Defaults to in-cluster credentials when running inside a pod.
-            type: string
-          api_server:
-            description: |
-              Kubernetes API server URL.
-              Defaults to the in-cluster address when omitted.
-            type: string
-        required: [role]
-        additionalProperties: false
+      role:
+        description: |
+          Kubernetes object type to discover targets from.
+        type: string
+        enum:
+          - pod
+          - service
+          - endpoints
+          - endpointslice
+          - ingress
+          - node
+        examples: ["pod"]
+      kubeconfig_file:
+        description: |
+          Path to a kubeconfig file.
+          Defaults to in-cluster credentials when running inside a pod.
+        type: string
+      api_server:
+        description: |
+          Kubernetes API server URL.
+          Defaults to the in-cluster address when omitted.
+        type: string
       blocks:
         description: |
           Optional nested blocks (e.g. `namespaces`, `selectors`, `attach_metadata`).
@@ -91,6 +91,7 @@ $defs:
         type: array
         items:
           $ref: "./raw.schema.yaml"
+    required: [role]
     additionalProperties: false
 
   discovery.relabel:
@@ -105,16 +106,11 @@ $defs:
     properties:
       label:
         $ref: "#/$defs/label"
-      attributes:
-        type: object
-        properties:
-          targets:
-            description: |
-              Discovery targets to relabel.
-              Typically a reference to another discovery.* component's exports.
-            type: array
-        required: [targets]
-        additionalProperties: false
+      targets:
+        description: |
+          Discovery targets to relabel.
+          Typically a reference to another discovery.* component's exports.
+        type: array
       blocks:
         description: |
           One or more `rule` blocks defining the relabel sequence.
@@ -122,4 +118,5 @@ $defs:
         items:
           # Cross-file ref — the `rule` def lives in loki.schema.yaml since it's shared.
           $ref: "./loki.schema.yaml#/$defs/ruleBlock"
+    required: [targets]
     additionalProperties: false

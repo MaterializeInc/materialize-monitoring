@@ -96,6 +96,26 @@ fn longest_preformatted_key(formatted_attribs: &[(String, &AttributeValue)]) -> 
         .unwrap_or(0)
 }
 
+/// Returns true if a value would render across multiple lines.
+///
+/// alloy fmt's alignment rule: `=` signs are aligned only across a run of
+/// single-line attribute values. A multi-line value (non-empty array/object,
+/// or a string with embedded newlines that triggers backtick raw form)
+/// disables alignment for the surrounding group.
+fn is_multiline_value(v: &AttributeValue) -> bool {
+    match v {
+        AttributeValue::Array(arr) => !arr.is_empty(),
+        AttributeValue::Object(obj) => !obj.is_empty(),
+        AttributeValue::String(s) => s.contains('\n'),
+        // Expressions render on a single line in every current head
+        // (env / raw / function / ref / operator).
+        AttributeValue::Null
+        | AttributeValue::Bool(_)
+        | AttributeValue::Number(_)
+        | AttributeValue::Expression(_) => false,
+    }
+}
+
 impl Block {
     /// Render this block as a `config.alloy` snippet, starting at column 0.
     pub fn render(&self) -> Result<String> {
@@ -136,11 +156,18 @@ impl Block {
                 // need to precalculate formatting for alignment
                 let formatted_attribs =
                     preformat_attribute_keys(&self.attributes, format_attribute_key)?;
-                // calculate longest key for alignment
-                let longest_key_len = longest_preformatted_key(&formatted_attribs);
+                // alloy fmt only aligns `=` across a run of single-line values;
+                // any multi-line value (array, object, backtick string) drops
+                // the alignment for the whole group.
+                let longest_key_len =
+                    if formatted_attribs.iter().any(|(_, v)| is_multiline_value(v)) {
+                        0
+                    } else {
+                        longest_preformatted_key(&formatted_attribs)
+                    };
                 // finally output formatted attributes
                 for (formatted_key, value) in &formatted_attribs {
-                    let ljust = longest_key_len - formatted_key.len();
+                    let ljust = longest_key_len.saturating_sub(formatted_key.len());
                     // NOTE: no trailing newline (yet) or trailing comma
                     write!(
                         out,
@@ -259,6 +286,61 @@ fn write_value_object(
     Ok(())
 }
 
+/// Render an operator expression
+/// This is written in infix form, and most operators have a specific number of arguments
+fn write_operator(
+    out: &mut impl fmt::Write,
+    oper: &str,
+    arguments: &[AttributeValue],
+    indent: usize,
+) -> Result<()> {
+    // validate lengths
+    match oper {
+        // unary prefix operators
+        "!" if arguments.len() == 1 => {
+            // prefix unary operator
+            write!(out, "{oper}")?;
+            arguments[0].write_to(out, indent + 1)?;
+        }
+        // binary infix operators (comparisons, limited math)
+        "==" | "!=" | ">" | "<" | ">=" | "<=" | "%" | "/" | "^" | "-" if arguments.len() == 2 => {
+            arguments[0].write_to(out, indent + 1)?;
+            write!(out, " {oper} ")?;
+            arguments[1].write_to(out, indent + 1)?;
+        }
+        // grouped logical operators — kept inline; alloy doesn't accept bare
+        // newlines inside an expression, and the parens are defensive in case
+        // the result is composed into a wider expression.
+        "&&" | "||" if arguments.len() >= 2 => {
+            write!(out, "(")?;
+            for (i, arg) in arguments.iter().enumerate() {
+                if i > 0 {
+                    write!(out, " {oper} ")?;
+                }
+                arg.write_to(out, indent + 1)?;
+            }
+            write!(out, ")")?;
+        }
+        // n-ary infix operators
+        "+" | "*" if arguments.len() >= 2 => {
+            for (i, arg) in arguments.iter().enumerate() {
+                if i > 0 {
+                    write!(out, " {oper} ")?; // separate items with operator
+                }
+                arg.write_to(out, indent + 1)?;
+            }
+        }
+        // bad arguments, unsupported
+        _ => {
+            return Err(Error::Render(format!(
+                "unsupported operator {oper} with {} arguments (got {arguments:?})",
+                arguments.len()
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Render an expression value
 fn write_expression(
     out: &mut impl fmt::Write,
@@ -305,9 +387,8 @@ fn write_expression(
         if rendered_expr {
             return Err(Error::Render("Too many expressions".into()));
         }
-        // TODO: implement
-        let _ = oper;
-        return Err(Error::Render("Operator is not yet implemented".into()));
+        write_operator(out, oper, &expr.arguments, indent)?;
+        rendered_expr = true;
     }
     if !rendered_expr {
         return Err(Error::Render("Expression had no body".into()));
@@ -880,19 +961,129 @@ mod tests {
         );
     }
 
+    // -------- 10b. Operator expressions --------
+
+    /// Build an `AttributeValue::Expression` that renders as a bare ref `name`.
+    /// Useful for synthesizing operator arguments without writing real components.
+    fn ref_arg(name: &str) -> AttributeValue {
+        AttributeValue::Expression(Expression {
+            ref_name: Some(name.into()),
+            ..Default::default()
+        })
+    }
+
     #[test]
-    fn expression_operator_is_unimplemented() {
-        // operator rendering is intentionally not implemented yet; it errors.
+    fn expression_unary_not_renders_prefix_no_space() {
+        // `!ready` — the only unary operator, written prefix with no space.
+        let b = expr_block(
+            "x",
+            Expression {
+                operator: Some("!".into()),
+                arguments: vec![ref_arg("ready")],
+                ..Default::default()
+            },
+        );
+        assert_renders(b.render(), concat!("stage.expr {\n", "\tx = !ready\n", "}"));
+    }
+
+    #[test]
+    fn expression_binary_comparison_renders_infix() {
+        let b = expr_block(
+            "x",
+            Expression {
+                operator: Some("==".into()),
+                arguments: vec![ref_arg("a"), ref_arg("b")],
+                ..Default::default()
+            },
+        );
+        assert_renders(b.render(), concat!("stage.expr {\n", "\tx = a == b\n", "}"));
+    }
+
+    #[test]
+    fn expression_binary_division_renders_infix() {
+        // Exercise one of the binary-only ops (those without n-ary chaining).
+        let b = expr_block(
+            "x",
+            Expression {
+                operator: Some("/".into()),
+                arguments: vec![ref_arg("a"), ref_arg("b")],
+                ..Default::default()
+            },
+        );
+        assert_renders(b.render(), concat!("stage.expr {\n", "\tx = a / b\n", "}"));
+    }
+
+    #[test]
+    fn expression_n_ary_plus_renders_inline_chain() {
+        // `+` and `*` chain n-ary on a single line without surrounding parens.
         let b = expr_block(
             "x",
             Expression {
                 operator: Some("+".into()),
+                arguments: vec![ref_arg("a"), ref_arg("b"), ref_arg("c")],
                 ..Default::default()
             },
         );
-        assert!(
-            matches!(b.render(), Err(Error::Render(_))),
-            "operator expression should currently error"
+        assert_renders(
+            b.render(),
+            concat!("stage.expr {\n", "\tx = a + b + c\n", "}"),
         );
+    }
+
+    #[test]
+    fn expression_logical_and_is_parenthesized_inline() {
+        // `&&` and `||` chain inline with defensive surrounding parens.
+        // alloy rejects bare newlines inside an expression, so this stays one line.
+        let b = expr_block(
+            "x",
+            Expression {
+                operator: Some("&&".into()),
+                arguments: vec![ref_arg("a"), ref_arg("b"), ref_arg("c")],
+                ..Default::default()
+            },
+        );
+        assert_renders(
+            b.render(),
+            concat!("stage.expr {\n", "\tx = (a && b && c)\n", "}"),
+        );
+    }
+
+    #[test]
+    fn expression_operator_with_wrong_arity_errors() {
+        // Each operator has a fixed (or minimum) arity; mismatches error
+        // rather than emit invalid alloy.
+        //
+        // Binary `==` needs exactly 2 args:
+        let one_arg = expr_block(
+            "x",
+            Expression {
+                operator: Some("==".into()),
+                arguments: vec![ref_arg("a")],
+                ..Default::default()
+            },
+        );
+        assert!(matches!(one_arg.render(), Err(Error::Render(_))));
+
+        // Unary `!` needs exactly 1 arg:
+        let two_args = expr_block(
+            "x",
+            Expression {
+                operator: Some("!".into()),
+                arguments: vec![ref_arg("a"), ref_arg("b")],
+                ..Default::default()
+            },
+        );
+        assert!(matches!(two_args.render(), Err(Error::Render(_))));
+
+        // n-ary `+` needs at least 2 args:
+        let zero_args = expr_block(
+            "x",
+            Expression {
+                operator: Some("+".into()),
+                arguments: vec![],
+                ..Default::default()
+            },
+        );
+        assert!(matches!(zero_args.render(), Err(Error::Render(_))));
     }
 }
