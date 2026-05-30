@@ -32,6 +32,7 @@ properties:
       oneOf:
         - $ref: "./raw.schema.yaml"
         - $ref: "./loki.schema.yaml"
+        - $ref: "./discovery.schema.yaml"
 # Reject unknown top-level keys (description/logging/livedebugging/blocks only).
 # unevaluatedProperties (2020-12) is used instead of additionalProperties so it
 # still works when this schema is composed via allOf in mzmon-alloy.schema.yaml.

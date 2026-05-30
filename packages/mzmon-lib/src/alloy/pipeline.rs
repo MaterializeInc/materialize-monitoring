@@ -187,20 +187,140 @@ mod tests {
         assert_renders(pipeline.render(), "loki.echo \"stub\" { }\n");
     }
 
+    /// Schema-only check (Rust sugar deserialization is Phase 3b): parse the YAML
+    /// into a generic value tree and assert the validator accepts it.
+    fn assert_schema_ok(yaml: &str) {
+        let value: serde_json::Value = serde_yaml_ng::from_str(yaml).unwrap();
+        if let Err(e) = crate::alloy::validate::validate(&value) {
+            panic!("expected schema to accept the YAML, got {e:?}");
+        }
+    }
+
     #[test]
     fn pipeline_with_loki_echo_sugar_block() {
-        // The `loki.echo` sugar branch of the blocks oneOf validates and parses.
-        let yaml = r#"
+        // The `loki.echo` branch of the blocks oneOf validates against loki.schema.yaml.
+        assert_schema_ok(
+            r#"
             blocks:
               - loki.echo:
                   label: echo
+        "#,
+        );
+    }
+
+    #[test]
+    fn pipeline_with_loki_process_and_nested_stages() {
+        // Exercises the recursive case: loki.process body contains stage.match,
+        // which itself nests further stages. Also confirms the `raw` escape inside
+        // a stage list works alongside typed stages.
+        assert_schema_ok(
+            r#"
+            blocks:
+              - loki.process:
+                  label: processor
+                  attributes:
+                    forward_to: []
+                  blocks:
+                    - stage.drop:
+                        attributes:
+                          older_than: "12h"
+                          drop_counter_reason: "backlog > 12hr"
+                    - stage.match:
+                        attributes:
+                          selector: '{app="alloy"}'
+                        blocks:
+                          - stage.logfmt:
+                              attributes:
+                                mapping:
+                                  msg: msg
+                                  level: level
+                          - stage.timestamp:
+                              attributes:
+                                source: ts
+                                format: RFC3339Nano
+                    - stage.labels:
+                        attributes:
+                          values:
+                            level: level
+                    - raw:
+                        component: stage.label_keep
+                        attributes:
+                          values: [level]
+        "#,
+        );
+    }
+
+    #[test]
+    fn discovery_relabel_uses_rule_blocks_via_cross_file_ref() {
+        // discovery.relabel's rule block lives in loki.schema.yaml ($defs/ruleBlock)
+        // — this confirms the cross-file `$ref` resolves through the registry.
+        assert_schema_ok(
+            r#"
+            blocks:
+              - discovery.relabel:
+                  attributes:
+                    targets: []
+                  blocks:
+                    - rule:
+                        attributes:
+                          action: keep
+                          source_labels: [__meta_kubernetes_pod_label_app]
+                          regex: "loki|alloy"
+                    - rule:
+                        attributes:
+                          action: replace
+                          source_labels: [__meta_kubernetes_namespace]
+                          target_label: namespace
+        "#,
+        );
+    }
+
+    #[test]
+    fn unknown_attribute_on_typed_block_is_rejected_by_schema() {
+        // Typed blocks are strict: undocumented attributes must use `raw:` instead.
+        let yaml = r#"
+            blocks:
+              - loki.process:
+                  attributes:
+                    forward_to: []
+                    mystery_attr: 42
         "#;
-        // Currently only the `raw` variant is wired into the Rust enum, so this
-        // validates against the schema; full sugar deserialization is Phase 3b.
-        let value: serde_json::Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let paths = assert_schema_rejected(yaml);
         assert!(
-            crate::alloy::validate::validate(&value).is_ok(),
-            "loki.echo block should pass schema validation"
+            paths.iter().any(|p| p.starts_with("/blocks/0")),
+            "expected a /blocks/0 violation, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_attribute_error_includes_raw_escape_hint() {
+        // The `additional properties are not allowed` path attaches a project-specific
+        // hint about the `raw:` escape vs. extending the schema. Without it, the bare
+        // jsonschema message is correct but not actionable for a new contributor.
+        let yaml = r#"
+            blocks:
+              - loki.process:
+                  attributes:
+                    forward_to: []
+                    mystery_attr: 42
+        "#;
+        let err = Pipeline::from_yaml_str(yaml).unwrap_err();
+        let messages: Vec<String> = match err {
+            Error::Multiple(errs) => errs
+                .iter()
+                .filter_map(|e| match e {
+                    Error::Schema { message, .. } => Some(message.clone()),
+                    _ => None,
+                })
+                .collect(),
+            other => panic!("expected Multiple([Schema, ...]), got {other:?}"),
+        };
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("hint:") && m.contains("`raw:`")),
+            "expected a hint mentioning `raw:`, got messages:\n{}",
+            messages.join("\n---\n"),
         );
     }
 

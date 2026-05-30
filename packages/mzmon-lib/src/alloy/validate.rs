@@ -26,12 +26,14 @@ const SCHEMA_MZMON_ALLOY: &str = include_str!("../../schemas/alloy/mzmon-alloy.s
 const SCHEMA_TOP: &str = include_str!("../../schemas/alloy/top.schema.yaml");
 const SCHEMA_RAW: &str = include_str!("../../schemas/alloy/raw.schema.yaml");
 const SCHEMA_LOKI: &str = include_str!("../../schemas/alloy/loki.schema.yaml");
+const SCHEMA_DISCOVERY: &str = include_str!("../../schemas/alloy/discovery.schema.yaml");
 
 // The `$id` URLs the schemas reference one another by. These must match the
 // `$id` fields in the schema files (and the relative `$ref`s resolve to them).
 const ID_TOP: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/top.schema.yaml";
 const ID_RAW: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/raw.schema.yaml";
 const ID_LOKI: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/loki.schema.yaml";
+const ID_DISCOVERY: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/discovery.schema.yaml";
 
 /// Parse an embedded schema (authored as YAML) into a JSON value.
 fn parse_schema(src: &str) -> Value {
@@ -51,6 +53,10 @@ fn build_validator() -> Validator {
             (ID_TOP, Resource::from_contents(parse_schema(SCHEMA_TOP))),
             (ID_RAW, Resource::from_contents(parse_schema(SCHEMA_RAW))),
             (ID_LOKI, Resource::from_contents(parse_schema(SCHEMA_LOKI))),
+            (
+                ID_DISCOVERY,
+                Resource::from_contents(parse_schema(SCHEMA_DISCOVERY)),
+            ),
         ])
         .expect("register embedded schema resources")
         .prepare()
@@ -69,12 +75,20 @@ static VALIDATOR: LazyLock<Validator> = LazyLock::new(build_validator);
 ///
 /// Collects *all* violations into a single [`Error::Multiple`] so callers can
 /// surface every problem at once rather than failing on the first.
+///
+/// Common violation patterns get an extra `hint:` line explaining the
+/// `raw:` escape vs. extend-the-schema choice — see [`schema_hint`].
 pub fn validate(instance: &Value) -> Result<()> {
     let errors: Vec<Error> = VALIDATOR
         .iter_errors(instance)
-        .map(|err| Error::Schema {
-            path: err.instance_path().to_string(),
-            message: err.to_string(),
+        .map(|err| {
+            let path = err.instance_path().to_string();
+            let mut message = err.to_string();
+            if let Some(hint) = schema_hint(&path, &message) {
+                message.push_str("\n  hint: ");
+                message.push_str(hint);
+            }
+            Error::Schema { path, message }
         })
         .collect();
 
@@ -83,4 +97,55 @@ pub fn validate(instance: &Value) -> Result<()> {
     } else {
         Err(Error::Multiple(errors))
     }
+}
+
+/// If a violation matches a known "schema doesn't cover this" pattern, return
+/// a short hint that explains the project's strict-attributes + raw-escape
+/// policy. Pattern-matches the underlying jsonschema error text; if the text
+/// changes in a future jsonschema release, we just stop emitting the hint
+/// (no functional impact).
+///
+/// See: docs/content/reference/internal/pipelines/authoring.md
+fn schema_hint(path: &str, message: &str) -> Option<&'static str> {
+    let msg = message.to_ascii_lowercase();
+
+    // The most actionable case: `additionalProperties: false` rejected something.
+    if msg.contains("additional properties are not allowed")
+        || msg.contains("additional properties are not permitted")
+    {
+        // Inside a typed block's `attributes` map: an undocumented attribute.
+        if path.contains("/attributes") {
+            return Some(
+                "this attribute isn't typed in the schema. \
+                 Either wrap the surrounding block in `raw:` (escape hatch in raw.schema.yaml), \
+                 or add the attribute to its schema $def if it's worth documenting. \
+                 See: docs/content/reference/internal/pipelines/authoring.md",
+            );
+        }
+        // Otherwise: an unknown top-level key, or an unrecognized sub-block.
+        return Some(
+            "this key isn't typed in the schema. \
+             Either use a `raw:` block for one-off usage, \
+             or add the key to its schema if it's reusable. \
+             See: docs/content/reference/internal/pipelines/authoring.md",
+        );
+    }
+
+    // `oneOf` wrapper: the block didn't match any typed branch. The bare jsonschema
+    // message ("not valid under any of the schemas listed in the 'oneOf' keyword")
+    // doesn't tell the author what to do — surface the same policy here.
+    //
+    // The exact root cause (unknown component vs. unsupported attribute inside a
+    // recognized one) isn't distinguishable without drilling into per-branch
+    // errors, which `oneOf` makes noisy. A single shared hint covers both.
+    if msg.contains("is not valid under any of the schemas") {
+        return Some(
+            "this block doesn't match any typed schema. \
+             Likely either an unknown component or an attribute outside the documented set. \
+             Use a `raw:` block for one-off cases, or extend the relevant schema $def. \
+             See: docs/content/reference/internal/pipelines/authoring.md",
+        );
+    }
+
+    None
 }
