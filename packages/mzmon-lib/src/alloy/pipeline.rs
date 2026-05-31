@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{Block, ToBlock};
-use crate::alloy::components::{loki, top};
+use crate::alloy::components::{discovery, loki, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -35,6 +35,10 @@ pub enum ComponentBlock {
     LokiEcho(loki::LokiEchoBlock),
     #[serde(rename = "loki.source.journal")]
     LokiSourceJournal(loki::LokiSourceJournalBlock),
+    #[serde(rename = "discovery.kubernetes")]
+    DiscoveryKubernetes(discovery::DiscoveryKubernetesBlock),
+    #[serde(rename = "discovery.relabel")]
+    DiscoveryRelabel(discovery::DiscoveryRelabelBlock),
 }
 
 impl ToBlock for ComponentBlock {
@@ -43,6 +47,8 @@ impl ToBlock for ComponentBlock {
             ComponentBlock::Raw(rb) => Ok(rb.clone()),
             ComponentBlock::LokiEcho(le) => le.to_block(),
             ComponentBlock::LokiSourceJournal(lsj) => lsj.to_block(),
+            ComponentBlock::DiscoveryKubernetes(dk) => dk.to_block(),
+            ComponentBlock::DiscoveryRelabel(dr) => dr.to_block(),
         }
     }
 }
