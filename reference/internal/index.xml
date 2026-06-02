@@ -3,12 +3,6 @@
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;Cargo.toml&lt;/code&gt;: Top-level Rust workspace&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;Cargo.lock&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;crates/&lt;/code&gt;: Rust workspace members
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;mz-monitoring-build/&lt;/code&gt;: Build orchestration: reads YAML, drives Jsonnet, emits artifacts&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;mz-monitoring-check/&lt;/code&gt;: Schema validation, label-contract conformance, cross-artifact consistency&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;bin/&lt;/code&gt;: Bash CI/dev entrypoints (flat; no subdirectories)
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;ci-lint&lt;/code&gt;: Orchestrates linters; calls Rust binaries where logic is needed&lt;/li&gt;
@@ -34,6 +28,9 @@
 &lt;li&gt;&lt;code&gt;datadog-dashboards/&lt;/code&gt;: Datadog SDK-sourced dashboards&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;mz-monitoring/&lt;/code&gt;: monitoring definitions (alerts, rules, queries, pipelines)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;py-mzmon-lib/&lt;/code&gt;: Python helpers for dashboard generation; imported by other packages but not consumed by customers&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-build/&lt;/code&gt;: Build orchestration: reads YAML, drives Jsonnet, emits artifacts&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-check/&lt;/code&gt;: Schema validation, label-contract conformance, cross-artifact consistency&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mzmon-lib/&lt;/code&gt;: Rust library for helpers in mz-monitoring-build and mz-monitoring-check; not consumed by customers&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;code&gt;charts/&lt;/code&gt;
