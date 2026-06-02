@@ -37,12 +37,12 @@ fn discover_targets(input_dir: &PathBuf) -> anyhow::Result<Vec<String>> {
         let path = entry.path();
 
         // only consider .yaml files
-        if path.extension().and_then(|s| s.to_str()) == Some("yaml") {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                // do not include files starting with _
-                if !stem.starts_with('_') {
-                    targets.push(stem.to_string());
-                }
+        if path.extension().and_then(|s| s.to_str()) == Some("yaml")
+            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+        {
+            // do not include files starting with _
+            if !stem.starts_with('_') {
+                targets.push(stem.to_string());
             }
         }
     }
