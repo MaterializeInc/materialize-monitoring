@@ -739,7 +739,7 @@ $defs:
     additionalProperties: false
 
   # ============================================================
-  # `loki` capsules
+  # Shared `loki` value types (capsules & targets)
   # ============================================================
   logsReceiver:
     description: |
@@ -754,8 +754,10 @@ $defs:
     description: |
       File target for `loki.source.file`.
 
-      Each entry is an object with a required `__path__` attribute and any number of additional label keys to attach to tailed entries.
-      It may also be a pointer to another capsule that resolves to such an object.
+      A target is a map of label keys to string values (`list(map(string))` upstream).
+      This particular case's object has a required `__path__` attribute and any number of additional label keys to attach to tailed entries.
+      In YAML, a plain string is instead interpreted as a reference to another component's targets export (e.g. `discovery.relabel.pods.output`).
+      Looser cousin: `target` in discovery.schema.yaml (no required keys).
 
       See: https://grafana.com/docs/alloy/latest/reference/compatibility/#targets
     oneOf:

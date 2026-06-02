@@ -7,9 +7,9 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! First-class types for alloy *capsule* values — the opaque export types
-//! (`loki.LogsReceiver`, `list(Target)`, `RelabelRules`, ...) that components
-//! exchange by reference.
+//! First-class types for alloy values that components exchange by reference:
+//! *capsules* (`loki.LogsReceiver`, `RelabelRules`, ...) and targets
+//! (documented upstream as `list(map(string))`).
 //!
 //! These exist to make the "ref-valued attributes render as bare refs, never
 //! quoted strings" invariant unrepresentable to violate: the only way to turn
@@ -20,9 +20,9 @@
 //! declared `forward_to: Vec<LogsReceiver>` reads exactly like the upstream
 //! component documentation.
 //!
-//! See: https://grafana.com/docs/alloy/latest/get-started/configuration-syntax/expressions/types_and_values/#capsules
+//! See: https://grafana.com/docs/alloy/latest/get-started/expressions/types_and_values/#capsules
 
-use crate::alloy::ast::{AttributeValue, Expression, Identifier};
+use crate::alloy::ast::{AttributeValue, Expression, Identifier, string_map};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -31,21 +31,38 @@ use serde::{Deserialize, Serialize};
 ///
 /// Deserializes from a plain YAML string; renders as a bare ref.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct LogsReceiver(pub Identifier);
+
+impl LogsReceiver {
+    pub fn new(name: impl Into<Identifier>) -> Self {
+        Self(name.into())
+    }
+}
 
 /// Reference to a component's exported `RelabelRules`
 /// (e.g. `loki.relabel.filtered.rules`).
 ///
 /// Deserializes from a plain YAML string; renders as a bare ref.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct RelabelRules(pub Identifier);
 
-/// One element of a `targets` list (`list(Target)` in alloy terms).
+impl RelabelRules {
+    pub fn new(name: impl Into<Identifier>) -> Self {
+        Self(name.into())
+    }
+}
+
+/// One element of a `targets` list.
 ///
-/// Alloy type-checks `targets` as a list of capsules and *flattens*
-/// list-valued elements, so a single array may legally mix references to
-/// `discovery.*` exports with inline literal targets (verified against
-/// `alloy validate`):
+/// Upstream documents targets as `list(map(string))` — a list of maps with
+/// string values. At validate time alloy implements target elements as
+/// capsules (`alloy validate` errors say `expected capsule`) and *flattens*
+/// list-valued elements — behavior we rely on but which is not documented
+/// upstream (verified against `alloy validate`; pinned by the round-trip
+/// tests). A single array may therefore legally mix references to
+/// `discovery.*` exports with inline literal targets:
 ///
 /// Some targets have required keys (like `__path__` for file targets),
 /// so those are represented only in the schema and not the rust type.
@@ -65,7 +82,8 @@ pub struct RelabelRules(pub Identifier);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TargetEntry {
-    /// Reference to a `list(Target)` export, e.g. `discovery.kubernetes.pods.targets`.
+    /// Reference to a targets export (`list(map(string))` upstream),
+    /// e.g. `discovery.kubernetes.pods.targets`.
     Ref(Identifier),
     /// Inline literal string map.
     /// This may have additional required keys in the schema (like `__path__` for file targets).
@@ -74,36 +92,21 @@ pub enum TargetEntry {
 
 impl From<&LogsReceiver> for AttributeValue {
     fn from(receiver: &LogsReceiver) -> Self {
-        AttributeValue::Expression(Expression {
-            ref_name: Some(receiver.0.clone()),
-            ..Expression::default()
-        })
+        AttributeValue::Expression(Expression::name_to_ref(&receiver.0))
     }
 }
 
 impl From<&RelabelRules> for AttributeValue {
     fn from(rules: &RelabelRules) -> Self {
-        AttributeValue::Expression(Expression {
-            ref_name: Some(rules.0.clone()),
-            ..Expression::default()
-        })
+        AttributeValue::Expression(Expression::name_to_ref(&rules.0))
     }
 }
 
 impl From<&TargetEntry> for AttributeValue {
     fn from(entry: &TargetEntry) -> Self {
         match entry {
-            TargetEntry::Ref(r) => AttributeValue::Expression(Expression {
-                ref_name: Some(r.clone()),
-                ..Expression::default()
-            }),
-            TargetEntry::Literal(m) => {
-                let mut obj = IndexMap::new();
-                for (k, v) in m {
-                    obj.insert(k.clone(), AttributeValue::String(v.clone()));
-                }
-                AttributeValue::Object(obj)
-            }
+            TargetEntry::Ref(r) => AttributeValue::Expression(Expression::name_to_ref(r)),
+            TargetEntry::Literal(m) => string_map(m),
         }
     }
 }

@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+    AttributeValue, Block, GoDuration, Identifier, ToBlock, impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
@@ -17,15 +17,6 @@ use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-
-/// Convert a label/expression map to an `AttributeValue::Object` of string values.
-fn string_map(map: &IndexMap<String, String>) -> AttributeValue {
-    AttributeValue::Object(
-        map.iter()
-            .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
-            .collect(),
-    )
-}
 
 /// A "loki.echo" block, which shows output to stdout for debugging
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,10 +71,7 @@ impl ToBlock for LokiSourceJournalBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
         if !self.forward_to.is_empty() {
-            attributes.insert(
-                "forward_to".into(),
-                AttributeValue::Array(self.forward_to.iter().map(AttributeValue::from).collect()),
-            );
+            attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         }
         if let Some(path) = &self.path {
             attributes.insert("path".into(), AttributeValue::String(path.clone()));
@@ -92,15 +80,7 @@ impl ToBlock for LokiSourceJournalBlock {
             attributes.insert("matches".into(), AttributeValue::String(matches.clone()));
         }
         if let Some(labels) = &self.labels {
-            attributes.insert(
-                "labels".into(),
-                AttributeValue::Object(
-                    labels
-                        .iter()
-                        .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
-                        .collect(),
-                ),
-            );
+            attributes.insert("labels".into(), string_map(labels));
         }
         if let Some(max_age) = &self.max_age {
             attributes.insert("max_age".into(), AttributeValue::String(max_age.clone()));
@@ -153,10 +133,11 @@ impl ToBlock for LokiRelabelBlock {
         if let Some(mc) = self.max_cache_size {
             attributes.insert("max_cache_size".into(), AttributeValue::Number(mc));
         }
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Block {
             component: "loki.relabel".into(),
             label: self.label.clone(),
@@ -236,10 +217,11 @@ impl ToBlock for LokiProcessBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
         attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Block {
             component: "loki.process".into(),
             label: self.label.clone(),
@@ -342,10 +324,11 @@ impl ToBlock for StageMatchBlock {
                 AttributeValue::String(r.clone()),
             );
         }
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Block {
             component: "stage.match".into(),
             label: None,
@@ -873,10 +856,6 @@ mod tests {
         );
     }
 
-    /// RED (capsule TDD): `targets` today is `Vec<IndexMap<String, String>>` —
-    /// literal maps only — so a ref to a discovery export can't be expressed.
-    /// Real pipelines need `targets = discovery.relabel.pods.output`. Switching
-    /// the field to `Vec<TargetEntry>` makes the string element a bare ref.
     #[test]
     fn loki_source_file_accepts_discovered_targets_ref() {
         let pipeline = Pipeline::from_yaml_str(
@@ -903,7 +882,7 @@ mod tests {
         );
     }
 
-    /// RED (capsule TDD): one `targets` array legally mixes a discovery-export
+    /// one `targets` array legally mixes a discovery-export
     /// ref with an inline literal target — alloy type-checks `targets` as
     /// `list(capsule)` and flattens list-valued elements (verified against
     /// `alloy validate`). Expected output below is `alloy fmt`-canonical.

@@ -53,8 +53,8 @@ impl ToBlock for Block {
 /// Support converting an enum with ToBlock traits into a Block via `to_block()`
 macro_rules! impl_to_block_dispatch {
     ($enum_name:ident { $($variant:ident),+ $(,)? }) => {
-        impl ToBlock for $enum_name {
-            fn to_block(&self) -> Result<Block> {
+        impl $crate::alloy::ast::ToBlock for $enum_name {
+            fn to_block(&self) -> $crate::alloy::error::Result<Block> {
                 match self {
                     $(Self::$variant(inner) => inner.to_block(),)*
                 }
@@ -79,12 +79,23 @@ pub struct Expression {
     pub env: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub function: Option<String>,
+    // NOTE: ref is a reserved keyword in rust
     #[serde(skip_serializing_if = "Option::is_none", rename = "ref", default)]
     pub ref_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub operator: Option<String>,
     #[serde(default)]
     pub arguments: Vec<AttributeValue>,
+}
+
+impl Expression {
+    /// Generate an Expression for a ref by its name.
+    pub fn name_to_ref(name: impl Into<Identifier>) -> Self {
+        Self {
+            ref_name: Some(name.into()),
+            ..Default::default()
+        }
+    }
 }
 
 // The RHS "value" of an assignment
@@ -111,6 +122,15 @@ pub enum AttributeValue {
     Array(Vec<AttributeValue>),
     Expression(Expression),
     Object(IndexMap<Identifier, AttributeValue>),
+}
+
+/// Convert a label/expression map to an `AttributeValue::Object` of string values.
+pub fn string_map(map: &IndexMap<String, String>) -> AttributeValue {
+    AttributeValue::Object(
+        map.iter()
+            .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
+            .collect(),
+    )
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@
 //! Both `loki.relabel` and `discovery.relabel` accept a list of `rule` blocks
 //! with the same shape — defined here so they share one source of truth.
 
-use crate::alloy::ast::{AttributeValue, Block, ToBlock};
+use crate::alloy::ast::{AttributeValue, Block, ToBlock, impl_to_block_dispatch};
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -26,15 +26,7 @@ pub enum RelabelSubBlock {
     #[serde(rename = "raw")]
     Raw(Block),
 }
-
-impl ToBlock for RelabelSubBlock {
-    fn to_block(&self) -> Result<Block> {
-        match self {
-            Self::Rule(r) => r.to_block(),
-            Self::Raw(b) => Ok(b.clone()),
-        }
-    }
-}
+impl_to_block_dispatch!(RelabelSubBlock { Rule, Raw });
 
 /// One relabel step, applied in document order.
 ///

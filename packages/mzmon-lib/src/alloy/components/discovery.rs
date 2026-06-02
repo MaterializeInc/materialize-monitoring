@@ -13,18 +13,12 @@
 //! Each block deserializes from the flat `{discovery.X: {label, attrs..., blocks}}`
 //! form and converts to a generic [`Block`] via [`ToBlock`].
 
-use crate::alloy::ast::{
-    AttributeValue, Block, Expression, Identifier, ToBlock, impl_to_block_dispatch,
-};
+use crate::alloy::ast::{AttributeValue, Block, Identifier, ToBlock, impl_to_block_dispatch};
+use crate::alloy::components::capsule::TargetEntry;
 use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-
-/// A loki/discovery component output exported as a `targets` or `receiver`
-/// expression — rendered as a bare ref (e.g. `discovery.kubernetes.pods.targets`),
-/// NOT as a quoted string.
-type TargetRef = String;
 
 // ============================================================
 // discovery.kubernetes
@@ -148,10 +142,11 @@ impl ToBlock for DiscoveryKubernetesBlock {
             attributes.insert("api_server".into(), AttributeValue::String(api.clone()));
         }
 
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(Block {
             component: "discovery.kubernetes".into(),
@@ -177,7 +172,7 @@ pub struct DiscoveryRelabelBlock {
     pub label: Option<Identifier>,
     /// Discovery targets to relabel; usually a reference to another
     /// `discovery.*` component's `.targets` export. Required by the schema.
-    pub targets: Vec<TargetRef>,
+    pub targets: Vec<TargetEntry>,
     /// Rule blocks applied in document order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocks: Vec<RelabelSubBlock>,
@@ -191,23 +186,14 @@ impl ToBlock for DiscoveryRelabelBlock {
         // renderer emits a bare identifier.
         attributes.insert(
             "targets".into(),
-            AttributeValue::Array(
-                self.targets
-                    .iter()
-                    .map(|s| {
-                        AttributeValue::Expression(Expression {
-                            ref_name: Some(s.clone()),
-                            ..Default::default()
-                        })
-                    })
-                    .collect(),
-            ),
+            AttributeValue::Array(self.targets.iter().map(AttributeValue::from).collect()),
         );
 
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(Block {
             component: "discovery.relabel".into(),
@@ -294,6 +280,48 @@ mod tests {
                 "\ttargets = [\n",
                 "\t\tdiscovery.kubernetes.pods.targets,\n",
                 "\t]\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// Regression: the schema's `$defs/target` accepts string | object, so the
+    /// Rust side must too (`Vec<TargetEntry>`). A schema-valid literal target
+    /// map once died in serde with an unhelpful type error because the field
+    /// was `Vec<String>` — this pins the schema↔serde pairing for
+    /// discovery.relabel specifically (loki.source.file has its own pin).
+    #[test]
+    fn discovery_relabel_mixes_target_refs_and_literals() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.relabel:
+                  label: mixed
+                  targets:
+                    - "discovery.kubernetes.pods.targets"
+                    - job: "static"
+                  blocks:
+                    - rule:
+                        action: keep
+                        regex: "alloy"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.relabel \"mixed\" {\n",
+                "\ttargets = [\n",
+                "\t\tdiscovery.kubernetes.pods.targets,\n",
+                "\t\t{\n",
+                "\t\t\tjob = \"static\",\n",
+                "\t\t},\n",
+                "\t]\n",
+                "\n",
+                "\trule {\n",
+                "\t\taction = \"keep\"\n",
+                "\t\tregex  = \"alloy\"\n",
+                "\t}\n",
                 "}\n",
             ),
         );

@@ -284,7 +284,7 @@ mod tests {
         );
     }
 
-    /// RED (capsule TDD): `targets` is schema'd as a bare `type: array` with no
+    /// `targets` is schema'd as a bare `type: array` with no
     /// `items` constraint, so a numeric entry sails through schema validation
     /// and dies later as an unhelpful serde error. Tighten `items` to
     /// string (capsule ref) | object-of-strings (literal target) — consider a
@@ -304,8 +304,6 @@ mod tests {
         );
     }
 
-    /// RED (capsule TDD): same gap for `forward_to` — items should be
-    /// constrained to strings (LogsReceiver refs).
     #[test]
     fn numeric_forward_to_entry_is_rejected_by_schema() {
         let paths = assert_schema_rejected(
@@ -321,10 +319,6 @@ mod tests {
         );
     }
 
-    /// GREEN guard (capsule TDD): passes trivially today (no items constraint)
-    /// and must STILL pass after the schema is tightened — a mixed ref/literal
-    /// `targets` array is legal alloy (the binary flattens list-valued
-    /// elements; verified against `alloy validate`).
     #[test]
     fn mixed_ref_and_literal_targets_pass_schema() {
         assert_schema_ok(

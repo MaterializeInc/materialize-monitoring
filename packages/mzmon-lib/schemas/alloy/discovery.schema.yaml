@@ -200,7 +200,9 @@ $defs:
 
   target:
     description: |
-      A reference to a component that produces a target capsule or a map of label keys to values.
+      One discovery target: a map of label keys to string values (`list(map(string))` upstream).
+      In YAML, a plain string is instead interpreted as a reference to another component's targets export (e.g. `discovery.kubernetes.pods.targets`).
+      Stricter cousin: `fileTargetEntry` in loki.schema.yaml (requires `__path__`).
 
       See: https://grafana.com/docs/alloy/latest/reference/compatibility/#targets
     oneOf:
