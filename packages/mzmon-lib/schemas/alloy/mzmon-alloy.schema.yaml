@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for alloy pipeline definitions.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/mzmon-alloy.schema.yaml"
+title: "Alloy pipeline schema"
+description: "An opinionated schema of alloy pipeline definitions used in materialize-monitoring"
+type: object
+allOf:
+  - $ref: "./top.schema.yaml"
+
+$defs:
+  import:
+    description: |
+      An import of another definition, either a file or a jsonpath.
+    type: object
+    format: import
+    properties:
+      filename:
+        type: string
+        description: |
+          A path to another alloy file to import.
+          By default, the current file is used.
+          Note that imports cannot ascend above the current file's directory.
+      jsonpath:
+        type: string
+        description: |
+          A jsonpath expression to import from the specified file.

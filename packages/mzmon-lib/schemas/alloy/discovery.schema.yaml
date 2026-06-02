@@ -1,0 +1,197 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for discovery.* components in alloy pipeline definitions.
+#
+# DESIGN NOTE: typed schemas are strict (additionalProperties: false on each
+# typed block). Undocumented attributes are rejected deliberately — extend the
+# relevant $def to add one, or wrap the whole block in a `raw:` escape (see
+# raw.schema.yaml).
+#
+# The typed shape is intentionally FLAT — attributes live directly under the
+# discriminator key alongside `label` and (where applicable) `blocks`. This
+# differs from the raw shape, which keeps a `component / label / attributes /
+# blocks` partition because raw needs `component` as its own discriminator.
+#
+# Schemas grow with usage; they are not meant to mirror alloy upstream
+# exhaustively. The full policy lives in:
+#   docs/content/reference/internal/pipelines/authoring.md
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/discovery.schema.yaml"
+title: "Alloy discovery components"
+description: |
+  Schemas for the discovery.* alloy components used by materialize-monitoring pipelines.
+
+  Discovery components produce target lists (with labels) that source/relabel components consume.
+  For anything outside this schema, fall back to the `raw:` escape hatch from raw.schema.yaml.
+
+  See: https://grafana.com/docs/alloy/latest/reference/components/discovery/
+
+type: object
+# Externally-tagged: each branch requires its component key and forbids the others.
+oneOf:
+  - type: object
+    properties:
+      discovery.kubernetes:
+        $ref: "#/$defs/discovery.kubernetes"
+    required: [discovery.kubernetes]
+    additionalProperties: false
+  - type: object
+    properties:
+      discovery.relabel:
+        $ref: "#/$defs/discovery.relabel"
+    required: [discovery.relabel]
+    additionalProperties: false
+
+$defs:
+  label:
+    description: User-defined identifier to distinguish multiple instances.
+    type: string
+
+  # ============================================================
+  # Top-level components
+  # ============================================================
+
+  discovery.kubernetes:
+    description: |
+      Discovers targets from the Kubernetes API by role (pod, service, endpoints, ...).
+
+      Each discovered target carries label metadata that subsequent relabel/source
+      components consume.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      role:
+        description: |
+          Kubernetes object type to discover targets from.
+        type: string
+        enum:
+          - pod
+          - service
+          - endpoints
+          - endpointslice
+          - ingress
+          - node
+        examples: ["pod"]
+      kubeconfig_file:
+        description: |
+          Path to a kubeconfig file.
+          Defaults to in-cluster credentials when running inside a pod.
+        type: string
+      api_server:
+        description: |
+          Kubernetes API server URL.
+          Defaults to the in-cluster address when omitted.
+        type: string
+      blocks:
+        description: |
+          Optional nested blocks (`selectors`, `attach_metadata`, ...).
+          Sub-blocks not typed below (e.g. `namespaces`) use the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/kubernetesSubBlock"
+    required: [role]
+    additionalProperties: false
+
+  # ============================================================
+  # discovery.kubernetes sub-blocks
+  # ============================================================
+
+  kubernetesSubBlock:
+    description: |
+      One sub-block in a `discovery.kubernetes` body.
+      The final `raw` branch is the escape hatch for sub-blocks not typed here.
+    oneOf:
+      - type: object
+        properties:
+          selectors:
+            $ref: "#/$defs/selectors"
+        required: [selectors]
+        additionalProperties: false
+      - type: object
+        properties:
+          attach_metadata:
+            $ref: "#/$defs/attach_metadata"
+        required: [attach_metadata]
+        additionalProperties: false
+      - $ref: "./raw.schema.yaml"
+
+  selectors:
+    description: |
+      Filter discovered Kubernetes objects by label / field selectors.
+      Multiple `selectors` blocks may appear, each scoped to a `role`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/#selectors-block
+    type: object
+    properties:
+      role:
+        description: |
+          Role this selector applies to.
+          Must match one of `discovery.kubernetes`'s `role` enum values.
+        type: string
+        enum:
+          - pod
+          - service
+          - endpoints
+          - endpointslice
+          - ingress
+          - node
+      label:
+        description: |
+          Kubernetes label selector expression.
+        type: string
+        examples:
+          - "app=alloy"
+          - "tier in (frontend, backend)"
+      field:
+        description: |
+          Kubernetes field selector expression.
+        type: string
+        examples:
+          - "status.phase=Running"
+          - "metadata.namespace!=kube-system"
+    required: [role]
+    additionalProperties: false
+
+  attach_metadata:
+    description: |
+      Controls whether discovered targets carry metadata from related
+      Kubernetes objects.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/#attach_metadata-block
+    type: object
+    properties:
+      node:
+        description: |
+          When true, attach metadata from the pod's host node to each target.
+          Defaults to false.
+        type: boolean
+    additionalProperties: false
+
+  discovery.relabel:
+    description: |
+      Rewrites discovery target labels using `rule` blocks.
+
+      Used to filter, normalize, or derive labels on a target list before it is consumed
+      by a source component.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.relabel/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      targets:
+        description: |
+          Discovery targets to relabel.
+          Typically a reference to another discovery.* component's exports.
+        type: array
+      blocks:
+        description: |
+          One or more `rule` blocks defining the relabel sequence.
+        type: array
+        items:
+          # Cross-file ref — the `rule` def lives in loki.schema.yaml since it's shared.
+          $ref: "./loki.schema.yaml#/$defs/ruleBlock"
+    required: [targets]
+    additionalProperties: false

@@ -49,6 +49,8 @@ rules:
     forbid: false
     max-spaces-inside: 0
     max-spaces-inside-empty: 0
+  # comments may control flow (which looks over/under-indented)
+  comments-indentation: false
   # Document end is not recommended (default is to not check)
   document-end:
     present: false

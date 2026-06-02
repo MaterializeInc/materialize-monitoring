@@ -16,8 +16,12 @@ CHARTS = materialize-monitoring
 # Rust targets
 ALL_BINARIES = mz-monitoring-build mz-monitoring-check
 # Rust sources
-SOURCES_mz-monitoring-build = $(shell find crates/mz-monitoring-build -type f)
-SOURCES_mz-monitoring-check = $(shell find crates/mz-monitoring-check -type f)
+SOURCES_mzmon-lib = $(shell find packages/mzmon-lib -type f)
+SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
+SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
+
+# Alloy targets
+ALLOY_TARGETS = gateway agent
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -62,11 +66,17 @@ helm-docs: \
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
+alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
+.PHONY: alloy-pipelines
+
 # Make all dashboards
 dashboards: grafana-dashboards
 .PHONY: dashboards
 
-synced: dashboards charts
+pipelines: alloy-pipelines
+.PHONY: pipelines
+
+synced: dashboards charts pipelines
 .PHONY: synced
 
 all: synced
@@ -82,11 +92,13 @@ check-lfs:
 # Rust binary name
 BUILD_BIN_BASENAME = $(notdir $@)
 
-target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
+target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib)
 	cargo build --bin "$(BUILD_BIN_BASENAME)"
+	# Ensure target uses a newer timestamp (cargo build can leave this as old)
+	touch "$@"
 
 ## YAGNI
-# target/release/mz-monitoring-%: $$(SOURCES_mz-monitoring-%)
+# target/release/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib)
 # 	cargo build --release --bin "$(BUILD_BIN_BASENAME)"
 
 ### DASHBOARD SYNC ###
@@ -98,6 +110,19 @@ charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
 	$(PY_RUN) -m dashboards.render -o "$@" --format yaml
+	touch "$@"
+
+### PIPELINE SYNC ###
+
+ALLOY_TARGET = $(patsubst %.alloy,%,$(notdir $@))
+
+# TODO: invoke
+charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
+	mkdir -p "$(@D)"
+	target/debug/mz-monitoring-build gen-pipelines --output-dir "$(@D)" --target "$(ALLOY_TARGET)"
+	alloy validate "$@"
+
+charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materialize-monitoring/pre-rendered/pipelines/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
 	touch "$@"
 
 ### HELM CHARTS ###
