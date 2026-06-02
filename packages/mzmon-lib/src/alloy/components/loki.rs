@@ -8,29 +8,15 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, Expression, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+    AttributeValue, Block, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+};
+use crate::alloy::components::capsule::{
+    LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
 };
 use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-
-type TargetRef = String;
-
-/// Wrap a list of `TargetRef`s as an `AttributeValue::Array` of bare-ref
-/// expressions (e.g. `[loki.write.x.receiver]`, not `["loki.write.x.receiver"]`).
-fn target_refs(refs: &[TargetRef]) -> AttributeValue {
-    AttributeValue::Array(
-        refs.iter()
-            .map(|s| {
-                AttributeValue::Expression(Expression {
-                    ref_name: Some(s.clone()),
-                    ..Default::default()
-                })
-            })
-            .collect(),
-    )
-}
 
 /// Convert a label/expression map to an `AttributeValue::Object` of string values.
 fn string_map(map: &IndexMap<String, String>) -> AttributeValue {
@@ -69,7 +55,7 @@ pub struct LokiSourceJournalBlock {
     pub label: Option<Identifier>,
     /// Forward logs to this target
     /// This is required
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// Journal path to read logs from (e.g. /var/log/journal)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -87,7 +73,7 @@ pub struct LokiSourceJournalBlock {
     pub format_as_json: Option<bool>,
     /// Relabeling rules to apply to the logs
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relabel_rules: Option<TargetRef>,
+    pub relabel_rules: Option<RelabelRules>,
 }
 
 impl ToBlock for LokiSourceJournalBlock {
@@ -96,17 +82,7 @@ impl ToBlock for LokiSourceJournalBlock {
         if !self.forward_to.is_empty() {
             attributes.insert(
                 "forward_to".into(),
-                AttributeValue::Array(
-                    self.forward_to
-                        .iter()
-                        .map(|s| {
-                            AttributeValue::Expression(Expression {
-                                ref_name: Some(s.clone()),
-                                ..Default::default()
-                            })
-                        })
-                        .collect(),
-                ),
+                AttributeValue::Array(self.forward_to.iter().map(AttributeValue::from).collect()),
             );
         }
         if let Some(path) = &self.path {
@@ -136,13 +112,7 @@ impl ToBlock for LokiSourceJournalBlock {
             );
         }
         if let Some(rr) = &self.relabel_rules {
-            attributes.insert(
-                "relabel_rules".into(),
-                AttributeValue::Expression(Expression {
-                    ref_name: Some(rr.clone()),
-                    ..Default::default()
-                }),
-            );
+            attributes.insert("relabel_rules".into(), AttributeValue::from(rr));
         }
         Ok(Block {
             component: "loki.source.journal".into(),
@@ -167,7 +137,7 @@ pub struct LokiRelabelBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<Identifier>,
     /// Loki receivers to forward relabeled entries to. Required by the schema.
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// Maximum number of relabeling results to cache. Defaults to 10,000.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_cache_size: Option<f64>,
@@ -179,7 +149,7 @@ pub struct LokiRelabelBlock {
 impl ToBlock for LokiRelabelBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("forward_to".into(), target_refs(&self.forward_to));
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         if let Some(mc) = self.max_cache_size {
             attributes.insert("max_cache_size".into(), AttributeValue::Number(mc));
         }
@@ -211,9 +181,9 @@ pub struct LokiSourceFileBlock {
     pub label: Option<Identifier>,
     /// File targets to tail. Each target is an object with `__path__` and any
     /// label keys to attach. Required by the schema.
-    pub targets: Vec<IndexMap<String, String>>,
+    pub targets: Vec<TargetEntry>,
     /// Loki receivers to forward tailed entries to. Required by the schema.
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// When true, only lines added after start are tailed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tail_from_end: Option<bool>,
@@ -225,11 +195,8 @@ pub struct LokiSourceFileBlock {
 impl ToBlock for LokiSourceFileBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert(
-            "targets".into(),
-            AttributeValue::Array(self.targets.iter().map(string_map).collect()),
-        );
-        attributes.insert("forward_to".into(), target_refs(&self.forward_to));
+        attributes.insert("targets".into(), target_list(&self.targets));
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         if let Some(tail) = self.tail_from_end {
             attributes.insert("tail_from_end".into(), AttributeValue::Bool(tail));
         }
@@ -259,7 +226,7 @@ pub struct LokiProcessBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<Identifier>,
     /// Loki receivers to forward processed entries to.
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// Stages applied in document order to each entry.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocks: Vec<StageBlock>,
@@ -268,7 +235,7 @@ pub struct LokiProcessBlock {
 impl ToBlock for LokiProcessBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("forward_to".into(), target_refs(&self.forward_to));
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
         for sb in &self.blocks {
             blocks.push(sb.to_block()?);

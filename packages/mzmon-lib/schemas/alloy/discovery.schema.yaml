@@ -186,6 +186,8 @@ $defs:
           Discovery targets to relabel.
           Typically a reference to another discovery.* component's exports.
         type: array
+        items:
+          $ref: "#/$defs/target"
       blocks:
         description: |
           One or more `rule` blocks defining the relabel sequence.
@@ -195,3 +197,14 @@ $defs:
           $ref: "./loki.schema.yaml#/$defs/ruleBlock"
     required: [targets]
     additionalProperties: false
+
+  target:
+    description: |
+      A reference to a component that produces a target capsule or a map of label keys to values.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#targets
+    oneOf:
+      - type: string
+      - type: object
+        additionalProperties:
+          type: string
