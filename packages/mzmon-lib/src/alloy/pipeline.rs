@@ -33,8 +33,14 @@ pub enum ComponentBlock {
     Raw(Block),
     #[serde(rename = "loki.echo")]
     LokiEcho(loki::LokiEchoBlock),
+    #[serde(rename = "loki.process")]
+    LokiProcess(loki::LokiProcessBlock),
+    #[serde(rename = "loki.relabel")]
+    LokiRelabel(loki::LokiRelabelBlock),
     #[serde(rename = "loki.source.journal")]
     LokiSourceJournal(loki::LokiSourceJournalBlock),
+    #[serde(rename = "loki.source.file")]
+    LokiSourceFile(loki::LokiSourceFileBlock),
     #[serde(rename = "discovery.kubernetes")]
     DiscoveryKubernetes(discovery::DiscoveryKubernetesBlock),
     #[serde(rename = "discovery.relabel")]
@@ -46,7 +52,10 @@ impl ToBlock for ComponentBlock {
         match self {
             ComponentBlock::Raw(rb) => Ok(rb.clone()),
             ComponentBlock::LokiEcho(le) => le.to_block(),
+            ComponentBlock::LokiProcess(lp) => lp.to_block(),
+            ComponentBlock::LokiRelabel(lr) => lr.to_block(),
             ComponentBlock::LokiSourceJournal(lsj) => lsj.to_block(),
+            ComponentBlock::LokiSourceFile(lsf) => lsf.to_block(),
             ComponentBlock::DiscoveryKubernetes(dk) => dk.to_block(),
             ComponentBlock::DiscoveryRelabel(dr) => dr.to_block(),
         }

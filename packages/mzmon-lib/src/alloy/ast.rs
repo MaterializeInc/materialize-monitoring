@@ -44,6 +44,12 @@ pub trait ToBlock {
     fn to_block(&self) -> Result<Block>;
 }
 
+impl ToBlock for Block {
+    fn to_block(&self) -> Result<Block> {
+        Ok(self.clone())
+    }
+}
+
 /// Expressions
 ///
 /// `deny_unknown_fields` is load-bearing for `AttributeValue` untagged dispatch:

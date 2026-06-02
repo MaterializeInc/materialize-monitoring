@@ -102,9 +102,13 @@ Each component file declares its own `$id` URL. The validator (`packages/mzmon-l
 
 Cross-file references use a relative path (`./loki.schema.yaml#/$defs/ruleBlock`) which the registry resolves through `$id`. The same path also works in the IDE — `yaml-language-server` follows relative paths directly. **Don't use absolute URLs in `$ref`s**; they only work if `$id`s match exactly and break the local IDE experience.
 
-## Extending the schema: a worked example
+## Extending the schema
 
-Adding a new attribute to an existing stage, say `drop_malformed` on `stage.json`:
+Three recipes, in increasing scope: add an attribute, add a typed sub-block, add a whole component. All three follow the same pattern: schema first (so validation + IDE hover get the change), Rust struct + `ToBlock` if it's a typed sugar variant, then a round-trip test colocated with the impl.
+
+### Adding an attribute to an existing component
+
+Say `drop_malformed` on `stage.json`:
 
 1. Open `packages/mzmon-lib/schemas/alloy/loki.schema.yaml`.
 2. Find the `stage.json` `$def` under `$defs`.
@@ -126,14 +130,140 @@ Adding a new attribute to an existing stage, say `drop_malformed` on `stage.json
      additionalProperties: false
    ```
 
-4. Add or extend a test in `packages/mzmon-lib/src/alloy/pipeline.rs` that exercises the new attribute through `Pipeline::from_yaml_str`.
-5. Run `cargo test -p mzmon-lib`, `cargo fmt`, and `make pipelines`.
+4. If the component has a Rust sugar struct (e.g. `LokiSourceJournalBlock`), add the corresponding field with `#[serde(default, skip_serializing_if = "Option::is_none")]` and extend `to_block` to emit the attribute when set. (For schema-only stages without Rust sugar, you can stop here — the schema documents the attribute and validation enforces the type.)
+5. Add or extend a round-trip test (preferably colocated with the Rust impl in `components/*.rs`, or in `pipeline.rs` for top-level concerns).
+6. Run `cargo test -p mzmon-lib`, `cargo fmt`, and `make pipelines`.
 
-Adding a whole new typed component (e.g., a new `prometheus.*` family) is the same shape one level up: a new file `prometheus.schema.yaml`, registered in `validate.rs`, referenced from `top.schema.yaml`'s `blocks` `oneOf`, with `$defs` per component and per sub-block. Mirror the `loki.schema.yaml` structure.
+### Adding a typed sub-block
+
+The `discovery.kubernetes`'s `selectors` and `attach_metadata` blocks are the canonical example. Pattern:
+
+1. **Schema** — in `discovery.schema.yaml`, the component's `blocks.items` refs a `<componentName>SubBlock` `$def` (a `oneOf` over typed branches + a final `raw` escape):
+   ```yaml
+   kubernetesSubBlock:
+     oneOf:
+       - type: object
+         properties:
+           selectors:       { $ref: "#/$defs/selectors" }
+         required: [selectors]
+         additionalProperties: false
+       - type: object
+         properties:
+           attach_metadata: { $ref: "#/$defs/attach_metadata" }
+         required: [attach_metadata]
+         additionalProperties: false
+       - $ref: "./raw.schema.yaml"     # ← always the last branch
+   ```
+2. **`$def` for each sub-block** — typed properties, `required`, `additionalProperties: false`, a `See:` link to canonical alloy docs.
+3. **Rust struct** — flat, `#[serde(deny_unknown_fields)]`. One per typed sub-block (e.g. `DiscoveryKubernetesSelector`).
+4. **`impl ToBlock`** — populate an `IndexMap<String, AttributeValue>`, return `Block { component: "<sub-block name>", label: None, attributes, blocks: Vec::new() }`.
+5. **Sub-block enum** — extend the component's existing `<Component>SubBlock` enum with a new variant, `#[serde(rename = "<yaml-key>")]`:
+   ```rust
+   pub enum KubernetesSubBlock {
+       #[serde(rename = "selectors")]
+       Selectors(DiscoveryKubernetesSelector),
+       #[serde(rename = "attach_metadata")]
+       AttachMetadata(DiscoveryKubernetesAttachMetadata),
+       #[serde(rename = "raw")]
+       Raw(Block),
+   }
+   ```
+6. **Dispatch in the enum's `ToBlock`** — add a match arm.
+7. **Test** — a round-trip test through `Pipeline::from_yaml_str` that exercises the new sub-block, colocated in the same `components/*.rs` file.
+
+Sub-block enums *always* keep `Raw(Block)` as a fallback so unsupported sub-blocks don't require a schema change.
+
+### Adding a typed component
+
+Adding a whole new typed component (e.g. a `prometheus.*` family) is the same shape one level up:
+
+1. **New schema file** `prometheus.schema.yaml`, registered in `validate.rs` (a fresh `ID_PROMETHEUS` constant + an entry in the `Registry::extend` list).
+2. Add a branch to `top.schema.yaml`'s `blocks.items.oneOf` pointing at the new file.
+3. **Rust struct + `ToBlock`** in `components/prometheus.rs`.
+4. **Variant in `ComponentBlock`** (`pipeline.rs`) with `#[serde(rename = "<exact-component-name>")]`.
+5. **Dispatch in `ComponentBlock::to_block`**.
+6. Tests colocated in `components/prometheus.rs`.
+
+Mirror the `loki.schema.yaml` / `components/loki.rs` structure as a template.
+
+## Reference-valued attributes
+
+A real foot-gun worth its own section. Some component attributes are *references to other components' exports*, NOT string literals:
+
+- `loki.process.forward_to` — array of `loki.write.*` receivers
+- `loki.source.journal.forward_to` — same
+- `loki.relabel.forward_to` — same
+- `discovery.relabel.targets` — refs to another `discovery.*` component's `.targets`
+- `loki.source.journal.relabel_rules` — ref to a `discovery.relabel` rule set
+
+These render in alloy as **bare identifiers**:
+
+```alloy
+forward_to = [loki.write.gateway.receiver]   // ← bare ref, NOT "loki.write.gateway.receiver"
+targets    = [discovery.kubernetes.pods.targets]
+```
+
+Wrapping a `TargetRef` (a `String` alias in Rust) as `AttributeValue::String` would render it *quoted* — which is syntactically valid alloy but semantically wrong (alloy would treat it as a string literal, not a component reference). The pipeline would silently misbehave at runtime.
+
+**The fix in `to_block`**: wrap each `TargetRef` as an `Expression::ref_name`:
+
+```rust
+AttributeValue::Array(
+    self.forward_to
+        .iter()
+        .map(|s| AttributeValue::Expression(Expression {
+            ref_name: Some(s.clone()),
+            ..Default::default()
+        }))
+        .collect(),
+)
+```
+
+When a component has even one ref-valued attribute, walk every `to_block` site for that struct and make sure the wrap is in place. The renderer produces bare refs only for `AttributeValue::Expression { ref_name: Some(_) }`.
+
+## Load-bearing invariants
+
+These are *non-obvious things that must stay true* — flagged here so future refactors don't silently break them. Each has a regression test in `ast.rs` that pins the behavior.
+
+### `AttributeValue` variant order
+
+The `AttributeValue` enum in `ast.rs` uses `#[serde(untagged)]`. Serde tries variants top-to-bottom and picks the first that deserializes. **The current order is load-bearing:**
+
+```rust
+#[serde(untagged)]
+pub enum AttributeValue {
+    Null,
+    Bool(bool),
+    Number(f64),
+    String(String),
+    Array(Vec<AttributeValue>),
+    Expression(Expression),
+    Object(IndexMap<Identifier, AttributeValue>),
+}
+```
+
+Two specific rules:
+
+- **`String` and `Array` MUST come before `Expression`.** Serde's struct deserializer accepts a sequence by *positional field assignment* by default. Without this order, `["a", "b"]` would silently deserialize as `Expression { raw: Some("a"), env: Some("b"), ... }`, then fail at render time with "Too many expressions" (or worse, succeed and render wrong).
+- **`Expression` must come before `Object`.** Otherwise the catch-all map would swallow expression-shaped objects (`{ref: "..."}`, `{env: "..."}`) before they can be recognized.
+
+The `deny_unknown_fields` attribute on `Expression` is the third piece: without it, a generic object like `{mapping: ...}` would silently match `Expression` (all heads `None`, unknown field ignored) instead of falling through to `Object`.
+
+### `raw:` is always the last `oneOf` branch
+
+Every sub-block `oneOf` ends with `$ref: "./raw.schema.yaml"`. New typed branches go *before* the raw branch, never after. The raw escape is the contract — without it, undocumented sub-blocks have nowhere to go.
+
+### Schemas-as-docs
+
+The schemas double as reference documentation; `description` text renders in IDE hover and (eventually) in the published reference site. Keep descriptions user-facing, concise (first line ≤80 chars), and link to canonical alloy upstream via a trailing `See:` line. When alloy upstream renames a field, update both the description and the `properties` entry — leave the `See:` link stable so future contributors can audit drift.
+
+### Renderer alignment quirk
+
+The renderer's block-attribute alignment rule is *currently* "any multi-line value disables `=`-alignment for the surrounding attribute group." This is more aggressive than `alloy fmt`'s actual rule, which aligns in more cases. Tests sometimes need to work around this — e.g. by writing rule blocks with one attribute each — until the rule is refined. The investigation log lives on the renderer-alignment task. If your test's `assert_renders` fails on a single attribute getting unexpectedly padded (or unpadded), suspect this quirk before suspecting the rendered output itself.
 
 ## Sub-block recursion and the `raw` escape
 
-Sub-block lists (a `loki.process` body, a `stage.match` body, a `loki.relabel`'s `rule` list) are typed as a `oneOf` whose **last branch is always `$ref: "./raw.schema.yaml"`**. This is non-negotiable in the design: every sub-block context has an escape hatch. New typed branches are added before the `raw` branch so the escape stays as the final fallback.
+Sub-block lists (a `loki.process` body, a `stage.match` body, a `loki.relabel`'s `rule` list, a `discovery.kubernetes` body) are typed as a `oneOf` whose **last branch is always `$ref: "./raw.schema.yaml"`** (or the cross-file equivalent). This is non-negotiable in the design: every sub-block context has an escape hatch. New typed branches are added before the `raw` branch so the escape stays as the final fallback.
 
 `stage.match` is recursive: its body refs `#/$defs/stageBlock`, which itself includes `stage.match`. JSONSchema handles the cycle natively via `$ref`.
 
