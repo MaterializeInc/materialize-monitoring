@@ -55,10 +55,15 @@ pub struct DiscoveryKubernetesBlock {
 
 /// Sub-block under a `discovery.kubernetes` body.
 ///
-/// Externally-tagged: the YAML key picks the variant (`raw:` today; future
-/// `namespaces:`, `selectors:`, etc. can be added without changing call sites).
+/// Externally-tagged: the YAML key picks the variant. Typed variants are
+/// `selectors` and `attach_metadata`; everything else (e.g. `namespaces`)
+/// falls through to the `raw:` escape.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum KubernetesSubBlock {
+    #[serde(rename = "selectors")]
+    Selectors(DiscoveryKubernetesSelector),
+    #[serde(rename = "attach_metadata")]
+    AttachMetadata(DiscoveryKubernetesAttachMetadata),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -66,8 +71,75 @@ pub enum KubernetesSubBlock {
 impl ToBlock for KubernetesSubBlock {
     fn to_block(&self) -> Result<Block> {
         match self {
+            Self::Selectors(s) => s.to_block(),
+            Self::AttachMetadata(am) => am.to_block(),
             Self::Raw(b) => Ok(b.clone()),
         }
+    }
+}
+
+/// A `selectors` sub-block of `discovery.kubernetes` — filters discovered
+/// Kubernetes objects by label / field selectors. Scoped to a single `role`;
+/// multiple `selectors` blocks may appear in one `discovery.kubernetes`.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/#selectors-block
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct DiscoveryKubernetesSelector {
+    /// Role this selector applies to. Required.
+    pub role: String,
+    /// Kubernetes label selector expression (e.g. `app=alloy`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Kubernetes field selector expression (e.g. `status.phase=Running`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+}
+
+impl ToBlock for DiscoveryKubernetesSelector {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("role".into(), AttributeValue::String(self.role.clone()));
+        if let Some(label) = &self.label {
+            attributes.insert("label".into(), AttributeValue::String(label.clone()));
+        }
+        if let Some(field) = &self.field {
+            attributes.insert("field".into(), AttributeValue::String(field.clone()));
+        }
+        Ok(Block {
+            component: "selectors".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// An `attach_metadata` sub-block of `discovery.kubernetes` — controls whether
+/// discovered targets carry metadata from related Kubernetes objects.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/#attach_metadata-block
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct DiscoveryKubernetesAttachMetadata {
+    /// When true, attach metadata from the pod's host node to each target.
+    /// Defaults to false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<bool>,
+}
+
+impl ToBlock for DiscoveryKubernetesAttachMetadata {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(node) = self.node {
+            attributes.insert("node".into(), AttributeValue::Bool(node));
+        }
+        Ok(Block {
+            component: "attach_metadata".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
     }
 }
 
@@ -391,6 +463,110 @@ mod tests {
                 "\t\t\t\"mz-system\",\n",
                 "\t\t\t\"mz-environment\",\n",
                 "\t\t]\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn discovery_kubernetes_with_selectors_sub_block() {
+        // Typed `selectors` sub-block: filters by label/field, scoped to a role.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.kubernetes:
+                  role: pod
+                  blocks:
+                    - selectors:
+                        role: pod
+                        label: "app=alloy"
+                        field: "status.phase=Running"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.kubernetes {\n",
+                "\trole = \"pod\"\n",
+                "\n",
+                "\tselectors {\n",
+                "\t\trole  = \"pod\"\n",
+                "\t\tlabel = \"app=alloy\"\n",
+                "\t\tfield = \"status.phase=Running\"\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn discovery_kubernetes_with_attach_metadata_sub_block() {
+        // Typed `attach_metadata` sub-block: attach metadata from the host node.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.kubernetes:
+                  role: pod
+                  blocks:
+                    - attach_metadata:
+                        node: true
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.kubernetes {\n",
+                "\trole = \"pod\"\n",
+                "\n",
+                "\tattach_metadata {\n",
+                "\t\tnode = true\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn discovery_kubernetes_mixed_typed_and_raw_sub_blocks() {
+        // Confirms typed and raw sub-blocks compose in one body, in source order.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.kubernetes:
+                  role: pod
+                  blocks:
+                    - selectors:
+                        role: pod
+                        label: "tier=backend"
+                    - attach_metadata:
+                        node: true
+                    - raw:
+                        component: namespaces
+                        attributes:
+                          own_namespace: true
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.kubernetes {\n",
+                "\trole = \"pod\"\n",
+                "\n",
+                "\tselectors {\n",
+                "\t\trole  = \"pod\"\n",
+                "\t\tlabel = \"tier=backend\"\n",
+                "\t}\n",
+                "\n",
+                "\tattach_metadata {\n",
+                "\t\tnode = true\n",
+                "\t}\n",
+                "\n",
+                "\tnamespaces {\n",
+                "\t\town_namespace = true\n",
                 "\t}\n",
                 "}\n",
             ),

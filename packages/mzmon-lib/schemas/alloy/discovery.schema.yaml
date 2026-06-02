@@ -86,12 +86,87 @@ $defs:
         type: string
       blocks:
         description: |
-          Optional nested blocks (e.g. `namespaces`, `selectors`, `attach_metadata`).
-          See the canonical docs for the full set.
+          Optional nested blocks (`selectors`, `attach_metadata`, ...).
+          Sub-blocks not typed below (e.g. `namespaces`) use the `raw:` escape.
         type: array
         items:
-          $ref: "./raw.schema.yaml"
+          $ref: "#/$defs/kubernetesSubBlock"
     required: [role]
+    additionalProperties: false
+
+  # ============================================================
+  # discovery.kubernetes sub-blocks
+  # ============================================================
+
+  kubernetesSubBlock:
+    description: |
+      One sub-block in a `discovery.kubernetes` body.
+      The final `raw` branch is the escape hatch for sub-blocks not typed here.
+    oneOf:
+      - type: object
+        properties:
+          selectors:
+            $ref: "#/$defs/selectors"
+        required: [selectors]
+        additionalProperties: false
+      - type: object
+        properties:
+          attach_metadata:
+            $ref: "#/$defs/attach_metadata"
+        required: [attach_metadata]
+        additionalProperties: false
+      - $ref: "./raw.schema.yaml"
+
+  selectors:
+    description: |
+      Filter discovered Kubernetes objects by label / field selectors.
+      Multiple `selectors` blocks may appear, each scoped to a `role`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/#selectors-block
+    type: object
+    properties:
+      role:
+        description: |
+          Role this selector applies to.
+          Must match one of `discovery.kubernetes`'s `role` enum values.
+        type: string
+        enum:
+          - pod
+          - service
+          - endpoints
+          - endpointslice
+          - ingress
+          - node
+      label:
+        description: |
+          Kubernetes label selector expression.
+        type: string
+        examples:
+          - "app=alloy"
+          - "tier in (frontend, backend)"
+      field:
+        description: |
+          Kubernetes field selector expression.
+        type: string
+        examples:
+          - "status.phase=Running"
+          - "metadata.namespace!=kube-system"
+    required: [role]
+    additionalProperties: false
+
+  attach_metadata:
+    description: |
+      Controls whether discovered targets carry metadata from related
+      Kubernetes objects.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.kubernetes/#attach_metadata-block
+    type: object
+    properties:
+      node:
+        description: |
+          When true, attach metadata from the pod's host node to each target.
+          Defaults to false.
+        type: boolean
     additionalProperties: false
 
   discovery.relabel:
