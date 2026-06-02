@@ -7,7 +7,9 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-use crate::alloy::ast::{AttributeValue, Block, Expression, GoDuration, Identifier, ToBlock};
+use crate::alloy::ast::{
+    AttributeValue, Block, Expression, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+};
 use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
@@ -317,29 +319,24 @@ pub enum StageBlock {
     #[serde(rename = "raw")]
     Raw(Block),
 }
-
-impl ToBlock for StageBlock {
-    fn to_block(&self) -> Result<Block> {
-        match self {
-            Self::Match(b) => b.to_block(),
-            Self::Drop(b) => b.to_block(),
-            Self::Limit(b) => b.to_block(),
-            Self::Regex(b) => b.to_block(),
-            Self::Replace(b) => b.to_block(),
-            Self::Template(b) => b.to_block(),
-            Self::Logfmt(b) => b.to_block(),
-            Self::Json(b) => b.to_block(),
-            Self::Timestamp(b) => b.to_block(),
-            Self::Labels(b) => b.to_block(),
-            Self::StaticLabels(b) => b.to_block(),
-            Self::LabelDrop(b) => b.to_block(),
-            Self::StructuredMetadata(b) => b.to_block(),
-            Self::StructuredMetadataDrop(b) => b.to_block(),
-            Self::Sampling(b) => b.to_block(),
-            Self::Raw(b) => Ok(b.clone()),
-        }
-    }
-}
+impl_to_block_dispatch!(StageBlock {
+    Match,
+    Drop,
+    Limit,
+    Regex,
+    Replace,
+    Template,
+    Logfmt,
+    Json,
+    Timestamp,
+    Labels,
+    StaticLabels,
+    LabelDrop,
+    StructuredMetadata,
+    StructuredMetadataDrop,
+    Sampling,
+    Raw
+});
 
 // ----- stage.match -----
 
@@ -896,6 +893,73 @@ mod tests {
             concat!(
                 "loki.source.file {\n",
                 "\ttargets = [\n",
+                "\t\t{\n",
+                "\t\t\t__path__ = \"/var/log/app.log\",\n",
+                "\t\t\tjob      = \"app\",\n",
+                "\t\t},\n",
+                "\t]\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// RED (capsule TDD): `targets` today is `Vec<IndexMap<String, String>>` —
+    /// literal maps only — so a ref to a discovery export can't be expressed.
+    /// Real pipelines need `targets = discovery.relabel.pods.output`. Switching
+    /// the field to `Vec<TargetEntry>` makes the string element a bare ref.
+    #[test]
+    fn loki_source_file_accepts_discovered_targets_ref() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.source.file:
+                  targets: ["discovery.relabel.pods.output"]
+                  forward_to: ["loki.write.gateway.receiver"]
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.source.file {\n",
+                "\ttargets = [\n",
+                "\t\tdiscovery.relabel.pods.output,\n",
+                "\t]\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// RED (capsule TDD): one `targets` array legally mixes a discovery-export
+    /// ref with an inline literal target — alloy type-checks `targets` as
+    /// `list(capsule)` and flattens list-valued elements (verified against
+    /// `alloy validate`). Expected output below is `alloy fmt`-canonical.
+    #[test]
+    fn loki_source_file_mixes_target_refs_and_literals() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.source.file:
+                  targets:
+                    - "discovery.relabel.pods.output"
+                    - __path__: "/var/log/app.log"
+                      job: "app"
+                  forward_to: ["loki.write.gateway.receiver"]
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.source.file {\n",
+                "\ttargets = [\n",
+                "\t\tdiscovery.relabel.pods.output,\n",
                 "\t\t{\n",
                 "\t\t\t__path__ = \"/var/log/app.log\",\n",
                 "\t\t\tjob      = \"app\",\n",

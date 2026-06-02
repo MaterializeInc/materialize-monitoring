@@ -13,7 +13,9 @@
 //! Each block deserializes from the flat `{discovery.X: {label, attrs..., blocks}}`
 //! form and converts to a generic [`Block`] via [`ToBlock`].
 
-use crate::alloy::ast::{AttributeValue, Block, Expression, Identifier, ToBlock};
+use crate::alloy::ast::{
+    AttributeValue, Block, Expression, Identifier, ToBlock, impl_to_block_dispatch,
+};
 use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
@@ -64,16 +66,11 @@ pub enum KubernetesSubBlock {
     #[serde(rename = "raw")]
     Raw(Block),
 }
-
-impl ToBlock for KubernetesSubBlock {
-    fn to_block(&self) -> Result<Block> {
-        match self {
-            Self::Selectors(s) => s.to_block(),
-            Self::AttachMetadata(am) => am.to_block(),
-            Self::Raw(b) => Ok(b.clone()),
-        }
-    }
-}
+impl_to_block_dispatch!(KubernetesSubBlock {
+    Selectors,
+    AttachMetadata,
+    Raw
+});
 
 /// A `selectors` sub-block of `discovery.kubernetes` — filters discovered
 /// Kubernetes objects by label / field selectors. Scoped to a single `role`;

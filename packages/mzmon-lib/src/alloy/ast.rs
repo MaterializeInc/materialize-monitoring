@@ -50,6 +50,20 @@ impl ToBlock for Block {
     }
 }
 
+/// Support converting an enum with ToBlock traits into a Block via `to_block()`
+macro_rules! impl_to_block_dispatch {
+    ($enum_name:ident { $($variant:ident),+ $(,)? }) => {
+        impl ToBlock for $enum_name {
+            fn to_block(&self) -> Result<Block> {
+                match self {
+                    $(Self::$variant(inner) => inner.to_block(),)*
+                }
+            }
+        }
+    };
+}
+pub(crate) use impl_to_block_dispatch;
+
 /// Expressions
 ///
 /// `deny_unknown_fields` is load-bearing for `AttributeValue` untagged dispatch:
