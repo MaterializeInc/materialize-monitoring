@@ -7,37 +7,16 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-use crate::alloy::ast::{AttributeValue, Block, Expression, GoDuration, Identifier, ToBlock};
+use crate::alloy::ast::{
+    AttributeValue, Block, GoDuration, Identifier, ToBlock, impl_to_block_dispatch, string_map,
+};
+use crate::alloy::components::capsule::{
+    LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
+};
 use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-
-type TargetRef = String;
-
-/// Wrap a list of `TargetRef`s as an `AttributeValue::Array` of bare-ref
-/// expressions (e.g. `[loki.write.x.receiver]`, not `["loki.write.x.receiver"]`).
-fn target_refs(refs: &[TargetRef]) -> AttributeValue {
-    AttributeValue::Array(
-        refs.iter()
-            .map(|s| {
-                AttributeValue::Expression(Expression {
-                    ref_name: Some(s.clone()),
-                    ..Default::default()
-                })
-            })
-            .collect(),
-    )
-}
-
-/// Convert a label/expression map to an `AttributeValue::Object` of string values.
-fn string_map(map: &IndexMap<String, String>) -> AttributeValue {
-    AttributeValue::Object(
-        map.iter()
-            .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
-            .collect(),
-    )
-}
 
 /// A "loki.echo" block, which shows output to stdout for debugging
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +46,7 @@ pub struct LokiSourceJournalBlock {
     pub label: Option<Identifier>,
     /// Forward logs to this target
     /// This is required
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// Journal path to read logs from (e.g. /var/log/journal)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -85,27 +64,14 @@ pub struct LokiSourceJournalBlock {
     pub format_as_json: Option<bool>,
     /// Relabeling rules to apply to the logs
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relabel_rules: Option<TargetRef>,
+    pub relabel_rules: Option<RelabelRules>,
 }
 
 impl ToBlock for LokiSourceJournalBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
         if !self.forward_to.is_empty() {
-            attributes.insert(
-                "forward_to".into(),
-                AttributeValue::Array(
-                    self.forward_to
-                        .iter()
-                        .map(|s| {
-                            AttributeValue::Expression(Expression {
-                                ref_name: Some(s.clone()),
-                                ..Default::default()
-                            })
-                        })
-                        .collect(),
-                ),
-            );
+            attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         }
         if let Some(path) = &self.path {
             attributes.insert("path".into(), AttributeValue::String(path.clone()));
@@ -114,15 +80,7 @@ impl ToBlock for LokiSourceJournalBlock {
             attributes.insert("matches".into(), AttributeValue::String(matches.clone()));
         }
         if let Some(labels) = &self.labels {
-            attributes.insert(
-                "labels".into(),
-                AttributeValue::Object(
-                    labels
-                        .iter()
-                        .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
-                        .collect(),
-                ),
-            );
+            attributes.insert("labels".into(), string_map(labels));
         }
         if let Some(max_age) = &self.max_age {
             attributes.insert("max_age".into(), AttributeValue::String(max_age.clone()));
@@ -134,13 +92,7 @@ impl ToBlock for LokiSourceJournalBlock {
             );
         }
         if let Some(rr) = &self.relabel_rules {
-            attributes.insert(
-                "relabel_rules".into(),
-                AttributeValue::Expression(Expression {
-                    ref_name: Some(rr.clone()),
-                    ..Default::default()
-                }),
-            );
+            attributes.insert("relabel_rules".into(), AttributeValue::from(rr));
         }
         Ok(Block {
             component: "loki.source.journal".into(),
@@ -165,7 +117,7 @@ pub struct LokiRelabelBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<Identifier>,
     /// Loki receivers to forward relabeled entries to. Required by the schema.
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// Maximum number of relabeling results to cache. Defaults to 10,000.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_cache_size: Option<f64>,
@@ -177,14 +129,15 @@ pub struct LokiRelabelBlock {
 impl ToBlock for LokiRelabelBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("forward_to".into(), target_refs(&self.forward_to));
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         if let Some(mc) = self.max_cache_size {
             attributes.insert("max_cache_size".into(), AttributeValue::Number(mc));
         }
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Block {
             component: "loki.relabel".into(),
             label: self.label.clone(),
@@ -209,9 +162,9 @@ pub struct LokiSourceFileBlock {
     pub label: Option<Identifier>,
     /// File targets to tail. Each target is an object with `__path__` and any
     /// label keys to attach. Required by the schema.
-    pub targets: Vec<IndexMap<String, String>>,
+    pub targets: Vec<TargetEntry>,
     /// Loki receivers to forward tailed entries to. Required by the schema.
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// When true, only lines added after start are tailed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tail_from_end: Option<bool>,
@@ -223,11 +176,8 @@ pub struct LokiSourceFileBlock {
 impl ToBlock for LokiSourceFileBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert(
-            "targets".into(),
-            AttributeValue::Array(self.targets.iter().map(string_map).collect()),
-        );
-        attributes.insert("forward_to".into(), target_refs(&self.forward_to));
+        attributes.insert("targets".into(), target_list(&self.targets));
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
         if let Some(tail) = self.tail_from_end {
             attributes.insert("tail_from_end".into(), AttributeValue::Bool(tail));
         }
@@ -257,7 +207,7 @@ pub struct LokiProcessBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<Identifier>,
     /// Loki receivers to forward processed entries to.
-    pub forward_to: Vec<TargetRef>,
+    pub forward_to: Vec<LogsReceiver>,
     /// Stages applied in document order to each entry.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocks: Vec<StageBlock>,
@@ -266,11 +216,12 @@ pub struct LokiProcessBlock {
 impl ToBlock for LokiProcessBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("forward_to".into(), target_refs(&self.forward_to));
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Block {
             component: "loki.process".into(),
             label: self.label.clone(),
@@ -317,29 +268,24 @@ pub enum StageBlock {
     #[serde(rename = "raw")]
     Raw(Block),
 }
-
-impl ToBlock for StageBlock {
-    fn to_block(&self) -> Result<Block> {
-        match self {
-            Self::Match(b) => b.to_block(),
-            Self::Drop(b) => b.to_block(),
-            Self::Limit(b) => b.to_block(),
-            Self::Regex(b) => b.to_block(),
-            Self::Replace(b) => b.to_block(),
-            Self::Template(b) => b.to_block(),
-            Self::Logfmt(b) => b.to_block(),
-            Self::Json(b) => b.to_block(),
-            Self::Timestamp(b) => b.to_block(),
-            Self::Labels(b) => b.to_block(),
-            Self::StaticLabels(b) => b.to_block(),
-            Self::LabelDrop(b) => b.to_block(),
-            Self::StructuredMetadata(b) => b.to_block(),
-            Self::StructuredMetadataDrop(b) => b.to_block(),
-            Self::Sampling(b) => b.to_block(),
-            Self::Raw(b) => Ok(b.clone()),
-        }
-    }
-}
+impl_to_block_dispatch!(StageBlock {
+    Match,
+    Drop,
+    Limit,
+    Regex,
+    Replace,
+    Template,
+    Logfmt,
+    Json,
+    Timestamp,
+    Labels,
+    StaticLabels,
+    LabelDrop,
+    StructuredMetadata,
+    StructuredMetadataDrop,
+    Sampling,
+    Raw
+});
 
 // ----- stage.match -----
 
@@ -378,10 +324,11 @@ impl ToBlock for StageMatchBlock {
                 AttributeValue::String(r.clone()),
             );
         }
-        let mut blocks: Vec<Block> = Vec::with_capacity(self.blocks.len());
-        for sb in &self.blocks {
-            blocks.push(sb.to_block()?);
-        }
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Block {
             component: "stage.match".into(),
             label: None,
@@ -896,6 +843,69 @@ mod tests {
             concat!(
                 "loki.source.file {\n",
                 "\ttargets = [\n",
+                "\t\t{\n",
+                "\t\t\t__path__ = \"/var/log/app.log\",\n",
+                "\t\t\tjob      = \"app\",\n",
+                "\t\t},\n",
+                "\t]\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn loki_source_file_accepts_discovered_targets_ref() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.source.file:
+                  targets: ["discovery.relabel.pods.output"]
+                  forward_to: ["loki.write.gateway.receiver"]
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.source.file {\n",
+                "\ttargets = [\n",
+                "\t\tdiscovery.relabel.pods.output,\n",
+                "\t]\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// one `targets` array legally mixes a discovery-export
+    /// ref with an inline literal target — alloy type-checks `targets` as
+    /// `list(capsule)` and flattens list-valued elements (verified against
+    /// `alloy validate`). Expected output below is `alloy fmt`-canonical.
+    #[test]
+    fn loki_source_file_mixes_target_refs_and_literals() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.source.file:
+                  targets:
+                    - "discovery.relabel.pods.output"
+                    - __path__: "/var/log/app.log"
+                      job: "app"
+                  forward_to: ["loki.write.gateway.receiver"]
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.source.file {\n",
+                "\ttargets = [\n",
+                "\t\tdiscovery.relabel.pods.output,\n",
                 "\t\t{\n",
                 "\t\t\t__path__ = \"/var/log/app.log\",\n",
                 "\t\t\tjob      = \"app\",\n",

@@ -186,6 +186,8 @@ $defs:
           Discovery targets to relabel.
           Typically a reference to another discovery.* component's exports.
         type: array
+        items:
+          $ref: "#/$defs/target"
       blocks:
         description: |
           One or more `rule` blocks defining the relabel sequence.
@@ -195,3 +197,16 @@ $defs:
           $ref: "./loki.schema.yaml#/$defs/ruleBlock"
     required: [targets]
     additionalProperties: false
+
+  target:
+    description: |
+      One discovery target: a map of label keys to string values (`list(map(string))` upstream).
+      In YAML, a plain string is instead interpreted as a reference to another component's targets export (e.g. `discovery.kubernetes.pods.targets`).
+      Stricter cousin: `fileTargetEntry` in loki.schema.yaml (requires `__path__`).
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#targets
+    oneOf:
+      - type: string
+      - type: object
+        additionalProperties:
+          type: string

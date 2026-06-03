@@ -100,6 +100,8 @@ $defs:
         description: |
           Loki receivers to forward processed entries to.
         type: array
+        items:
+          $ref: "#/$defs/logsReceiver"
       blocks:
         description: |
           Stages applied in order to each entry.
@@ -120,6 +122,8 @@ $defs:
       forward_to:
         description: Loki receivers to forward relabeled entries to.
         type: array
+        items:
+          $ref: "#/$defs/logsReceiver"
       max_cache_size:
         description: |
           Maximum number of relabeling results to cache.
@@ -147,7 +151,7 @@ $defs:
         description: Loki receivers to forward journal entries to.
         type: array
         items:
-          type: string
+          $ref: "#/$defs/logsReceiver"
       path:
         description: |
           Path to the journal directory.
@@ -196,9 +200,13 @@ $defs:
           File targets to tail.
           Each entry is an object with `__path__` plus any label keys to attach.
         type: array
+        items:
+          $ref: "#/$defs/fileTargetEntry"
       forward_to:
         description: Loki receivers to forward tailed entries to.
         type: array
+        items:
+          $ref: "#/$defs/logsReceiver"
       tail_from_end:
         description: |
           When true, only lines added after start are tailed (existing content is skipped).
@@ -729,3 +737,36 @@ $defs:
           Modulus for `action: hashmod`.
         type: number
     additionalProperties: false
+
+  # ============================================================
+  # Shared `loki` value types (capsules & targets)
+  # ============================================================
+  logsReceiver:
+    description: |
+      Reference to a loki.* component that can receive log entries.
+
+      Used by `loki.source.*` components to specify where to forward entries, and by `loki.process` and `loki.relabel` to specify their downstream target.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#loki-logsreceiver
+    type: string
+
+  fileTargetEntry:
+    description: |
+      File target for `loki.source.file`.
+
+      A target is a map of label keys to string values (`list(map(string))` upstream).
+      This particular case's object has a required `__path__` attribute and any number of additional label keys to attach to tailed entries.
+      In YAML, a plain string is instead interpreted as a reference to another component's targets export (e.g. `discovery.relabel.pods.output`).
+      Looser cousin: `target` in discovery.schema.yaml (no required keys).
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#targets
+    oneOf:
+      - type: string
+      - type: object
+        properties:
+          __path__:
+            description: Path to the log file to tail.
+            type: string
+        required: [__path__]
+        additionalProperties:
+          type: string

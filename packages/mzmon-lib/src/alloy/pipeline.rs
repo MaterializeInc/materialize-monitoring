@@ -7,7 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-use crate::alloy::ast::{Block, ToBlock};
+use crate::alloy::ast::{Block, ToBlock, impl_to_block_dispatch};
 use crate::alloy::components::{discovery, loki, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
@@ -46,21 +46,16 @@ pub enum ComponentBlock {
     #[serde(rename = "discovery.relabel")]
     DiscoveryRelabel(discovery::DiscoveryRelabelBlock),
 }
-
-impl ToBlock for ComponentBlock {
-    fn to_block(&self) -> Result<Block> {
-        match self {
-            ComponentBlock::Raw(rb) => Ok(rb.clone()),
-            ComponentBlock::LokiEcho(le) => le.to_block(),
-            ComponentBlock::LokiProcess(lp) => lp.to_block(),
-            ComponentBlock::LokiRelabel(lr) => lr.to_block(),
-            ComponentBlock::LokiSourceJournal(lsj) => lsj.to_block(),
-            ComponentBlock::LokiSourceFile(lsf) => lsf.to_block(),
-            ComponentBlock::DiscoveryKubernetes(dk) => dk.to_block(),
-            ComponentBlock::DiscoveryRelabel(dr) => dr.to_block(),
-        }
-    }
-}
+impl_to_block_dispatch!(ComponentBlock {
+    Raw,
+    LokiEcho,
+    LokiProcess,
+    LokiRelabel,
+    LokiSourceJournal,
+    LokiSourceFile,
+    DiscoveryKubernetes,
+    DiscoveryRelabel,
+});
 
 impl Pipeline {
     /// Render this pipeline as a string in config.alloy syntax.
@@ -285,6 +280,56 @@ mod tests {
                         action: replace
                         source_labels: [__meta_kubernetes_namespace]
                         target_label: namespace
+        "#,
+        );
+    }
+
+    /// `targets` is schema'd as a bare `type: array` with no
+    /// `items` constraint, so a numeric entry sails through schema validation
+    /// and dies later as an unhelpful serde error. Tighten `items` to
+    /// string (capsule ref) | object-of-strings (literal target) — consider a
+    /// shared `$def` (cf. `ruleBlock`) since loki.source.file needs the same.
+    #[test]
+    fn numeric_targets_entry_is_rejected_by_schema() {
+        let paths = assert_schema_rejected(
+            r#"
+            blocks:
+              - discovery.relabel:
+                  targets: [42]
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p.starts_with("/blocks/0")),
+            "expected a /blocks/0 violation, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn numeric_forward_to_entry_is_rejected_by_schema() {
+        let paths = assert_schema_rejected(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: [42]
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p.starts_with("/blocks/0")),
+            "expected a /blocks/0 violation, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn mixed_ref_and_literal_targets_pass_schema() {
+        assert_schema_ok(
+            r#"
+            blocks:
+              - loki.source.file:
+                  targets:
+                    - "discovery.relabel.pods.output"
+                    - __path__: "/var/log/app.log"
+                      job: "app"
+                  forward_to: ["loki.write.gateway.receiver"]
         "#,
         );
     }
