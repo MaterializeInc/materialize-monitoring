@@ -75,7 +75,7 @@ impl RelabelRules {
 /// ```
 ///
 /// In YAML, a plain string element is a ref and a map element is a literal
-/// target. There is no ambiguity: targets are always maps, never strings.
+/// target. There is no ambiguity: literal targets are always maps, never strings.
 //
 // NOTE: like `AttributeValue`, this needs the right serde representation so
 // a plain string lands in `Ref` and a map lands in `Literal`.

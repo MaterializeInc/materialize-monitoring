@@ -54,7 +54,7 @@ impl ToBlock for Block {
 macro_rules! impl_to_block_dispatch {
     ($enum_name:ident { $($variant:ident),+ $(,)? }) => {
         impl $crate::alloy::ast::ToBlock for $enum_name {
-            fn to_block(&self) -> $crate::alloy::error::Result<Block> {
+            fn to_block(&self) -> $crate::alloy::error::Result<$crate::alloy::ast::Block> {
                 match self {
                     $(Self::$variant(inner) => inner.to_block(),)*
                 }
