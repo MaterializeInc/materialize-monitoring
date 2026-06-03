@@ -18,3 +18,44 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
         run: cargo test --workspace --all-targets --verbose
+
+  pipelines:
+    name: pipelines (render + alloy validate)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install alloy
+        # Pinned release binary (NOT `go install` — alloy needs build tags and
+        # is a heavy build). Assets follow the `alloy-<os>-<arch>.zip` naming;
+        # the runner is linux/amd64. Keep this version in step with the alloy
+        # used locally for `make pipelines`.
+        run: |
+          curl -sSL \
+            "https://github.com/grafana/alloy/releases/download/v1.14.0/alloy-linux-amd64.zip" \
+            -o /tmp/alloy.zip
+          unzip -q /tmp/alloy.zip -d /tmp
+          sudo install -m 0755 /tmp/alloy-linux-amd64 /usr/local/bin/alloy
+      # Renders every packages/alloy-pipelines/*.yaml to .alloy and runs
+      # `alloy validate` on each (second-layer sanity check beyond the schema).
+      # Remove existing outputs first: the Makefile rule is timestamp-driven and
+      # a fresh checkout's mtimes are arbitrary, so without this `make` could
+      # consider the committed .alloy up to date and skip rendering — which would
+      # make the freshness check below vacuous.
+      - name: make pipelines
+        run: |
+          rm -f charts/materialize-monitoring/pre-rendered/pipelines/*.alloy
+          make pipelines
+      # The rendered .alloy files are checked in; assert they match a fresh
+      # render so a YAML/schema/renderer change can't merge with stale output.
+      # Uses `git status` (not `git diff`) so a new-but-uncommitted render is
+      # caught too, not just modifications to already-tracked files.
+      - name: rendered pipelines are up to date
+        run: |
+          dir=charts/materialize-monitoring/pre-rendered/pipelines
+          if [ -n "$(git status --porcelain -- "$dir")" ]; then
+            echo "::error::Rendered .alloy output is stale or uncommitted. Run 'make pipelines' locally and commit."
+            git status --porcelain -- "$dir"
+            exit 1
+          fi

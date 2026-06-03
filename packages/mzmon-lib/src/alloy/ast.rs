@@ -98,6 +98,53 @@ impl Expression {
     }
 }
 
+/// The scalar literal types an alloy attribute can hold.
+/// Sealed (see `private`), so `Expressable<T>` is effectively
+/// `Expressable<String | bool | f64>` — no other T compiles.
+pub trait LiteralScalar: private::Sealed {
+    fn to_attribute_value(&self) -> AttributeValue;
+}
+
+mod private {
+    pub trait Sealed {}
+    impl Sealed for String {}
+    impl Sealed for bool {}
+    impl Sealed for f64 {}
+}
+
+impl LiteralScalar for String {
+    fn to_attribute_value(&self) -> AttributeValue {
+        AttributeValue::String(self.clone())
+    }
+}
+impl LiteralScalar for bool {
+    fn to_attribute_value(&self) -> AttributeValue {
+        AttributeValue::Bool(*self)
+    }
+}
+impl LiteralScalar for f64 {
+    fn to_attribute_value(&self) -> AttributeValue {
+        AttributeValue::Number(*self)
+    }
+}
+
+/// The RHS of a "value" which could be a simple literal or an expression.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Expressable<T: LiteralScalar> {
+    Literal(T),
+    Expr(Expression),
+}
+
+impl<T: LiteralScalar> Expressable<T> {
+    pub fn to_attribute_value(&self) -> AttributeValue {
+        match self {
+            Expressable::Literal(value) => value.to_attribute_value(),
+            Expressable::Expr(expr) => AttributeValue::Expression(expr.clone()),
+        }
+    }
+}
+
 // The RHS "value" of an assignment
 //
 // Variant order matters for `#[serde(untagged)]` dispatch: serde tries each

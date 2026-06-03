@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for expression fragments of alloy pipeline definitions
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/expression.schema.yaml"
+title: "Alloy expression fragment schema"
+description: |
+  A schema for expression fragments in Alloy pipeline definitions.
+allOf:
+  - $ref: "#/$defs/expression"
+$defs:
+  freeFormExpression:
+    description: |
+      A free-form raw expression.
+    type: string
+  expression:
+    description: |
+      A raw expression.
+
+      This one of:
+        a function call
+        a reference to another component
+        a mathematical expression
+    type: object
+    additionalProperties: false
+    properties:
+      raw:
+        $ref: "#/$defs/freeFormExpression"
+      env:
+        type: string
+        description: Sugar access to sys.env(VAR_NAME)
+      function:
+        type: string
+        description: |
+          The function name of this expression.
+
+          See: https://grafana.com/docs/alloy/latest/reference/stdlib/
+      arguments:
+        type: array
+        description: The arguments to a function or operator.
+        items:
+          $ref: "./attribute.schema.yaml"
+      ref:
+        type: string
+        description: A reference to another component.
+      operator:
+        type: string
+        description: |
+          An arithmetic, string, comparison, or logical operator.
+
+          For assignment, grouping, and access operators, use the free-form `raw` field.
+
+          See: https://grafana.com/docs/alloy/latest/get-started/expressions/operators/
+        enum:
+          # arithmetic operators
+          - "+"  # also a string operator
+          - "-"
+          - "*"
+          - "/"
+          - "%"
+          - "^"
+          # comparison operators
+          - "=="
+          - "!="
+          - ">"
+          - "<"
+          - ">="
+          - "<="
+          # logical operators
+          - "&&"
+          - "||"
+          - "!"  # the only unary operator in this list

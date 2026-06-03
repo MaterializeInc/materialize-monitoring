@@ -115,7 +115,7 @@ $defs:
             $ref: "#/$defs/attach_metadata"
         required: [attach_metadata]
         additionalProperties: false
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./common/raw.schema.yaml"
 
   selectors:
     description: |

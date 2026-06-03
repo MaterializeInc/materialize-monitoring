@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for raw blocks of alloy pipeline definitions
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/block.schema.yaml"
+title: "Alloy raw block schema"
+description: |
+  A schema for raw blocks in Alloy pipeline definitions.
+
+  Prefer to use a more specific block definition if possible.
+  This is an escape hatch for unsupported blocks or broken schemas.
+type: object
+properties:
+  raw:
+    $ref: "#/$defs/block"
+required:
+  - raw
+# Forbid extra keys so this branch is disjoint from loki.schema.yaml's
+# `loki.echo` branch in the top-level `blocks` oneOf.
+additionalProperties: false
+$defs:
+  comment:
+    description: |
+      A comment in the alloy file.
+
+      This is rendered before an expression as a single line or a multiblock comment.
+    type: string
+  inlineComment:
+    description: |
+      An inline comment in the alloy file.
+
+      This is rendered after a simple expression on the same line.
+    type: string
+
+  label:
+    type: string
+    description: User-defined identifier to distinguish multiple instances.
+
+  block:
+    description: |
+      A block unit of configuration.
+    type: object
+    properties:
+      component:
+        type: string
+        description: The type of this component.
+      $comment:
+        $ref: "#/$defs/comment"
+      label:
+        $ref: "#/$defs/label"
+      attributes:
+        description: |
+          A set of attributes for this block.
+        type: object
+        additionalProperties:
+          $ref: "./attribute.schema.yaml"
+      blocks:
+        type: array
+        description: A list of nested blocks.
+        items:
+          $ref: "#/$defs/block"
+    required:
+      - component
+  commentedValue:
+    description: |
+      A raw value with an associated comment.
+    type: object
+    properties:
+      value:
+        $ref: "./attribute.schema.yaml"
+      $comment:
+        $ref: "#/$defs/comment"
+      $inlineComment:
+        $ref: "#/$defs/inlineComment"
+    required:
+      - value
+  body:
+    description: |
+      The body of a block.
+      This can be nested blocks or attributes.
+    type: object
+    properties:
+      blocks:
+        type: array
+        description: A list of nested blocks.
+        items:
+          $ref: "#/$defs/block"
+      assignments:
+        type: object
+        description: A set of attributes.
+        additionalProperties:
+          $ref: "./attribute.schema.yaml"

@@ -30,7 +30,7 @@ properties:
       # requires its own key and forbids the others, so `oneOf` matches exactly
       # one.
       oneOf:
-        - $ref: "./raw.schema.yaml"
+        - $ref: "./common/raw.schema.yaml"
         - $ref: "./loki.schema.yaml"
         - $ref: "./discovery.schema.yaml"
 # Reject unknown top-level keys (description/logging/livedebugging/blocks only).

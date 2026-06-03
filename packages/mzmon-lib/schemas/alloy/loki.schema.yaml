@@ -319,7 +319,7 @@ $defs:
         required: [stage.sampling]
         additionalProperties: false
       # Escape hatch: any sub-block can also be a raw block.
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./common/raw.schema.yaml"
 
   stage.match:
     description: |
@@ -681,7 +681,7 @@ $defs:
             $ref: "#/$defs/rule"
         required: [rule]
         additionalProperties: false
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./common/raw.schema.yaml"
 
   rule:
     description: |

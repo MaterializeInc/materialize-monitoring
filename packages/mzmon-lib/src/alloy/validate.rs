@@ -24,14 +24,18 @@ use crate::alloy::error::{Error, Result};
 // Embedded schema sources (compiled into the binary).
 const SCHEMA_MZMON_ALLOY: &str = include_str!("../../schemas/alloy/mzmon-alloy.schema.yaml");
 const SCHEMA_TOP: &str = include_str!("../../schemas/alloy/top.schema.yaml");
-const SCHEMA_RAW: &str = include_str!("../../schemas/alloy/raw.schema.yaml");
+const SCHEMA_RAW: &str = include_str!("../../schemas/alloy/common/raw.schema.yaml");
+const SCHEMA_ATTRIBUTE: &str = include_str!("../../schemas/alloy/common/attribute.schema.yaml");
+const SCHEMA_EXPRESSION: &str = include_str!("../../schemas/alloy/common/expression.schema.yaml");
 const SCHEMA_LOKI: &str = include_str!("../../schemas/alloy/loki.schema.yaml");
 const SCHEMA_DISCOVERY: &str = include_str!("../../schemas/alloy/discovery.schema.yaml");
 
 // The `$id` URLs the schemas reference one another by. These must match the
 // `$id` fields in the schema files (and the relative `$ref`s resolve to them).
 const ID_TOP: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/top.schema.yaml";
-const ID_RAW: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/raw.schema.yaml";
+const ID_RAW: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/raw.schema.yaml";
+const ID_ATTRIBUTE: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/attribute.schema.yaml";
+const ID_EXPRESSION: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/expression.schema.yaml";
 const ID_LOKI: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/loki.schema.yaml";
 const ID_DISCOVERY: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/discovery.schema.yaml";
 
@@ -52,6 +56,14 @@ fn build_validator() -> Validator {
         .extend([
             (ID_TOP, Resource::from_contents(parse_schema(SCHEMA_TOP))),
             (ID_RAW, Resource::from_contents(parse_schema(SCHEMA_RAW))),
+            (
+                ID_ATTRIBUTE,
+                Resource::from_contents(parse_schema(SCHEMA_ATTRIBUTE)),
+            ),
+            (
+                ID_EXPRESSION,
+                Resource::from_contents(parse_schema(SCHEMA_EXPRESSION)),
+            ),
             (ID_LOKI, Resource::from_contents(parse_schema(SCHEMA_LOKI))),
             (
                 ID_DISCOVERY,
