@@ -87,9 +87,11 @@ This section captures the live state so the next session has something concrete 
 | YAML | Rendered to | Status |
 |---|---|---|
 | `packages/alloy-pipelines/gateway.yaml` | `charts/.../pipelines/gateway.alloy` | placeholder (single raw `loki.echo "echo" { }`) |
-| `packages/alloy-pipelines/agent.yaml` | `charts/.../pipelines/agent.alloy` | placeholder (single raw `loki.echo "echo" { }`) |
+| `packages/alloy-pipelines/agent.yaml` | `charts/.../pipelines/agent.alloy` | **implemented** — staging-agent parity (journal + node-local pod logs → gateway, sampled debug tap) |
 
-Both pass `alloy validate`. Neither yet uses the typed schemas in anger — they're stubs that exercise the end-to-end build pipeline. The Python reference under `packages/ref-alloy-pipelines/` (not checked in) describes the eventual gateway processor shape.
+Both pass `alloy validate`. `agent.yaml` is a faithful port of the reference `staging-agent.alloy` (`packages/ref-alloy-pipelines/`, not checked in): typed blocks throughout, with `raw:` escapes for the handful of constructs the typed schema doesn't cover yet — `stage.static_labels` with an expression value (`cluster = sys.env("CLUSTER_NAME")`, `node = sys.env("HOSTNAME")`), the `selectors { field = "spec.nodeName=" + coalesce(...) }` expression, `attach_metadata.namespace`, `stage.cri`, `loki.source.file`'s `file_match` sub-block, and the `loki.write "gateway"` sink (intentionally a static stub — richer endpoint config is deferred). `gateway.yaml` is still a placeholder; the Python reference describes its eventual processor shape.
+
+Configurable knobs in `agent.yaml`: `cluster` label via `sys.env("CLUSTER_NAME")`; `stage.limit` rate/burst are plain tunable literals (a real build/runtime parameterization mechanism is deferred — alloy is strongly typed and `sys.env` returns strings, so numeric env config needs a conversion path we haven't designed).
 
 ## Typed schema coverage
 
@@ -123,6 +125,8 @@ These are *non-obvious things that must stay true* — flagged here so reorders 
 - **`#[serde(deny_unknown_fields)]` on `Expression`**: keeps generic objects (`{mapping: ...}`) from silently matching `Expression` with all heads `None`. Also regression-tested.
 - **Ref-valued attributes render as bare refs, never quoted strings** — and this is now *enforced by type*: declare the field with a capsule type (`Vec<LogsReceiver>`, `Option<RelabelRules>`, `Vec<TargetEntry>`) and convert via the capsule helpers / `Expression::name_to_ref`. Do NOT hand-build `Expression { ref_name: ... }` in new `to_block` impls; if a new capsule kind is needed, add it to `components/capsule.rs`.
 - **`raw:` escape is always the last `oneOf` branch** in every sub-block list. Adding a new typed branch goes *before* `raw`.
+- **`raw.schema.yaml`'s `attributeValue` uses `anyOf`, NOT `oneOf`**: an expression-shaped object (`{ref}`, `{env}`, `{operator}`, `{function}`) is *also* a valid generic `attributeObject`, and a `{value: ...}` is also a `commentedValue` — so exactly-one `oneOf` rejected every expression/commented raw value (this blocked the first real expression-valued raw block in `agent.yaml`). The Rust `AttributeValue` deserializer disambiguates by variant order + `deny_unknown_fields`; the schema just needs "is *some* legal raw value," which `anyOf` gives. Don't revert it to `oneOf`. Regression-tested in `pipeline.rs::raw_block_with_expression_values_round_trips`.
+- **`Error::Multiple` renders its children** (header + indented bullet per child, recursive). Earlier it displayed a bare "multiple errors" and swallowed the detail — `gen-pipelines` failures were undiagnosable. Tested in `error.rs`.
 - **Schemas are the reference docs**: descriptions render in IDE hover and (eventually) in published reference; keep them user-facing. Each `$def` ends with a `See:` link to canonical alloy upstream.
 
 ## Cleanup / refactor candidates

@@ -431,6 +431,42 @@ mod tests {
         );
     }
 
+    /// Regression: a `raw:` block whose attribute values are expression-shaped
+    /// objects (`{operator}`, `{function}`, `{env}`, `{ref}`) must pass schema
+    /// validation and render. These objects match BOTH the `expression` and the
+    /// generic `attributeObject` branches of `attributeValue`, so the schema uses
+    /// `anyOf` (not `oneOf`) — an exactly-one `oneOf` rejected every expression
+    /// value, which is what the raw escape needs to express. Mirrors the
+    /// `selectors { field = "..." + coalesce(...) }` usage in agent.yaml.
+    #[test]
+    fn raw_block_with_expression_values_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - raw:
+                  component: selectors
+                  attributes:
+                    field:
+                      operator: "+"
+                      arguments:
+                        - "spec.nodeName="
+                        - function: coalesce
+                          arguments:
+                            - env: HOSTNAME
+                            - ref: constants.hostname
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "selectors {\n",
+                "\tfield = \"spec.nodeName=\" + coalesce(sys.env(\"HOSTNAME\"), constants.hostname)\n",
+                "}\n",
+            ),
+        );
+    }
+
     #[test]
     fn loki_echo_sugar_round_trips() {
         let pipeline = Pipeline::from_yaml_str(

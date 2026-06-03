@@ -86,7 +86,17 @@ $defs:
   attributeValue:
     description: |
       A raw value of an attribute.
-    oneOf:
+
+      This uses `anyOf` rather than `oneOf` on purpose: the structured object
+      branches overlap by design. An expression-shaped object (`{ref: ...}`,
+      `{env: ...}`, `{operator: ...}`) is also a valid generic `attributeObject`,
+      and a `commentedValue` (`{value: ...}`) is too — so an exactly-one `oneOf`
+      would reject every expression/commented value. The Rust deserializer
+      (`AttributeValue`, serde untagged) disambiguates by variant order with
+      `deny_unknown_fields` on `Expression`; the renderer then emits the right
+      form. Schema validation here only needs to confirm the value is *some*
+      legal raw value, which is what the raw escape hatch is for.
+    anyOf:
       - type: string
       - type: number
       - type: boolean
