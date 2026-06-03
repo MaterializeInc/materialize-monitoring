@@ -382,11 +382,10 @@ $defs:
       older_than:
         description: |
           Entries older than this duration are dropped.
-        type: string
-        # `format: duration` is currently informational.
-        # The validator will eventually wire a Go-duration hook against it
-        # — see the duration-format-validator task.
-        format: duration
+        anyOf:
+          - type: string
+            format: go-duration
+          - $ref: "./common/expression.schema.yaml"
         examples: ["12h", "30m", "1d", "90s"]
       longer_than:
         description: |
@@ -408,10 +407,14 @@ $defs:
     properties:
       rate:
         description: Lines allowed per second.
-        type: number
+        anyOf:
+          - type: number
+          - $ref: "./common/expression.schema.yaml"
       burst:
         description: Lines allowed in a short burst before throttling kicks in.
-        type: number
+        anyOf:
+          - type: number
+          - $ref: "./common/expression.schema.yaml"
       drop:
         description: |
           When true, excess lines are dropped immediately.

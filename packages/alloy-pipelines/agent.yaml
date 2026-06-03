@@ -175,8 +175,22 @@ blocks:
             component: stage.cri
         - stage.limit:
             # Tunable in place; rate is lines/sec, burst is the short-term ceiling.
-            rate: 5000
-            burst: 20000
+            rate:
+              # HACK: we don't get a to_int function, so this converts a string->int for us
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: AGENT_POD_LOG_RATE_LIMIT
+                    - "5000"
+            burst:
+              # HACK: to_int
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: AGENT_POD_LOG_BURST
+                    - "20000"
             drop: false
         - stage.label_drop:
             values: ["filename"]

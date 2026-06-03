@@ -102,7 +102,7 @@ impl Expression {
 /// Sealed (see `private`), so `Expressable<T>` is effectively
 /// `Expressable<String | bool | f64>` — no other T compiles.
 pub trait LiteralScalar: private::Sealed {
-    fn to_attribute_value(&self) -> AttributeValue;
+    fn to_attribute_value(&self) -> Result<AttributeValue>;
 }
 
 mod private {
@@ -113,18 +113,18 @@ mod private {
 }
 
 impl LiteralScalar for String {
-    fn to_attribute_value(&self) -> AttributeValue {
-        AttributeValue::String(self.clone())
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::String(self.clone()))
     }
 }
 impl LiteralScalar for bool {
-    fn to_attribute_value(&self) -> AttributeValue {
-        AttributeValue::Bool(*self)
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::Bool(*self))
     }
 }
 impl LiteralScalar for f64 {
-    fn to_attribute_value(&self) -> AttributeValue {
-        AttributeValue::Number(*self)
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::Number(*self))
     }
 }
 
@@ -137,10 +137,10 @@ pub enum Expressable<T: LiteralScalar> {
 }
 
 impl<T: LiteralScalar> Expressable<T> {
-    pub fn to_attribute_value(&self) -> AttributeValue {
+    pub fn to_attribute_value(&self) -> Result<AttributeValue> {
         match self {
             Expressable::Literal(value) => value.to_attribute_value(),
-            Expressable::Expr(expr) => AttributeValue::Expression(expr.clone()),
+            Expressable::Expr(expr) => Ok(AttributeValue::Expression(expr.clone())),
         }
     }
 }

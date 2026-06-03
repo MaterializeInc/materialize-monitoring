@@ -65,7 +65,7 @@ $defs:
       - type: boolean
       - type: "null"
       - $ref: "#/$defs/commentedValue"
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./expression.schema.yaml"
       - type: array
         items:
           $ref: "#/$defs/attributeValue"

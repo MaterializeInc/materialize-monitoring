@@ -8,7 +8,8 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, GoDuration, Identifier, ToBlock, impl_to_block_dispatch, string_map,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+    string_map,
 };
 use crate::alloy::components::capsule::{
     LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
@@ -352,7 +353,7 @@ pub struct StageDropBlock {
     pub value: Option<String>,
     /// Drop entries older than this duration (Go duration syntax).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub older_than: Option<GoDuration>,
+    pub older_than: Option<Expressable<GoDuration>>,
     /// Drop entries whose line is longer than this byte length (e.g. `1MB`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub longer_than: Option<String>,
@@ -373,7 +374,7 @@ impl ToBlock for StageDropBlock {
             attributes.insert("value".into(), AttributeValue::String(v.clone()));
         }
         if let Some(v) = &self.older_than {
-            attributes.insert("older_than".into(), AttributeValue::String(v.clone()));
+            attributes.insert("older_than".into(), v.to_attribute_value()?);
         }
         if let Some(v) = &self.longer_than {
             attributes.insert("longer_than".into(), AttributeValue::String(v.clone()));
@@ -399,8 +400,8 @@ impl ToBlock for StageDropBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StageLimitBlock {
-    pub rate: f64,
-    pub burst: f64,
+    pub rate: Expressable<f64>,
+    pub burst: Expressable<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drop: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -410,8 +411,8 @@ pub struct StageLimitBlock {
 impl ToBlock for StageLimitBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("rate".into(), AttributeValue::Number(self.rate));
-        attributes.insert("burst".into(), AttributeValue::Number(self.burst));
+        attributes.insert("rate".into(), self.rate.to_attribute_value()?);
+        attributes.insert("burst".into(), self.burst.to_attribute_value()?);
         if let Some(d) = self.drop {
             attributes.insert("drop".into(), AttributeValue::Bool(d));
         }
