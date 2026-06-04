@@ -176,6 +176,11 @@ $defs:
           When true, attach metadata from the pod's host node to each target.
           Defaults to false.
         type: boolean
+      namespace:
+        description: |
+          When true, attach metadata from the pod's namespace to each target.
+          Defaults to false.
+        type: boolean
     additionalProperties: false
 
   discovery.relabel:

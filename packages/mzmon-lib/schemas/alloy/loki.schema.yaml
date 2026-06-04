@@ -338,6 +338,12 @@ $defs:
             $ref: "#/$defs/stage.sampling"
         required: [stage.sampling]
         additionalProperties: false
+      - type: object
+        properties:
+          stage.cri:
+            $ref: "#/$defs/stage.cri"
+        required: [stage.cri]
+        additionalProperties: false
       # Escape hatch: any sub-block can also be a raw block.
       - $ref: "./common/raw.schema.yaml"
 
@@ -684,6 +690,16 @@ $defs:
           Label applied to the drop counter for observability.
         type: string
     required: [rate]
+    additionalProperties: false
+
+  stage.cri:
+    description: |
+      Parses container-runtime-interface (CRI) formatted log lines (the
+      `<timestamp> <stream> <flags> <message>` shape written under
+      `/var/log/pods`). Takes no attributes — its presence is the configuration.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagecri-block
+    type: object
     additionalProperties: false
 
   # ============================================================

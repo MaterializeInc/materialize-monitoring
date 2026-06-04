@@ -60,8 +60,8 @@ blocks:
       label: local_pods
       role: pod
       blocks:
-        # `field` is an expression ("spec.nodeName=" + coalesce(...)), which the
-        # typed `selectors.field` string can't hold — raw escape.
+        # `field` is an expression ("spec.nodeName=" + coalesce(...)); the typed
+        # `selectors.field` is Expressable, so it accepts a literal or expression.
         - selectors:
             role: pod
             field:
@@ -72,12 +72,9 @@ blocks:
                   arguments:
                     - env: HOSTNAME
                     - ref: constants.hostname
-        # typed attach_metadata only models `node`; `namespace` needs raw.
-        - raw:
-            component: attach_metadata
-            attributes:
-              node: true
-              namespace: true
+        - attach_metadata:
+            node: true
+            namespace: true
 
   # Normalize discovered pod metadata into stable label names and a log path.
   - discovery.relabel:
@@ -165,9 +162,8 @@ blocks:
       label: pod_logs
       forward_to: ["loki.write.gateway.receiver"]
       blocks:
-        # stage.cri has no typed sugar yet (empty block) — raw escape.
-        - raw:
-            component: stage.cri
+        # Parse CRI-formatted log lines (empty block — presence is the config).
+        - stage.cri: {}
         - stage.limit:
             # Tunable in place; rate is lines/sec, burst is the short-term ceiling.
             rate:

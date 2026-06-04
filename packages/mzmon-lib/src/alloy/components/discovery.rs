@@ -115,6 +115,10 @@ pub struct DiscoveryKubernetesAttachMetadata {
     /// Defaults to false.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<bool>,
+    /// When true, attach metadata from the pod's namespace to each target.
+    /// Defaults to false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<bool>,
 }
 
 impl ToBlock for DiscoveryKubernetesAttachMetadata {
@@ -122,6 +126,9 @@ impl ToBlock for DiscoveryKubernetesAttachMetadata {
         let mut attributes = IndexMap::new();
         if let Some(node) = self.node {
             attributes.insert("node".into(), AttributeValue::Bool(node));
+        }
+        if let Some(namespace) = self.namespace {
+            attributes.insert("namespace".into(), AttributeValue::Bool(namespace));
         }
         Ok(Block {
             component: "attach_metadata".into(),
@@ -539,6 +546,37 @@ mod tests {
                 "\tselectors {\n",
                 "\t\trole  = \"pod\"\n",
                 "\t\tfield = \"spec.nodeName=\" + coalesce(sys.env(\"HOSTNAME\"), constants.hostname)\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn attach_metadata_includes_namespace() {
+        // attach_metadata now models `namespace` alongside `node` (previously
+        // `namespace` required a raw escape in agent.yaml).
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.kubernetes:
+                  role: pod
+                  blocks:
+                    - attach_metadata:
+                        node: true
+                        namespace: true
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.kubernetes {\n",
+                "\trole = \"pod\"\n",
+                "\n",
+                "\tattach_metadata {\n",
+                "\t\tnode      = true\n",
+                "\t\tnamespace = true\n",
                 "\t}\n",
                 "}\n",
             ),

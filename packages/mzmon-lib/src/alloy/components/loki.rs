@@ -267,6 +267,8 @@ pub enum StageBlock {
     StructuredMetadataDrop(StageStructuredMetadataDropBlock),
     #[serde(rename = "stage.sampling")]
     Sampling(StageSamplingBlock),
+    #[serde(rename = "stage.cri")]
+    Cri(StageCriBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -286,6 +288,7 @@ impl_to_block_dispatch!(StageBlock {
     StructuredMetadata,
     StructuredMetadataDrop,
     Sampling,
+    Cri,
     Raw
 });
 
@@ -784,6 +787,24 @@ impl ToBlock for StageSamplingBlock {
     }
 }
 
+// ----- stage.cri -----
+
+/// `stage.cri` — parses container-runtime-interface (CRI) formatted log lines.
+/// Takes no attributes; its presence is the whole configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct StageCriBlock {}
+
+impl ToBlock for StageCriBlock {
+    fn to_block(&self) -> Result<Block> {
+        Ok(Block {
+            component: "stage.cri".into(),
+            label: None,
+            ..Default::default()
+        })
+    }
+}
+
 // ============================================================
 // tests
 // ============================================================
@@ -1083,6 +1104,33 @@ mod tests {
                 "\t\t\tcluster = sys.env(\"CLUSTER_NAME\"),\n",
                 "\t\t}\n",
                 "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_cri_round_trips() {
+        // stage.cri takes no attributes; it renders as an empty block.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.cri: {}
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.cri { }\n",
                 "}\n",
             ),
         );
