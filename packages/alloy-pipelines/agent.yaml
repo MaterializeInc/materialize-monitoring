@@ -4,12 +4,235 @@
 
 description: |
   This file defines the pipelines that run on alloy-agent.
-  alloy-agent is responsible for scraping local data to from its node
+  alloy-agent is responsible for scraping local data from its node
   and forwarding it to alloy-gateway for processing and export.
 
+  Shape mirrors the staging agent: journal logs and node-local pod logs are
+  collected, lightly relabeled, and forwarded to the gateway; a sampled debug
+  tap echoes a slice of pod logs locally.
+
+  A few values are configurable:
+    - pod_logs `cluster` static label comes from sys.env("CLUSTER_NAME").
+    - pod_logs `stage.limit` rate/burst are plain literals, tunable in place.
+    - loki.write.gateway is a static stub for now (endpoint will gain richer
+      configuration later).
+
+logging:
+  level: info
+  format: logfmt
+
 blocks:
-  # - loki.echo:
-  #     label: "echo"
+  # --- systemd journal -> gateway -------------------------------------------
+
+  # Relabel rules applied to journal entries before processing.
+  - loki.relabel:
+      label: journal
+      forward_to: []
+      blocks:
+        - rule:
+            action: replace
+            source_labels: ["__journal__systemd_unit"]
+            target_label: unit
+
+  # Process journal entries: tag with the node's hostname, forward to gateway.
+  - loki.process:
+      label: node_logs
+      forward_to: ["loki.write.gateway.receiver"]
+      blocks:
+        - stage.static_labels:
+            values:
+              # HOSTNAME is passed from the Alloy agent daemonset
+              node:
+                env: HOSTNAME
+
+  # Read the host's systemd journal.
+  - loki.source.journal:
+      label: node_logs
+      labels:
+        component: loki.source.journal
+      relabel_rules: loki.relabel.journal.rules
+      forward_to: ["loki.process.node_logs.receiver"]
+
+  # --- node-local pod logs -> gateway ---------------------------------------
+
+  # Discover pods scheduled on this node and attach node/namespace metadata.
+  - discovery.kubernetes:
+      label: local_pods
+      role: pod
+      blocks:
+        # `field` is an expression ("spec.nodeName=" + coalesce(...)); the typed
+        # `selectors.field` is Expressable, so it accepts a literal or expression.
+        - selectors:
+            role: pod
+            field:
+              operator: "+"
+              arguments:
+                - "spec.nodeName="
+                - function: coalesce
+                  arguments:
+                    - env: HOSTNAME
+                    - ref: constants.hostname
+        - attach_metadata:
+            node: true
+            namespace: true
+
+  # Normalize discovered pod metadata into stable label names and a log path.
+  - discovery.relabel:
+      label: local_pods
+      targets: ["discovery.kubernetes.local_pods.targets"]
+      blocks:
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_namespace"]
+            target_label: namespace
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_name"]
+            target_label: pod
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_node_name"]
+            target_label: node
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_container_name"]
+            target_label: container
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_uid"]
+            target_label: pod_id
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_container_id"]
+            target_label: container_id
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_ready"]
+            target_label: pod_ready
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label: app
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]
+            target_label: component
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_workload"]
+            target_label: node_workload
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_topology_kubernetes_io_region"]
+            target_label: region
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_topology_kubernetes_io_zone"]
+            target_label: zone
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_node_kubernetes_io_instance_type"]
+            target_label: instance_type
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_karpenter_sh_nodepool"]
+            target_label: nodepool
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_label_materialize_cloud_organization_name"]
+            target_label: organization_name
+        - rule:
+            action: replace
+            source_labels:
+              - "__meta_kubernetes_namespace"
+              - "__meta_kubernetes_pod_container_name"
+            separator: "/"
+            target_label: job
+        - rule:
+            action: replace
+            source_labels:
+              - "__meta_kubernetes_pod_uid"
+              - "__meta_kubernetes_pod_container_name"
+            separator: "/"
+            replacement: "/var/log/pods/*$1/*.log"
+            target_label: __path__
+
+  # Process pod logs: parse CRI, rate-limit, drop noisy labels, tag cluster.
+  - loki.process:
+      label: pod_logs
+      forward_to: ["loki.write.gateway.receiver"]
+      blocks:
+        # Parse CRI-formatted log lines (empty block — presence is the config).
+        - stage.cri: {}
+        - stage.limit:
+            # Tunable in place; rate is lines/sec, burst is the short-term ceiling.
+            rate:
+              # HACK: we don't get a to_int function, so this converts a string->int for us
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: AGENT_POD_LOG_RATE_LIMIT
+                    - "5000"
+            burst:
+              # HACK: to_int
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: AGENT_POD_LOG_BURST
+                    - "20000"
+            drop: false
+        - stage.label_drop:
+            values: ["filename"]
+        # CLUSTER_NAME is recommended to be set in the environment
+        - stage.static_labels:
+            values:
+              cluster:
+                env: CLUSTER_NAME
+
+  # Tail the pod log files discovered above.
+  # loki.source.file has no typed `blocks` support, and we need a `file_match`
+  # sub-block, so the whole component is a raw escape.
   - raw:
-      component: "loki.echo"
-      label: "echo"
+      component: loki.source.file
+      label: pod_logs
+      attributes:
+        targets:
+          ref: discovery.relabel.local_pods.output
+        forward_to:
+          - ref: loki.process.pod_logs.receiver
+      blocks:
+        - component: file_match
+          attributes:
+            enabled: true
+
+  # --- local sampled debug tap ----------------------------------------------
+
+  # Echo a 1% sample of non-alloy pod logs locally for debugging.
+  - loki.process:
+      label: sample_debug
+      forward_to: ["loki.echo.stub.receiver"]
+      blocks:
+        - stage.drop:
+            source: app
+            value: alloy
+            drop_counter_reason: "skip self"
+        - stage.sampling:
+            rate: 0.01
+            drop_counter_reason: sample_debug
+
+  - loki.echo:
+      label: stub
+
+  # --- forwarding sink ------------------------------------------------------
+
+  # Static stub: forwards everything to the alloy-gateway. This endpoint will
+  # gain richer (per-tenant / configurable) wiring later.
+  - raw:
+      component: loki.write
+      label: gateway
+      blocks:
+        - component: endpoint
+          attributes:
+            url: "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push"

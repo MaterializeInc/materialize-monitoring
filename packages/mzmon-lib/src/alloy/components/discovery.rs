@@ -13,6 +13,7 @@
 //! Each block deserializes from the flat `{discovery.X: {label, attrs..., blocks}}`
 //! form and converts to a generic [`Block`] via [`ToBlock`].
 
+use crate::alloy::ast;
 use crate::alloy::ast::{AttributeValue, Block, Identifier, ToBlock, impl_to_block_dispatch};
 use crate::alloy::components::capsule::TargetEntry;
 use crate::alloy::components::relabel::RelabelSubBlock;
@@ -78,10 +79,10 @@ pub struct DiscoveryKubernetesSelector {
     pub role: String,
     /// Kubernetes label selector expression (e.g. `app=alloy`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
+    pub label: Option<ast::Expressable<String>>,
     /// Kubernetes field selector expression (e.g. `status.phase=Running`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub field: Option<String>,
+    pub field: Option<ast::Expressable<String>>,
 }
 
 impl ToBlock for DiscoveryKubernetesSelector {
@@ -89,10 +90,10 @@ impl ToBlock for DiscoveryKubernetesSelector {
         let mut attributes = IndexMap::new();
         attributes.insert("role".into(), AttributeValue::String(self.role.clone()));
         if let Some(label) = &self.label {
-            attributes.insert("label".into(), AttributeValue::String(label.clone()));
+            attributes.insert("label".into(), label.to_attribute_value()?);
         }
         if let Some(field) = &self.field {
-            attributes.insert("field".into(), AttributeValue::String(field.clone()));
+            attributes.insert("field".into(), field.to_attribute_value()?);
         }
         Ok(Block {
             component: "selectors".into(),
@@ -114,6 +115,10 @@ pub struct DiscoveryKubernetesAttachMetadata {
     /// Defaults to false.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<bool>,
+    /// When true, attach metadata from the pod's namespace to each target.
+    /// Defaults to false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<bool>,
 }
 
 impl ToBlock for DiscoveryKubernetesAttachMetadata {
@@ -121,6 +126,9 @@ impl ToBlock for DiscoveryKubernetesAttachMetadata {
         let mut attributes = IndexMap::new();
         if let Some(node) = self.node {
             attributes.insert("node".into(), AttributeValue::Bool(node));
+        }
+        if let Some(namespace) = self.namespace {
+            attributes.insert("namespace".into(), AttributeValue::Bool(namespace));
         }
         Ok(Block {
             component: "attach_metadata".into(),
@@ -498,6 +506,77 @@ mod tests {
                 "\n",
                 "\tnamespaces {\n",
                 "\t\town_namespace = true\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn selectors_field_accepts_expression() {
+        // `field` is now `Expressable<String>`: here it holds an operator
+        // expression (`"spec.nodeName=" + coalesce(sys.env(...), constants.hostname)`)
+        // rather than a literal. This is the typed replacement for what used to
+        // require a raw `selectors` sub-block in agent.yaml.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.kubernetes:
+                  role: pod
+                  blocks:
+                    - selectors:
+                        role: pod
+                        field:
+                          operator: "+"
+                          arguments:
+                            - "spec.nodeName="
+                            - function: coalesce
+                              arguments:
+                                - env: HOSTNAME
+                                - ref: constants.hostname
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.kubernetes {\n",
+                "\trole = \"pod\"\n",
+                "\n",
+                "\tselectors {\n",
+                "\t\trole  = \"pod\"\n",
+                "\t\tfield = \"spec.nodeName=\" + coalesce(sys.env(\"HOSTNAME\"), constants.hostname)\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn attach_metadata_includes_namespace() {
+        // attach_metadata now models `namespace` alongside `node` (previously
+        // `namespace` required a raw escape in agent.yaml).
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - discovery.kubernetes:
+                  role: pod
+                  blocks:
+                    - attach_metadata:
+                        node: true
+                        namespace: true
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "discovery.kubernetes {\n",
+                "\trole = \"pod\"\n",
+                "\n",
+                "\tattach_metadata {\n",
+                "\t\tnode      = true\n",
+                "\t\tnamespace = true\n",
                 "\t}\n",
                 "}\n",
             ),

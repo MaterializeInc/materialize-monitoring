@@ -29,8 +29,45 @@ pub enum Error {
     #[error("schema violation at `{path}`: {message}")]
     Schema { path: String, message: String },
 
-    #[error("multiple errors")]
+    #[error("{}", format_multiple(.0))]
     Multiple(Vec<Error>),
 }
 
+/// Render a `Multiple` as a header plus an indented bullet per child error.
+/// Children that are themselves multi-line (e.g. nested `Multiple`) keep their
+/// shape via continuation indentation.
+fn format_multiple(errs: &[Error]) -> String {
+    let mut out = format!("{} errors:", errs.len());
+    for e in errs {
+        for (i, line) in e.to_string().lines().enumerate() {
+            out.push_str(if i == 0 { "\n  - " } else { "\n    " });
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multiple_renders_children_indented() {
+        // Previously `Multiple` displayed only "multiple errors", swallowing the
+        // children. It now lists each child as a bullet, and a nested `Multiple`
+        // keeps its shape under continuation indentation.
+        let e = Error::Multiple(vec![
+            Error::Render("first".into()),
+            Error::Multiple(vec![Error::Render("nested".into())]),
+        ]);
+        let s = e.to_string();
+        assert!(s.starts_with("2 errors:"), "got:\n{s}");
+        assert!(s.contains("\n  - rendering error: first"), "got:\n{s}");
+        assert!(s.contains("\n  - 1 errors:"), "got:\n{s}");
+        // the nested child's own bullet is already 2-space indented, then the
+        // 4-space continuation prefix is applied on top → 6 spaces.
+        assert!(s.contains("\n      - rendering error: nested"), "got:\n{s}");
+    }
+}

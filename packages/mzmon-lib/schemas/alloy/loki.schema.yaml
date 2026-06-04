@@ -63,9 +63,29 @@ oneOf:
     additionalProperties: false
 
 $defs:
+  # Smaller fragments, no need to call out to other files
   label:
     description: User-defined identifier to distinguish multiple instances.
     type: string
+
+  expressionOrNumber:
+    description: |
+      A value that can be either a literal number or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-number
+    oneOf:
+      - type: number
+      - $ref: "./common/expression.schema.yaml"
+  expressionOrString:
+    description: |
+      A value that can be either a literal string or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-string
+    oneOf:
+      - type: string
+      - $ref: "./common/expression.schema.yaml"
 
   # ============================================================
   # Top-level components
@@ -318,8 +338,14 @@ $defs:
             $ref: "#/$defs/stage.sampling"
         required: [stage.sampling]
         additionalProperties: false
+      - type: object
+        properties:
+          stage.cri:
+            $ref: "#/$defs/stage.cri"
+        required: [stage.cri]
+        additionalProperties: false
       # Escape hatch: any sub-block can also be a raw block.
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./common/raw.schema.yaml"
 
   stage.match:
     description: |
@@ -382,11 +408,10 @@ $defs:
       older_than:
         description: |
           Entries older than this duration are dropped.
-        type: string
-        # `format: duration` is currently informational.
-        # The validator will eventually wire a Go-duration hook against it
-        # — see the duration-format-validator task.
-        format: duration
+        anyOf:
+          - type: string
+            format: go-duration
+          - $ref: "./common/expression.schema.yaml"
         examples: ["12h", "30m", "1d", "90s"]
       longer_than:
         description: |
@@ -408,10 +433,10 @@ $defs:
     properties:
       rate:
         description: Lines allowed per second.
-        type: number
+        $ref: "#/$defs/expressionOrNumber"
       burst:
         description: Lines allowed in a short burst before throttling kicks in.
-        type: number
+        $ref: "#/$defs/expressionOrNumber"
       drop:
         description: |
           When true, excess lines are dropped immediately.
@@ -599,8 +624,10 @@ $defs:
     properties:
       values:
         description: |
-          Map of label names to constant string values.
+          Map of label names to runtime-constant string values (can be an expression).
         type: object
+        additionalProperties:
+          $ref: "#/$defs/expressionOrString"
     required: [values]
     additionalProperties: false
 
@@ -665,6 +692,16 @@ $defs:
     required: [rate]
     additionalProperties: false
 
+  stage.cri:
+    description: |
+      Parses container-runtime-interface (CRI) formatted log lines (the
+      `<timestamp> <stream> <flags> <message>` shape written under
+      `/var/log/pods`). Takes no attributes — its presence is the configuration.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagecri-block
+    type: object
+    additionalProperties: false
+
   # ============================================================
   # `rule` sub-blocks (used by loki.relabel and, via cross-ref, discovery.relabel)
   # ============================================================
@@ -681,7 +718,7 @@ $defs:
             $ref: "#/$defs/rule"
         required: [rule]
         additionalProperties: false
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./common/raw.schema.yaml"
 
   rule:
     description: |

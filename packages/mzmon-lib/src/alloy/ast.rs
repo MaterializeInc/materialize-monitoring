@@ -10,7 +10,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::alloy::error::Result;
+use crate::alloy::error::{Error, Result};
 
 pub type Identifier = String;
 // TODO: struct with more checks
@@ -98,6 +98,53 @@ impl Expression {
     }
 }
 
+/// The scalar literal types an alloy attribute can hold.
+/// Sealed (see `private`), so `Expressable<T>` is effectively
+/// `Expressable<String | bool | f64>` — no other T compiles.
+pub trait LiteralScalar: private::Sealed {
+    fn to_attribute_value(&self) -> Result<AttributeValue>;
+}
+
+mod private {
+    pub trait Sealed {}
+    impl Sealed for String {}
+    impl Sealed for bool {}
+    impl Sealed for f64 {}
+}
+
+impl LiteralScalar for String {
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::String(self.clone()))
+    }
+}
+impl LiteralScalar for bool {
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::Bool(*self))
+    }
+}
+impl LiteralScalar for f64 {
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::Number(*self))
+    }
+}
+
+/// The RHS of a "value" which could be a simple literal or an expression.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Expressable<T: LiteralScalar> {
+    Literal(T),
+    Expr(Expression),
+}
+
+impl<T: LiteralScalar> Expressable<T> {
+    pub fn to_attribute_value(&self) -> Result<AttributeValue> {
+        match self {
+            Expressable::Literal(value) => value.to_attribute_value(),
+            Expressable::Expr(expr) => Ok(AttributeValue::Expression(expr.clone())),
+        }
+    }
+}
+
 // The RHS "value" of an assignment
 //
 // Variant order matters for `#[serde(untagged)]` dispatch: serde tries each
@@ -131,6 +178,28 @@ pub fn string_map(map: &IndexMap<String, String>) -> AttributeValue {
             .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
             .collect(),
     )
+}
+
+/// Convert a label/expression map to an `AttributeValue::Object` of string values.
+pub fn expressable_string_map(
+    map: &IndexMap<String, Expressable<String>>,
+) -> Result<AttributeValue> {
+    let mut imap: IndexMap<String, AttributeValue> = IndexMap::new();
+    let mut expr_errors: Vec<Error> = Vec::new();
+    for (k, v) in map.iter() {
+        match v.to_attribute_value() {
+            Ok(attr_val) => {
+                imap.insert(k.clone(), attr_val);
+            }
+            Err(e) => {
+                expr_errors.push(e);
+            }
+        }
+    }
+    if !expr_errors.is_empty() {
+        return Err(Error::Multiple(expr_errors));
+    }
+    Ok(AttributeValue::Object(imap))
 }
 
 #[cfg(test)]

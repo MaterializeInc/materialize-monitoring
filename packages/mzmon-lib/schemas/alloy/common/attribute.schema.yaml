@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for attribute fragments of alloy pipeline definitions
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/attribute.schema.yaml"
+title: "Alloy attribute fragment schema"
+description: |
+  A schema for attribute fragments in Alloy pipeline definitions.
+
+  Prefer to use a more specific attribute definition if possible.
+  This is an escape hatch for unsupported attributes or broken schemas.
+allOf:
+  - $ref: "#/$defs/attributeValue"
+$defs:
+  comment:
+    description: |
+      A comment in the alloy file.
+
+      This is rendered before an expression as a single line or a multiblock comment.
+    type: string
+  inlineComment:
+    description: |
+      An inline comment in the alloy file.
+
+      This is rendered after a simple expression on the same line.
+    type: string
+
+  attributeObject:
+    description: |
+      A raw attribute object/map/hash/dictionary.
+    type: object
+    properties:
+      $comment:
+        $ref: "#/$defs/comment"
+      additionalProperties:
+        $ref: "#/$defs/attributeValue"
+  commentedValue:
+    description: |
+      A raw value with an associated comment.
+    type: object
+    properties:
+      value:
+        $ref: "#/$defs/attributeValue"
+      $comment:
+        $ref: "#/$defs/comment"
+      $inlineComment:
+        $ref: "#/$defs/inlineComment"
+    required:
+      - value
+  attributeValue:
+    description: |
+      A raw value of an attribute.
+
+      This uses `anyOf` rather than `oneOf` on purpose: the structured object
+      branches overlap by design. An expression-shaped object (`{ref: ...}`,
+      `{env: ...}`, `{operator: ...}`) is also a valid generic `attributeObject`,
+      and a `commentedValue` (`{value: ...}`) is too — so an exactly-one `oneOf`
+      would reject every expression/commented value. The Rust deserializer
+      (`AttributeValue`, serde untagged) disambiguates by variant order with
+      `deny_unknown_fields` on `Expression`; the renderer then emits the right
+      form. Schema validation here only needs to confirm the value is *some*
+      legal raw value, which is what the raw escape hatch is for.
+    anyOf:
+      - type: string
+      - type: number
+      - type: boolean
+      - type: "null"
+      - $ref: "#/$defs/commentedValue"
+      - $ref: "./expression.schema.yaml"
+      - type: array
+        items:
+          $ref: "#/$defs/attributeValue"
+      - $ref: "#/$defs/attributeObject"

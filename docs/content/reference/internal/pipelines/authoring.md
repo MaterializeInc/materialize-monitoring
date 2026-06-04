@@ -102,6 +102,19 @@ Each component file declares its own `$id` URL. The validator (`packages/mzmon-l
 
 Cross-file references use a relative path (`./loki.schema.yaml#/$defs/ruleBlock`) which the registry resolves through `$id`. The same path also works in the IDE — `yaml-language-server` follows relative paths directly. **Don't use absolute URLs in `$ref`s**; they only work if `$id`s match exactly and break the local IDE experience.
 
+A relative `$ref` also resolves against the referring document's **`$id`**, not its filename — so a file's `$id` tail **must match its path** (e.g. `common/raw.schema.yaml` must declare `.../common/raw.schema.yaml`, not `.../common/block.schema.yaml`). A mismatch makes every `$ref` to that file point at a URI no schema claims; the Rust validator papers over it (it registers each resource under an explicit key in `validate.rs`), but `yaml-language-server` keys on the in-file `$id` and breaks. Keep the filename, the `$id` tail, and the `ID_*` constant in `validate.rs` in lockstep.
+
+### Known tooling issue: yaml-language-server "Maximum call stack size exceeded"
+
+If your editor reports `Request textDocument/hover failed with message: Maximum call stack size exceeded` (or the same on completion/validation) while editing a pipeline YAML, **it is not your YAML or our schemas** — it's an upstream `yaml-language-server` bug, fixed by [redhat-developer/yaml-language-server#1269](https://github.com/redhat-developer/yaml-language-server/pull/1269).
+
+The server meta-validates the *bound JSON Schema itself* against its draft meta-schema (`additionalProperties: {$ref: "#"}`), and that meta-validation has no termination guard, so it overflows on a sufficiently recursive/self-referential schema. Ours are recursive **by necessity** — `stageBlock → stage.match → stageBlock`, and the `attributeValue`/`expression`/`block` cluster — so they trip it.
+
+- **Don't flatten the recursion to appease the IDE.** It's inherent to alloy's nesting; the schema is correct.
+- **The CLI is the source of truth.** The Rust validator resolves the same recursion fine, so `make pipelines` + `cargo test -p mzmon-lib` passing means the schema is good regardless of what the editor says.
+- **Fix:** update `yaml-language-server` past the patch, or locally patch the AJV meta-validation call to degrade gracefully.
+- **Debugging tip** (if you ever need to confirm it's this and not your content): the overflow is invisible to a debugger — V8 can't pause with no stack room — and the server rebinds `console.*` to the LSP channel, so logs vanish. Set `Error.stackTraceLimit = Infinity` and `.catch` the failing request to write `e.stack` to `process.stderr`, which bypasses the rebind.
+
 ## Extending the schema
 
 Three recipes, in increasing scope: add an attribute, add a typed sub-block, add a whole component. All three follow the same pattern: schema first (so validation + IDE hover get the change), Rust struct + `ToBlock` if it's a typed sugar variant, then a round-trip test colocated with the impl.
@@ -301,3 +314,9 @@ mz-monitoring-build gen-pipelines \
 ```
 
 The Makefile target `make pipelines` invokes this once per target and then runs `alloy validate` on the rendered output as a second-layer sanity check. Both layers should be green before merging.
+
+### Schemas are embedded at compile time
+
+The schemas are baked into the binary with `include_str!` (see `validate.rs`). **After editing any `schemas/alloy/*.yaml`, rebuild the binary (`cargo build --bin mz-monitoring-build`, or just use `make pipelines`, which depends on it) before a manual `gen-pipelines`.** Otherwise the renderer validates against the *stale* embedded schema and reports confusing "doesn't match any typed schema" errors for blocks that are actually valid. Note the asymmetry: `cargo test` recompiles the library, so unit tests pick up schema edits immediately — meaning **tests can pass while a manual `gen-pipelines` of the same construct fails** purely because the binary is stale. If a render rejects something your tests accept, rebuild first.
+
+A brand-new schema *file* additionally needs registering in `validate.rs`: a `SCHEMA_*` `include_str!`, an `ID_*` constant whose value matches the file's `$id` exactly, and an entry in the `Registry` list. Keep the filename, the `$id` tail, the relative `$ref`s that target it, and the `ID_*` constant all in agreement (see [Cross-file `$ref`s](#cross-file-refs) above).

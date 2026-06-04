@@ -45,6 +45,15 @@ $defs:
   label:
     description: User-defined identifier to distinguish multiple instances.
     type: string
+  expressionOrString:
+    description: |
+      A value that can be either a literal string or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-string
+    oneOf:
+      - type: string
+      - $ref: "./common/expression.schema.yaml"
 
   # ============================================================
   # Top-level components
@@ -115,7 +124,7 @@ $defs:
             $ref: "#/$defs/attach_metadata"
         required: [attach_metadata]
         additionalProperties: false
-      - $ref: "./raw.schema.yaml"
+      - $ref: "./common/raw.schema.yaml"
 
   selectors:
     description: |
@@ -140,14 +149,14 @@ $defs:
       label:
         description: |
           Kubernetes label selector expression.
-        type: string
+        $ref: "#/$defs/expressionOrString"
         examples:
           - "app=alloy"
           - "tier in (frontend, backend)"
       field:
         description: |
           Kubernetes field selector expression.
-        type: string
+        $ref: "#/$defs/expressionOrString"
         examples:
           - "status.phase=Running"
           - "metadata.namespace!=kube-system"
@@ -165,6 +174,11 @@ $defs:
       node:
         description: |
           When true, attach metadata from the pod's host node to each target.
+          Defaults to false.
+        type: boolean
+      namespace:
+        description: |
+          When true, attach metadata from the pod's namespace to each target.
           Defaults to false.
         type: boolean
     additionalProperties: false

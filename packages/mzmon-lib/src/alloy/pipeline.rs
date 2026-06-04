@@ -431,6 +431,42 @@ mod tests {
         );
     }
 
+    /// Regression: a `raw:` block whose attribute values are expression-shaped
+    /// objects (`{operator}`, `{function}`, `{env}`, `{ref}`) must pass schema
+    /// validation and render. These objects match BOTH the `expression` and the
+    /// generic `attributeObject` branches of `attributeValue`, so the schema uses
+    /// `anyOf` (not `oneOf`) — an exactly-one `oneOf` rejected every expression
+    /// value, which is what the raw escape needs to express. Mirrors the
+    /// `selectors { field = "..." + coalesce(...) }` usage in agent.yaml.
+    #[test]
+    fn raw_block_with_expression_values_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - raw:
+                  component: selectors
+                  attributes:
+                    field:
+                      operator: "+"
+                      arguments:
+                        - "spec.nodeName="
+                        - function: coalesce
+                          arguments:
+                            - env: HOSTNAME
+                            - ref: constants.hostname
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "selectors {\n",
+                "\tfield = \"spec.nodeName=\" + coalesce(sys.env(\"HOSTNAME\"), constants.hostname)\n",
+                "}\n",
+            ),
+        );
+    }
+
     #[test]
     fn loki_echo_sugar_round_trips() {
         let pipeline = Pipeline::from_yaml_str(
@@ -470,6 +506,29 @@ mod tests {
                 "\tmax_age = \"7h\"\n",
                 "}\n",
             ),
+        );
+    }
+
+    #[test]
+    fn expressable_scalar_rejects_non_literal_non_expression() {
+        // The safety property of `Expressable<f64>`: a bare string is neither a
+        // number nor an expression (expressions are always mappings), so it's
+        // rejected at the schema layer rather than silently coerced into an
+        // expression. Pins the scalar-vs-object disjointness the design relies on.
+        let paths = assert_schema_rejected(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: []
+                  blocks:
+                    - stage.limit:
+                        rate: "not a number"
+                        burst: 100
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p.starts_with("/blocks/0")),
+            "expected a /blocks/0 violation, got {paths:?}"
         );
     }
 }

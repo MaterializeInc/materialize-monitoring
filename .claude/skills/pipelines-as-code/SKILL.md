@@ -44,12 +44,16 @@ packages/alloy-pipelines/                       ← YAML inputs
 packages/mzmon-lib/schemas/alloy/               ← validation schemas (embedded into the binary)
   ├── mzmon-alloy.schema.yaml                   – entry
   ├── top.schema.yaml                           – description / logging / livedebugging / blocks
-  ├── raw.schema.yaml                           – {raw: <block>} escape hatch + AST primitives
   ├── loki.schema.yaml                          – loki.*, stage.* $defs, shared `rule` $def
-  └── discovery.schema.yaml                     – discovery.*, cross-ref'ing `rule` from loki
+  ├── discovery.schema.yaml                     – discovery.*, cross-ref'ing `rule` from loki
+  └── common/                                   – shared fragments. $id tail MUST match the file path
+      ├── raw.schema.yaml                       – {raw: <block>} escape hatch + block primitives
+      ├── attribute.schema.yaml                 – attributeValue (anyOf: literal | expression | …)
+      └── expression.schema.yaml                – sys.env / function / operator / ref expression
+  (each fragment's `$id` + the `ID_*` const in validate.rs + the relative `$ref`s must agree)
 
 packages/mzmon-lib/src/alloy/                   ← AST, render, validate, pipeline (Rust)
-  ├── ast.rs                                    – Block / AttributeValue / Expression
+  ├── ast.rs                                    – Block / AttributeValue / Expression / Expressable<T>
   ├── render.rs                                 – write_to + alloy-fmt-canonical formatting
   ├── validate.rs                               – embedded schemas + jsonschema validator + hints
   ├── pipeline.rs                               – Pipeline::from_yaml_str (YAML → Value → validate → typed)
@@ -86,10 +90,16 @@ This section captures the live state so the next session has something concrete 
 
 | YAML | Rendered to | Status |
 |---|---|---|
-| `packages/alloy-pipelines/gateway.yaml` | `charts/.../pipelines/gateway.alloy` | placeholder (single raw `loki.echo "echo" { }`) |
-| `packages/alloy-pipelines/agent.yaml` | `charts/.../pipelines/agent.alloy` | placeholder (single raw `loki.echo "echo" { }`) |
+| `packages/alloy-pipelines/gateway.yaml` | `charts/.../pipelines/gateway.alloy` | placeholder (single raw `loki.echo "echo" { }`) — deferred, not yet started |
+| `packages/alloy-pipelines/agent.yaml` | `charts/.../pipelines/agent.alloy` | **implemented & largely typed** — staging-agent parity (journal + node-local pod logs → gateway, sampled debug tap) |
 
-Both pass `alloy validate`. Neither yet uses the typed schemas in anger — they're stubs that exercise the end-to-end build pipeline. The Python reference under `packages/ref-alloy-pipelines/` (not checked in) describes the eventual gateway processor shape.
+Both pass `alloy validate`. `agent.yaml` is a faithful port of the reference `staging-agent.alloy` (`packages/ref-alloy-pipelines/`, not checked in). It started with several `raw:` escapes; most have since been graduated to typed forms (`stage.static_labels`/`selectors.field` via `Expressable`, `attach_metadata.namespace`, `stage.cri`). As of the last session **only two `raw:` blocks remain**, both expected:
+- `loki.source.file`'s `file_match` sub-block — `loki.source.file` has no typed sub-block support yet (queued).
+- the `loki.write "gateway"` sink — intentionally a static stub; richer/remote endpoint + auth config is deliberately deferred (it's exceptional: shared by agents and gateways, may write to remote sinks).
+
+`gateway.yaml` is still a placeholder; the Python reference (`processor_pipeline.py`) describes its eventual processor shape. Porting it is deferred.
+
+Configurable knobs in `agent.yaml`: `cluster`/`node` labels via `sys.env(...)` (typed `stage.static_labels` values, `Expressable<String>`); `selectors.field` via a `"spec.nodeName=" + coalesce(sys.env(...), constants.hostname)` expression. `stage.limit` rate/burst read from env with a `encoding.from_json(coalesce(sys.env("…"), "<default>"))` expression — the `from_json` is a string→int coercion hack (alloy has no `to_int`, and `sys.env` returns strings while `rate`/`burst` want numbers). Treat that coercion as provisional, not a blessed pattern.
 
 ## Typed schema coverage
 
@@ -97,11 +107,13 @@ Both pass `alloy validate`. Neither yet uses the typed schemas in anger — they
 
 **Top-level discovery.* components**: `discovery.kubernetes`, `discovery.relabel`.
 
-**`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`.
+**`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes).
 
-**`discovery.kubernetes` sub-blocks**: `selectors`, `attach_metadata`. Other sub-blocks (e.g. `namespaces`) use `raw:`.
+**`discovery.kubernetes` sub-blocks**: `selectors` (incl. `field`/`label` as `Expressable<String>`), `attach_metadata` (`node` + `namespace`). Other sub-blocks (e.g. `namespaces`) use `raw:`.
 
 **`*.relabel` sub-blocks**: `rule` (shared `$def` between `loki.relabel` and `discovery.relabel` via cross-file `$ref` to `loki.schema.yaml#/$defs/ruleBlock`).
+
+**Literal-or-expression fields** use `Expressable<T>` (`ast.rs`): a field typed `Expressable<f64|String|bool>` (or `Option<…>`) accepts either a scalar literal or an inline expression object (`{env}`, `{function}`, `{operator}`, `{ref}`). In use on `stage.limit` rate/burst, `stage.drop` older_than, `stage.static_labels` values, `selectors` field/label. Schema side: `anyOf: [{type: <scalar>}, {$ref: common/expression.schema.yaml}]` (safe — scalar vs object are disjoint). *Scalars only* — never `Expressable<map/object>` (a literal map would collide with the expression object, the same overlap that forced `anyOf` in the raw `attributeValue`). This is an actively-expanding pattern; adopt per-field as needed.
 
 **Every sub-block `oneOf` ends with a `raw:` branch** — the escape hatch is non-negotiable in the design.
 
@@ -123,13 +135,34 @@ These are *non-obvious things that must stay true* — flagged here so reorders 
 - **`#[serde(deny_unknown_fields)]` on `Expression`**: keeps generic objects (`{mapping: ...}`) from silently matching `Expression` with all heads `None`. Also regression-tested.
 - **Ref-valued attributes render as bare refs, never quoted strings** — and this is now *enforced by type*: declare the field with a capsule type (`Vec<LogsReceiver>`, `Option<RelabelRules>`, `Vec<TargetEntry>`) and convert via the capsule helpers / `Expression::name_to_ref`. Do NOT hand-build `Expression { ref_name: ... }` in new `to_block` impls; if a new capsule kind is needed, add it to `components/capsule.rs`.
 - **`raw:` escape is always the last `oneOf` branch** in every sub-block list. Adding a new typed branch goes *before* `raw`.
+- **`raw.schema.yaml`'s `attributeValue` uses `anyOf`, NOT `oneOf`**: an expression-shaped object (`{ref}`, `{env}`, `{operator}`, `{function}`) is *also* a valid generic `attributeObject`, and a `{value: ...}` is also a `commentedValue` — so exactly-one `oneOf` rejected every expression/commented raw value (this blocked the first real expression-valued raw block in `agent.yaml`). The Rust `AttributeValue` deserializer disambiguates by variant order + `deny_unknown_fields`; the schema just needs "is *some* legal raw value," which `anyOf` gives. Don't revert it to `oneOf`. Regression-tested in `pipeline.rs::raw_block_with_expression_values_round_trips`.
+- **`Error::Multiple` renders its children** (header + indented bullet per child, recursive). Earlier it displayed a bare "multiple errors" and swallowed the detail — `gen-pipelines` failures were undiagnosable. Tested in `error.rs`.
+- **A schema file's `$id` tail MUST match its path** (and the `ID_*` key in `validate.rs`). The Rust `Registry` registers each resource under an explicit key so it tolerates a mismatch, but `yaml-language-server` keys on the in-file `$id` and breaks (refs point at a URI no schema claims). Keep filename ↔ `$id` ↔ `ID_*` in lockstep.
+- **Known tooling bug — yaml-language-server `Maximum call stack size exceeded`**: fires on our (necessarily) recursive schemas during the LSP's meta-schema validation; it's upstream (fixed by redhat-developer/yaml-language-server#1269), NOT our content. The CLI validator is the source of truth — don't flatten the recursion to appease the editor. Full writeup + debugging recipe in [authoring.md](../../../docs/content/reference/internal/pipelines/authoring.md#known-tooling-issue-yaml-language-server-maximum-call-stack-size-exceeded).
 - **Schemas are the reference docs**: descriptions render in IDE hover and (eventually) in published reference; keep them user-facing. Each `$def` ends with a `See:` link to canonical alloy upstream.
+- **GOTCHA — schemas are embedded at compile time (`include_str!`).** After editing any `schemas/alloy/*.yaml`, you MUST `cargo build --bin mz-monitoring-build` before a manual `gen-pipelines`, or it validates against the **stale** embedded schema and reports phantom "doesn't match any typed schema" errors. `make pipelines` rebuilds the binary as a dependency (safe); `cargo test` recompiles the lib so tests see the fresh schema — which means **unit tests can pass while a manual render of the same construct fails**. If a render rejects something your tests accept, rebuild the binary first. (A new schema fragment file also needs registering in `validate.rs`: a `SCHEMA_*` `include_str!`, an `ID_*` const matching its `$id`, and an entry in the `Registry` list.)
+- **GOTCHA — `assert_renders` enforces alloy-fmt-canonical output.** It does an exact-bytes match AND (when `alloy` is on PATH) asserts the rendered output is what `alloy fmt` would produce. So a test fails if the renderer's output isn't canonical, even when your expected string matches the renderer. The renderer's alignment quirk (see Cleanup) makes some shapes non-canonical — write tests around shapes known to be canonical (single-line attribute groups, object literals) until the quirk is fixed.
 
 ## Cleanup / refactor candidates
 
 - **`write_expression` uses a `rendered_expr` flag**: the idiomatic shape is a tuple-match over `(&env, &raw, &function, &ref_name, &operator)`, which encodes "exactly one head set" structurally. The flag pattern bit us once (forgotten assignments); a refactor would prevent recurrence.
-- **Renderer block-attribute alignment (task #15)**: current rule "any multi-line value disables alignment" is too aggressive; alloy fmt aligns in more cases. Some test YAML works around it (one attribute per rule block); a precise rule would let real pipelines stay canonical.
+- **Renderer block-attribute alignment (task #15)**: current rule "any multi-line value disables alignment for the whole group" is too aggressive; alloy fmt aligns in more cases. Concretely, the only divergences in the rendered `agent.alloy` vs `alloy fmt` are (a) `rule` blocks where a single-line attr (`action`, `separator`, `replacement`) sits in a group that also contains the multi-line `source_labels` array, and (b) `loki.source.file`'s `targets` (single-line) next to the multi-line `forward_to` array. Everything else is canonical. Two ways out (an open decision): fix the alignment rule, or post-process rendered output through `alloy fmt` (we have alloy in CI now). Until then, `assert_renders` will reject tests that exercise those non-canonical shapes.
 - **Schema drift watch**: `description` blocks link to canonical alloy docs. When alloy upstream renames a field or adds one we use, the schema description and `properties` need a corresponding update. There's no automation here; it's a manual sweep when bumping alloy versions.
-- **`packages/alloy-pipelines/*.yaml` are placeholders**. Filling in the real gateway processor pipeline (port of `processor_pipeline.py`) is the next major authoring task. Typed schemas + `raw:` escape + all Rust sugar are ready for it.
+- **`gateway.yaml` is still a placeholder**. Porting the real gateway processor pipeline (`processor_pipeline.py`) is a deferred authoring task. Typed schemas + `raw:` escape + Rust sugar are ready for it. (`agent.yaml` is implemented — see Pipeline inventory.)
 - **`with_capacity` + push loops in `to_block` impls** (~5 sites): idiomatic form is `self.blocks.iter().map(ToBlock::to_block).collect::<Result<Vec<_>>>()?`. Cosmetic; sweep opportunistically.
 - **Capsule newtype fields are `pub`** (`LogsReceiver(pub Identifier)`): if ref-path validation is ever added, switch to private field + `fn new() -> Result<Self>`.
+
+## Queued work (non-binding — directions, not commitments)
+
+Rough backlog from recent sessions; shapes may change. In loose priority:
+
+- **`replace_map` sugar** on `discovery.relabel`/`loki.relabel`: a `{source_label: target_label}` map expanding to one `action: replace` rule each, in source order (relies on the `preserve_order` already enabled). Covers only the 1:1 replace case — multi-source / `separator` / `replacement` rules (e.g. `job`, `__path__`) stay explicit. Biggest readability win for the relabel-heavy blocks.
+- **`loki.source.file` sub-blocks** (incl. typed `file_match`): the component has no nested-`blocks` support yet; adding it removes the last non-stub `raw:` in `agent.yaml`.
+- **Renderer alignment vs `alloy fmt`** (the open decision above): fix the rule, or post-process through `alloy fmt`.
+- **`$comment` / inline-comment rendering**: the schema already declares `$comment`/`commentedValue`, but `Block` has no comment field and the renderer drops them — pure plumbing. Doc-gen from comments is a stretch follow-on.
+- **Ref-resolution pass**: `forward_to`/`targets`/`relabel_rules` are free strings; nothing checks the referenced component exists (alloy validate catches it, but later + with worse messages).
+- **Reusable `Expressable` schema `$defs`** (`numberOrExpr`/`stringOrExpr`): fields currently inline the `anyOf`; a couple of named defs would DRY it. Cosmetic.
+- **Golden snapshot test** for the full rendered `agent.alloy`, once the above settle (so it doesn't churn).
+- **CI freshness**: the `pipelines` job in `.github/workflows/test.yaml` asserts committed `.alloy` matches a fresh render — keep rendered output committed.
+
+A few decisions are deliberately deferred: the `gateway.yaml` processor port; `loki.write` remote/auth config (it's exceptional — shared by agents + gateways, may target remote sinks); and a real (build- or runtime-) parameterization mechanism for numeric knobs like `stage.limit` rates (current `encoding.from_json` env coercion is provisional).

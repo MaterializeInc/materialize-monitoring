@@ -7,8 +7,10 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
+use crate::alloy::ast;
 use crate::alloy::ast::{
-    AttributeValue, Block, GoDuration, Identifier, ToBlock, impl_to_block_dispatch, string_map,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+    string_map,
 };
 use crate::alloy::components::capsule::{
     LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
@@ -265,6 +267,8 @@ pub enum StageBlock {
     StructuredMetadataDrop(StageStructuredMetadataDropBlock),
     #[serde(rename = "stage.sampling")]
     Sampling(StageSamplingBlock),
+    #[serde(rename = "stage.cri")]
+    Cri(StageCriBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -284,6 +288,7 @@ impl_to_block_dispatch!(StageBlock {
     StructuredMetadata,
     StructuredMetadataDrop,
     Sampling,
+    Cri,
     Raw
 });
 
@@ -352,7 +357,7 @@ pub struct StageDropBlock {
     pub value: Option<String>,
     /// Drop entries older than this duration (Go duration syntax).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub older_than: Option<GoDuration>,
+    pub older_than: Option<Expressable<GoDuration>>,
     /// Drop entries whose line is longer than this byte length (e.g. `1MB`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub longer_than: Option<String>,
@@ -373,7 +378,7 @@ impl ToBlock for StageDropBlock {
             attributes.insert("value".into(), AttributeValue::String(v.clone()));
         }
         if let Some(v) = &self.older_than {
-            attributes.insert("older_than".into(), AttributeValue::String(v.clone()));
+            attributes.insert("older_than".into(), v.to_attribute_value()?);
         }
         if let Some(v) = &self.longer_than {
             attributes.insert("longer_than".into(), AttributeValue::String(v.clone()));
@@ -399,8 +404,8 @@ impl ToBlock for StageDropBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StageLimitBlock {
-    pub rate: f64,
-    pub burst: f64,
+    pub rate: Expressable<f64>,
+    pub burst: Expressable<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drop: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -410,8 +415,8 @@ pub struct StageLimitBlock {
 impl ToBlock for StageLimitBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("rate".into(), AttributeValue::Number(self.rate));
-        attributes.insert("burst".into(), AttributeValue::Number(self.burst));
+        attributes.insert("rate".into(), self.rate.to_attribute_value()?);
+        attributes.insert("burst".into(), self.burst.to_attribute_value()?);
         if let Some(d) = self.drop {
             attributes.insert("drop".into(), AttributeValue::Bool(d));
         }
@@ -656,13 +661,13 @@ impl ToBlock for StageLabelsBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StageStaticLabelsBlock {
-    pub values: IndexMap<String, String>,
+    pub values: IndexMap<String, Expressable<String>>,
 }
 
 impl ToBlock for StageStaticLabelsBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("values".into(), string_map(&self.values));
+        attributes.insert("values".into(), ast::expressable_string_map(&self.values)?);
         Ok(Block {
             component: "stage.static_labels".into(),
             label: None,
@@ -777,6 +782,24 @@ impl ToBlock for StageSamplingBlock {
             component: "stage.sampling".into(),
             label: None,
             attributes,
+            ..Default::default()
+        })
+    }
+}
+
+// ----- stage.cri -----
+
+/// `stage.cri` — parses container-runtime-interface (CRI) formatted log lines.
+/// Takes no attributes; its presence is the whole configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct StageCriBlock {}
+
+impl ToBlock for StageCriBlock {
+    fn to_block(&self) -> Result<Block> {
+        Ok(Block {
+            component: "stage.cri".into(),
+            label: None,
             ..Default::default()
         })
     }
@@ -1008,6 +1031,106 @@ mod tests {
                 "\tstage.sampling {\n",
                 "\t\trate = 0.05\n",
                 "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_limit_accepts_literal_and_expression() {
+        // rate is a plain f64 literal; burst is an expression (sys.env). Both
+        // flow through `Expressable<f64>` — the literal via the scalar branch,
+        // the expression via the Expr branch — and render side by side.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.limit:
+                        rate: 5000
+                        burst: {env: AGENT_POD_LOG_BURST}
+                        drop: false
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.limit {\n",
+                "\t\trate  = 5000\n",
+                "\t\tburst = sys.env(\"AGENT_POD_LOG_BURST\")\n",
+                "\t\tdrop  = false\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_static_labels_mixes_literal_and_expression_values() {
+        // `Expressable<String>` values: a plain string literal and a sys.env
+        // expression coexist in one `values` map. preserve_order keeps source
+        // order (app before cluster).
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.static_labels:
+                        values:
+                          app: alloy
+                          cluster: {env: CLUSTER_NAME}
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.static_labels {\n",
+                "\t\tvalues = {\n",
+                "\t\t\tapp     = \"alloy\",\n",
+                "\t\t\tcluster = sys.env(\"CLUSTER_NAME\"),\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_cri_round_trips() {
+        // stage.cri takes no attributes; it renders as an empty block.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.cri: {}
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.cri { }\n",
                 "}\n",
             ),
         );
