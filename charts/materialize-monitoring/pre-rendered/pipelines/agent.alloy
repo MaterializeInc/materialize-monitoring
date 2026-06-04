@@ -1,0 +1,275 @@
+// This file defines the pipelines that run on alloy-agent.
+// alloy-agent is responsible for scraping local data from its node
+// and forwarding it to alloy-gateway for processing and export.
+//
+// Shape mirrors the staging agent: journal logs and node-local pod logs are
+// collected, lightly relabeled, and forwarded to the gateway; a sampled debug
+// tap echoes a slice of pod logs locally.
+//
+// A few values are configurable:
+//   - pod_logs `cluster` static label comes from sys.env("CLUSTER_NAME").
+//   - pod_logs `stage.limit` rate/burst are plain literals, tunable in place.
+//   - loki.write.gateway is a static stub for now (endpoint will gain richer
+//     configuration later).
+
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+loki.relabel "journal" {
+	forward_to = []
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__journal__systemd_unit",
+		]
+		target_label = "unit"
+	}
+}
+
+loki.process "node_logs" {
+	forward_to = [
+		loki.write.gateway.receiver,
+	]
+
+	stage.static_labels {
+		values = {
+			node = sys.env("HOSTNAME"),
+		}
+	}
+}
+
+loki.source.journal "node_logs" {
+	forward_to = [
+		loki.process.node_logs.receiver,
+	]
+	labels = {
+		component = "loki.source.journal",
+	}
+	relabel_rules = loki.relabel.journal.rules
+}
+
+discovery.kubernetes "local_pods" {
+	role = "pod"
+
+	selectors {
+		role  = "pod"
+		field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+	}
+
+	attach_metadata {
+		node      = true
+		namespace = true
+	}
+}
+
+discovery.relabel "local_pods" {
+	targets = [
+		discovery.kubernetes.local_pods.targets,
+	]
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_namespace",
+		]
+		target_label = "namespace"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_name",
+		]
+		target_label = "pod"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_node_name",
+		]
+		target_label = "node"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_container_name",
+		]
+		target_label = "container"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_uid",
+		]
+		target_label = "pod_id"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_container_id",
+		]
+		target_label = "container_id"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_ready",
+		]
+		target_label = "pod_ready"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_component",
+		]
+		target_label = "component"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_workload",
+		]
+		target_label = "node_workload"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_topology_kubernetes_io_region",
+		]
+		target_label = "region"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_topology_kubernetes_io_zone",
+		]
+		target_label = "zone"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_node_kubernetes_io_instance_type",
+		]
+		target_label = "instance_type"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_karpenter_sh_nodepool",
+		]
+		target_label = "nodepool"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_label_materialize_cloud_organization_name",
+		]
+		target_label = "organization_name"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_namespace",
+			"__meta_kubernetes_pod_container_name",
+		]
+		separator = "/"
+		target_label = "job"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_uid",
+			"__meta_kubernetes_pod_container_name",
+		]
+		separator = "/"
+		target_label = "__path__"
+		replacement = "/var/log/pods/*$1/*.log"
+	}
+}
+
+loki.process "pod_logs" {
+	forward_to = [
+		loki.write.gateway.receiver,
+	]
+
+	stage.cri { }
+
+	stage.limit {
+		rate  = encoding.from_json(coalesce(sys.env("AGENT_POD_LOG_RATE_LIMIT"), "5000"))
+		burst = encoding.from_json(coalesce(sys.env("AGENT_POD_LOG_BURST"), "20000"))
+		drop  = false
+	}
+
+	stage.label_drop {
+		values = [
+			"filename",
+		]
+	}
+
+	stage.static_labels {
+		values = {
+			cluster = sys.env("CLUSTER_NAME"),
+		}
+	}
+}
+
+loki.source.file "pod_logs" {
+	targets = discovery.relabel.local_pods.output
+	forward_to = [
+		loki.process.pod_logs.receiver,
+	]
+
+	file_match {
+		enabled = true
+	}
+}
+
+loki.process "sample_debug" {
+	forward_to = [
+		loki.echo.stub.receiver,
+	]
+
+	stage.drop {
+		source              = "app"
+		value               = "alloy"
+		drop_counter_reason = "skip self"
+	}
+
+	stage.sampling {
+		rate                = 0.01
+		drop_counter_reason = "sample_debug"
+	}
+}
+
+loki.echo "stub" { }
+
+loki.write "gateway" {
+	endpoint {
+		url = "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push"
+	}
+}
