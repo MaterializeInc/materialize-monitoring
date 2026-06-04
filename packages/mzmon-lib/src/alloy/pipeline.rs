@@ -508,4 +508,27 @@ mod tests {
             ),
         );
     }
+
+    #[test]
+    fn expressable_scalar_rejects_non_literal_non_expression() {
+        // The safety property of `Expressable<f64>`: a bare string is neither a
+        // number nor an expression (expressions are always mappings), so it's
+        // rejected at the schema layer rather than silently coerced into an
+        // expression. Pins the scalar-vs-object disjointness the design relies on.
+        let paths = assert_schema_rejected(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: []
+                  blocks:
+                    - stage.limit:
+                        rate: "not a number"
+                        burst: 100
+        "#,
+        );
+        assert!(
+            paths.iter().any(|p| p.starts_with("/blocks/0")),
+            "expected a /blocks/0 violation, got {paths:?}"
+        );
+    }
 }

@@ -63,9 +63,29 @@ oneOf:
     additionalProperties: false
 
 $defs:
+  # Smaller fragments, no need to call out to other files
   label:
     description: User-defined identifier to distinguish multiple instances.
     type: string
+
+  expressionOrNumber:
+    description: |
+      A value that can be either a literal number or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-number
+    oneOf:
+      - type: number
+      - $ref: "./common/expression.schema.yaml"
+  expressionOrString:
+    description: |
+      A value that can be either a literal string or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-string
+    oneOf:
+      - type: string
+      - $ref: "./common/expression.schema.yaml"
 
   # ============================================================
   # Top-level components
@@ -407,14 +427,10 @@ $defs:
     properties:
       rate:
         description: Lines allowed per second.
-        anyOf:
-          - type: number
-          - $ref: "./common/expression.schema.yaml"
+        $ref: "#/$defs/expressionOrNumber"
       burst:
         description: Lines allowed in a short burst before throttling kicks in.
-        anyOf:
-          - type: number
-          - $ref: "./common/expression.schema.yaml"
+        $ref: "#/$defs/expressionOrNumber"
       drop:
         description: |
           When true, excess lines are dropped immediately.
@@ -602,8 +618,10 @@ $defs:
     properties:
       values:
         description: |
-          Map of label names to constant string values.
+          Map of label names to runtime-constant string values (can be an expression).
         type: object
+        additionalProperties:
+          $ref: "#/$defs/expressionOrString"
     required: [values]
     additionalProperties: false
 

@@ -10,7 +10,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::alloy::error::Result;
+use crate::alloy::error::{Error, Result};
 
 pub type Identifier = String;
 // TODO: struct with more checks
@@ -178,6 +178,28 @@ pub fn string_map(map: &IndexMap<String, String>) -> AttributeValue {
             .map(|(k, v)| (k.clone(), AttributeValue::String(v.clone())))
             .collect(),
     )
+}
+
+/// Convert a label/expression map to an `AttributeValue::Object` of string values.
+pub fn expressable_string_map(
+    map: &IndexMap<String, Expressable<String>>,
+) -> Result<AttributeValue> {
+    let mut imap: IndexMap<String, AttributeValue> = IndexMap::new();
+    let mut expr_errors: Vec<Error> = Vec::new();
+    for (k, v) in map.iter() {
+        match v.to_attribute_value() {
+            Ok(attr_val) => {
+                imap.insert(k.clone(), attr_val);
+            }
+            Err(e) => {
+                expr_errors.push(e);
+            }
+        }
+    }
+    if !expr_errors.is_empty() {
+        return Err(Error::Multiple(expr_errors));
+    }
+    Ok(AttributeValue::Object(imap))
 }
 
 #[cfg(test)]

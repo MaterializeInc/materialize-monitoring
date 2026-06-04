@@ -39,14 +39,11 @@ blocks:
       label: node_logs
       forward_to: ["loki.write.gateway.receiver"]
       blocks:
-        # stage.static_labels with an expression value (sys.env) isn't covered
-        # by the typed schema's map<string,string> values — use the raw escape.
-        - raw:
-            component: stage.static_labels
-            attributes:
-              values:
-                node:
-                  env: HOSTNAME
+        - stage.static_labels:
+            values:
+              # HOSTNAME is passed from the Alloy agent daemonset
+              node:
+                env: HOSTNAME
 
   # Read the host's systemd journal.
   - loki.source.journal:
@@ -65,18 +62,16 @@ blocks:
       blocks:
         # `field` is an expression ("spec.nodeName=" + coalesce(...)), which the
         # typed `selectors.field` string can't hold — raw escape.
-        - raw:
-            component: selectors
-            attributes:
-              role: pod
-              field:
-                operator: "+"
-                arguments:
-                  - "spec.nodeName="
-                  - function: coalesce
-                    arguments:
-                      - env: HOSTNAME
-                      - ref: constants.hostname
+        - selectors:
+            role: pod
+            field:
+              operator: "+"
+              arguments:
+                - "spec.nodeName="
+                - function: coalesce
+                  arguments:
+                    - env: HOSTNAME
+                    - ref: constants.hostname
         # typed attach_metadata only models `node`; `namespace` needs raw.
         - raw:
             component: attach_metadata
@@ -194,13 +189,11 @@ blocks:
             drop: false
         - stage.label_drop:
             values: ["filename"]
-        # cluster comes from the environment — expression value needs raw escape.
-        - raw:
-            component: stage.static_labels
-            attributes:
-              values:
-                cluster:
-                  env: CLUSTER_NAME
+        # CLUSTER_NAME is recommended to be set in the environment
+        - stage.static_labels:
+            values:
+              cluster:
+                env: CLUSTER_NAME
 
   # Tail the pod log files discovered above.
   # loki.source.file has no typed `blocks` support, and we need a `file_match`

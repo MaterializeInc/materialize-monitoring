@@ -7,6 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
+use crate::alloy::ast;
 use crate::alloy::ast::{
     AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
     string_map,
@@ -657,13 +658,13 @@ impl ToBlock for StageLabelsBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StageStaticLabelsBlock {
-    pub values: IndexMap<String, String>,
+    pub values: IndexMap<String, Expressable<String>>,
 }
 
 impl ToBlock for StageStaticLabelsBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("values".into(), string_map(&self.values));
+        attributes.insert("values".into(), ast::expressable_string_map(&self.values)?);
         Ok(Block {
             component: "stage.static_labels".into(),
             label: None,
@@ -1008,6 +1009,79 @@ mod tests {
                 "\n",
                 "\tstage.sampling {\n",
                 "\t\trate = 0.05\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_limit_accepts_literal_and_expression() {
+        // rate is a plain f64 literal; burst is an expression (sys.env). Both
+        // flow through `Expressable<f64>` — the literal via the scalar branch,
+        // the expression via the Expr branch — and render side by side.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.limit:
+                        rate: 5000
+                        burst: {env: AGENT_POD_LOG_BURST}
+                        drop: false
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.limit {\n",
+                "\t\trate  = 5000\n",
+                "\t\tburst = sys.env(\"AGENT_POD_LOG_BURST\")\n",
+                "\t\tdrop  = false\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_static_labels_mixes_literal_and_expression_values() {
+        // `Expressable<String>` values: a plain string literal and a sys.env
+        // expression coexist in one `values` map. preserve_order keeps source
+        // order (app before cluster).
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.static_labels:
+                        values:
+                          app: alloy
+                          cluster: {env: CLUSTER_NAME}
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.static_labels {\n",
+                "\t\tvalues = {\n",
+                "\t\t\tapp     = \"alloy\",\n",
+                "\t\t\tcluster = sys.env(\"CLUSTER_NAME\"),\n",
+                "\t\t}\n",
                 "\t}\n",
                 "}\n",
             ),

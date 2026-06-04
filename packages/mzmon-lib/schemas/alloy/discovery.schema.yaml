@@ -45,6 +45,15 @@ $defs:
   label:
     description: User-defined identifier to distinguish multiple instances.
     type: string
+  expressionOrString:
+    description: |
+      A value that can be either a literal string or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-string
+    oneOf:
+      - type: string
+      - $ref: "./common/expression.schema.yaml"
 
   # ============================================================
   # Top-level components
@@ -140,14 +149,14 @@ $defs:
       label:
         description: |
           Kubernetes label selector expression.
-        type: string
+        $ref: "#/$defs/expressionOrString"
         examples:
           - "app=alloy"
           - "tier in (frontend, backend)"
       field:
         description: |
           Kubernetes field selector expression.
-        type: string
+        $ref: "#/$defs/expressionOrString"
         examples:
           - "status.phase=Running"
           - "metadata.namespace!=kube-system"
