@@ -13,7 +13,7 @@
         "spec": {
           "id": 1000,
           "title": "Environment Status",
-          "description": "**High-level environment health based on the fraction of clusters reporting healthy.** Aggregates `v2_mz_compute_cluster_status` across the env; the result is mapped to text via thresholds: Healthy (100%), Degraded (80-100%), Unhealthy (<80%). When this turns Degraded or Unhealthy, check _Kubernetes Workloads_ for pod restart history and _Cluster Objects / Replicas_ to see which cluster(s) are affected.",
+          "description": "**High-level environment health based on the fraction of clusters reporting healthy.** Aggregates `mz_compute_cluster_status` across the env; the result is mapped to text via thresholds: Healthy (100%), Degraded (80-100%), Unhealthy (<80%). When this turns Degraded or Unhealthy, check _Kubernetes Workloads_ for pod restart history and _Cluster Objects / Replicas_ to see which cluster(s) are affected.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -27,8 +27,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    v2_mz_compute_cluster_status{$environmentFilter} == 1\n) / count(\n    v2_mz_compute_cluster_status{$environmentFilter}\n) * 100\n",
-                        "query": "\ncount(\n    v2_mz_compute_cluster_status{$environmentFilter} == 1\n) / count(\n    v2_mz_compute_cluster_status{$environmentFilter}\n) * 100\n",
+                        "expr": "\ncount(\n    mz_compute_cluster_status{$environmentFilter} == 1\n) / count(\n    mz_compute_cluster_status{$environmentFilter}\n) * 100\n",
+                        "query": "\ncount(\n    mz_compute_cluster_status{$environmentFilter} == 1\n) / count(\n    mz_compute_cluster_status{$environmentFilter}\n) * 100\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -126,7 +126,7 @@
         "spec": {
           "id": 1001,
           "title": "Environment Availability (Select Time Range)",
-          "description": "**Fraction of time the environment was healthy over the dashboard's selected time range** \u2014 computed from `v2_mz_compute_cluster_status` averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000% (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate with cluster restarts or outages; widen the time range to find when they happened, then check _Last Restart Time_ and _Kubernetes Workloads_ for pod restart context.",
+          "description": "**Fraction of time the environment was healthy over the dashboard's selected time range** \u2014 computed from `mz_compute_cluster_status` averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000% (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate with cluster restarts or outages; widen the time range to find when they happened, then check _Last Restart Time_ and _Kubernetes Workloads_ for pod restart context.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -140,8 +140,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\navg by (namespace) (\n    avg_over_time(\n        v2_mz_compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
-                        "query": "\navg by (namespace) (\n    avg_over_time(\n        v2_mz_compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
+                        "expr": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        mz_compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
+                        "query": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        mz_compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -692,11 +692,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ngroup by (mz_version) (\n    v2_mz_compute_cluster_status{$environmentFilter}\n)\n",
+                        "expr": "\ngroup by (mz_version) (\n    mz_compute_cluster_status{$environmentFilter}\n)\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{mz_version}}",
-                        "query": "\ngroup by (mz_version) (\n    v2_mz_compute_cluster_status{$environmentFilter}\n)\n",
+                        "query": "\ngroup by (mz_version) (\n    mz_compute_cluster_status{$environmentFilter}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2317,7 +2317,7 @@
         "spec": {
           "id": 1025,
           "title": "Peek Latency (p50)",
-          "description": "**Median read-query latency** \u2014 the typical time it takes to look up the current state of an arrangement (the operation behind every `SELECT \u2026 FROM <view>` against an index). p50 is your \"what does a normal query feel like\" number. Nominal: typically a few milliseconds on a healthy cluster. Sustained multi-second p50 means the cluster is overwhelmed. One line per `cluster_id / replica_id` \u2014 narrow the cluster/replica selectors to focus. Log Y-axis. See also: _Dataflow Elapsed Rate_ and _Arrangement Maintenance Rate_ on the _Compute Objects_ tab.",
+          "description": "**Median read-query latency** \u2014 the typical time it takes to look up the current state of an arrangement (the operation behind every `SELECT \u2026 FROM <view>` against an index). p50 is your \"what does a normal query feel like\" number. Nominal: typically a few milliseconds on a healthy cluster. Sustained multi-second p50 means the cluster is overwhelmed. One line per cluster \u2014 narrow the cluster selector to focus. Log Y-axis. See also: _Dataflow Elapsed Rate_ and _Arrangement Maintenance Rate_ on the _Compute Objects_ tab.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2331,9 +2331,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nhistogram_quantile(0.5,\n    sum by (le, instance_id, replica_id) (\n        rate(\n            v2_mz_compute_replica_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}} / {{replica_id}}",
-                        "query": "\nhistogram_quantile(0.5,\n    sum by (le, instance_id, replica_id) (\n        rate(\n            v2_mz_compute_replica_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "\nhistogram_quantile(0.5,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "legendFormat": "{{instance_id}}",
+                        "query": "\nhistogram_quantile(0.5,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2391,7 +2391,7 @@
         "spec": {
           "id": 1026,
           "title": "Peek Latency (p90)",
-          "description": "**90th-percentile read-query latency** \u2014 \"how slow do my slowest 10% of queries feel?\" Catches contention bursts and rarely-hit cold paths that p50 hides. Nominal: usually a small multiple of p50 (2-5x). If p90 is 10-100x p50, your latency distribution is bimodal \u2014 typically cold-cache effects on infrequently-queried indexes or contention. Same per-(cluster, replica) split as p50.",
+          "description": "**90th-percentile read-query latency** \u2014 \"how slow do my slowest 10% of queries feel?\" Catches contention bursts and rarely-hit cold paths that p50 hides. Nominal: usually a small multiple of p50 (2-5x). If p90 is 10-100x p50, your latency distribution is bimodal \u2014 typically cold-cache effects on infrequently-queried indexes or contention. Same per-cluster split as p50.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2405,9 +2405,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nhistogram_quantile(0.9,\n    sum by (le, instance_id, replica_id) (\n        rate(\n            v2_mz_compute_replica_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}} / {{replica_id}}",
-                        "query": "\nhistogram_quantile(0.9,\n    sum by (le, instance_id, replica_id) (\n        rate(\n            v2_mz_compute_replica_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "\nhistogram_quantile(0.9,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "legendFormat": "{{instance_id}}",
+                        "query": "\nhistogram_quantile(0.9,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2479,9 +2479,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nhistogram_quantile(0.99,\n    sum by (le, instance_id, replica_id) (\n        rate(\n            v2_mz_compute_replica_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}} / {{replica_id}}",
-                        "query": "\nhistogram_quantile(0.99,\n    sum by (le, instance_id, replica_id) (\n        rate(\n            v2_mz_compute_replica_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "\nhistogram_quantile(0.99,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "legendFormat": "{{instance_id}}",
+                        "query": "\nhistogram_quantile(0.99,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2736,9 +2736,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
                         "legendFormat": "Total Clusters",
-                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2757,9 +2757,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
                         "legendFormat": "System Clusters",
-                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2827,9 +2827,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
                         "legendFormat": "Total Replicas",
-                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2848,9 +2848,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
                         "legendFormat": "Additional Replicas",
-                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2918,11 +2918,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount by (size) (\n    v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "expr": "\ncount by (size) (\n    mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{size}}",
-                        "query": "\ncount by (size) (\n    v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "query": "\ncount by (size) (\n    mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3002,9 +3002,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (materialize_cloud_availability_zone) (\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n    or\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        v2_mz_compute_cluster_status{}\n    ) * 0\n)\n",
+                        "expr": "\nsum by (materialize_cloud_availability_zone) (\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n    or\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        mz_compute_cluster_status{}\n    ) * 0\n)\n",
                         "legendFormat": "{{materialize_cloud_availability_zone}}",
-                        "query": "\nsum by (materialize_cloud_availability_zone) (\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n    or\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        v2_mz_compute_cluster_status{}\n    ) * 0\n)\n",
+                        "query": "\nsum by (materialize_cloud_availability_zone) (\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n    or\n    count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (\n        mz_compute_cluster_status{}\n    ) * 0\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3071,10 +3071,10 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nv2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
+                        "expr": "\nmz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
                         "instant": true,
                         "range": false,
-                        "query": "\nv2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
+                        "query": "\nmz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3122,7 +3122,7 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "v2_mz_compute_cluster_status": true
+                        "mz_compute_cluster_status": true
                       },
                       "indexByName": {
                         "compute_cluster_name": 0,
@@ -3194,7 +3194,7 @@
         "spec": {
           "id": 1034,
           "title": "Active Materialized Views",
-          "description": "**Number of materialized views actively maintained by Materialize.** Each materialized view is a persistent compute object that incrementally keeps a query's result up to date \u2014 so this count is roughly proportional to how much work the cluster is doing. Nominal: stable in steady state; expected to step on `CREATE MATERIALIZED VIEW` / `DROP MATERIALIZED VIEW`. Sustained drift suggests automated DDL activity. Scoped to the selected clusters.",
+          "description": "**Number of materialized views actively maintained by Materialize.** Each materialized view is a persistent compute object that incrementally keeps a query's result up to date \u2014 so this count is roughly proportional to how much work the cluster is doing. Nominal: stable in steady state; expected to step on `CREATE MATERIALIZED VIEW` / `DROP MATERIALIZED VIEW`. Sustained drift suggests automated DDL activity. Environment-scoped \u2014 not affected by the cluster/replica filters.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3208,9 +3208,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    v2_mz_production_object{$environmentFilter, type=\"materialized-view\", cluster_id=~\"$mzClusterList\"}\n)\n",
-                        "legendFormat": "materialized-view",
-                        "query": "\ncount(\n    v2_mz_production_object{$environmentFilter, type=\"materialized-view\", cluster_id=~\"$mzClusterList\"}\n)\n",
+                        "expr": "\nmax(mz_mzd_views_count{$environmentFilter})\n",
+                        "legendFormat": "materialized-views",
+                        "query": "\nmax(mz_mzd_views_count{$environmentFilter})\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3321,7 +3321,7 @@
                     "mode": "shades",
                     "fixedColor": "#EE7733"
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No index-count metric on self-managed"
                 },
                 "overrides": []
               }
@@ -3348,9 +3348,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(v2_mz_views_count{$environmentFilter})\n",
+                        "expr": "\nmax(mz_views_count{$environmentFilter})\n",
                         "legendFormat": "views",
-                        "query": "\nmax(v2_mz_views_count{$environmentFilter})\n",
+                        "query": "\nmax(mz_views_count{$environmentFilter})\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3705,9 +3705,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (\n    instance_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    replica_id,\n    cluster_environmentd_materialize_cloud_replica_name\n) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n",
+                        "expr": "\nsum by (instance_id, replica_id) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n",
                         "legendFormat": "{{instance_id}} / {{replica_id}}",
-                        "query": "\nsum by (\n    instance_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    replica_id,\n    cluster_environmentd_materialize_cloud_replica_name\n) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n",
+                        "query": "\nsum by (instance_id, replica_id) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3917,9 +3917,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_name}}",
-                        "query": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "expr": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}}",
+                        "query": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3986,9 +3986,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_name}} / w{{worker_id}}",
-                        "query": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "expr": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}",
+                        "query": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4055,9 +4055,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (instance_id) (\n    rate(\n        v2_mz_dataflow_elapsed_seconds_total{\n            $environmentFilter,\n            instance_id=~\"$mzClusterList\",\n            replica_id=~\"$mzReplicaList\"\n        }[$__rate_interval]\n    )\n)\n",
+                        "expr": "\nsum by (instance_id) (\n    rate(\n        mz_dataflow_elapsed_seconds_total{\n            $environmentFilter,\n            instance_id=~\"$mzClusterList\",\n            replica_id=~\"$mzReplicaList\"\n        }[$__rate_interval]\n    )\n)\n",
                         "legendFormat": "{{instance_id}}",
-                        "query": "\nsum by (instance_id) (\n    rate(\n        v2_mz_dataflow_elapsed_seconds_total{\n            $environmentFilter,\n            instance_id=~\"$mzClusterList\",\n            replica_id=~\"$mzReplicaList\"\n        }[$__rate_interval]\n    )\n)\n",
+                        "query": "\nsum by (instance_id) (\n    rate(\n        mz_dataflow_elapsed_seconds_total{\n            $environmentFilter,\n            instance_id=~\"$mzClusterList\",\n            replica_id=~\"$mzReplicaList\"\n        }[$__rate_interval]\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4129,9 +4129,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_name}}",
-                        "query": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
+                        "expr": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
+                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}}",
+                        "query": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4197,9 +4197,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name,\n    worker_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_name}} / w{{worker_id}}",
-                        "query": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_cluster_name,\n    cluster_environmentd_materialize_cloud_replica_id,\n    cluster_environmentd_materialize_cloud_replica_name,\n    worker_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
+                        "expr": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
+                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}",
+                        "query": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4265,9 +4265,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (collection_id) (\n    v2_mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n",
+                        "expr": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n",
                         "legendFormat": "{{collection_id}}",
-                        "query": "\nmax by (collection_id) (\n    v2_mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n",
+                        "query": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4378,9 +4378,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (collection_id) (\n    v2_mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n",
+                        "expr": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n",
                         "legendFormat": "{{collection_id}}",
-                        "query": "\nmax by (collection_id) (\n    v2_mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n",
+                        "query": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4491,9 +4491,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (collection_id) (\n    v2_mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
+                        "expr": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
                         "legendFormat": "{{collection_id}}",
-                        "query": "\nmax by (collection_id) (\n    v2_mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
+                        "query": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4744,9 +4744,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(\n    sum by (instance) (v2_mz_tables_count{$environmentFilter})\n) or vector(0)\n",
-                        "legendFormat": "v2_mz_tables_count",
-                        "query": "\nmax(\n    sum by (instance) (v2_mz_tables_count{$environmentFilter})\n) or vector(0)\n",
+                        "expr": "\nmax(\n    sum by (instance) (mz_tables_count{$environmentFilter})\n) or vector(0)\n",
+                        "legendFormat": "mz_tables_count",
+                        "query": "\nmax(\n    sum by (instance) (mz_tables_count{$environmentFilter})\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5021,7 +5021,7 @@
         "spec": {
           "id": 1055,
           "title": "Source Bytes Received (rate)",
-          "description": "**Inbound throughput per primary source \u2014 bytes per second pulled from upstream.** Subsources (e.g., per-table Postgres replication subsources) are aggregated up to their primary, so each line represents one logical source. Series with a match in `v2_mz_source_status` show as `source_name`; sources missing from the status metric fall back to `parent_source_id` (a metric-side gap that happens for some source types in some envs, not a problem with the source itself). Idle sources are filtered out (`> 0`). Log Y-axis so kB/s and tens-of-MB/s sources share the chart. Scoped to the selected clusters/replicas.",
+          "description": "**Inbound throughput per primary source \u2014 bytes per second pulled from upstream.** Subsources (e.g., per-table Postgres replication subsources) are aggregated up to their primary, so each line represents one logical source. The legend is `parent_source_id` \u2014 translate it to a name via `SELECT id, name FROM mz_sources`. Idle sources are filtered out (`> 0`). Log Y-axis so kB/s and tens-of-MB/s sources share the chart. Scoped to the selected clusters/replicas.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -5035,9 +5035,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\n(\n    sum by (parent_source_id) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n    * on (parent_source_id) group_left (source_name)\n    label_replace(avg by (source_id, source_name) (v2_mz_source_status{$environmentFilter}), \"parent_source_id\", \"$1\", \"source_id\", \"(.*)\")\n) > 0\n",
-                        "legendFormat": "{{source_name}}",
-                        "query": "\n(\n    sum by (parent_source_id) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n    * on (parent_source_id) group_left (source_name)\n    label_replace(avg by (source_id, source_name) (v2_mz_source_status{$environmentFilter}), \"parent_source_id\", \"$1\", \"source_id\", \"(.*)\")\n) > 0\n",
+                        "expr": "\nsum by (parent_source_id) (\n    rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n) > 0\n",
+                        "legendFormat": "{{parent_source_id}}",
+                        "query": "\nsum by (parent_source_id) (\n    rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n) > 0\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5045,27 +5045,6 @@
                       }
                     },
                     "refId": "query-0",
-                    "hidden": false
-                  }
-                },
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "prometheus",
-                      "version": "v0",
-                      "spec": {
-                        "expr": "\n(\n    sum by (parent_source_id) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n    unless on (parent_source_id)\n    label_replace(avg by (source_id, source_name) (v2_mz_source_status{$environmentFilter}), \"parent_source_id\", \"$1\", \"source_id\", \"(.*)\")\n) > 0\n",
-                        "legendFormat": "{{parent_source_id}}",
-                        "query": "\n(\n    sum by (parent_source_id) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n    unless on (parent_source_id)\n    label_replace(avg by (source_id, source_name) (v2_mz_source_status{$environmentFilter}), \"parent_source_id\", \"$1\", \"source_id\", \"(.*)\")\n) > 0\n",
-                        "qryType": 1
-                      },
-                      "datasource": {
-                        "name": "${metricsDatasource}"
-                      }
-                    },
-                    "refId": "query-1",
                     "hidden": false
                   }
                 }
@@ -5200,7 +5179,7 @@
         "spec": {
           "id": 1057,
           "title": "Sink Throughput (committed)",
-          "description": "**Outbound throughput per sink \u2014 bytes per second successfully committed to the downstream system** (Kafka broker, Iceberg catalog, etc.). Log Y-axis so low- and high-volume sinks share the chart. Unlike sources, there's no `v2_mz_sink_status` metric \u2014 the legend uses `sink_id` rather than a friendly name; look the id up via `SELECT id, name FROM mz_sinks;`. Idle sinks are filtered out (`> 0`). Scoped to the selected clusters/replicas.",
+          "description": "**Outbound throughput per sink \u2014 bytes per second successfully committed to the downstream system** (Kafka broker, Iceberg catalog, etc.). Log Y-axis so low- and high-volume sinks share the chart. The legend uses `sink_id` rather than a friendly name; look the id up via `SELECT id, name FROM mz_sinks;`. Idle sinks are filtered out (`> 0`). Scoped to the selected clusters/replicas.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -7035,7 +7014,7 @@
           "refresh": "never",
           "regex": "",
           "current": {
-            "text": "cloud-staging us-east-1",
+            "text": "",
             "value": ""
           },
           "options": [],
@@ -7089,8 +7068,8 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "label_values(mz_compute_commands_total{ materialize_cloud_organization_id=~\"$environmentIdList\" }, namespace)",
-              "query": "label_values(mz_compute_commands_total{ materialize_cloud_organization_id=~\"$environmentIdList\" }, namespace)",
+              "expr": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, kubernetes_namespace)",
+              "query": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, kubernetes_namespace)",
               "qryType": 1
             },
             "datasource": {
@@ -7105,7 +7084,7 @@
           "allowCustomValue": true,
           "label": "Materialize Namespace",
           "description": "The current materialize namespace where environments live",
-          "definition": "label_values(mz_compute_commands_total{ materialize_cloud_organization_id=~\"$environmentIdList\" }, namespace)"
+          "definition": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, kubernetes_namespace)"
         }
       },
       {
@@ -7124,15 +7103,15 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "query_result(mz_compute_commands_total)",
-              "query": "query_result(mz_compute_commands_total)",
+              "expr": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)",
+              "query": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)",
               "qryType": 1
             },
             "datasource": {
               "name": "${metricsDatasource}"
             }
           },
-          "regex": ".*materialize_cloud_organization_id=\\\"(?<value>[^\\\"]+)\\\",.*materialize_cloud_organization_name=\\\"(?<text>[^\\\"]+)\\\",.*",
+          "regex": "",
           "sort": "alphabeticalAsc",
           "options": [],
           "multi": false,
@@ -7140,7 +7119,7 @@
           "allowCustomValue": true,
           "label": "Environment",
           "description": "The current environment to view",
-          "definition": "query_result(mz_compute_commands_total)",
+          "definition": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)",
           "allValue": ".*"
         }
       },
@@ -7188,15 +7167,15 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "query_result(mz_tokio_worker_park_count{materialize_cloud_organization_id=~\"$environmentIdList\", cluster_environmentd_materialize_cloud_cluster_id=~\"$includeSystemClusters\" })",
-              "query": "query_result(mz_tokio_worker_park_count{materialize_cloud_organization_id=~\"$environmentIdList\", cluster_environmentd_materialize_cloud_cluster_id=~\"$includeSystemClusters\" })",
+              "expr": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
+              "query": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
               "qryType": 1
             },
             "datasource": {
               "name": "${metricsDatasource}"
             }
           },
-          "regex": ".*cluster_environmentd_materialize_cloud_cluster_id=\\\"(?<value>[^\\\"]+)\\\",.*cluster_environmentd_materialize_cloud_cluster_name=\\\"(?<text>[^\\\"]+)\\\",.*",
+          "regex": ".*compute_cluster_id=\\\"(?<value>[^\\\"]+)\\\",.*compute_cluster_name=\\\"(?<text>[^\\\"]+)\\\",.*",
           "sort": "naturalAsc",
           "options": [],
           "multi": true,
@@ -7204,7 +7183,7 @@
           "allowCustomValue": true,
           "label": "Cluster",
           "description": "The cluster within the current environment to filter to",
-          "definition": "query_result(mz_tokio_worker_park_count{materialize_cloud_organization_id=~\"$environmentIdList\", cluster_environmentd_materialize_cloud_cluster_id=~\"$includeSystemClusters\" })"
+          "definition": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })"
         }
       },
       {
@@ -7223,8 +7202,8 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "label_values(mz_compute_commands_total{materialize_cloud_organization_id=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
-              "query": "label_values(mz_compute_commands_total{materialize_cloud_organization_id=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
+              "expr": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
+              "query": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
               "qryType": 1
             },
             "datasource": {
@@ -7239,7 +7218,7 @@
           "allowCustomValue": true,
           "label": "Replica",
           "description": "The replica within the current cluster to filter to",
-          "definition": "label_values(mz_compute_commands_total{materialize_cloud_organization_id=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
+          "definition": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
           "allValue": ".*"
         }
       },
@@ -7247,7 +7226,7 @@
         "kind": "ConstantVariable",
         "spec": {
           "name": "environmentFilter",
-          "query": "materialize_cloud_organization_id=~\"$environmentIdList\"",
+          "query": "materialize_cloud_organization_name=~\"$environmentIdList\"",
           "current": {
             "text": "",
             "value": ""
@@ -7262,7 +7241,7 @@
         "kind": "ConstantVariable",
         "spec": {
           "name": "clusterFilter",
-          "query": "materialize_cloud_organization_id=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"",
+          "query": "materialize_cloud_organization_name=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"",
           "current": {
             "text": "",
             "value": ""
@@ -7277,7 +7256,7 @@
         "kind": "ConstantVariable",
         "spec": {
           "name": "replicaFilter",
-          "query": "materialize_cloud_organization_id=~\"$environmentIdList\", instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"",
+          "query": "materialize_cloud_organization_name=~\"$environmentIdList\", instance_id=~\"$mzClusterList\", replica_id=~\"$mzReplicaList\"",
           "current": {
             "text": "",
             "value": ""

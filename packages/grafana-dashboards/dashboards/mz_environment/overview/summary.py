@@ -35,9 +35,9 @@ class OverviewSummary(KubeResourcesMixin):
                 textwrap.dedent(
                     """
                     count(
-                        v2_mz_compute_cluster_status{$environmentFilter} == 1
+                        mz_compute_cluster_status{$environmentFilter} == 1
                     ) / count(
-                        v2_mz_compute_cluster_status{$environmentFilter}
+                        mz_compute_cluster_status{$environmentFilter}
                     ) * 100
                     """
                 ),
@@ -51,7 +51,7 @@ class OverviewSummary(KubeResourcesMixin):
             .description(
                 "**High-level environment health based on the fraction "
                 "of clusters reporting healthy.** Aggregates "
-                "`v2_mz_compute_cluster_status` across the env; the "
+                "`mz_compute_cluster_status` across the env; the "
                 "result is mapped to text via thresholds: Healthy "
                 "(100%), Degraded (80-100%), Unhealthy (<80%). When "
                 "this turns Degraded or Unhealthy, check _Kubernetes "
@@ -76,9 +76,9 @@ class OverviewSummary(KubeResourcesMixin):
             promql_query(
                 textwrap.dedent(
                     """
-                    avg by (namespace) (
+                    avg by (kubernetes_namespace) (
                         avg_over_time(
-                            v2_mz_compute_cluster_status{$environmentFilter}[$__range]
+                            mz_compute_cluster_status{$environmentFilter}[$__range]
                         ) * 100
                     )
                     """
@@ -93,7 +93,7 @@ class OverviewSummary(KubeResourcesMixin):
             .description(
                 "**Fraction of time the environment was healthy over "
                 "the dashboard's selected time range** — computed from "
-                "`v2_mz_compute_cluster_status` averaged over "
+                "`mz_compute_cluster_status` averaged over "
                 "`$__range`. Effectively an SLO snapshot. Nominal: "
                 "100.0000% (note the four decimals — five-nines = "
                 "99.999%). Sustained dips correlate with cluster "
@@ -300,7 +300,7 @@ class OverviewSummary(KubeResourcesMixin):
                     textwrap.dedent(
                         """
                         group by (mz_version) (
-                            v2_mz_compute_cluster_status{$environmentFilter}
+                            mz_compute_cluster_status{$environmentFilter}
                         )
                         """
                     ),

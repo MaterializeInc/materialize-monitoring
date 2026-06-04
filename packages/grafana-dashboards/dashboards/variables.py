@@ -9,8 +9,14 @@ from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import METRICS_DATASOURCE_VAR_NAME, promql_query
 
+# Self-managed Materialize exports `mz_*` metrics (the `v2_mz_*` promsql-exporter
+# family is cloud-only). Environments are identified by
+# `materialize_cloud_organization_name` (the hex `materialize_cloud_organization_id`
+# is cloud-only and absent here). Clusters/replicas carry `instance_id` /
+# `replica_id`; `mz_compute_cluster_status` additionally exposes the friendly
+# `compute_cluster_name` / `compute_replica_name` used to populate the pickers.
 _MZ_INFO_METRIC = "mz_compute_commands_total"
-_MZ_CLUSTER_INFO_METRIC = "mz_tokio_worker_park_count"
+_MZ_CLUSTER_INFO_METRIC = "mz_compute_cluster_status"
 
 
 class VariableNames:
@@ -64,11 +70,13 @@ def environment_id_variable(
     This supports multi-select but only if the UI supports it.
     Queries should expect a List regardless.
 
-    FIXME: This does not support augmenting with additional metadata
-    (YET).
-    FIXME: Use a _info metric once we have it.
+    Self-managed Materialize has no cloud organization id; environments are
+    identified by `materialize_cloud_organization_name`, which is both the
+    value and the display text. A `label_values(...)` query yields the list
+    of names directly, so no regex extraction is needed.
     """
     name = VariableNames.ENVIRONMENT_ID_LIST
+    definition = f"label_values({_MZ_INFO_METRIC}, materialize_cloud_organization_name)"
     return (
         dashboardv2_builders.QueryVariable(name)
         .label("Environment")
@@ -77,14 +85,9 @@ def environment_id_variable(
         .multi(multi)
         .include_all(multi)
         .all_value(".*")
-        # don't use natural for envs since they contain hex
         .sort(dashboardv2.VariableSort.ALPHABETICAL_ASC)
-        .definition(f"query_result({_MZ_INFO_METRIC})")
-        .query(promql_query(f"query_result({_MZ_INFO_METRIC})"))
-        # NB: Grafana formats labels alphabetically by default
-        .regex(
-            r".*materialize_cloud_organization_id=\"(?<value>[^\"]+)\",.*materialize_cloud_organization_name=\"(?<text>[^\"]+)\",.*",
-        )
+        .definition(definition)
+        .query(promql_query(definition))
     )
 
 
@@ -101,11 +104,11 @@ def environment_namespace() -> dashboardv2_builders.QueryVariable:
         .sort(dashboardv2.VariableSort.ALPHABETICAL_ASC)
         .skip_url_sync(True)
         .definition(
-            f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_id=~"$environmentIdList" }}, namespace)'
+            f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, kubernetes_namespace)'
         )
         .query(
             promql_query(
-                f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_id=~"$environmentIdList" }}, namespace)'
+                f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, kubernetes_namespace)'
             )
         )
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
@@ -138,7 +141,7 @@ def environment_filter_variable() -> dashboardv2_builders.ConstantVariable:
         .description(
             "A filter to apply to queries to filter to the current environment"
         )
-        .query('materialize_cloud_organization_id=~"$environmentIdList"')
+        .query('materialize_cloud_organization_name=~"$environmentIdList"')
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
@@ -177,19 +180,20 @@ def cluster_list_variable() -> dashboardv2_builders.QueryVariable:
         # Use natural for cluster names (u2 < u11)
         .sort(dashboardv2.VariableSort.NATURAL_ASC)
         .definition(
-            f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", cluster_environmentd_materialize_cloud_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
+            f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_name=~"$environmentIdList", compute_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
         )
         .query(
             promql_query(
-                f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", cluster_environmentd_materialize_cloud_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
+                f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_name=~"$environmentIdList", compute_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
         # it would be nice if we could show both name and id as text
         #   but we don't get format support
-        # NB: Grafana sorts labels alphabetically by default (so this regex is stable)
+        # NB: Grafana sorts labels alphabetically by default (so this regex is stable);
+        # compute_cluster_id sorts before compute_cluster_name.
         .regex(
-            r".*cluster_environmentd_materialize_cloud_cluster_id=\"(?<value>[^\"]+)\",.*cluster_environmentd_materialize_cloud_cluster_name=\"(?<text>[^\"]+)\",.*",
+            r".*compute_cluster_id=\"(?<value>[^\"]+)\",.*compute_cluster_name=\"(?<text>[^\"]+)\",.*",
         )
     )
 
@@ -211,11 +215,11 @@ def replica_list_variable() -> dashboardv2_builders.QueryVariable:
         # Use natural for replica ids (mostly numbers)
         .sort(dashboardv2.VariableSort.NATURAL_ASC)
         .definition(
-            f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'
+            f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'
         )
         .query(
             promql_query(
-                f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'
+                f'label_values({_MZ_INFO_METRIC}{{materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList"}}, replica_id)'
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
@@ -229,7 +233,7 @@ def cluster_filter_variable() -> dashboardv2_builders.ConstantVariable:
         .label("Cluster Filter")
         .description("A filter to apply to queries to filter to the current cluster")
         .query(
-            'materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList"'
+            'materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList"'
         )
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
@@ -243,7 +247,7 @@ def replica_filter_variable() -> dashboardv2_builders.ConstantVariable:
         .label("Replica Filter")
         .description("A filter to apply to queries to filter to the current replica")
         .query(
-            'materialize_cloud_organization_id=~"$environmentIdList", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList"'
+            'materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList"'
         )
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
@@ -258,8 +262,10 @@ def metrics_datasource() -> dashboardv2_builders.DatasourceVariable:
         .description("Datasource for metrics queries")
         .plugin_id("prometheus")
         .allow_custom_value(False)
-        # FIXME: just while developing!!
-        .current(dashboardv2.VariableOption(text="cloud-staging us-east-1"))
+        # No `.current(...)`: let Grafana resolve `$metricsDatasource` to the
+        # instance's default Prometheus datasource. Pinning a specific named
+        # datasource here (e.g. a cloud env) leaves the variable unresolved on
+        # any other instance, which silently breaks every query on the board.
     )
 
 

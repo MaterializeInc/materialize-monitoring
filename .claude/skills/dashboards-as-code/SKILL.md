@@ -123,11 +123,23 @@ The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel` and `memo
 - **`compute_objects.py` Freshness row** — title-only, reserved for end-to-end freshness/lag metrics. Pick a freshness signal (`mz_internal.mz_materialized_view_refreshes`?) when filling it in.
 - **`dataflows.py`** — orphaned after Dataflows became a row inside Compute Objects rather than its own tab. Safe to delete; only referenced from `overview_dashboard.py`'s import history (now removed).
 
+## Self-managed metric migration (done)
+
+The dashboard was migrated off the cloud-only `v2_mz_*` family and `materialize_cloud_organization_id` onto self-managed `mz_*` metrics + `materialize_cloud_organization_name` filtering (see [Deployment target](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-target-self-managed-vs-cloud)). Also fixed: `metrics_datasource()` no longer pins a dev datasource name (`$metricsDatasource` now resolves to the instance default), which was silently breaking every query.
+
+These panels have **no self-managed metric** and are intentionally kept with a `TODO(self-managed)` + `no_value` (they render blank/0 until a metric exists, rather than being deleted):
+
+- Compute Objects: **Active Indexes** and **Index Types** (`v2_mz_production_object` / `v2_mz_indexes_count`), **Currently Hydrating** and **Slowest Hydrating Collections** (`v2_mz_compute_hydration_time_seconds`).
+- Cluster Objects: **Replica Availability Zones** (`materialize_cloud_availability_zone` is cloud-only).
+- Storage Objects: **Active Sources/Sinks**, **Source Types**, **Sources by Status**, **Sink Types** (no `mz_` count/status metrics). The `mz_source_*` / `mz_sink_*` throughput/lag/Iceberg/Kafka panels use the right metrics but **could not be verified** — the test env has no sources/sinks.
+
+Local push: `gcx` context **`local-mzmon`** → `http://localhost:13000`. Render+merge+push helper lives at `/tmp/mzmon_push.sh` (renders the module, carries the live `resourceVersion` + folder annotation forward, `gcx dashboards update`). The Grafana MCP is also wired to the same local instance for query verification.
+
 ## Reference environments
 
 Materialize developers may have access to an internal shared Grafana with multiple test environments. It can be useful to look at queries in live environments when building dashboards. **Do not use environments without explicit permission.**
 
-Always scope investigative queries with `materialize_cloud_organization_id="..."` when testing — these are shared envs and you don't want to mix data across them.
+When testing against a *cloud* shared env, scope queries to one environment so you don't mix data across tenants. **The dashboards target self-managed Materialize**, where the scoping label is `materialize_cloud_organization_name="..."` (cloud's hex `materialize_cloud_organization_id` does not exist on self-managed, and neither does the `v2_mz_*` metric family). Always verify which labels/metrics actually exist on the instance you're querying with `list_prometheus_label_names` / `list_prometheus_metric_names` before assuming — see [Deployment target: self-managed vs cloud](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-target-self-managed-vs-cloud).
 
 ## Cleanup / refactor candidates
 

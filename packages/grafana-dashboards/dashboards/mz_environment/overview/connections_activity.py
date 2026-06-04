@@ -39,8 +39,8 @@ _PEEK_LATENCY_DESCRIPTIONS: dict[str, str] = {
         'your "what does a normal query feel like" number. Nominal: '
         "typically a few milliseconds on a healthy cluster. Sustained "
         "multi-second p50 means the cluster is overwhelmed. One line "
-        "per `cluster_id / replica_id` — narrow the cluster/replica "
-        "selectors to focus. Log Y-axis. See also: _Dataflow Elapsed "
+        "per cluster — narrow the cluster selector to focus. Log "
+        "Y-axis. See also: _Dataflow Elapsed "
         "Rate_ and _Arrangement Maintenance Rate_ on the _Compute "
         "Objects_ tab."
     ),
@@ -51,7 +51,7 @@ _PEEK_LATENCY_DESCRIPTIONS: dict[str, str] = {
         "small multiple of p50 (2-5x). If p90 is 10-100x p50, your "
         "latency distribution is bimodal — typically cold-cache "
         "effects on infrequently-queried indexes or contention. Same "
-        "per-(cluster, replica) split as p50."
+        "per-cluster split as p50."
     ),
     "p99": (
         "**Tail read-query latency (99th percentile)** — the slowest "
@@ -305,7 +305,7 @@ class ConnectionsActivityTab:
     def _peek_latency_panel(self, percentile: float, percentile_label: str):
         """Single-percentile peek-latency timeseries, split per (cluster, replica).
 
-        `v2_mz_compute_replica_peek_duration_seconds_*` is a histogram of
+        `mz_compute_peek_duration_seconds_*` is a histogram of
         the operation that SELECT-against-an-index actually performs in
         compute. "Peek" is differential-dataflow's name for "look up the
         current state of an arrangement" — for read-heavy workloads this
@@ -319,25 +319,26 @@ class ConnectionsActivityTab:
         Log Y-axis because peek latencies span orders of magnitude.
         """
         panel_id = f"queries-peek-latency-{percentile_label}"
-        bucket_filter = (
-            "$environmentFilter, "
-            'instance_id=~"$mzClusterList", '
-            'replica_id=~"$mzReplicaList"'
-        )
+        # `mz_compute_peek_duration_seconds` is reported environmentd-side and
+        # carries `instance_id` (the cluster) but NOT `replica_id` — so peek
+        # latency is per-cluster here, and the replica selector does not split
+        # it further. (The cloud-only `v2_mz_compute_replica_peek_duration_*`
+        # histogram was per-replica; no self-managed equivalent exists.)
+        bucket_filter = '$environmentFilter, instance_id=~"$mzClusterList"'
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     f"""
                     histogram_quantile({percentile},
-                        sum by (le, instance_id, replica_id) (
+                        sum by (le, instance_id) (
                             rate(
-                                v2_mz_compute_replica_peek_duration_seconds_bucket{{{bucket_filter}}}[$__rate_interval]
+                                mz_compute_peek_duration_seconds_bucket{{{bucket_filter}}}[$__rate_interval]
                             )
                         )
                     )
                     """
                 )
-            ).legend_format("{{instance_id}} / {{replica_id}}"),
+            ).legend_format("{{instance_id}}"),
         )
 
         self.dashboard.add_panel(

@@ -35,14 +35,16 @@ ENV_SCOPED_NOTE = "Environment-scoped — not affected by the cluster/replica fi
 
 COMPUTE_THEME = palette.THEME_PALETTE[3]
 
-# Long-form cluster/replica label names used by mz_arrangement_* and other
-# per-replica compute metrics. Materialize's prometheus scraper attaches the
-# environmentd-side identifiers under these specific names (separate from the
-# shorter `cluster_id` / `instance_id` used on other metric families).
+# Long-form cluster/replica label names used by mz_arrangement_* and
+# mz_compute_replica_history_* (these metrics carry the environmentd-side
+# identifiers under these specific names rather than the shorter
+# `instance_id` / `replica_id` used on most other mz_ metric families).
+#
+# NOTE (self-managed): only the *id* variants exist here; the cloud-only
+# `*_cluster_name` / `*_replica_name` companions are absent, so legends and
+# group-by use the ids directly.
 ARRANGEMENT_LABEL_CLUSTER_ID = "cluster_environmentd_materialize_cloud_cluster_id"
-ARRANGEMENT_LABEL_CLUSTER_NAME = "cluster_environmentd_materialize_cloud_cluster_name"
 ARRANGEMENT_LABEL_REPLICA_ID = "cluster_environmentd_materialize_cloud_replica_id"
-ARRANGEMENT_LABEL_REPLICA_NAME = "cluster_environmentd_materialize_cloud_replica_name"
 
 # A short PromQL fragment that filters by the current $environmentFilter,
 # $mzClusterList, and $mzReplicaList using the long-form label names.
@@ -70,6 +72,13 @@ def add_currently_hydrating_panel(
     not yet finished hydrating. Counting the series gives a real-time
     "is anything currently hydrating?" signal. The `or vector(0)` keeps the
     panel showing 0 (instead of "no data") when nothing is unhydrated.
+
+    TODO(self-managed): `v2_mz_compute_hydration_time_seconds` is a cloud-only
+    promsql-exporter metric with no self-managed equivalent, so this reads a
+    constant 0 here. The `or vector(0)` keeps the panel honest (shows 0 rather
+    than erroring). Revisit once a self-managed hydration-state metric exists
+    (`mz_compute_controller_hydration_queue_size` is the nearest live signal —
+    see _Hydration Queue Size_).
     """
     query = query_group(
         promql_query(
@@ -122,6 +131,12 @@ def _active_objects_query(obj_type: str):
     selector. `v2_mz_production_object` has one series per
     (cluster_id, collection_id, name) — counting series gives the object
     count.
+
+    TODO(self-managed): `v2_mz_production_object` is the cloud-only catalog
+    metric and has no self-managed equivalent (there's `mz_mzd_views_count`
+    for materialized views and `mz_views_count` for views, but no per-cluster
+    index count). Callers that still rely on this will read "No data" on
+    self-managed until a catalog index-count metric is available.
     """
     return query_group(
         promql_query(
@@ -143,8 +158,21 @@ class ComputeObjectsTab:
         self.dashboard = dashboard
 
     def _active_mzd_views_panel(self):
-        """Active materialized views (cluster-filterable via cluster_id)."""
+        """Active materialized views (env-scoped via mz_mzd_views_count)."""
         panel_id = "active-mzd-views"
+        # `mz_mzd_views_count` is the self-managed materialized-view count
+        # (env-scoped, no cluster label) — the replacement for the cloud-only
+        # `v2_mz_production_object{type="materialized-view"}`. `max(...)` dedups
+        # across exporter pods.
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max(mz_mzd_views_count{$environmentFilter})
+                    """
+                )
+            ).legend_format("materialized-views"),
+        )
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
@@ -157,10 +185,10 @@ class ComputeObjectsTab:
                 "how much work the cluster is doing. Nominal: stable in "
                 "steady state; expected to step on `CREATE MATERIALIZED "
                 "VIEW` / `DROP MATERIALIZED VIEW`. Sustained drift "
-                "suggests automated DDL activity. Scoped to the selected "
-                "clusters."
+                "suggests automated DDL activity. "
+                f"{ENV_SCOPED_NOTE}"
             )
-            .data(_active_objects_query("materialized-view"))
+            .data(query)
             .visualization(visualization.sparkline_stat(shade=COMPUTE_THEME).min(0)),
         )
         return panel_id
@@ -182,24 +210,30 @@ class ComputeObjectsTab:
                 "selected clusters."
             )
             .data(_active_objects_query("index"))
-            .visualization(visualization.sparkline_stat(shade=COMPUTE_THEME).min(0)),
+            .visualization(
+                visualization.sparkline_stat(shade=COMPUTE_THEME)
+                .min(0)
+                # TODO(self-managed): no index-count metric exists (see
+                # _active_objects_query); reads "No data" until one does.
+                .no_value("No index-count metric on self-managed")
+            ),
         )
         return panel_id
 
     def _active_views_panel(self):
         """Active (non-materialized) views.
 
-        `v2_mz_views_count` is environment-scoped and has no cluster label,
+        `mz_views_count` is environment-scoped and has no cluster label,
         so this panel ignores the cluster/replica selectors. Use `max()` to
         collapse the per-exporter-pod duplicate series safely if more than
-        one promsql-exporter ends up scraping the same value.
+        one exporter ends up scraping the same value.
         """
         panel_id = "active-views"
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
-                    max(v2_mz_views_count{$environmentFilter})
+                    max(mz_views_count{$environmentFilter})
                     """
                 )
             ).legend_format("views"),
@@ -282,6 +316,11 @@ class ComputeObjectsTab:
 
         `v2_mz_indexes_count` has the relation_type breakdown but no cluster
         label — this panel is intentionally environment-scoped.
+
+        TODO(self-managed): `v2_mz_indexes_count` is cloud-only with no
+        self-managed equivalent, so this donut has no data there. Kept for
+        cloud parity; the no_value explains the blank. Fill in once a catalog
+        index-count metric (with a relation_type breakdown) lands.
         """
         panel_id = "index-types"
         query = query_group(
@@ -344,12 +383,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     """
-                    sum by (
-                        instance_id,
-                        cluster_environmentd_materialize_cloud_cluster_name,
-                        replica_id,
-                        cluster_environmentd_materialize_cloud_replica_name
-                    ) (
+                    sum by (instance_id, replica_id) (
                         mz_compute_controller_hydration_queue_size{
                             $environmentFilter,
                             instance_id=~"$mzClusterList",
@@ -401,6 +435,11 @@ class ComputeObjectsTab:
         to dominate this chart. If that's noisy in practice, consider
         splitting into "everything except s2" vs "just s2" panels via the
         `instance_id` filter.
+
+        TODO(self-managed): `v2_mz_compute_hydration_time_seconds` is cloud-only
+        with no self-managed equivalent, so this chart has no data there. Kept
+        for cloud parity (the no_value explains the blank); revisit when a
+        per-collection hydration-duration metric exists on self-managed.
         """
         panel_id = "hydration-slowest-collections"
         query = query_group(
@@ -489,9 +528,7 @@ class ComputeObjectsTab:
                     f"""
                     sum by (
                         {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_CLUSTER_NAME},
-                        {ARRANGEMENT_LABEL_REPLICA_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_NAME}
+                        {ARRANGEMENT_LABEL_REPLICA_ID}
                     ) (
                         rate(
                             mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
@@ -500,8 +537,8 @@ class ComputeObjectsTab:
                     """
                 )
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_NAME}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_NAME}}}}}"
+                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
+                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
             ),
         )
 
@@ -543,9 +580,7 @@ class ComputeObjectsTab:
                     f"""
                     sum by (
                         {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_CLUSTER_NAME},
                         {ARRANGEMENT_LABEL_REPLICA_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_NAME},
                         worker_id
                     ) (
                         rate(
@@ -555,8 +590,8 @@ class ComputeObjectsTab:
                     """
                 )
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_NAME}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_NAME}}}}}"
+                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
+                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
                 " / w{{worker_id}}"
             ),
         )
@@ -654,17 +689,15 @@ class ComputeObjectsTab:
                     f"""
                     max by (
                         {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_CLUSTER_NAME},
-                        {ARRANGEMENT_LABEL_REPLICA_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_NAME}
+                        {ARRANGEMENT_LABEL_REPLICA_ID}
                     ) (
                         mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
                     )
                     """
                 )
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_NAME}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_NAME}}}}}"
+                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
+                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
             ),
         )
 
@@ -706,9 +739,7 @@ class ComputeObjectsTab:
                     f"""
                     max by (
                         {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_CLUSTER_NAME},
                         {ARRANGEMENT_LABEL_REPLICA_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_NAME},
                         worker_id
                     ) (
                         mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
@@ -716,8 +747,8 @@ class ComputeObjectsTab:
                     """
                 )
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_NAME}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_NAME}}}}}"
+                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
+                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
                 " / w{{worker_id}}"
             ),
         )
@@ -747,7 +778,7 @@ class ComputeObjectsTab:
     def _dataflow_elapsed_rate_panel(self):
         """Timeseries: total cores busy in dataflows per cluster (log Y-axis).
 
-        `v2_mz_dataflow_elapsed_seconds_total` is a per-(collection,
+        `mz_dataflow_elapsed_seconds_total` is a per-(collection,
         replica, worker) counter of cumulative CPU-seconds inside
         dataflows. `sum by (instance_id) (rate(...))` gives total cores
         busy per cluster — broader than the arrangement maintenance rate
@@ -772,7 +803,7 @@ class ComputeObjectsTab:
                     """
                     sum by (instance_id) (
                         rate(
-                            v2_mz_dataflow_elapsed_seconds_total{
+                            mz_dataflow_elapsed_seconds_total{
                                 $environmentFilter,
                                 instance_id=~"$mzClusterList",
                                 replica_id=~"$mzReplicaList"
@@ -859,7 +890,7 @@ class ComputeObjectsTab:
         collection_id_regex: str,
         description: str,
     ):
-        """Build a table of `v2_mz_arrangement_record_count` per collection.
+        """Build a table of `mz_arrangement_record_count` per collection.
 
         Records per collection are nearly static — graphs are uninteresting,
         but Min/Max over $__range catch occasional spikes that Last alone
@@ -879,7 +910,7 @@ class ComputeObjectsTab:
                     textwrap.dedent(
                         f"""
                         max by (collection_id) (
-                            v2_mz_arrangement_record_count{{
+                            mz_arrangement_record_count{{
                                 $environmentFilter,
                                 instance_id=~"$mzClusterList",
                                 replica_id=~"$mzReplicaList",

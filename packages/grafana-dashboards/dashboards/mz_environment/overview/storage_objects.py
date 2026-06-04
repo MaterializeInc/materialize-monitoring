@@ -24,10 +24,16 @@ from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import palette, threshold, visualization
 
-# Compute-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
-# long-form `cluster_environmentd_materialize_cloud_*` label family — same
-# convention as arrangement/dataflow metrics. This is the PromQL fragment
-# that filters by env + cluster + replica using those labels.
+# Clusterd-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
+# long-form `cluster_environmentd_materialize_cloud_*` id label family — the
+# same convention confirmed on the arrangement/dataflow metrics. This is the
+# PromQL fragment that filters by env + cluster + replica using those labels.
+#
+# TODO(self-managed): this filter's label family is inferred from the
+# arrangement metrics (clusterd-side, same family). It could not be verified
+# directly because the test environment has no sources/sinks, so no
+# mz_source_*/mz_sink_* series exist to inspect. Re-check the labels against a
+# self-managed env that actually runs a source and a sink.
 _COMPUTE_FILTER = (
     "$environmentFilter, "
     'cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", '
@@ -47,13 +53,16 @@ STORAGE_THEME = palette.THEME_PALETTE[
 def _env_total_count_query(metric_name: str):
     """Build a deduped env-wide count query for a pre-calc storage metric.
 
-    Some of these metrics (sources_count, sinks_count) carry breakdown
-    labels like `type`/`envelope_type`/`size` — `sum by (instance)`
-    collapses those into a single per-scrape value, then `max(...)`
-    dedups across multiple promsql-exporter pods if there's more than
-    one. `or vector(0)` keeps the panel showing 0 (not "No data") when
-    no series exist for the metric in this env (e.g., an env with no
-    sinks).
+    Some of these metrics carry breakdown labels like `type`/`size` —
+    `sum by (instance)` collapses those into a single per-scrape value, then
+    `max(...)` dedups across multiple exporter pods if there's more than one.
+    `or vector(0)` keeps the panel showing 0 (not "No data") when no series
+    exist for the metric in this env.
+
+    Self-managed has `mz_tables_count` / `mz_views_count` / `mz_mzd_views_count`
+    but NO source/sink count metric (the cloud-only `v2_mz_sources_count` /
+    `v2_mz_sinks_count` have no equivalent), so source/sink count panels read 0
+    via `or vector(0)` until such a metric exists. See per-panel TODOs.
     """
     return query_group(
         promql_query(
@@ -75,7 +84,12 @@ class StorageObjectsTab:
         self.dashboard = dashboard
 
     def _active_sources_panel(self):
-        """Active sources count (env-scoped, multi-label-dedup)."""
+        """Active sources count (env-scoped, multi-label-dedup).
+
+        TODO(self-managed): `v2_mz_sources_count` is cloud-only with no
+        self-managed equivalent, so this reads 0 (via `or vector(0)`) here.
+        Swap to a catalog source-count metric when one exists.
+        """
         panel_id = "storage-active-sources"
         self.dashboard.add_panel(
             panel_id,
@@ -96,7 +110,12 @@ class StorageObjectsTab:
         return panel_id
 
     def _active_sinks_panel(self):
-        """Active sinks count (env-scoped, multi-label-dedup)."""
+        """Active sinks count (env-scoped, multi-label-dedup).
+
+        TODO(self-managed): `v2_mz_sinks_count` is cloud-only with no
+        self-managed equivalent, so this reads 0 (via `or vector(0)`) here.
+        Swap to a catalog sink-count metric when one exists.
+        """
         panel_id = "storage-active-sinks"
         self.dashboard.add_panel(
             panel_id,
@@ -130,7 +149,7 @@ class StorageObjectsTab:
                 "Received_. "
                 f"{ENV_SCOPED_NOTE}"
             )
-            .data(_env_total_count_query("v2_mz_tables_count"))
+            .data(_env_total_count_query("mz_tables_count"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
@@ -139,6 +158,10 @@ class StorageObjectsTab:
         """Donut: source distribution by `type` (kafka / postgres / mysql / ...).
 
         `v2_mz_sources_count` is env-scoped pre-calc — no cluster filter.
+
+        TODO(self-managed): `v2_mz_sources_count` is cloud-only with no
+        self-managed equivalent, so this donut has no data here (the no_value
+        explains the blank). Kept for cloud parity.
         """
         panel_id = "sources-types"
         query = query_group(
@@ -191,6 +214,11 @@ class StorageObjectsTab:
         1); the useful information is in the labels — `source_name`,
         `source_type`, `status`, `connection_type`, `source_id`.
         labelsToFields + organize promotes those labels to table columns.
+
+        TODO(self-managed): `v2_mz_source_status` is cloud-only with no
+        self-managed equivalent, so this table has no data here (the no_value
+        explains the blank). For source status on self-managed, query
+        `mz_internal.mz_source_statuses` in SQL until a metric exists.
         """
         panel_id = "sources-status-table"
         columns = [
@@ -294,63 +322,31 @@ class StorageObjectsTab:
         Aggregating by `parent_source_id` gives one series per *primary*
         source, which is what users actually think of.
 
-        Two-query outer-join pattern for friendly names:
+        TODO(self-managed): the cloud-only `v2_mz_source_status` metric (used
+        to enrich `parent_source_id` with a friendly `source_name`) has no
+        self-managed equivalent, so the friendly-name outer-join is dropped
+        here and the legend is `parent_source_id`. Translate ids via `SELECT
+        id, name FROM mz_sources`. The underlying `mz_source_bytes_received`
+        metric itself is clusterd-side and DOES exist on self-managed, but the
+        test env has no sources so this could not be verified live.
 
-        1. **Named branch** — `parent_source_id` joined to `source_id` from
-           `v2_mz_source_status` via `label_replace`, pulling `source_name`
-           in via `group_left`. Legend uses `{{source_name}}`.
-        2. **Orphan branch** — same aggregate `unless on (parent_source_id)`
-           the join's right-hand side. Catches primary sources that don't
-           appear in `v2_mz_source_status` (which silently happens for some
-           source types in some envs). Legend falls back to
-           `{{parent_source_id}}`.
-
-        Both branches apply `> 0` so idle sources don't clutter the chart.
-        Log Y-axis because real workloads span kB/s to tens of MB/s, and
-        linear scale flattens the smaller sources against the X-axis.
+        `> 0` so idle sources don't clutter the chart. Log Y-axis because real
+        workloads span kB/s to tens of MB/s, and linear scale flattens the
+        smaller sources against the X-axis.
         """
         panel_id = "sources-bytes-received-rate"
-        # The status metric is env-scoped; we re-label `source_id` →
-        # `parent_source_id` so it can join against the bytes-received
-        # aggregate (which is per primary).
-        status_with_parent_label = (
-            "label_replace("
-            "avg by (source_id, source_name) ("
-            "v2_mz_source_status{$environmentFilter}"
-            "),"
-            ' "parent_source_id", "$1", "source_id", "(.*)"'
-            ")"
+
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (parent_source_id) (
+                        rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    ) > 0
+                    """
+                )
+            ).legend_format("{{parent_source_id}}"),
         )
-
-        named_query = promql_query(
-            textwrap.dedent(
-                f"""
-                (
-                    sum by (parent_source_id) (
-                        rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                    )
-                    * on (parent_source_id) group_left (source_name)
-                    {status_with_parent_label}
-                ) > 0
-                """
-            )
-        ).legend_format("{{source_name}}")
-
-        orphan_query = promql_query(
-            textwrap.dedent(
-                f"""
-                (
-                    sum by (parent_source_id) (
-                        rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                    )
-                    unless on (parent_source_id)
-                    {status_with_parent_label}
-                ) > 0
-                """
-            )
-        ).legend_format("{{parent_source_id}}")
-
-        query = query_group(named_query, orphan_query)
 
         self.dashboard.add_panel(
             panel_id,
@@ -361,12 +357,9 @@ class StorageObjectsTab:
                 "second pulled from upstream.** Subsources (e.g., "
                 "per-table Postgres replication subsources) are "
                 "aggregated up to their primary, so each line represents "
-                "one logical source. Series with a match in "
-                "`v2_mz_source_status` show as `source_name`; sources "
-                "missing from the status metric fall back to "
-                "`parent_source_id` (a metric-side gap that happens for "
-                "some source types in some envs, not a problem with the "
-                "source itself). Idle sources are filtered out (`> 0`). "
+                "one logical source. The legend is `parent_source_id` — "
+                "translate it to a name via `SELECT id, name FROM "
+                "mz_sources`. Idle sources are filtered out (`> 0`). "
                 "Log Y-axis so kB/s and tens-of-MB/s sources share the "
                 "chart. Scoped to the selected clusters/replicas."
             )
@@ -410,6 +403,10 @@ class StorageObjectsTab:
         surfaces that mix instead of collapsing it.
 
         `v2_mz_sinks_count` is env-scoped — no cluster filter.
+
+        TODO(self-managed): `v2_mz_sinks_count` is cloud-only with no
+        self-managed equivalent, so this donut has no data here (the no_value
+        explains the blank). Kept for cloud parity.
         """
         panel_id = "sinks-types"
         query = query_group(
@@ -484,10 +481,9 @@ class StorageObjectsTab:
                 "**Outbound throughput per sink — bytes per second "
                 "successfully committed to the downstream system** "
                 "(Kafka broker, Iceberg catalog, etc.). Log Y-axis so "
-                "low- and high-volume sinks share the chart. Unlike "
-                "sources, there's no `v2_mz_sink_status` metric — the "
-                "legend uses `sink_id` rather than a friendly name; "
-                "look the id up via `SELECT id, name FROM mz_sinks;`. "
+                "low- and high-volume sinks share the chart. The legend "
+                "uses `sink_id` rather than a friendly name; look the id "
+                "up via `SELECT id, name FROM mz_sinks;`. "
                 "Idle sinks are filtered out (`> 0`). Scoped to the "
                 "selected clusters/replicas."
             )

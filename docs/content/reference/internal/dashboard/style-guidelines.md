@@ -313,36 +313,46 @@ container_cpu_usage_seconds_total{$containerFilter, pod!~"<NONCLUSTER_POD_RE>"}
 
 Putting the regex constants at module scope (next to `CADVISOR_MISSING` etc.) keeps them shareable across all panels in the file and prevents drift between numerator and denominator patterns.
 
+## Deployment target: self-managed vs cloud
+
+**The dashboards target self-managed Materialize.** This is the single most important fact for choosing metrics and labels, and it was a late-breaking correction — the original assumptions (below, and in earlier git history) were written against Materialize Cloud and are **wrong for self-managed**:
+
+- **No `v2_mz_*` metrics.** The entire `v2_mz_*` family comes from the cloud-only promsql-exporter and is **absent** on self-managed. Always use the `mz_*` metric exported by environmentd/clusterd directly. (This reverses the old "prefer `v2_mz_` when both exist" guidance.)
+- **No `materialize_cloud_organization_id`.** Environments are identified by **`materialize_cloud_organization_name`** (and the k8s namespace they run in, `materialize_cloud_organization_namespace` / `kubernetes_namespace`). The hex org id is cloud-only.
+- **No `materialize_cloud_availability_zone`.** AZ/topology is a cloud concept; absent on self-managed.
+- **No `cluster_environmentd_materialize_cloud_cluster_name` / `*_replica_name`.** The long-form *id* labels exist; their *name* companions do not — legend/group-by on the ids.
+
+When verifying, query the live instance for what actually exists (`list_prometheus_metric_names`, `list_prometheus_label_names`) rather than trusting a remembered metric name.
+
 ## Materialize metric label families
 
-Materialize metrics come from two scraper paths with **different label naming conventions**. Picking the wrong filter is a common failure mode.
+Materialize `mz_*` metrics come from two scraper paths with **different label naming conventions**. Picking the wrong filter is a common failure mode.
 
-**Short-form** (env-scoped pre-calc and envd-side metrics):
+**Short-form** (envd-side and most metrics):
 
 - `instance_id` (this is the cluster id)
 - `replica_id`
+- `replica_full_name` (= `<cluster_name>.<replica_name>`, e.g. `quickstart.r1`) — on some metrics; the only place a friendly cluster name appears on the data-plane metrics.
 
-Examples: `v2_mz_compute_hydration_time_seconds`, `v2_mz_compute_replica_peek_duration_seconds_*`, `v2_mz_dataflow_elapsed_seconds_total`, `mz_active_subscribes`, `mz_compute_controller_*`, `mz_query_total`, `mz_adapter_commands`.
+Examples: `mz_dataflow_elapsed_seconds_total`, `mz_arrangement_record_count`, `mz_active_subscribes`, `mz_compute_controller_*`, `mz_query_total`, `mz_adapter_commands`. Note `mz_compute_peek_duration_seconds_*` has `instance_id` but **no `replica_id`** (envd-side, per-cluster only).
 
-**Long-form** (compute-side metrics, scraped from clusterd):
+**Long-form** (some clusterd-scraped metrics):
 
 - `cluster_environmentd_materialize_cloud_cluster_id`
-- `cluster_environmentd_materialize_cloud_cluster_name`
 - `cluster_environmentd_materialize_cloud_replica_id`
-- `cluster_environmentd_materialize_cloud_replica_name`
 - `cluster_environmentd_materialize_cloud_replica_role`
-- `cluster_environmentd_materialize_cloud_workers` (cluster size)
+- `cluster_environmentd_materialize_cloud_size` / `*_scale` / `*_workers`
 - `worker_id`
 
-Examples: `mz_arrangement_maintenance_seconds_total`, `mz_compute_replica_history_dataflow_count`, `mz_source_*`, `mz_sink_*`.
+Examples: `mz_arrangement_maintenance_seconds_total`, `mz_compute_replica_history_dataflow_count`, and (expected, unverified — no sources/sinks in the test env) `mz_source_*` / `mz_sink_*`. The `*_cluster_name` / `*_replica_name` companions are **absent on self-managed** — legend and group-by on the `*_cluster_id` / `*_replica_id` labels instead.
 
-**Pre-calc metrics with NO cluster labels** (env-scoped only):
+**Cluster/replica info metric:** `mz_compute_cluster_status` is the richest — it carries `compute_cluster_id`, `compute_cluster_name`, `compute_replica_id`, `compute_replica_name`, `size`, and `mz_version`. It backs the cluster picker variable and the Cluster Information table.
 
-`v2_mz_sources_count`, `v2_mz_sinks_count`, `v2_mz_tables_count`, `v2_mz_views_count`, `v2_mz_indexes_count`, `v2_mz_mzd_views_count`, `v2_mz_source_status`, `mz_active_subscribes`. These get the `ENV_SCOPED_NOTE` callout in descriptions.
+**Env-scoped counts with NO cluster labels:** `mz_tables_count`, `mz_views_count`, `mz_mzd_views_count` (materialized views), `mz_clusters_count`, `mz_cluster_reps_count`, `mz_active_subscribes`. These get the `ENV_SCOPED_NOTE` callout in descriptions. **No self-managed equivalent exists** for source/sink/index counts or source/sink status (the cloud-only `v2_mz_sources_count` / `v2_mz_sinks_count` / `v2_mz_indexes_count` / `v2_mz_source_status` / `v2_mz_production_object`); panels that need them are kept with a `TODO(self-managed)` and a `no_value`.
 
 **Helper constants for filtering**:
 
-- `_COMPUTE_FILTER` (in `storage_objects.py`) — long-form filter on env + cluster + replica.
+- `_COMPUTE_FILTER` (in `storage_objects.py`) — long-form filter on env + cluster + replica (`materialize_cloud_organization_name` + `cluster_environmentd_materialize_cloud_cluster_id`/`_replica_id`).
 - `_ARRANGEMENT_FILTER` (in `compute_objects.py`) — same shape, different module. Originally arrangement-specific, now reused for dataflows.
 - These two constants are **the same PromQL fragment** in two places; lifting them to a shared module is a known cleanup candidate.
 
@@ -350,16 +360,14 @@ Examples: `mz_arrangement_maintenance_seconds_total`, `mz_compute_replica_histor
 
 Things that have surprised us during development; worth knowing before touching the relevant panels.
 
-- **"Peek" is the read-query latency metric.** No "query" in the name. `v2_mz_compute_replica_peek_duration_seconds_*` is the histogram for read-query latency on indexed data (the differential-dataflow operation behind `SELECT … FROM <view>`).
-- **No `v2_mz_sink_status`** analog of `v2_mz_source_status`. Sink panels show `sink_id` rather than friendly names; translate via `SELECT id, name FROM mz_sinks`.
-- **`v2_mz_source_status` doesn't cover all sources in all envs.** Some primary sources visible in `mz_source_bytes_received` (via `parent_source_id`) don't appear in `v2_mz_source_status`. The Source Bytes Received panel uses an outer-join pattern to handle this gracefully (see [PromQL recipes](#promql-recipes)).
-- **`mz_source_bytes_received.source_id` is the *subsource* id**, not the primary. The primary lives in `parent_source_id`. Postgres sources fan out one bytes_received series per replicated table. Aggregate by `parent_source_id` to get per-primary rates.
+- **`mz_` over `v2_mz_` — always, on self-managed.** The `v2_mz_*` family does not exist here (see [Deployment target](#deployment-target-self-managed-vs-cloud)). This reverses earlier guidance; treat any `v2_mz_*` reference in old code or notes as a bug.
+- **"Peek" is the read-query latency metric.** No "query" in the name. `mz_compute_peek_duration_seconds_*` is the histogram for read-query latency on indexed data (the differential-dataflow operation behind `SELECT … FROM <view>`). It is envd-side: it carries `instance_id` but **no `replica_id`**, so peek latency is per-cluster, not per-replica.
+- **No catalog count/status metrics on self-managed for sources/sinks/indexes.** `v2_mz_sources_count`, `v2_mz_sinks_count`, `v2_mz_indexes_count`, `v2_mz_source_status`, `v2_mz_production_object` are all cloud-only with no `mz_` equivalent. Counts that survive: `mz_tables_count`, `mz_views_count`, `mz_mzd_views_count`, `mz_clusters_count`, `mz_cluster_reps_count`. For source/sink *status* use SQL (`mz_internal.mz_source_statuses` / `mz_sinks`). Panels needing the missing metrics are kept with `TODO(self-managed)` + `no_value`.
+- **`mz_source_bytes_received.source_id` is the *subsource* id**, not the primary. The primary lives in `parent_source_id`. Postgres sources fan out one bytes_received series per replicated table. Aggregate by `parent_source_id` to get per-primary rates. (No friendly-name join is available — `v2_mz_source_status` is cloud-only — so the legend is `parent_source_id`.)
 - **`mz_sink_oustanding_progress_records` is misspelled** in Materialize itself ("oustanding" not "outstanding"). Don't "fix" the PromQL — match the metric name as-is.
 - **`mz_compute_controller_subscribe_count` vs `mz_active_subscribes` trade-off**: the former has `instance_id` (cluster-filterable) but no `session_type`; the latter has `session_type` but no cluster labels. The summary tab uses `mz_active_subscribes` for the session_type donut, accepting the loss of cluster filtering.
-- **`v2_mz_production_object`** is the only catalog metric with `cluster_id` — useful for cluster-filtered counts of indexes, materialized views, and sources (`type=` values are `index`, `materialized-view`, `source`).
 - **`s2` is the `mz_catalog_server` cluster** and dominates many panels (commit rates, peek counts, arrangement maintenance, hydration). It's a system cluster and the noise floor is its business-as-usual. Mention this explicitly in panel descriptions where users might mistake it for an anomaly.
-- **`v2_mz` vs `mz_` prefix convention**: prefer `v2_mz` when both exist. v2 metrics come from the newer promsql-exporter and are typically env-level pre-calculations; `mz_` metrics come from clusterd/envd scrapers and are richer in cluster/replica labels.
-- **`v2_mz_sources_count` and `v2_mz_sinks_count` carry breakdown labels** (`type`, `envelope_type`, `size`). A naive `max(...)` returns the largest single bucket, not the total. Use `max(sum by (instance) (...))` to dedup across exporter pods *and* sum over the breakdown labels in one shot. See `_env_total_count_query` in `storage_objects.py`.
+- **Source/sink metrics couldn't be verified live.** The test self-managed env has no sources/sinks, so no `mz_source_*` / `mz_sink_*` series exist to inspect. The storage-tab queries use the `_COMPUTE_FILTER` long-form labels inferred from the arrangement metrics (same clusterd-side family); re-verify against an env that actually runs a source and a sink.
 
 ## PromQL recipes
 
@@ -381,7 +389,7 @@ When one metric has the value you want and another has the friendly name, you ca
  label_replace(<name_query>, "<key>", "$1", "<source_key>", "(.*)")) > 0
 ```
 
-Each branch goes into its own `promql_query(...)` in the panel; their legends can differ (e.g., `{{source_name}}` for the named branch and `{{parent_source_id}}` for the orphan). Real example: `_source_bytes_received_panel` in `storage_objects.py`.
+Each branch goes into its own `promql_query(...)` in the panel; their legends can differ (e.g., `{{source_name}}` for the named branch and `{{parent_source_id}}` for the orphan). This pattern was used by `_source_bytes_received_panel` to enrich `parent_source_id` with `source_name` from `v2_mz_source_status` — but that status metric is **cloud-only**, so on self-managed the panel keeps just the `parent_source_id` aggregate (no name join). The recipe is still the right shape whenever a self-managed name metric is available.
 
 ### Table pivot via `groupingToMatrix`
 
@@ -412,7 +420,7 @@ histogram_quantile(0.99,
 )
 ```
 
-Real examples: `_peek_latency_panel` (per cluster_id/replica_id), `_iceberg_commit_latency_panel` (aggregated env-wide).
+Real examples: `_peek_latency_panel` (per `instance_id` — the metric has no `replica_id`), `_iceberg_commit_latency_panel` (aggregated env-wide).
 
 ### `or vector(0)` to keep panels non-empty
 
@@ -426,13 +434,13 @@ Real example: `add_currently_hydrating_panel`.
 
 ### Per-cluster aggregation that handles label breakdowns
 
-To get a single env-wide count from a metric with breakdown labels (like `v2_mz_sources_count.type`/`envelope_type`/`size`), without falling for the "max grabs the biggest bucket, not the total" trap:
+To get a single env-wide count from a metric that may carry breakdown labels (like a `type`/`size` split), without falling for the "max grabs the biggest bucket, not the total" trap:
 
 ```promql
 max(sum by (instance) (<metric>{$environmentFilter})) or vector(0)
 ```
 
-`sum by (instance)` collapses all label dimensions per scraper instance, then `max(...)` dedups across multiple promsql-exporter pods if there's more than one. Real example: `_env_total_count_query` in `storage_objects.py`.
+`sum by (instance)` collapses all label dimensions per scraper instance, then `max(...)` dedups across multiple exporter pods if there's more than one. Real example: `_env_total_count_query` in `storage_objects.py` (used for `mz_tables_count`; the source/sink count callers have no self-managed metric and read 0 via `or vector(0)`).
 
 ### Cluster + non-cluster pod split
 
