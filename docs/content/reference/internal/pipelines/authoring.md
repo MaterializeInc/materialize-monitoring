@@ -314,3 +314,9 @@ mz-monitoring-build gen-pipelines \
 ```
 
 The Makefile target `make pipelines` invokes this once per target and then runs `alloy validate` on the rendered output as a second-layer sanity check. Both layers should be green before merging.
+
+### Schemas are embedded at compile time
+
+The schemas are baked into the binary with `include_str!` (see `validate.rs`). **After editing any `schemas/alloy/*.yaml`, rebuild the binary (`cargo build --bin mz-monitoring-build`, or just use `make pipelines`, which depends on it) before a manual `gen-pipelines`.** Otherwise the renderer validates against the *stale* embedded schema and reports confusing "doesn't match any typed schema" errors for blocks that are actually valid. Note the asymmetry: `cargo test` recompiles the library, so unit tests pick up schema edits immediately — meaning **tests can pass while a manual `gen-pipelines` of the same construct fails** purely because the binary is stale. If a render rejects something your tests accept, rebuild first.
+
+A brand-new schema *file* additionally needs registering in `validate.rs`: a `SCHEMA_*` `include_str!`, an `ID_*` constant whose value matches the file's `$id` exactly, and an entry in the `Registry` list. Keep the filename, the `$id` tail, the relative `$ref`s that target it, and the `ID_*` constant all in agreement (see [Cross-file `$ref`s](#cross-file-refs) above).
