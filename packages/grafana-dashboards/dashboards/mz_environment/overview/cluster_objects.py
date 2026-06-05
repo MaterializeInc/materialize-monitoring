@@ -42,7 +42,7 @@ class ClusterObjectsTab:
                     """
                     count(
                         group by (compute_cluster_id) (
-                            v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList"}
+                            mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList"}
                         )
                     )
                     """
@@ -53,7 +53,7 @@ class ClusterObjectsTab:
                     """
                     count(
                         group by (compute_cluster_id) (
-                            v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_cluster_id=~"^s.*"}
+                            mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_cluster_id=~"^s.*"}
                         )
                     )
                     """
@@ -98,7 +98,7 @@ class ClusterObjectsTab:
                     """
                     count(
                         group by (compute_cluster_id, compute_replica_id) (
-                            v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
+                            mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
                         )
                     )
                     """
@@ -109,7 +109,7 @@ class ClusterObjectsTab:
                     """
                     count(
                         group by (compute_cluster_id, compute_replica_id) (
-                            v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList", compute_replica_name!="r1"}
+                            mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList", compute_replica_name!="r1"}
                         )
                     ) or vector(0)
                     """
@@ -149,7 +149,7 @@ class ClusterObjectsTab:
                 textwrap.dedent(
                     """
                     count by (size) (
-                        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
+                        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
                     )
                     """
                 )
@@ -189,18 +189,22 @@ class ClusterObjectsTab:
     def _az_distribution_panel(self):
         """Show distribution of replicas across availability zones."""
         panel_id = "replica-azs"
-        # FIXME: label name may be updated in later versions
+        # TODO(self-managed): `materialize_cloud_availability_zone` is a cloud-only
+        # label and is absent on self-managed instances, so this panel has no data
+        # there. Kept for cloud parity; the no_value below explains the blank. When
+        # a self-managed AZ/topology signal exists (e.g. a node topology label
+        # joined via kube_pod_info), switch this query over to it.
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
                     sum by (materialize_cloud_availability_zone) (
                         count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (
-                            v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
+                            mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
                         )
                         or
                         count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (
-                            v2_mz_compute_cluster_status{}
+                            mz_compute_cluster_status{}
                         ) * 0
                     )
                     """
@@ -252,9 +256,10 @@ class ClusterObjectsTab:
             dashboardv2_builders.Row()
             .title("Replication / Availability")
             .layout(
-                dashboardv2_builders.AutoGrid()
-                .with_item(self._instance_sizes_panel())
-                .with_item(self._az_distribution_panel())
+                dashboardv2_builders.AutoGrid().with_item(self._instance_sizes_panel())
+                # FIXME: AZ panel doesn't serve much value in its current form
+                # it is also cloud-only
+                # .with_item(self._az_distribution_panel())
             )
         )
 
@@ -278,7 +283,7 @@ class ClusterObjectsTab:
                 promql_query(
                     textwrap.dedent(
                         """
-                        v2_mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
+                        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
                         """
                     )
                 ).instant()
@@ -320,7 +325,7 @@ class ClusterObjectsTab:
                     {
                         "excludeByName": {
                             "Time": True,
-                            "v2_mz_compute_cluster_status": True,
+                            "mz_compute_cluster_status": True,
                         },
                         "indexByName": {
                             column_name: columns.index(column_name)
