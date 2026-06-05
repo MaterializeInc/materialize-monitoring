@@ -18,8 +18,9 @@ from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import palette, visualization
 
-CADVISOR_MISSING = "No metrics: cadvisor/node-exporter is required"
+CADVISOR_MISSING = "No metrics: cadvisor metrics are required (via kubelet)"
 KSM_MISSING = "No metrics: kube-state-metrics is required"
+CADVISOR_KSM_MISSING = "No metrics: cadvisor and kube-state-metrics are required"
 
 # Pod-name regex matchers for cluster-replica pods vs everything else.
 # Used as PromQL label values inside pod=~"…" / pod!~"…" matchers.
@@ -359,7 +360,7 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 timeseries.Visualization()
                 .unit("percentunit")
-                .no_value(CADVISOR_MISSING)
+                .no_value(CADVISOR_KSM_MISSING)
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )

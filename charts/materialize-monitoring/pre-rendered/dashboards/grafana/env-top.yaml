@@ -1282,7 +1282,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 thresholds:
                   mode: absolute
                   steps:
@@ -1976,7 +1976,7 @@ spec:
                 color:
                   fixedColor: '#0077BB'
                   mode: shades
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: cores
               overrides: []
             options:
@@ -2033,7 +2033,7 @@ spec:
                 color:
                   fixedColor: '#0077BB'
                   mode: shades
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: bytes
               overrides: []
             options:
@@ -2090,7 +2090,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 thresholds:
                   mode: absolute
                   steps:
@@ -2260,7 +2260,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 thresholds:
                   mode: absolute
                   steps:
@@ -2373,7 +2373,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor and kube-state-metrics are required'
                 unit: percentunit
               overrides: []
             options:
@@ -2460,7 +2460,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: percentunit
               overrides: []
             options:
@@ -2576,7 +2576,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: pps
               overrides: []
             options:
@@ -2691,7 +2691,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: cps
               overrides: []
             options:
@@ -2769,7 +2769,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: Bps
               overrides: []
             options:
@@ -2846,7 +2846,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: Bps
               overrides: []
             options:
@@ -4313,12 +4313,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (type, envelope_type) (\n    v2_mz_sinks_count{$environmentFilter}\n\
+                    expr: "\nsum by (type, envelope_type) (\n    mz_sinks_count{$environmentFilter}\n\
                       ) > 0\n"
                     instant: true
                     legendFormat: '{{type}} / {{envelope_type}}'
                     qryType: 1
-                    query: "\nsum by (type, envelope_type) (\n    v2_mz_sinks_count{$environmentFilter}\n\
+                    query: "\nsum by (type, envelope_type) (\n    mz_sinks_count{$environmentFilter}\n\
                       ) > 0\n"
                     range: false
                   version: v0
@@ -4449,14 +4449,14 @@ spec:
                   spec:
                     expr: '
 
-                      v2_mz_source_status{$environmentFilter}
+                      mz_source_status{$environmentFilter}
 
                       '
                     instant: true
                     qryType: 1
                     query: '
 
-                      v2_mz_source_status{$environmentFilter}
+                      mz_source_status{$environmentFilter}
 
                       '
                     range: false
@@ -4557,12 +4557,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (type) (\n    v2_mz_sources_count{$environmentFilter}\n\
+                    expr: "\nsum by (type) (\n    mz_sources_count{$environmentFilter}\n\
                       ) > 0\n"
                     instant: true
                     legendFormat: '{{type}}'
                     qryType: 1
-                    query: "\nsum by (type) (\n    v2_mz_sources_count{$environmentFilter}\n\
+                    query: "\nsum by (type) (\n    mz_sources_count{$environmentFilter}\n\
                       ) > 0\n"
                     range: false
                   version: v0
@@ -4624,11 +4624,11 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax(\n    sum by (instance) (v2_mz_sinks_count{$environmentFilter})\n\
+                    expr: "\nmax(\n    sum by (instance) (mz_sinks_count{$environmentFilter})\n\
                       ) or vector(0)\n"
-                    legendFormat: v2_mz_sinks_count
+                    legendFormat: mz_sinks_count
                     qryType: 1
-                    query: "\nmax(\n    sum by (instance) (v2_mz_sinks_count{$environmentFilter})\n\
+                    query: "\nmax(\n    sum by (instance) (mz_sinks_count{$environmentFilter})\n\
                       ) or vector(0)\n"
                   version: v0
                 refId: query-0
@@ -4682,11 +4682,11 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax(\n    sum by (instance) (v2_mz_sources_count{$environmentFilter})\n\
+                    expr: "\nmax(\n    sum by (instance) (mz_sources_count{$environmentFilter})\n\
                       ) or vector(0)\n"
-                    legendFormat: v2_mz_sources_count
+                    legendFormat: mz_sources_count
                     qryType: 1
-                    query: "\nmax(\n    sum by (instance) (v2_mz_sources_count{$environmentFilter})\n\
+                    query: "\nmax(\n    sum by (instance) (mz_sources_count{$environmentFilter})\n\
                       ) or vector(0)\n"
                   version: v0
                 refId: query-0
@@ -4830,7 +4830,7 @@ spec:
                 color:
                   fixedColor: '#0077BB'
                   mode: shades
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: cores
               overrides: []
             options:
@@ -4978,7 +4978,7 @@ spec:
                 color:
                   fixedColor: '#0077BB'
                   mode: shades
-                noValue: 'No metrics: cadvisor/node-exporter is required'
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
                 unit: bytes
               overrides: []
             options:
@@ -5627,7 +5627,7 @@ spec:
                       maxColumnCount: 3
                       rowHeightMode: standard
                   title: Kafka Sinks
-          title: Storage Objects
+          title: Sources and Sinks
   links: []
   preload: false
   tags:

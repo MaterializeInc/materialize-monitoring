@@ -316,7 +316,7 @@
                       }
                     ]
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -550,7 +550,7 @@
                       }
                     ]
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -665,7 +665,7 @@
                       }
                     ]
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -834,7 +834,7 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -904,7 +904,7 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -974,7 +974,7 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -1044,7 +1044,7 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -1409,7 +1409,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "percentunit",
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor and kube-state-metrics are required"
                 },
                 "overrides": []
               }
@@ -1499,7 +1499,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "percentunit",
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -1589,7 +1589,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "Bps",
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -1679,7 +1679,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "Bps",
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -1811,7 +1811,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "cps",
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -1943,7 +1943,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "pps",
-                  "noValue": "No metrics: cadvisor/node-exporter is required"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
                 },
                 "overrides": []
               }
@@ -4604,9 +4604,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(\n    sum by (instance) (v2_mz_sources_count{$environmentFilter})\n) or vector(0)\n",
-                        "legendFormat": "v2_mz_sources_count",
-                        "query": "\nmax(\n    sum by (instance) (v2_mz_sources_count{$environmentFilter})\n) or vector(0)\n",
+                        "expr": "\nmax(\n    sum by (instance) (mz_sources_count{$environmentFilter})\n) or vector(0)\n",
+                        "legendFormat": "mz_sources_count",
+                        "query": "\nmax(\n    sum by (instance) (mz_sources_count{$environmentFilter})\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4674,9 +4674,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(\n    sum by (instance) (v2_mz_sinks_count{$environmentFilter})\n) or vector(0)\n",
-                        "legendFormat": "v2_mz_sinks_count",
-                        "query": "\nmax(\n    sum by (instance) (v2_mz_sinks_count{$environmentFilter})\n) or vector(0)\n",
+                        "expr": "\nmax(\n    sum by (instance) (mz_sinks_count{$environmentFilter})\n) or vector(0)\n",
+                        "legendFormat": "mz_sinks_count",
+                        "query": "\nmax(\n    sum by (instance) (mz_sinks_count{$environmentFilter})\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4814,11 +4814,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (type) (\n    v2_mz_sources_count{$environmentFilter}\n) > 0\n",
+                        "expr": "\nsum by (type) (\n    mz_sources_count{$environmentFilter}\n) > 0\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{type}}",
-                        "query": "\nsum by (type) (\n    v2_mz_sources_count{$environmentFilter}\n) > 0\n",
+                        "query": "\nsum by (type) (\n    mz_sources_count{$environmentFilter}\n) > 0\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4898,10 +4898,10 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nv2_mz_source_status{$environmentFilter}\n",
+                        "expr": "\nmz_source_status{$environmentFilter}\n",
                         "instant": true,
                         "range": false,
-                        "query": "\nv2_mz_source_status{$environmentFilter}\n",
+                        "query": "\nmz_source_status{$environmentFilter}\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5109,11 +5109,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (type, envelope_type) (\n    v2_mz_sinks_count{$environmentFilter}\n) > 0\n",
+                        "expr": "\nsum by (type, envelope_type) (\n    mz_sinks_count{$environmentFilter}\n) > 0\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{type}} / {{envelope_type}}",
-                        "query": "\nsum by (type, envelope_type) (\n    v2_mz_sinks_count{$environmentFilter}\n) > 0\n",
+                        "query": "\nsum by (type, envelope_type) (\n    mz_sinks_count{$environmentFilter}\n) > 0\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -6972,7 +6972,7 @@
                   ]
                 }
               },
-              "title": "Storage Objects"
+              "title": "Sources and Sinks"
             }
           }
         ]

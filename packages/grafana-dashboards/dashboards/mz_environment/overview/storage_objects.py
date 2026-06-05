@@ -26,14 +26,14 @@ from dashboards import palette, threshold, visualization
 
 # Clusterd-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
 # long-form `cluster_environmentd_materialize_cloud_*` id label family — the
-# same convention confirmed on the arrangement/dataflow metrics. This is the
-# PromQL fragment that filters by env + cluster + replica using those labels.
+# same convention as the arrangement/dataflow metrics. Verified directly
+# against live `mz_source_bytes_received` / `mz_sink_bytes_committed` series.
 #
-# TODO(self-managed): this filter's label family is inferred from the
-# arrangement metrics (clusterd-side, same family). It could not be verified
-# directly because the test environment has no sources/sinks, so no
-# mz_source_*/mz_sink_* series exist to inspect. Re-check the labels against a
-# self-managed env that actually runs a source and a sink.
+# NOTE: the `$mzClusterList` picker is built from `mz_compute_cluster_status`,
+# which lists *compute* clusters only — a storage-only ingest cluster won't
+# appear there. With the default "All" (`.*`) selection these panels show
+# everything; selecting a specific compute cluster will hide storage objects
+# that live on a dedicated ingest cluster.
 _COMPUTE_FILTER = (
     "$environmentFilter, "
     'cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", '
@@ -44,6 +44,20 @@ _COMPUTE_FILTER = (
 # cluster_id/instance_id labels, so the dashboard cluster/replica filters
 # don't change these stats. Surfaced in panel descriptions.
 ENV_SCOPED_NOTE = "Environment-scoped — not affected by the cluster/replica filters."
+
+# JOB DEDUP: several clusterd metrics (mz_source_*, mz_sink_*, mz_arrangement_*)
+# are scraped by more than one Prometheus job hitting the same :6878 endpoint,
+# so each underlying series appears N times differing only by `job`. A plain
+# `sum(rate(...))` then multiplies the real value by N. Wrap the inner
+# counter/gauge in `max without (job) (...)` to collapse those redundant copies
+# back to one series BEFORE the outer aggregation; it is a no-op once the scrape
+# config is deduped (1 job -> max of 1). `max by (...)` panels already collapse
+# `job` implicitly, so they need no wrap.
+#
+# We deliberately do NOT filter on a job name: the authoritative job name varies
+# by deployment, and on this instance several metrics live ONLY on a so-called
+# "legacy" job (cluster_status, storage_objects, dataflow_elapsed, the *_count
+# metrics), so excluding job names by pattern would blank real panels.
 
 STORAGE_THEME = palette.THEME_PALETTE[
     4
@@ -59,10 +73,11 @@ def _env_total_count_query(metric_name: str):
     `or vector(0)` keeps the panel showing 0 (not "No data") when no series
     exist for the metric in this env.
 
-    Self-managed has `mz_tables_count` / `mz_views_count` / `mz_mzd_views_count`
-    but NO source/sink count metric (the cloud-only `v2_mz_sources_count` /
-    `v2_mz_sinks_count` have no equivalent), so source/sink count panels read 0
-    via `or vector(0)` until such a metric exists. See per-panel TODOs.
+    Used here for catalog counts that have no breakdown-doubling concern
+    (`mz_tables_count`). For sources/sinks, prefer `_storage_object_count_query`
+    — `mz_sources_count` / `mz_sinks_count` fold the hidden `<name>_progress`
+    subsources into their per-connector-type counts (e.g. 3 Postgres sources
+    report `type="postgres"` = 6), so they over-count actual objects.
     """
     return query_group(
         promql_query(
@@ -77,6 +92,33 @@ def _env_total_count_query(metric_name: str):
     )
 
 
+def _storage_object_count_query(object_kind: str):
+    """Count distinct source/sink objects from `mz_storage_objects`.
+
+    `mz_storage_objects` emits one series per (object, replica) with a `type`
+    label of `source` / `sink`, an `id`, and `object_type` / `connection_type`
+    / `envelope_type` describing the connector. Crucially it does **not**
+    include the hidden `<name>_progress` subsources, so
+    `count(group by (id) (...))` is the true catalog count — progress-free and
+    deduped across replicas. `or vector(0)` keeps the stat at 0 (not "No data")
+    when none exist. Env-scoped: not filtered by the cluster picker (which only
+    lists compute clusters; ingest clusters are storage-only).
+    """
+    return query_group(
+        promql_query(
+            textwrap.dedent(
+                f"""
+                count(
+                    group by (id) (
+                        mz_storage_objects{{$environmentFilter, type="{object_kind}"}}
+                    )
+                ) or vector(0)
+                """
+            )
+        ).legend_format(f"{object_kind}s"),
+    )
+
+
 class StorageObjectsTab:
     """Storage Objects tab on Overview Dashboard."""
 
@@ -84,12 +126,7 @@ class StorageObjectsTab:
         self.dashboard = dashboard
 
     def _active_sources_panel(self):
-        """Active sources count (env-scoped, multi-label-dedup).
-
-        TODO(self-managed): `v2_mz_sources_count` is cloud-only with no
-        self-managed equivalent, so this reads 0 (via `or vector(0)`) here.
-        Swap to a catalog source-count metric when one exists.
-        """
+        """Active sources count from mz_storage_objects (progress-free)."""
         panel_id = "storage-active-sources"
         self.dashboard.add_panel(
             panel_id,
@@ -100,22 +137,19 @@ class StorageObjectsTab:
                 "is a continuous ingestion connection from an external "
                 "system (Kafka, Postgres, MySQL, S3, etc.) — so this count "
                 "is roughly the number of upstream feeds the environment "
-                "is maintaining. See _Sources_ row below for type "
-                "breakdown and per-source throughput. "
+                "is maintaining. Counts distinct source objects (the hidden "
+                "per-source `_progress` subsources are excluded), so it "
+                "matches what you'd see in `mz_sources`. See _Sources_ row "
+                "below for type breakdown and per-source throughput. "
                 f"{ENV_SCOPED_NOTE}"
             )
-            .data(_env_total_count_query("v2_mz_sources_count"))
+            .data(_storage_object_count_query("source"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
 
     def _active_sinks_panel(self):
-        """Active sinks count (env-scoped, multi-label-dedup).
-
-        TODO(self-managed): `v2_mz_sinks_count` is cloud-only with no
-        self-managed equivalent, so this reads 0 (via `or vector(0)`) here.
-        Swap to a catalog sink-count metric when one exists.
-        """
+        """Active sinks count from mz_storage_objects (progress-free)."""
         panel_id = "storage-active-sinks"
         self.dashboard.add_panel(
             panel_id,
@@ -125,11 +159,12 @@ class StorageObjectsTab:
                 "**Number of active sinks in the catalog.** Each sink is "
                 "an outbound feed (Kafka, Iceberg, etc.) that emits the "
                 "results of a materialized view or query to an external "
-                "system. See _Sinks_ row below for per-sink throughput "
-                "and lag. "
+                "system. Counts distinct sink objects (excluding hidden "
+                "`_progress` subsources), matching `mz_sinks`. See _Sinks_ "
+                "row below for per-sink throughput and lag. "
                 f"{ENV_SCOPED_NOTE}"
             )
-            .data(_env_total_count_query("v2_mz_sinks_count"))
+            .data(_storage_object_count_query("sink"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
@@ -155,26 +190,28 @@ class StorageObjectsTab:
         return panel_id
 
     def _source_types_panel(self):
-        """Donut: source distribution by `type` (kafka / postgres / mysql / ...).
+        """Donut: source distribution by connector type (kafka / postgres / ...).
 
-        `v2_mz_sources_count` is env-scoped pre-calc — no cluster filter.
-
-        TODO(self-managed): `v2_mz_sources_count` is cloud-only with no
-        self-managed equivalent, so this donut has no data here (the no_value
-        explains the blank). Kept for cloud parity.
+        Counts distinct source `id`s per `object_type` from
+        `mz_storage_objects` — `group by (id, object_type)` first dedups the
+        per-replica series, then `count by (object_type)` gives one slice per
+        connector type. Progress subsources are not present in this metric, so
+        the totals match `mz_sources`. Env-scoped.
         """
         panel_id = "sources-types"
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
-                    sum by (type) (
-                        v2_mz_sources_count{$environmentFilter}
+                    count by (object_type) (
+                        group by (id, object_type) (
+                            mz_storage_objects{$environmentFilter, type="source"}
+                        )
                     ) > 0
                     """
                 )
             )
-            .legend_format("{{type}}")
+            .legend_format("{{object_type}}")
             .instant(),
         )
 
@@ -208,32 +245,32 @@ class StorageObjectsTab:
         return panel_id
 
     def _source_status_table_panel(self):
-        """Table of named sources with their current status.
+        """Catalog table of sources from `mz_storage_objects`.
 
-        `v2_mz_source_status` is an info-style marker metric (value always
-        1); the useful information is in the labels — `source_name`,
-        `source_type`, `status`, `connection_type`, `source_id`.
-        labelsToFields + organize promotes those labels to table columns.
-
-        TODO(self-managed): `v2_mz_source_status` is cloud-only with no
-        self-managed equivalent, so this table has no data here (the no_value
-        explains the blank). For source status on self-managed, query
-        `mz_internal.mz_source_statuses` in SQL until a metric exists.
+        Self-managed exposes no source *status* metric (the cloud-only
+        `v2_mz_source_status` has no equivalent; running/stalled/errored lives
+        in `mz_internal.mz_source_statuses` in SQL). `mz_storage_objects` is
+        the closest metric-side catalog: one series per (object, replica), with
+        `id`, `object_type`, `connection_type`, `envelope_type`, `cluster_id`.
+        `group by (...)` collapses the per-replica duplicates to one row per
+        source; labelsToFields + organize promote the labels to columns.
         """
         panel_id = "sources-status-table"
         columns = [
-            "source_name",
-            "source_type",
-            "status",
+            "id",
+            "object_type",
             "connection_type",
-            "source_id",
+            "envelope_type",
+            "cluster_id",
         ]
         query = (
             query_group(
                 promql_query(
                     textwrap.dedent(
                         """
-                        v2_mz_source_status{$environmentFilter}
+                        group by (id, object_type, connection_type, envelope_type, cluster_id) (
+                            mz_storage_objects{$environmentFilter, type="source"}
+                        )
                         """
                     )
                 ).instant()
@@ -259,14 +296,13 @@ class StorageObjectsTab:
                         "excludeByName": {
                             "Time": True,
                             "Value": True,
-                            "v2_mz_source_status": True,
                         },
                         "renameByName": {
-                            "source_name": "Source Name",
-                            "source_type": "Type",
-                            "status": "Status",
+                            "id": "Source ID",
+                            "object_type": "Type",
                             "connection_type": "Connection",
-                            "source_id": "Source ID",
+                            "envelope_type": "Envelope",
+                            "cluster_id": "Cluster",
                         },
                         "indexByName": {
                             column: idx for idx, column in enumerate(columns)
@@ -281,7 +317,7 @@ class StorageObjectsTab:
                 .options(
                     {
                         "fields": {},
-                        "sort": [{"field": "Source Name"}],
+                        "sort": [{"field": "Source ID"}],
                     }
                 )
             )
@@ -290,17 +326,18 @@ class StorageObjectsTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Sources by Status")
+            .title("Sources")
             .description(
-                "**Per-source status table with `source_name`, type, "
-                "current status, and connection info.** Status `running` "
-                "is the steady state; `stalled` means the source is "
-                "paused (often during catchup or after an error); "
-                "`errored` indicates a hard failure. `stalled` isn't "
-                "always bad — Postgres sources stall briefly during "
-                "their initial snapshot, for example. For active "
-                "throughput see _Source Bytes Received (rate)_; for "
-                "richer source metadata use `SELECT * FROM mz_sources;`."
+                "**Catalog of sources running in the environment — one row "
+                "per source with its connector type, envelope, and the "
+                "cluster it ingests on.** Self-managed Materialize exposes no "
+                "source *status* metric, so running/stalled/errored isn't "
+                "shown here — check live status with `SELECT name, type, "
+                "status FROM mz_internal.mz_source_statuses;`, and use _Source "
+                "Bytes Received (rate)_ to confirm a source is actively "
+                "ingesting. Translate `Source ID` to a name via `SELECT id, "
+                "name FROM mz_sources`. The hidden `_progress` subsources are "
+                "excluded, so the row count matches _Active Sources_."
             )
             .data(query)
             .visualization(
@@ -341,7 +378,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (parent_source_id) (
-                        rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     ) > 0
                     """
                 )
@@ -396,30 +435,30 @@ class StorageObjectsTab:
     # ---- Sinks: universal ----
 
     def _sink_types_panel(self):
-        """Donut: sinks broken down by (type, envelope_type).
+        """Donut: sinks broken down by (connector type, envelope_type).
 
         Kafka has both `debezium` and `upsert` envelopes in practice;
         Iceberg is upsert-only as of writing. Keying on the pair
         surfaces that mix instead of collapsing it.
 
-        `v2_mz_sinks_count` is env-scoped — no cluster filter.
-
-        TODO(self-managed): `v2_mz_sinks_count` is cloud-only with no
-        self-managed equivalent, so this donut has no data here (the no_value
-        explains the blank). Kept for cloud parity.
+        Counts distinct sink `id`s per `(object_type, envelope_type)` from
+        `mz_storage_objects` — `group by (id, ...)` first dedups the per-replica
+        series. Env-scoped.
         """
         panel_id = "sinks-types"
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
-                    sum by (type, envelope_type) (
-                        v2_mz_sinks_count{$environmentFilter}
+                    count by (object_type, envelope_type) (
+                        group by (id, object_type, envelope_type) (
+                            mz_storage_objects{$environmentFilter, type="sink"}
+                        )
                     ) > 0
                     """
                 )
             )
-            .legend_format("{{type}} / {{envelope_type}}")
+            .legend_format("{{object_type}} / {{envelope_type}}")
             .instant(),
         )
 
@@ -466,7 +505,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     ) > 0
                     """
                 )
@@ -516,8 +557,8 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     clamp_min(
-                        sum by (sink_id) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}})
-                        - sum by (sink_id) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}),
+                        sum by (sink_id) (max without (job) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}}))
+                        - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}})),
                         0
                     )
                     """
@@ -581,7 +622,9 @@ class StorageObjectsTab:
                     f"""
                     histogram_quantile({p},
                         sum by (le) (
-                            rate(mz_sink_iceberg_commit_duration_seconds_bucket{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            max without (job) (
+                                rate(mz_sink_iceberg_commit_duration_seconds_bucket{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
                     )
                     """
@@ -633,7 +676,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_iceberg_commit_failures{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_iceberg_commit_failures{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -642,7 +687,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_iceberg_commit_conflicts{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_iceberg_commit_conflicts{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -684,7 +731,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_iceberg_data_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_iceberg_data_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -693,7 +742,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_iceberg_delete_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_iceberg_delete_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -702,7 +753,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_iceberg_snapshots_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_iceberg_snapshots_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -761,7 +814,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_rdkafka_txerrs{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_rdkafka_txerrs{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -801,7 +856,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        mz_sink_rdkafka_outbuf_msg_cnt{{{_COMPUTE_FILTER}}}
+                        max without (job) (
+                            mz_sink_rdkafka_outbuf_msg_cnt{{{_COMPUTE_FILTER}}}
+                        )
                     )
                     """
                 )
@@ -840,7 +897,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_rdkafka_connects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_rdkafka_connects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -849,7 +908,9 @@ class StorageObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (sink_id) (
-                        rate(mz_sink_rdkafka_disconnects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        max without (job) (
+                            rate(mz_sink_rdkafka_disconnects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
                     )
                     """
                 )
@@ -918,7 +979,7 @@ class StorageObjectsTab:
         """Generate the Storage Objects tab."""
         return (
             dashboardv2_builders.Tab()
-            .title("Storage Objects")
+            .title("Sources and Sinks")
             .layout(
                 dashboardv2_builders.Rows()
                 .row(self.build_summary_row())

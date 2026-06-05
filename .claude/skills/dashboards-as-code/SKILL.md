@@ -105,7 +105,7 @@ The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel` and `memo
 **Compute Objects**
 
 1. Compute Objects Summary — Active MV, Active Indexes, Active Views, Active Subscribes (donut), Index Types (donut)
-2. **Freshness** — **STUB row, no panels yet** (placeholder title only)
+2. **Freshness** — Frontier Lag by Cluster, Most-Lagged Collections (both from `mz_dataflow_wallclock_lag_seconds`, sentinel-filtered)
 3. Hydration — Currently Hydrating, Hydration Queue Size, Slowest Hydrating Collections (top-15 horizontal bar)
 4. Dataflows — Dataflow Count, Dataflow Count (per worker), Dataflow Elapsed Rate (log scale)
 5. Arrangements — Arrangement Rate, Arrangement Rate (per worker), 3 record-count tables (System / User / Transient)
@@ -120,7 +120,7 @@ The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel` and `memo
 
 ## Known stubs and orphans
 
-- **`compute_objects.py` Freshness row** — title-only, reserved for end-to-end freshness/lag metrics. Pick a freshness signal (`mz_internal.mz_materialized_view_refreshes`?) when filling it in.
+- **`compute_objects.py` Freshness row** — filled with `mz_dataflow_wallclock_lag_seconds` (per-cluster max frontier lag + topk laggiest collections). Note the u64::MAX (`~1.8e19`) sentinel for collections with no established frontier — filtered with `< 1e9`; the metric is a summary with `quantile` `0`/`1` only (take `1` for worst-case).
 - **`dataflows.py`** — orphaned after Dataflows became a row inside Compute Objects rather than its own tab. Safe to delete; only referenced from `overview_dashboard.py`'s import history (now removed).
 
 ## Self-managed metric migration (done)
@@ -129,9 +129,18 @@ The dashboard was migrated off the cloud-only `v2_mz_*` family and `materialize_
 
 These panels have **no self-managed metric** and are intentionally kept with a `TODO(self-managed)` + `no_value` (they render blank/0 until a metric exists, rather than being deleted):
 
-- Compute Objects: **Active Indexes** and **Index Types** (`v2_mz_production_object` / `v2_mz_indexes_count`), **Currently Hydrating** and **Slowest Hydrating Collections** (`v2_mz_compute_hydration_time_seconds`).
+- Compute Objects: **Currently Hydrating** and **Slowest Hydrating Collections** (`v2_mz_compute_hydration_time_seconds` — cloud-only, no self-managed equivalent; nearest live signal is `mz_compute_controller_hydration_queue_size`). (**Active Indexes** and **Index Types** were since wired to `mz_indexes_count` — which carries the `relation_type` breakdown and, like `mz_sources_count`/`mz_sinks_count`, only appears once an object of that type exists.)
 - Cluster Objects: **Replica Availability Zones** (`materialize_cloud_availability_zone` is cloud-only).
-- Storage Objects: **Active Sources/Sinks**, **Source Types**, **Sources by Status**, **Sink Types** (no `mz_` count/status metrics). The `mz_source_*` / `mz_sink_*` throughput/lag/Iceberg/Kafka panels use the right metrics but **could not be verified** — the test env has no sources/sinks.
+
+The **Storage / "Sources and Sinks" tab** was later rebuilt against live sources/sinks (real RDS/MSK upstreams on cluster `ingest`):
+
+- **Active Sources/Sinks**, **Source Types**, **Sink Types**, and the **Sources** catalog table now use **`mz_storage_objects`** — the progress-free catalog metric (`count(group by (id) (...))`). This fixes the `mz_sources_count`/`mz_sinks_count` progress-subsource double-count (3 PG sources → `type="postgres"`=6).
+- **Sources by Status** → renamed **Sources**: there is no source/sink status metric on self-managed, so it's a catalog table (id/type/connection/envelope/cluster); live status is SQL-only (`mz_internal.mz_source_statuses`).
+- Throughput/lag/Iceberg/Kafka sink panels: `_COMPUTE_FILTER` (long-form `cluster_environmentd_*` ids) **verified** against live `mz_source_bytes_received` / `mz_sink_bytes_committed`. Caveat: the `$mzClusterList` picker lists compute clusters only, so a storage-only ingest cluster isn't selectable — default "All" shows everything.
+
+**Duplicate-job dedup:** this instance runs 4 Prometheus jobs against the same clusterd `:6878` endpoint, so `mz_source_*` / `mz_sink_*` / `mz_arrangement_*` / `mz_compute_replica_history_*` each appear under multiple `job` values and a plain `sum(rate(...))` reads 4×. Fixed by wrapping the inner rate/gauge in `max without (job) (...)` on the affected sum-rate panels (storage source/sink throughput/lag/Iceberg/Kafka, compute arrangement maintenance rate, dataflow elapsed). `max by(...)` and `histogram_quantile` panels are already job-invariant. **Do not** exclude job names by pattern — several metrics (`mz_compute_cluster_status`, `mz_storage_objects`, `mz_dataflow_elapsed_seconds_total`, the `*_count` metrics) live *only* on a "legacy" job here, so an exclusion list blanks real panels. The real root cause is the overlapping scrape config (helm/Prometheus) — fixing it there makes the `max without (job)` wraps no-ops. See [Known metric quirks](../../../docs/content/reference/internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas).
+
+**Datasource scrape interval (empty `rate()` panels):** Prometheus here scrapes every 60s, but the Grafana datasource is provisioned (via terraform/helm) without `jsonData.timeInterval`, so it defaults to 15s and `$__rate_interval` collapses to `~1m` — a single sample, so every `rate()`/`increase()` panel renders blank despite live data. Fix is `jsonData.timeInterval: "60s"` on the datasource (matches the real `scrape_interval`); see [Rate intervals](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rate-intervals). **In flight as of this writing** — the shared terraform/helm datasource block may still be unpatched, so a freshly-provisioned stack will show empty rate panels until `timeInterval` is set. Quick check on any instance: `count_over_time(<metric>[1m])` returning `1` means the window is too short.
 
 Local push: `gcx` context **`local-mzmon`** → `http://localhost:13000`. Render+merge+push helper lives at `/tmp/mzmon_push.sh` (renders the module, carries the live `resourceVersion` + folder annotation forward, `gcx dashboards update`). The Grafana MCP is also wired to the same local instance for query verification.
 
@@ -148,5 +157,5 @@ Tracked items that are working but could be tidier:
 - **`ENV_SCOPED_NOTE` is duplicated** in `compute_objects.py` and `storage_objects.py`. Lift to `visualization.py` (or a sibling `_messages.py` if it grows).
 - **`_COMPUTE_FILTER` and `_ARRANGEMENT_FILTER` are the same string** in two modules. Lift to a shared place; rename to something neutral like `_LONGFORM_CLUSTER_FILTER`.
 - **`dataflows.py` is orphaned.** Safe to `rm`.
-- **The Compute Objects "Freshness" row is a title-only stub.** Pick a freshness signal and fill it in (`mz_materialized_view_lag_seconds` in newer Materialize versions, or a derived metric from frontier metrics).
+- **Hydration is SQL-only on self-managed.** No Prometheus metric exposes per-collection hydration state/time (`v2_mz_compute_hydration_time_seconds` is cloud-only; `mz_compute_controller_hydration_queue_size` is just the controller queue and reads 0 even with many objects mid-hydration). The two Hydration panels stay backed by the cloud metric (blank here) with descriptions pointing at `mz_internal.mz_hydration_statuses` / `mz_compute_hydration_times` (SQL); the live metric-side proxy is the Freshness row (`wallclock_lag`).
 - **`mz-mon-` prefix isn't enforced in `MzDashboard.UID`** values today (the class has `UID = "env-top"` and `MzDashboard.__init__` prefixes it). Consistent across all current dashboards (one). Worth a validator if more dashboards land.

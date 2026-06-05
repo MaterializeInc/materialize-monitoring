@@ -46,6 +46,14 @@ COMPUTE_THEME = palette.THEME_PALETTE[3]
 ARRANGEMENT_LABEL_CLUSTER_ID = "cluster_environmentd_materialize_cloud_cluster_id"
 ARRANGEMENT_LABEL_REPLICA_ID = "cluster_environmentd_materialize_cloud_replica_id"
 
+# JOB DEDUP: mz_arrangement_* and mz_compute_replica_history_* are scraped by
+# several Prometheus jobs hitting the same :6878 endpoint, so each series
+# appears N times differing only by `job`. `sum(rate(...))` would multiply by
+# N — wrap the inner rate/metric in `max without (job) (...)` first. `max by`
+# panels (dataflow count) already collapse `job` implicitly. We do NOT exclude
+# job names: the authoritative name varies by deploy and some metrics live only
+# on a "legacy" job. See the longer note in storage_objects.py.
+
 # A short PromQL fragment that filters by the current $environmentFilter,
 # $mzClusterList, and $mzReplicaList using the long-form label names.
 _ARRANGEMENT_FILTER = (
@@ -106,11 +114,13 @@ def add_currently_hydrating_panel(
             "finished hydrating.** Hydration is the process of rebuilding a "
             "dataflow's in-memory state from persisted storage — it runs "
             "after a cluster restart, after creating a replica, and after "
-            "some DDL. Nominal: 0 in steady state; non-zero is briefly "
-            "expected after restarts. Sustained non-zero (more than a few "
-            "minutes) means hydration is stuck — check _Slowest Hydrating "
-            "Collections_ next, then pod restart history on _Kubernetes "
-            "Workloads_."
+            "some DDL. **Note (self-managed): there is no hydration-state "
+            "metric here, so this reads 0** — the cloud-only "
+            "`v2_mz_compute_hydration_time_seconds` has no Prometheus "
+            "equivalent. For the real count run `SELECT count(*) FROM "
+            "mz_internal.mz_hydration_statuses WHERE NOT hydrated`. The "
+            "metric-side proxy is frontier lag in the _Freshness_ row "
+            "(hydrating collections show up there as high lag)."
         )
         .data(query)
         .visualization(
@@ -122,33 +132,6 @@ def add_currently_hydrating_panel(
         ),
     )
     return panel_id
-
-
-def _active_objects_query(obj_type: str):
-    """Build a count query for `v2_mz_production_object` filtered by type.
-
-    Uses `cluster_id=~"$mzClusterList"` so the value tracks the cluster
-    selector. `v2_mz_production_object` has one series per
-    (cluster_id, collection_id, name) — counting series gives the object
-    count.
-
-    TODO(self-managed): `v2_mz_production_object` is the cloud-only catalog
-    metric and has no self-managed equivalent (there's `mz_mzd_views_count`
-    for materialized views and `mz_views_count` for views, but no per-cluster
-    index count). Callers that still rely on this will read "No data" on
-    self-managed until a catalog index-count metric is available.
-    """
-    return query_group(
-        promql_query(
-            textwrap.dedent(
-                f"""
-                count(
-                    v2_mz_production_object{{$environmentFilter, type="{obj_type}", cluster_id=~"$mzClusterList"}}
-                )
-                """
-            )
-        ).legend_format(obj_type),
-    )
 
 
 class ComputeObjectsTab:
@@ -194,29 +177,43 @@ class ComputeObjectsTab:
         return panel_id
 
     def _active_indexes_panel(self):
-        """Active indexes (cluster-filterable via cluster_id)."""
+        """Active indexes (env-scoped via mz_indexes_count)."""
         panel_id = "active-indexes"
+        # `mz_indexes_count` carries a `relation_type` breakdown (table / view /
+        # materialized-view) and no cluster label, so it is env-scoped. Sum over
+        # the breakdown to get the total, then `max(...)` dedups exporter pods —
+        # a plain `max()` would return the largest single relation_type bucket,
+        # not the total. (Self-managed replacement for the cloud-only
+        # `v2_mz_production_object{type="index"}`.)
+        #
+        # `mz_indexes_count` is absent until the first index is created, so
+        # `or vector(0)` makes a fresh/empty environment read 0 rather than
+        # "No data".
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max(sum by (instance) (mz_indexes_count{$environmentFilter})) or vector(0)
+                    """
+                )
+            ).legend_format("indexes"),
+        )
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
             .title("Active Indexes")
             .description(
-                "**Number of indexes maintained on the selected clusters.** "
+                "**Number of indexes in the catalog.** "
                 "An index is an in-memory arrangement that makes `SELECT`s "
                 "against its underlying relation effectively instant — at "
                 "the cost of memory. Rapid growth here typically pairs with "
                 "growing memory usage on the cluster's pods (see "
-                "_Kubernetes Workloads -> Pod Memory Usage_). Scoped to the "
-                "selected clusters."
+                "_Kubernetes Workloads -> Pod Memory Usage_). For the "
+                "table/view/materialized-view split see _Index Types_. "
+                f"{ENV_SCOPED_NOTE}"
             )
-            .data(_active_objects_query("index"))
-            .visualization(
-                visualization.sparkline_stat(shade=COMPUTE_THEME)
-                .min(0)
-                # TODO(self-managed): no index-count metric exists (see
-                # _active_objects_query); reads "No data" until one does.
-                .no_value("No index-count metric on self-managed")
-            ),
+            .data(query)
+            .visualization(visualization.sparkline_stat(shade=COMPUTE_THEME).min(0)),
         )
         return panel_id
 
@@ -314,13 +311,8 @@ class ComputeObjectsTab:
     def _index_types_panel(self):
         """Donut: indexes by `relation_type` (view, table, materialized-view, …).
 
-        `v2_mz_indexes_count` has the relation_type breakdown but no cluster
+        `mz_indexes_count` has the relation_type breakdown but no cluster
         label — this panel is intentionally environment-scoped.
-
-        TODO(self-managed): `v2_mz_indexes_count` is cloud-only with no
-        self-managed equivalent, so this donut has no data there. Kept for
-        cloud parity; the no_value explains the blank. Fill in once a catalog
-        index-count metric (with a relation_type breakdown) lands.
         """
         panel_id = "index-types"
         query = query_group(
@@ -328,7 +320,7 @@ class ComputeObjectsTab:
                 textwrap.dedent(
                     """
                     sum by (relation_type) (
-                        v2_mz_indexes_count{$environmentFilter}
+                        mz_indexes_count{$environmentFilter}
                     )
                     """
                 )
@@ -470,13 +462,14 @@ class ComputeObjectsTab:
                 "hydrating** in the current time range. Hydration time "
                 "scales roughly with the size of the maintained state, so "
                 "large materialized views and indexes naturally lead the "
-                "list. Sudden growth on a previously-fast collection "
-                "usually means its input data grew. Translate "
-                "`collection_id` to a name via `SELECT id, name FROM "
-                "mz_internal.mz_indexes` (or `mz_materialized_views`). "
-                "Heads-up: `s2` (`mz_catalog_server`) typically dominates "
-                "this chart with internal system collections — that's "
-                "expected and noise-floor."
+                "list. **Note (self-managed): per-collection hydration time "
+                "is not exposed as a metric here** (the cloud-only "
+                "`v2_mz_compute_hydration_time_seconds` has no equivalent), "
+                "so this is blank. Get it from SQL: `SELECT object_id, "
+                "time_ns/1e9 AS seconds FROM "
+                "mz_internal.mz_compute_hydration_times ORDER BY time_ns "
+                "DESC`. The live metric-side proxy for what's behind is "
+                "_Freshness -> Most-Lagged Collections_."
             )
             .data(query)
             .visualization(
@@ -530,8 +523,10 @@ class ComputeObjectsTab:
                         {ARRANGEMENT_LABEL_CLUSTER_ID},
                         {ARRANGEMENT_LABEL_REPLICA_ID}
                     ) (
-                        rate(
-                            mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
+                        max without (job) (
+                            rate(
+                                mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
+                            )
                         )
                     )
                     """
@@ -583,8 +578,10 @@ class ComputeObjectsTab:
                         {ARRANGEMENT_LABEL_REPLICA_ID},
                         worker_id
                     ) (
-                        rate(
-                            mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
+                        max without (job) (
+                            rate(
+                                mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
+                            )
                         )
                     )
                     """
@@ -639,18 +636,160 @@ class ComputeObjectsTab:
             )
         )
 
-    def build_freshness_row(self) -> dashboardv2_builders.Row:
-        """Freshness row — stub.
+    def _freshness_lag_panel(self):
+        """Timeseries: worst frontier (wallclock) lag per cluster.
 
-        Reserved for end-to-end freshness lag (how far behind real-time
-        each materialized view / index is). Title-only row for now so
-        the section slot exists; panels will be added in a follow-up.
+        `mz_dataflow_wallclock_lag_seconds` is how far each collection's output
+        frontier trails real time — the core freshness signal. It's a summary
+        with `quantile` `0` (min) and `1` (max); we take the max. Collections
+        with no established frontier (idle / mid-hydration / not yet producing)
+        report a u64::MAX sentinel (~1.8e19s); `< 1e9` drops it so it doesn't
+        blow out the axis. `max by (instance_id)` collapses per-collection,
+        per-replica, and duplicate-`job` series to the single worst lag per
+        cluster (so no separate job dedup is needed).
+        """
+        panel_id = "freshness-lag-by-cluster"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    max by (instance_id) (
+                        mz_dataflow_wallclock_lag_seconds{
+                            $environmentFilter,
+                            instance_id=~"$mzClusterList",
+                            instance_id!="",
+                            quantile="1"
+                        } < 1e9
+                    )
+                    """
+                )
+            ).legend_format("{{instance_id}}"),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Frontier Lag by Cluster")
+            .description(
+                "**How far behind real time each cluster's most-lagged "
+                "collection is** — the worst-case freshness across all "
+                "indexes, materialized views, and sources on the cluster. "
+                "Nominal: low and flat (sub-second to a few seconds) for a "
+                "keeping-up cluster. A sustained climb means a collection "
+                "can't keep pace with its input rate (under-provisioned "
+                "cluster or an expensive dataflow); a sharp spike that decays "
+                "back down is normal right after a restart or DDL while "
+                "dataflows re-hydrate. The catalog cluster (`s2`) sits a "
+                "couple seconds back as its baseline. For which collection is "
+                "responsible see _Most-Lagged Collections_; for hydration "
+                "specifically see the _Hydration_ row."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("s")
+                .min(0)
+                .scale_distribution(
+                    common_builder.ScaleDistributionConfig()
+                    .type(common.ScaleDistribution.LOG)
+                    .log(10)
+                )
+                .legend(visualization.TS_LEGEND_BUILDER)
+                .no_value(NO_FILTER_MATCH)
+            ),
+        )
+        return panel_id
+
+    def _freshness_top_collections_panel(self):
+        """Horizontal bar: the collections furthest behind real time.
+
+        Same `mz_dataflow_wallclock_lag_seconds` (max quantile, sentinel
+        filtered) but kept per `collection_id` and `topk(15)` so the specific
+        laggards surface rather than a per-cluster rollup. During a hydration
+        event the still-hydrating collections dominate this list; in steady
+        state it's whatever dataflow is struggling to keep up.
+        """
+        panel_id = "freshness-top-collections"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    """
+                    topk(15,
+                        max by (instance_id, collection_id) (
+                            mz_dataflow_wallclock_lag_seconds{
+                                $environmentFilter,
+                                instance_id=~"$mzClusterList",
+                                instance_id!="",
+                                replica_id=~"$mzReplicaList",
+                                quantile="1"
+                            } < 1e9
+                        )
+                    )
+                    """
+                )
+            )
+            .legend_format("{{instance_id}} / {{collection_id}}")
+            .instant(),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Most-Lagged Collections")
+            .description(
+                "**The 15 collections whose output frontier is furthest "
+                "behind real time.** This is the per-collection breakdown "
+                "behind _Frontier Lag by Cluster_. Translate `collection_id` "
+                "to a name via `SELECT id, name FROM mz_internal.mz_indexes` "
+                "(or `mz_materialized_views` / `mz_sources`). Collections with "
+                "no frontier yet (idle or still hydrating) report a sentinel "
+                "and are filtered out here — check hydration state directly "
+                "with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE "
+                "NOT hydrated`. `s2` (catalog) collections commonly appear "
+                "with a small baseline lag; that's expected."
+            )
+            .data(query)
+            .visualization(
+                barchart_builder.Visualization()
+                .orientation(common.VizOrientation.HORIZONTAL)
+                .unit("s")
+                .scale_distribution(
+                    common_builder.ScaleDistributionConfig()
+                    .type(common.ScaleDistribution.LOG)
+                    .log(10)
+                )
+                .bar_width(0.8)
+                .group_width(0.95)
+                .no_value(NO_FILTER_MATCH)
+                .x_tick_label_spacing(100)
+                .color_scheme(
+                    dashboardv2_builders.FieldColor()
+                    .mode(dashboardv2.FieldColorModeId.SHADES)
+                    .fixed_color(COMPUTE_THEME)
+                )
+            ),
+        )
+        return panel_id
+
+    def build_freshness_row(self) -> dashboardv2_builders.Row:
+        """Freshness row: per-cluster frontier lag + the laggiest collections.
+
+        Backed by `mz_dataflow_wallclock_lag_seconds` (frontier lag vs real
+        time) — the self-managed metric-side freshness signal. Precise
+        per-object hydration state/time is SQL-only (see the _Hydration_ row's
+        panel descriptions); this row is the closest live metric proxy and
+        also the steady-state freshness view.
         """
         return (
             dashboardv2_builders.Row()
             .title("Freshness")
             .hide_header(False)
-            .layout(dashboardv2_builders.AutoGrid())
+            .layout(
+                dashboardv2_builders.AutoGrid()
+                .column_width_mode("wide")
+                .with_item(self._freshness_lag_panel())
+                .with_item(self._freshness_top_collections_panel())
+            )
         )
 
     def build_hydration_row(self) -> dashboardv2_builders.Row:
@@ -802,12 +941,14 @@ class ComputeObjectsTab:
                 textwrap.dedent(
                     """
                     sum by (instance_id) (
-                        rate(
-                            mz_dataflow_elapsed_seconds_total{
-                                $environmentFilter,
-                                instance_id=~"$mzClusterList",
-                                replica_id=~"$mzReplicaList"
-                            }[$__rate_interval]
+                        max without (job) (
+                            rate(
+                                mz_dataflow_elapsed_seconds_total{
+                                    $environmentFilter,
+                                    instance_id=~"$mzClusterList",
+                                    replica_id=~"$mzReplicaList"
+                                }[$__rate_interval]
+                            )
                         )
                     )
                     """
