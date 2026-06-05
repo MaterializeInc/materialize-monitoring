@@ -416,8 +416,162 @@ class StorageObjectsTab:
         )
         return panel_id
 
+    def _source_ingestion_by_replica_panel(self):
+        """Timeseries: source message-ingest rate split per replica.
+
+        Each replica of a multi-replica cluster reads its upstream
+        independently, so for a given source the replicas should track each
+        other closely. **A replica flat at 0 while its siblings ingest means
+        that replica lost its upstream connection** — the classic "restarted a
+        replica and it couldn't resume pulling from Kafka" failure. The source
+        still reports `Running` (other replicas are fine) and the aggregate
+        _Source Bytes Received_ panel hides it (the healthy replica's volume
+        masks the dead one), so this per-replica split is the only place on the
+        metrics side it shows up — analogous to the per-worker dataflow panel.
+
+        `mz_source_offset_commit_failures` does NOT catch this: a replica that
+        silently stops pulling isn't failing to *commit*, so _Source
+        Commit-Failure Rate_ stays 0. Watch instead for one replica's line
+        dropping to zero here, with _Compute -> Freshness_ frontier lag
+        climbing in parallel.
+        """
+        panel_id = "sources-ingestion-by-replica"
+        query = query_group(
+            promql_query(
+                textwrap.dedent(
+                    f"""
+                    sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
+                        max without (job) (
+                            rate(mz_source_messages_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                        )
+                    )
+                    """
+                )
+            ).legend_format(
+                "{{parent_source_id}} / r{{cluster_environmentd_materialize_cloud_replica_id}}"
+            ),
+        )
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Source Ingestion by Replica")
+            .description(
+                "**Messages ingested per second, split per source and "
+                "replica.** Replicas read their upstream independently and "
+                "should track together. **A replica flat at 0 while its "
+                "siblings keep ingesting has lost its upstream connection** "
+                "(e.g. it was restarted and couldn't resume pulling from "
+                "Kafka) — the source still shows `Running` overall and the "
+                "aggregate _Source Bytes Received_ hides it, so this split is "
+                "where it surfaces. Legends are ids; map with `SELECT id, name "
+                "FROM mz_sources` and the replica via `SELECT id, name FROM "
+                "mz_cluster_replicas`. When you see a replica drop out, "
+                "_Compute -> Freshness_ frontier lag will be climbing too; "
+                "restarting that replica usually clears the stale connection."
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("cps")
+                .min(0)
+                .legend(visualization.TS_LEGEND_BUILDER)
+                .no_value(visualization.NO_FILTER_MATCH)
+            ),
+        )
+        return panel_id
+
+    def _source_errors_panel(self):
+        """Timeseries: per-source upstream health — commit failures + disconnects.
+
+        Two complementary "this source can't deal with its upstream" signals,
+        both nominal at 0 so any lift off the floor is a problem:
+
+        1. **Commit-failure rate** — `rate(mz_source_offset_commit_failures)`.
+           Non-zero when the upstream is reachable but *rejects* the offset /
+           replication-slot commit (auth/ACL change, broker rejecting). This
+           does NOT fire for an unreachable broker — the source never gets to
+           the commit step (see #2).
+        2. **Disconnected indicator (0/1)** — `offset_committed > offset_known`.
+           Normally `known >= committed`; when the broker/DB is unreachable the
+           source can't fetch metadata so `offset_known` collapses below
+           `offset_committed` (a `BrokerTransportFailure`-class stall). This
+           catches the common "broker down / security group cut / DNS" case
+           that the commit-failure counter misses — verified against a stalled
+           Kafka source (`offset_known` -> 0) vs healthy Postgres sources (0).
+
+        Both use `_COMPUTE_FILTER` + `max without (job)` for job-dedup. The 0/1
+        disconnect uses source-level `max` of each offset, so it's a coarse
+        per-source flag, not a per-partition measure.
+        """
+        panel_id = "sources-errors"
+        commit_failures = promql_query(
+            textwrap.dedent(
+                f"""
+                sum by (source_id) (
+                    max without (job) (
+                        rate(mz_source_offset_commit_failures{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                    )
+                ) > 0
+                """
+            )
+        ).legend_format("{{source_id}} commit failures")
+
+        disconnected = promql_query(
+            textwrap.dedent(
+                f"""
+                (
+                    max by (source_id) (
+                        max without (job) (mz_source_offset_committed{{{_COMPUTE_FILTER}}})
+                    ) > bool max by (source_id) (
+                        max without (job) (mz_source_offset_known{{{_COMPUTE_FILTER}}})
+                    )
+                ) > 0
+                """
+            )
+        ).legend_format("{{source_id}} disconnected")
+
+        query = query_group(commit_failures, disconnected)
+
+        self.dashboard.add_panel(
+            panel_id,
+            dashboardv2_builders.Panel()
+            .title("Source Upstream Errors")
+            .description(
+                "**Per-source upstream health — healthy sources are filtered "
+                "out (`> 0`), so this panel is empty when all is well and "
+                "any series at all means a source needs attention.** Two "
+                "signals: "
+                "**commit failures** (`mz_source_offset_commit_failures` rate) "
+                "fire when the upstream is reachable but rejects the offset / "
+                "replication-slot commit (auth/ACL, broker rejecting); the "
+                "**disconnected** indicator flips to **1** when the source has "
+                "lost sight of its upstream (`offset_known` fell below "
+                "`offset_committed`) — the broker/DB-unreachable case "
+                "(`BrokerTransportFailure`, severed security group, DNS) that "
+                "the commit-failure counter can't catch because the source "
+                "never reaches the commit step. When `disconnected` is 1, "
+                "_Source Bytes Received_ flat-lines and _Compute -> Freshness_ "
+                "frontier lag climbs. Legend is `source_id` — name it with "
+                "`SELECT id, name FROM mz_sources` and read the exact error "
+                "via `SELECT name, status, error FROM "
+                "mz_internal.mz_source_statuses WHERE status != 'running'`. "
+                "(Data-decode errors are separate: `mz_source_error_inserts`.)"
+            )
+            .data(query)
+            .visualization(
+                timeseries.Visualization()
+                .unit("short")
+                .min(0)
+                .thresholds(threshold.error_thresholds(max_errors=1))
+                .legend(visualization.TS_LEGEND_BUILDER)
+                .no_value(visualization.NO_FILTER_MATCH)
+            ),
+        )
+        return panel_id
+
     def build_sources_row(self) -> dashboardv2_builders.Row:
-        """Sources row: type donut + status table + bytes-received rate."""
+        """Sources row: type donut + catalog + bytes + per-replica ingest + errors."""
         return (
             dashboardv2_builders.Row()
             .title("Sources")
@@ -429,6 +583,8 @@ class StorageObjectsTab:
                 .with_item(self._source_types_panel())
                 .with_item(self._source_status_table_panel())
                 .with_item(self._source_bytes_received_panel())
+                .with_item(self._source_ingestion_by_replica_panel())
+                .with_item(self._source_errors_panel())
             )
         )
 

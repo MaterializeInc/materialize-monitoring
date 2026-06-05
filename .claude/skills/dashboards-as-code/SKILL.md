@@ -80,7 +80,7 @@ The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel` and `memo
 
 **Summary**
 
-1. Environment Health — Environment Status, Availability, Last Restart, Currently Hydrating (mirror), Current CPU Usage, Current Memory Usage
+1. Environment Health — Environment Status, Availability, Last Restart, Currently Hydrating (mirror), Max Lag (Select Time Range), Current CPU Usage, Current Memory Usage
 2. Environment Info — Materialize Version, Total CPU Capacity, Total Memory
 
 **Kubernetes Workloads**
@@ -93,7 +93,7 @@ The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel` and `memo
 **Cluster Objects / Replicas**
 
 1. Cluster Summary — Cluster Count, Replica Count
-2. Replication / Availability — Replica Sizes (donut), Replica AZs
+2. Replication / Availability — Replica Sizes (donut). (Replica AZs intentionally unwired — `materialize_cloud_availability_zone` is cloud-only AND AZ semantics confuse the target audience; the `_az_distribution_panel` method is kept but not added to the row.)
 3. Cluster Information — Cluster Information table
 
 **Connections / Activity**
@@ -113,7 +113,7 @@ The `Summary` tab re-uses the `KubeResourcesMixin`'s `cpu_total_panel` and `memo
 **Storage Objects**
 
 1. Storage Objects Summary — Active Sources, Active Sinks, Active Tables
-2. Sources — Source Types donut, Sources by Status table, Source Bytes Received (rate)
+2. Sources — Source Types donut, Sources catalog table, Source Bytes Received (rate), Source Ingestion by Replica (`mz_source_messages_received` per replica — divergence detector), Source Upstream Errors (commit-failure rate + `offset_committed > offset_known` disconnect indicator, threshold-colored)
 3. Sinks — Sink Types donut, Sink Throughput, Sink Lag (staged minus committed)
 4. Iceberg Sinks (**collapsed by default**) — Commit Latency p50/p90/p99, Commit Failures & Conflicts, File & Snapshot Rate
 5. Kafka Sinks (**collapsed by default**) — TX Error Rate, Output Buffer, Connect / Disconnect Rate
@@ -129,8 +129,16 @@ The dashboard was migrated off the cloud-only `v2_mz_*` family and `materialize_
 
 These panels have **no self-managed metric** and are intentionally kept with a `TODO(self-managed)` + `no_value` (they render blank/0 until a metric exists, rather than being deleted):
 
-- Compute Objects: **Currently Hydrating** and **Slowest Hydrating Collections** (`v2_mz_compute_hydration_time_seconds` — cloud-only, no self-managed equivalent; nearest live signal is `mz_compute_controller_hydration_queue_size`). (**Active Indexes** and **Index Types** were since wired to `mz_indexes_count` — which carries the `relation_type` breakdown and, like `mz_sources_count`/`mz_sinks_count`, only appears once an object of that type exists.)
-- Cluster Objects: **Replica Availability Zones** (`materialize_cloud_availability_zone` is cloud-only).
+- Compute Objects: **Slowest Hydrating Collections** (per-collection hydration *time* — `v2_mz_compute_hydration_time_seconds` is cloud-only, no self-managed equivalent confirmed with the team for this release; description points at `mz_internal.mz_compute_hydration_times` SQL). (**Currently Hydrating** was since revived via the wallclock-lag sentinel — see below; **Active Indexes** and **Index Types** were wired to `mz_indexes_count`.)
+- Cluster Objects: **Replica Availability Zones** — `materialize_cloud_availability_zone` is cloud-only AND AZ semantics confuse the end-user audience, so it was **intentionally unwired** (method kept, not added to the row). Don't re-add without product sign-off.
+
+**Currently Hydrating = wallclock-lag sentinel count (no status metric exists):** there is no source/sink/object *status* or hydration-state metric on self-managed. But a collection with no established output frontier reports the `mz_dataflow_wallclock_lag_seconds` u64::MAX sentinel (`> 1e15`), so `count(... > 1e15)` (with `instance_id!=""`) is a real-time **hydration-queue proxy**: it **spikes briefly whenever a replica restarts** (dataflows re-hydrating) and drains back to 0 — that's the signal we wanted, NOT "stuck." A count that *stays* elevated is the genuinely-broken case (e.g. `pg_src2`, status `created`, never hydrated — it sits persistently at 1). This backs the revived **Currently Hydrating** stat (Summary mirror + Compute -> Hydration row); a neutral sparkline, deliberately NOT alarm-colored, since brief spikes are normal. Metrics expose only `collection_id`; the description hands off to `mz_internal.mz_hydration_statuses WHERE NOT hydrated` / `mz_source_statuses` / the console Objects view for names. (An earlier separate red "Stuck Objects" stat was removed — same query, but alarm-on-any false-fired on every routine restart.)
+
+Complementary failure-mode signals now exist (none is a status metric — that's SQL-only):
+1. **Currently Hydrating** (Summary + Compute -> Hydration) — wallclock-lag sentinel count; brief spike on replica restart = normal (re)hydration, *sustained* non-zero = a collection that never got a frontier (created/failed-to-start, e.g. `pg_src2`).
+2. **Frontier Lag** (Compute -> Freshness) — hydrated but falling behind.
+3. **Source Upstream Errors** (Storage -> Sources) and the **Kafka/Iceberg sink error panels** — two source signals on one panel: **commit-failure rate** (`mz_source_offset_commit_failures` — upstream reachable but *rejects* the commit) AND a **disconnected 0/1 indicator** (`offset_committed > offset_known` — broker/DB unreachable so `offset_known` collapsed; the `BrokerTransportFailure` stall). The latter is essential: **commit-failures does NOT fire for an unreachable broker** (the source never reaches the commit step), which surprised us mid-testing — a fully broker-down Kafka source sat `stalled` with commit-failures flat at 0, and only the offset-disconnect signal (plus frontier lag) caught it.
+4. **Source Ingestion by Replica** (Storage -> Sources, `mz_source_messages_received` per replica) — a *silent* per-replica stall: a restarted replica that can't resume pulling reads 0 while siblings ingest, but the source stays `Running` and aggregates (and commit-failures = 0) hide it. **This was a real gap** — `sum by (source_id)` aggregate panels mask per-replica failures; the per-replica split (like the per-worker dataflow panel) is the only metric-side place it shows. Pairs with climbing Frontier Lag.
 
 The **Storage / "Sources and Sinks" tab** was later rebuilt against live sources/sinks (real RDS/MSK upstreams on cluster `ingest`):
 

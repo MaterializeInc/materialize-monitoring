@@ -256,9 +256,10 @@ class ClusterObjectsTab:
             dashboardv2_builders.Row()
             .title("Replication / Availability")
             .layout(
-                dashboardv2_builders.AutoGrid()
-                .with_item(self._instance_sizes_panel())
-                .with_item(self._az_distribution_panel())
+                dashboardv2_builders.AutoGrid().with_item(self._instance_sizes_panel())
+                # FIXME: AZ panel doesn't serve much value in its current form
+                # it is also cloud-only
+                # .with_item(self._az_distribution_panel())
             )
         )
 

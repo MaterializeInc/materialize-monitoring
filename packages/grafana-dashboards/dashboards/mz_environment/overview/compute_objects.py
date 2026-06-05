@@ -75,34 +75,38 @@ def add_currently_hydrating_panel(
     Environment Health row can register the same panel under different
     panel_ids without duplicating the query/viz logic.
 
-    `v2_mz_compute_hydration_time_seconds{hydrated="0"}` is a marker series:
-    its value stays at 0, but the series only exists while a collection has
-    not yet finished hydrating. Counting the series gives a real-time
-    "is anything currently hydrating?" signal. The `or vector(0)` keeps the
-    panel showing 0 (instead of "no data") when nothing is unhydrated.
+    Self-managed has no hydration-state metric (`v2_mz_compute_hydration_time_seconds`
+    is cloud-only), but `mz_dataflow_wallclock_lag_seconds` gives an equivalent
+    real-time signal: a collection that hasn't established an output frontier
+    reports the u64::MAX sentinel (`~1.8e19`) for its lag. Counting the
+    collections at that sentinel (`> 1e15`) is effectively "how many dataflows
+    are still (re)building their state" — it spikes the moment a replica
+    restarts and drains as collections finish hydrating, which is exactly the
+    hydration-queue signal. The `or vector(0)` keeps it at 0 when everything
+    has a frontier.
 
-    TODO(self-managed): `v2_mz_compute_hydration_time_seconds` is a cloud-only
-    promsql-exporter metric with no self-managed equivalent, so this reads a
-    constant 0 here. The `or vector(0)` keeps the panel honest (shows 0 rather
-    than erroring). Revisit once a self-managed hydration-state metric exists
-    (`mz_compute_controller_hydration_queue_size` is the nearest live signal —
-    see _Hydration Queue Size_).
+    A brief spike after a (re)start is normal; a collection that *stays* at the
+    sentinel never finishes hydrating (e.g. a source whose `CREATE` didn't
+    complete) — confirm specifics with `SELECT * FROM
+    mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
     """
     query = query_group(
         promql_query(
             textwrap.dedent(
                 """
                 count(
-                    v2_mz_compute_hydration_time_seconds{
-                        $environmentFilter,
-                        instance_id=~"$mzClusterList",
-                        replica_id=~"$mzReplicaList",
-                        hydrated="0"
-                    }
+                    max by (instance_id, collection_id) (
+                        mz_dataflow_wallclock_lag_seconds{
+                            $environmentFilter,
+                            instance_id=~"$mzClusterList",
+                            instance_id!="",
+                            quantile="1"
+                        } > 1e15
+                    )
                 ) or vector(0)
                 """
             )
-        ).legend_format("unhydrated"),
+        ).legend_format("hydrating"),
     )
 
     dashboard.add_panel(
@@ -110,26 +114,22 @@ def add_currently_hydrating_panel(
         dashboardv2_builders.Panel()
         .title("Currently Hydrating")
         .description(
-            "**Compute objects (indexes, materialized views) that haven't "
-            "finished hydrating.** Hydration is the process of rebuilding a "
-            "dataflow's in-memory state from persisted storage — it runs "
-            "after a cluster restart, after creating a replica, and after "
-            "some DDL. **Note (self-managed): there is no hydration-state "
-            "metric here, so this reads 0** — the cloud-only "
-            "`v2_mz_compute_hydration_time_seconds` has no Prometheus "
-            "equivalent. For the real count run `SELECT count(*) FROM "
-            "mz_internal.mz_hydration_statuses WHERE NOT hydrated`. The "
-            "metric-side proxy is frontier lag in the _Freshness_ row "
-            "(hydrating collections show up there as high lag)."
+            "**Collections still (re)building their in-memory state — a "
+            "live hydration-queue proxy.** Hydration rebuilds a dataflow's "
+            "state from persisted storage after a cluster/replica restart, "
+            "replica creation, or some DDL; until it finishes, the "
+            "collection has no output frontier, which this counts (via the "
+            "`mz_dataflow_wallclock_lag_seconds` sentinel). **Nominal: 0, "
+            "with brief spikes right after a replica restart that drain back "
+            "to 0 as dataflows catch up — that's healthy.** A count that "
+            "stays elevated means something can't finish hydrating (e.g. a "
+            "source whose `CREATE` didn't complete, or a wedged dataflow). "
+            "Confirm what's stuck with `SELECT * FROM "
+            "mz_internal.mz_hydration_statuses WHERE NOT hydrated`; watch "
+            "_Compute -> Freshness_ for the lag those collections accrue."
         )
         .data(query)
-        .visualization(
-            visualization.sparkline_stat(shade=shade)
-            .min(0)
-            .thresholds(
-                threshold.time_stable_thresholds(seconds=60 * 60 * 3, high_bad=True)
-            )
-        ),
+        .visualization(visualization.sparkline_stat(shade=shade).min(0)),
     )
     return panel_id
 

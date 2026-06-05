@@ -29,21 +29,31 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount(\n    v2_mz_production_object{$environmentFilter,\
-                      \ type=\"index\", cluster_id=~\"$mzClusterList\"}\n)\n"
-                    legendFormat: index
+                    expr: '
+
+                      max(sum by (instance) (mz_indexes_count{$environmentFilter}))
+                      or vector(0)
+
+                      '
+                    legendFormat: indexes
                     qryType: 1
-                    query: "\ncount(\n    v2_mz_production_object{$environmentFilter,\
-                      \ type=\"index\", cluster_id=~\"$mzClusterList\"}\n)\n"
+                    query: '
+
+                      max(sum by (instance) (mz_indexes_count{$environmentFilter}))
+                      or vector(0)
+
+                      '
                   version: v0
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: "**Number of indexes maintained on the selected clusters.** An\
-          \ index is an in-memory arrangement that makes `SELECT`s against its underlying\
-          \ relation effectively instant \u2014 at the cost of memory. Rapid growth\
-          \ here typically pairs with growing memory usage on the cluster's pods (see\
-          \ _Kubernetes Workloads -> Pod Memory Usage_). Scoped to the selected clusters."
+        description: "**Number of indexes in the catalog.** An index is an in-memory\
+          \ arrangement that makes `SELECT`s against its underlying relation effectively\
+          \ instant \u2014 at the cost of memory. Rapid growth here typically pairs\
+          \ with growing memory usage on the cluster's pods (see _Kubernetes Workloads\
+          \ -> Pod Memory Usage_). For the table/view/materialized-view split see\
+          \ _Index Types_. Environment-scoped \u2014 not affected by the cluster/replica\
+          \ filters."
         id: 1035
         links: []
         title: Active Indexes
@@ -57,7 +67,7 @@ spec:
                   fixedColor: '#EE7733'
                   mode: shades
                 min: 0
-                noValue: No index-count metric on self-managed
+                noValue: No matches for the current filters
               overrides: []
             options:
               colorMode: none
@@ -350,7 +360,7 @@ spec:
           \ on a real application means that app is consistently failing \u2014 investigate\
           \ by correlating with that application's own logs, and inspect recent failures\
           \ via Materialize's `mz_internal` activity-log views."
-        id: 1028
+        id: 1029
         links: []
         title: Adapter Commands by Application
         vizConfig:
@@ -415,19 +425,19 @@ spec:
                   spec:
                     expr: "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n\
                       \    cluster_environmentd_materialize_cloud_replica_id\n) (\n\
-                      \    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter,\
+                      \    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval]\n    )\n)\n"
+                      }[$__rate_interval]\n        )\n    )\n)\n"
                     legendFormat: '{{cluster_environmentd_materialize_cloud_cluster_id}}
                       / {{cluster_environmentd_materialize_cloud_replica_id}}'
                     qryType: 1
                     query: "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n\
                       \    cluster_environmentd_materialize_cloud_replica_id\n) (\n\
-                      \    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter,\
+                      \    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval]\n    )\n)\n"
+                      }[$__rate_interval]\n        )\n    )\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -439,7 +449,7 @@ spec:
           \ on maintenance work \u2014 usually high upstream change rate or many heavy\
           \ indexes. The catalog cluster's normal baseline is higher than typical\
           \ user clusters."
-        id: 1045
+        id: 1047
         links: []
         title: Arrangement Maintenance Rate
         vizConfig:
@@ -481,19 +491,21 @@ spec:
                   spec:
                     expr: "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n\
                       \    cluster_environmentd_materialize_cloud_replica_id,\n  \
-                      \  worker_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter,\
+                      \  worker_id\n) (\n    max without (job) (\n        rate(\n\
+                      \            mz_arrangement_maintenance_seconds_total{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval]\n    )\n)\n"
+                      }[$__rate_interval]\n        )\n    )\n)\n"
                     legendFormat: '{{cluster_environmentd_materialize_cloud_cluster_id}}
                       / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}'
                     qryType: 1
                     query: "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n\
                       \    cluster_environmentd_materialize_cloud_replica_id,\n  \
-                      \  worker_id\n) (\n    rate(\n        mz_arrangement_maintenance_seconds_total{$environmentFilter,\
+                      \  worker_id\n) (\n    max without (job) (\n        rate(\n\
+                      \            mz_arrangement_maintenance_seconds_total{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval]\n    )\n)\n"
+                      }[$__rate_interval]\n        )\n    )\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -505,7 +517,7 @@ spec:
           \ reason an 8-worker cluster behaves like a 1-worker one. If you see it,\
           \ the next step is usually `EXPLAIN PHYSICAL PLAN` on the offending object\
           \ to find the heavy operator."
-        id: 1046
+        id: 1048
         links: []
         title: Arrangement Maintenance Rate (per worker)
         vizConfig:
@@ -592,7 +604,7 @@ spec:
           \ the selected time range, sorted by Last (largest current arrangements\
           \ first). Useful for spotting unexpected growth in system collections, which\
           \ can indicate a Materialize bug."
-        id: 1047
+        id: 1049
         links: []
         title: "System Collections \u2014 Record Counts"
         vizConfig:
@@ -680,7 +692,7 @@ spec:
           \ the `none` sentinel is for arrangements whose collection is unidentified.\
           \ Both are usually small and ephemeral. Sustained non-trivial entries here\
           \ are worth investigating \u2014 they may indicate stuck or leaked dataflows."
-        id: 1049
+        id: 1051
         links: []
         title: "Transient / Uncategorized \u2014 Record Counts"
         vizConfig:
@@ -770,7 +782,7 @@ spec:
           \ the time range; sorted by Last desc so the largest current arrangements\
           \ are at the top. Translate `collection_id` to a name via `SELECT id, name\
           \ FROM mz_internal.mz_indexes` (or `mz_materialized_views`)."
-        id: 1048
+        id: 1050
         links: []
         title: "User Collections \u2014 Record Counts"
         vizConfig:
@@ -917,7 +929,7 @@ spec:
           Total and System is the user clusters you''ve created. Stable in steady
           state; expected to step on `CREATE CLUSTER` / `DROP CLUSTER`. Scoped to
           the selected clusters.'
-        id: 1029
+        id: 1030
         links: []
         title: Cluster Count
         vizConfig:
@@ -1088,7 +1100,7 @@ spec:
           \ single-digit baseline). Use _Query Distribution_ to see *what kinds* of\
           \ queries make up the rate, and _Peek Latency_ to confirm the queries are\
           \ running fast enough. Environment-scoped."
-        id: 1021
+        id: 1022
         links: []
         title: Active Queries
         vizConfig:
@@ -1149,7 +1161,7 @@ spec:
           \ your client activity. Sustained high `user` count is often a leaked-connection\
           \ signal \u2014 sanity-check by seeing whether _Active Queries_ shows commensurate\
           \ activity. Environment-scoped."
-        id: 1020
+        id: 1021
         links: []
         title: Active Sessions
         vizConfig:
@@ -1208,7 +1220,7 @@ spec:
           \ flat-line on a usually-busy env is unusual (could indicate adapter trouble).\
           \ Use _Adapter Commands by Application_ below to see which clients dominate,\
           \ and watch its Errors column for failed commands. Environment-scoped."
-        id: 1022
+        id: 1023
         links: []
         title: Adapter Command Rate
         vizConfig:
@@ -1273,7 +1285,7 @@ spec:
           \ near 1.0 means a container type is CPU-bound. For time-resolved per-pod\
           \ view see _Kubernetes Workloads -> Pod CPU Usage_; for the Materialize\
           \ workload causing it see _Compute Objects -> Dataflow Elapsed Rate_."
-        id: 1004
+        id: 1005
         links: []
         title: Current CPU Usage (5 min)
         vizConfig:
@@ -1361,7 +1373,7 @@ spec:
           \ activity. Nominal: stable for steady workloads. A sharp drop without correlating\
           \ DDL usually means a replica restart (cross-check _Kubernetes Workloads_);\
           \ a sharp rise typically means bulk object creation."
-        id: 1042
+        id: 1044
         links: []
         title: Dataflow Count
         vizConfig:
@@ -1426,7 +1438,7 @@ spec:
           \ \u2014 so the worker series for a given replica should overlap exactly.\
           \ Visible divergence between worker series within a single (cluster, replica)\
           \ tuple is a bug-class signal and worth filing."
-        id: 1043
+        id: 1045
         links: []
         title: Dataflow Count (per worker)
         vizConfig:
@@ -1467,16 +1479,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (instance_id) (\n    rate(\n        mz_dataflow_elapsed_seconds_total{\n\
-                      \            $environmentFilter,\n            instance_id=~\"\
-                      $mzClusterList\",\n            replica_id=~\"$mzReplicaList\"\
-                      \n        }[$__rate_interval]\n    )\n)\n"
+                    expr: "\nsum by (instance_id) (\n    max without (job) (\n   \
+                      \     rate(\n            mz_dataflow_elapsed_seconds_total{\n\
+                      \                $environmentFilter,\n                instance_id=~\"\
+                      $mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\
+                      \n            }[$__rate_interval]\n        )\n    )\n)\n"
                     legendFormat: '{{instance_id}}'
                     qryType: 1
-                    query: "\nsum by (instance_id) (\n    rate(\n        mz_dataflow_elapsed_seconds_total{\n\
-                      \            $environmentFilter,\n            instance_id=~\"\
-                      $mzClusterList\",\n            replica_id=~\"$mzReplicaList\"\
-                      \n        }[$__rate_interval]\n    )\n)\n"
+                    query: "\nsum by (instance_id) (\n    max without (job) (\n  \
+                      \      rate(\n            mz_dataflow_elapsed_seconds_total{\n\
+                      \                $environmentFilter,\n                instance_id=~\"\
+                      $mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\
+                      \n            }[$__rate_interval]\n        )\n    )\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -1489,7 +1503,7 @@ spec:
           \ the busiest by far in any environment. Log Y-axis so idle and busy clusters\
           \ share the chart. For maintenance-only breakdown see the _Arrangements_\
           \ row below."
-        id: 1044
+        id: 1046
         links: []
         title: Dataflow Elapsed Rate
         vizConfig:
@@ -1516,6 +1530,160 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
+          version: ''
+    freshness-lag-by-cluster:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: "\nmax by (instance_id) (\n    mz_dataflow_wallclock_lag_seconds{\n\
+                      \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
+                      ,\n        instance_id!=\"\",\n        quantile=\"1\"\n    }\
+                      \ < 1e9\n)\n"
+                    legendFormat: '{{instance_id}}'
+                    qryType: 1
+                    query: "\nmax by (instance_id) (\n    mz_dataflow_wallclock_lag_seconds{\n\
+                      \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
+                      ,\n        instance_id!=\"\",\n        quantile=\"1\"\n    }\
+                      \ < 1e9\n)\n"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**How far behind real time each cluster's most-lagged collection\
+          \ is** \u2014 the worst-case freshness across all indexes, materialized\
+          \ views, and sources on the cluster. Nominal: low and flat (sub-second to\
+          \ a few seconds) for a keeping-up cluster. A sustained climb means a collection\
+          \ can't keep pace with its input rate (under-provisioned cluster or an expensive\
+          \ dataflow); a sharp spike that decays back down is normal right after a\
+          \ restart or DDL while dataflows re-hydrate. The catalog cluster (`s2`)\
+          \ sits a couple seconds back as its baseline. For which collection is responsible\
+          \ see _Most-Lagged Collections_; for hydration specifically see the _Hydration_\
+          \ row."
+        id: 1039
+        links: []
+        title: Frontier Lag by Cluster
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                min: 0
+                noValue: No matches for the current filters
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    freshness-top-collections:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: "\ntopk(15,\n    max by (instance_id, collection_id) (\n\
+                      \        mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
+                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
+                      \",\n            replica_id=~\"$mzReplicaList\",\n         \
+                      \   quantile=\"1\"\n        } < 1e9\n    )\n)\n"
+                    instant: true
+                    legendFormat: '{{instance_id}} / {{collection_id}}'
+                    qryType: 1
+                    query: "\ntopk(15,\n    max by (instance_id, collection_id) (\n\
+                      \        mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
+                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
+                      \",\n            replica_id=~\"$mzReplicaList\",\n         \
+                      \   quantile=\"1\"\n        } < 1e9\n    )\n)\n"
+                    range: false
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**The 15 collections whose output frontier is furthest behind\
+          \ real time.** This is the per-collection breakdown behind _Frontier Lag\
+          \ by Cluster_. Translate `collection_id` to a name via `SELECT id, name\
+          \ FROM mz_internal.mz_indexes` (or `mz_materialized_views` / `mz_sources`).\
+          \ Collections with no frontier yet (idle or still hydrating) report a sentinel\
+          \ and are filtered out here \u2014 check hydration state directly with `SELECT\
+          \ * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`. `s2` (catalog)\
+          \ collections commonly appear with a small baseline lag; that's expected."
+        id: 1040
+        links: []
+        title: Most-Lagged Collections
+        vizConfig:
+          group: barchart
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#EE7733'
+                  mode: shades
+                custom:
+                  fillOpacity: 80
+                  gradientMode: none
+                  lineWidth: 1
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                noValue: No matches for the current filters
+                unit: s
+              overrides: []
+            options:
+              barRadius: 0
+              barWidth: 0.8
+              fullHighlight: false
+              groupWidth: 0.95
+              legend:
+                calcs: []
+                displayMode: list
+                placement: bottom
+                showLegend: false
+              orientation: horizontal
+              showValue: auto
+              stacking: none
+              tooltip:
+                mode: single
+                sort: asc
+              xTickLabelMaxLength: 0
+              xTickLabelRotation: 0
+              xTickLabelSpacing: 100
           version: ''
     hydration-queue-size:
       kind: Panel
@@ -1551,7 +1719,7 @@ spec:
           \ \u2014 typical during mass cluster restarts, atypical otherwise. Nominal:\
           \ 0. Sustained non-zero means the replica is undersized or one slow-hydrating\
           \ collection is blocking the line."
-        id: 1040
+        id: 1042
         links: []
         title: Hydration Queue Size
         vizConfig:
@@ -1609,15 +1777,16 @@ spec:
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: "**The 15 collections that took the longest to finish hydrating**\
-          \ in the current time range. Hydration time scales roughly with the size\
-          \ of the maintained state, so large materialized views and indexes naturally\
-          \ lead the list. Sudden growth on a previously-fast collection usually means\
-          \ its input data grew. Translate `collection_id` to a name via `SELECT id,\
-          \ name FROM mz_internal.mz_indexes` (or `mz_materialized_views`). Heads-up:\
-          \ `s2` (`mz_catalog_server`) typically dominates this chart with internal\
-          \ system collections \u2014 that's expected and noise-floor."
-        id: 1041
+        description: '**The 15 collections that took the longest to finish hydrating**
+          in the current time range. Hydration time scales roughly with the size of
+          the maintained state, so large materialized views and indexes naturally
+          lead the list. **Note (self-managed): per-collection hydration time is not
+          exposed as a metric here** (the cloud-only `v2_mz_compute_hydration_time_seconds`
+          has no equivalent), so this is blank. Get it from SQL: `SELECT object_id,
+          time_ns/1e9 AS seconds FROM mz_internal.mz_compute_hydration_times ORDER
+          BY time_ns DESC`. The live metric-side proxy for what''s behind is _Freshness
+          -> Most-Lagged Collections_.'
+        id: 1043
         links: []
         title: Slowest Hydrating Collections
         vizConfig:
@@ -1702,28 +1871,34 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount(\n    v2_mz_compute_hydration_time_seconds{\n \
-                      \       $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
-                      ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
-                      0\"\n    }\n) or vector(0)\n"
-                    legendFormat: unhydrated
+                    expr: "\ncount(\n    max by (instance_id, collection_id) (\n \
+                      \       mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
+                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
+                      \",\n            quantile=\"1\"\n        } > 1e15\n    )\n)\
+                      \ or vector(0)\n"
+                    legendFormat: hydrating
                     qryType: 1
-                    query: "\ncount(\n    v2_mz_compute_hydration_time_seconds{\n\
-                      \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
-                      ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
-                      0\"\n    }\n) or vector(0)\n"
+                    query: "\ncount(\n    max by (instance_id, collection_id) (\n\
+                      \        mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
+                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
+                      \",\n            quantile=\"1\"\n        } > 1e15\n    )\n)\
+                      \ or vector(0)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: "**Compute objects (indexes, materialized views) that haven't\
-          \ finished hydrating.** Hydration is the process of rebuilding a dataflow's\
-          \ in-memory state from persisted storage \u2014 it runs after a cluster\
-          \ restart, after creating a replica, and after some DDL. Nominal: 0 in steady\
-          \ state; non-zero is briefly expected after restarts. Sustained non-zero\
-          \ (more than a few minutes) means hydration is stuck \u2014 check _Slowest\
-          \ Hydrating Collections_ next, then pod restart history on _Kubernetes Workloads_."
-        id: 1039
+        description: "**Collections still (re)building their in-memory state \u2014\
+          \ a live hydration-queue proxy.** Hydration rebuilds a dataflow's state\
+          \ from persisted storage after a cluster/replica restart, replica creation,\
+          \ or some DDL; until it finishes, the collection has no output frontier,\
+          \ which this counts (via the `mz_dataflow_wallclock_lag_seconds` sentinel).\
+          \ **Nominal: 0, with brief spikes right after a replica restart that drain\
+          \ back to 0 as dataflows catch up \u2014 that's healthy.** A count that\
+          \ stays elevated means something can't finish hydrating (e.g. a source whose\
+          \ `CREATE` didn't complete, or a wedged dataflow). Confirm what's stuck\
+          \ with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`;\
+          \ watch _Compute -> Freshness_ for the lag those collections accrue."
+        id: 1041
         links: []
         title: Currently Hydrating
         vizConfig:
@@ -1737,31 +1912,6 @@ spec:
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
-                thresholds:
-                  mode: absolute
-                  steps:
-                  - color: '#CEFFFF'
-                    value: 2
-                  - color: '#C6F7D6'
-                    value: 5
-                  - color: '#A2F49B'
-                    value: 12
-                  - color: '#BBE453'
-                    value: 29
-                  - color: '#D5CE04'
-                    value: 68
-                  - color: '#E7B503'
-                    value: 158
-                  - color: '#F19903'
-                    value: 368
-                  - color: '#F6790B'
-                    value: 857
-                  - color: '#F94902'
-                    value: 1995
-                  - color: '#E40515'
-                    value: 4642
-                  - color: '#AB0003'
-                    value: 10800
               overrides: []
             options:
               colorMode: none
@@ -1791,12 +1941,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (relation_type) (\n    v2_mz_indexes_count{$environmentFilter}\n\
+                    expr: "\nsum by (relation_type) (\n    mz_indexes_count{$environmentFilter}\n\
                       )\n"
                     instant: true
                     legendFormat: '{{relation_type}}'
                     qryType: 1
-                    query: "\nsum by (relation_type) (\n    v2_mz_indexes_count{$environmentFilter}\n\
+                    query: "\nsum by (relation_type) (\n    mz_indexes_count{$environmentFilter}\n\
                       )\n"
                     range: false
                   version: v0
@@ -1964,7 +2114,7 @@ spec:
           REPLICA SIZE`, `CREATE`/`DROP CLUSTER REPLICA`, or pod restarts. On the
           Summary tab the monitoring exporter is excluded (so this reflects user-workload
           capacity); on the Kubernetes Workloads tab it''s included.'
-        id: 1009
+        id: 1010
         links: []
         title: Total CPU Capacity
         vizConfig:
@@ -2021,7 +2171,7 @@ spec:
           scope** (sum of memory limits from cAdvisor). Memory is the dominant constraint
           on Materialize: in-memory arrangements (see _Compute Objects -> Arrangements_)
           live in here. Steps correlate with `ALTER CLUSTER REPLICA SIZE` or pod restarts.'
-        id: 1010
+        id: 1011
         links: []
         title: Total Memory
         vizConfig:
@@ -2179,7 +2329,7 @@ spec:
           appear briefly during a rolling upgrade. Click the value to open the corresponding
           commit on GitHub. If the version doesn''t match what you expect, check the
           env''s manifest in the deployment pipeline.'
-        id: 1006
+        id: 1007
         links: []
         title: Materialize Version
         vizConfig:
@@ -2251,7 +2401,7 @@ spec:
           \ depending on data size). For time-resolved view see _Kubernetes Workloads\
           \ -> Pod Memory Usage_; the offending workload usually shows in _Compute\
           \ Objects -> Arrangements_."
-        id: 1005
+        id: 1006
         links: []
         title: Current Memory Usage
         vizConfig:
@@ -2364,7 +2514,7 @@ spec:
           cluster/replica selectors), one for everything else (envd, balancer, exporter,
           etc.). Sustained near 1.0 for a pod means it''s CPU-bound. For the Materialize-level
           cause see _Compute Objects -> Dataflow Elapsed Rate_ or _Arrangements_.'
-        id: 1014
+        id: 1015
         links: []
         title: Pod CPU Usage
         vizConfig:
@@ -2451,7 +2601,7 @@ spec:
           \ (in-memory state rebuilt from persistence, often minutes). If a Materialize\
           \ cluster pod is the offender, _Compute Objects -> Arrangements_ shows which\
           \ arrangements consume the memory."
-        id: 1015
+        id: 1016
         links: []
         title: Pod Memory Usage
         vizConfig:
@@ -2567,7 +2717,7 @@ spec:
           \ 0. Low-level non-zero drops (single-digit pps) are usually harmless background\
           \ noise; sustained higher rates indicate the pod is overwhelmed at the network\
           \ layer \u2014 often paired with elevated _Pod CPU Usage_."
-        id: 1019
+        id: 1020
         links: []
         title: Pod Network Packet Drops
         vizConfig:
@@ -2682,7 +2832,7 @@ spec:
           \ infrastructure problems (faulty NIC, kernel network stack issues, container\
           \ runtime bugs) \u2014 not Materialize-level. If you see persistent non-zero,\
           \ file an infra ticket; this isn't fixable from within Materialize."
-        id: 1018
+        id: 1019
         links: []
         title: Pod Network Errors
         vizConfig:
@@ -2760,7 +2910,7 @@ spec:
           etc.) and inter-pod replication; for envd and the balancer it reflects client
           SQL traffic. Surges that coincide with _Compute Objects -> Hydration_ activity
           are normal (catchup); surges otherwise can mean a runaway client or source.'
-        id: 1016
+        id: 1017
         links: []
         title: Pod Network Rx
         vizConfig:
@@ -2837,7 +2987,7 @@ spec:
           and query results returning to envd; for envd it''s client query responses.
           Pairs with _Storage Objects -> Sink Throughput_ when investigating sink-side
           bandwidth.'
-        id: 1017
+        id: 1018
         links: []
         title: Pod Network Tx
         vizConfig:
@@ -2897,7 +3047,7 @@ spec:
           \ how PostgreSQL clients manage session state. Heavy `insert` / `update`\
           \ / `delete` on a service you think of as read-mostly is worth investigating.\
           \ Idle statement types are filtered out (`> 0`). Environment-scoped."
-        id: 1023
+        id: 1024
         links: []
         title: Query Distribution (by statement_type)
         vizConfig:
@@ -2967,7 +3117,7 @@ spec:
           \ overwhelmed. One line per cluster \u2014 narrow the cluster selector to\
           \ focus. Log Y-axis. See also: _Dataflow Elapsed Rate_ and _Arrangement\
           \ Maintenance Rate_ on the _Compute Objects_ tab."
-        id: 1025
+        id: 1026
         links: []
         title: Peek Latency (p50)
         vizConfig:
@@ -3031,7 +3181,7 @@ spec:
           \ If p90 is 10-100x p50, your latency distribution is bimodal \u2014 typically\
           \ cold-cache effects on infrequently-queried indexes or contention. Same\
           \ per-cluster split as p50."
-        id: 1026
+        id: 1027
         links: []
         title: Peek Latency (p90)
         vizConfig:
@@ -3097,7 +3247,7 @@ spec:
           \ or a tail-latency-sensitive use case worth investigating directly. Pair\
           \ with _Query Rate_ above to confirm the latency is happening on actual\
           \ traffic, not just idle scrapes."
-        id: 1027
+        id: 1028
         links: []
         title: Peek Latency (p99)
         vizConfig:
@@ -3157,7 +3307,7 @@ spec:
           \ move over time*. Watch for sudden spikes in `select / user` \u2014 pair\
           \ with _Peek Latency (p99)_ to see if the system kept up. Idle (statement,\
           \ session) tuples are filtered out. Environment-scoped."
-        id: 1024
+        id: 1025
         links: []
         title: Query Rate (by statement_type / session_type)
         vizConfig:
@@ -3181,74 +3331,6 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
-    replica-azs:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: "\nsum by (materialize_cloud_availability_zone) (\n    count\
-                      \ by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone)\
-                      \ (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n\
-                      \    )\n    or\n    count by (compute_cluster_id, compute_replica_id,\
-                      \ materialize_cloud_availability_zone) (\n        mz_compute_cluster_status{}\n\
-                      \    ) * 0\n)\n"
-                    legendFormat: '{{materialize_cloud_availability_zone}}'
-                    qryType: 1
-                    query: "\nsum by (materialize_cloud_availability_zone) (\n   \
-                      \ count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone)\
-                      \ (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n\
-                      \    )\n    or\n    count by (compute_cluster_id, compute_replica_id,\
-                      \ materialize_cloud_availability_zone) (\n        mz_compute_cluster_status{}\n\
-                      \    ) * 0\n)\n"
-                  version: v0
-                refId: query-0
-            queryOptions: {}
-            transformations: []
-        description: "**Replicas grouped by the cloud availability zone they're scheduled\
-          \ on.** For HA-sensitive deployments, replicas of the same cluster should\
-          \ be spread across AZs \u2014 heavy concentration in one AZ means an AZ\
-          \ outage takes more of the workload down with it. Materialize's scheduler\
-          \ spreads multi-replica clusters across AZs automatically, but ad-hoc single-replica\
-          \ clusters can land anywhere. Scoped to the selected clusters."
-        id: 1032
-        links: []
-        title: Replica Availability Zones
-        vizConfig:
-          group: stat
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                color:
-                  fixedColor: '#009988'
-                  mode: shades
-                noValue: No matches for the current filters or AZ label missing.
-              overrides: []
-            options:
-              colorMode: none
-              graphMode: area
-              justifyMode: center
-              orientation: auto
-              percentChangeColorMode: standard
-              reduceOptions:
-                calcs: []
-              showPercentChange: false
-              textMode: value_and_name
-              wideLayout: true
           version: ''
     replica-count:
       kind: Panel
@@ -3307,7 +3389,7 @@ spec:
           \ of that \u2014 non-zero means at least one cluster has been configured\
           \ for higher availability or extra capacity. Expected to step on `CREATE\
           \ CLUSTER REPLICA` / `DROP CLUSTER REPLICA`. Scoped to the selected clusters."
-        id: 1030
+        id: 1031
         links: []
         title: Replica Count
         vizConfig:
@@ -3368,7 +3450,7 @@ spec:
           cluster around a small number of sizes; a long tail of one-off sizes usually
           means experimentation or migration in progress. The total here matches the
           Replica Count panel. Scoped to the selected clusters.'
-        id: 1031
+        id: 1032
         links: []
         title: Replica Sizes
         vizConfig:
@@ -3458,7 +3540,7 @@ spec:
           \ back stateless services (e.g., the promsql exporter). Nominal: all replicas\
           \ Ready, zero Unavailable. Unavailable counts indicate failed rollouts or\
           \ crashing pods. Requires kube-state-metrics."
-        id: 1013
+        id: 1014
         links: []
         title: Deployment Readiness
         vizConfig:
@@ -3528,7 +3610,7 @@ spec:
           usually mean Kubernetes can''t schedule them (capacity, taints, AZ constraints);
           `Failed` means a container exited and won''t be restarted. Pairs with _Last
           Restart Time_ on the Summary tab. Requires kube-state-metrics.'
-        id: 1011
+        id: 1012
         links: []
         title: Pod Readiness
         vizConfig:
@@ -3598,7 +3680,7 @@ spec:
           replicas that have reached the Ready state. Nominal: matches the configured
           replica count. A drop indicates a pod stuck in initialization or hydration.
           Requires kube-state-metrics.'
-        id: 1012
+        id: 1013
         links: []
         title: StatefulSet Readiness
         vizConfig:
@@ -3649,17 +3731,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nhistogram_quantile(0.5,\n    sum by (le) (\n        rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
+                    expr: "\nhistogram_quantile(0.5,\n    sum by (le) (\n        max\
+                      \ without (job) (\n            rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n        )\n    )\n)\n"
                     legendFormat: p50
                     qryType: 1
                     query: "\nhistogram_quantile(0.5,\n    sum by (le) (\n       \
-                      \ rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
+                      \ max without (job) (\n            rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n        )\n    )\n)\n"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3671,17 +3754,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nhistogram_quantile(0.9,\n    sum by (le) (\n        rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
+                    expr: "\nhistogram_quantile(0.9,\n    sum by (le) (\n        max\
+                      \ without (job) (\n            rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n        )\n    )\n)\n"
                     legendFormat: p90
                     qryType: 1
                     query: "\nhistogram_quantile(0.9,\n    sum by (le) (\n       \
-                      \ rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
+                      \ max without (job) (\n            rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n        )\n    )\n)\n"
                   version: v0
                 refId: query-1
             - kind: PanelQuery
@@ -3694,17 +3778,17 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\nhistogram_quantile(0.99,\n    sum by (le) (\n       \
-                      \ rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
+                      \ max without (job) (\n            rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n        )\n    )\n)\n"
                     legendFormat: p99
                     qryType: 1
                     query: "\nhistogram_quantile(0.99,\n    sum by (le) (\n      \
-                      \  rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
+                      \  max without (job) (\n            rate(mz_sink_iceberg_commit_duration_seconds_bucket{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n        )\n    )\n)\n"
                   version: v0
                 refId: query-2
             queryOptions: {}
@@ -3717,7 +3801,7 @@ spec:
           \ in tens of seconds points at a slow Iceberg catalog (REST catalog under\
           \ load, Glue API throttling) \u2014 _Sink Lag_ will be growing at the same\
           \ time. Log Y-axis. Scoped to the selected clusters/replicas."
-        id: 1059
+        id: 1063
         links: []
         title: Iceberg Commit Latency (p50 / p90 / p99)
         vizConfig:
@@ -3761,16 +3845,17 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_commit_failures{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_iceberg_commit_failures{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} failures'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_commit_failures{$environmentFilter,\
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_iceberg_commit_failures{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3782,16 +3867,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} conflicts'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -3804,7 +3891,7 @@ spec:
           \ is worth investigating.** If failures are climbing, _Sink Lag_ will follow.\
           \ The Errors threshold-coloring is calibrated for \"any non-zero is interesting\"\
           ."
-        id: 1060
+        id: 1064
         links: []
         title: Iceberg Commit Failures & Conflicts
         vizConfig:
@@ -3858,16 +3945,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} data'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3879,16 +3968,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} deletes'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-1
             - kind: PanelQuery
@@ -3900,16 +3991,18 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} snapshots'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                      }[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-2
             queryOptions: {}
@@ -3921,7 +4014,7 @@ spec:
           workloads produce roughly 1:1. Sustained delete-file rate without data files
           means the sink is mostly deleting (data evaporating upstream). Scoped to
           the selected clusters/replicas.'
-        id: 1061
+        id: 1065
         links: []
         title: Iceberg File & Snapshot Rate
         vizConfig:
@@ -3962,16 +4055,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_rdkafka_connects{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_rdkafka_connects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} connects'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_rdkafka_connects{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_rdkafka_connects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3983,16 +4076,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_rdkafka_disconnects{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_rdkafka_disconnects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}} disconnects'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_rdkafka_disconnects{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_rdkafka_disconnects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -4003,7 +4096,7 @@ spec:
           \ rate is a sign of unhealthy connectivity** (network flakiness, broker\
           \ restarting, auth tokens expiring). Pairs with _Kafka TX Error Rate_ when\
           \ the issue is broker-side rather than purely network."
-        id: 1064
+        id: 1068
         links: []
         title: Kafka Connect / Disconnect Rate
         vizConfig:
@@ -4044,16 +4137,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }\n)\n"
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}\n    )\n)\n"
                     legendFormat: '{{sink_id}}'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }\n)\n"
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}\n    )\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4064,7 +4157,7 @@ spec:
           faster than the broker is accepting. Often paired with a non-zero _Kafka
           TX Error Rate_. If the buffer hits its bound, the sink stalls and _Sink
           Lag_ starts climbing.'
-        id: 1063
+        id: 1067
         links: []
         title: Kafka Output Buffer (messages)
         vizConfig:
@@ -4105,16 +4198,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_rdkafka_txerrs{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_rdkafka_txerrs{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                     legendFormat: '{{sink_id}}'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_rdkafka_txerrs{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n)\n"
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_rdkafka_txerrs{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4125,7 +4218,7 @@ spec:
           \ deletion/recreation, or partition rebalancing. If errors are sustained,\
           \ _Sink Lag_ will grow and _Kafka Output Buffer_ may fill. Errors threshold-coloring\
           \ is calibrated for \"any non-zero is interesting\"."
-        id: 1062
+        id: 1066
         links: []
         title: Kafka TX Error Rate
         vizConfig:
@@ -4179,22 +4272,22 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nclamp_min(\n    sum by (sink_id) (mz_sink_bytes_staged{$environmentFilter,\
+                    expr: "\nclamp_min(\n    sum by (sink_id) (max without (job) (mz_sink_bytes_staged{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      })\n    - sum by (sink_id) (mz_sink_bytes_committed{$environmentFilter,\
+                      }))\n    - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }),\n    0\n)\n"
+                      })),\n    0\n)\n"
                     legendFormat: '{{sink_id}}'
                     qryType: 1
-                    query: "\nclamp_min(\n    sum by (sink_id) (mz_sink_bytes_staged{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      })\n    - sum by (sink_id) (mz_sink_bytes_committed{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }),\n    0\n)\n"
+                    query: "\nclamp_min(\n    sum by (sink_id) (max without (job)\
+                      \ (mz_sink_bytes_staged{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}))\n    - sum by (sink_id) (max without (job)\
+                      \ (mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"})),\n    0\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4208,7 +4301,7 @@ spec:
           \ Iceberg catalog slow) or repeated commit failures (see _Iceberg Commit\
           \ Failures & Conflicts_ or _Kafka TX Error Rate_ in the collapsed rows below).\
           \ Scoped to the selected clusters/replicas."
-        id: 1058
+        id: 1062
         links: []
         title: Sink Lag (staged minus committed)
         vizConfig:
@@ -4249,16 +4342,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    rate(mz_sink_bytes_committed{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n) > 0\n"
+                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
+                      \ rate(mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n"
                     legendFormat: '{{sink_id}}'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    rate(mz_sink_bytes_committed{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n) > 0\n"
+                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
+                      \  rate(mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4269,7 +4362,7 @@ spec:
           \ `sink_id` rather than a friendly name; look the id up via `SELECT id,\
           \ name FROM mz_sinks;`. Idle sinks are filtered out (`> 0`). Scoped to the\
           \ selected clusters/replicas."
-        id: 1057
+        id: 1061
         links: []
         title: Sink Throughput (committed)
         vizConfig:
@@ -4313,13 +4406,15 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (type, envelope_type) (\n    mz_sinks_count{$environmentFilter}\n\
-                      ) > 0\n"
+                    expr: "\ncount by (object_type, envelope_type) (\n    group by\
+                      \ (id, object_type, envelope_type) (\n        mz_storage_objects{$environmentFilter,\
+                      \ type=\"sink\"}\n    )\n) > 0\n"
                     instant: true
-                    legendFormat: '{{type}} / {{envelope_type}}'
+                    legendFormat: '{{object_type}} / {{envelope_type}}'
                     qryType: 1
-                    query: "\nsum by (type, envelope_type) (\n    mz_sinks_count{$environmentFilter}\n\
-                      ) > 0\n"
+                    query: "\ncount by (object_type, envelope_type) (\n    group by\
+                      \ (id, object_type, envelope_type) (\n        mz_storage_objects{$environmentFilter,\
+                      \ type=\"sink\"}\n    )\n) > 0\n"
                     range: false
                   version: v0
                 refId: query-0
@@ -4331,7 +4426,7 @@ spec:
           \ value per key, `debezium` writes change events with old+new values. Most\
           \ envs concentrate on one combination. Environment-scoped \u2014 not affected\
           \ by the cluster/replica filters."
-        id: 1056
+        id: 1060
         links: []
         title: Sink Types
         vizConfig:
@@ -4382,16 +4477,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (parent_source_id) (\n    rate(mz_source_bytes_received{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n) > 0\n"
+                    expr: "\nsum by (parent_source_id) (\n    max without (job) (\n\
+                      \        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n"
                     legendFormat: '{{parent_source_id}}'
                     qryType: 1
-                    query: "\nsum by (parent_source_id) (\n    rate(mz_source_bytes_received{$environmentFilter,\
-                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
-                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n) > 0\n"
+                    query: "\nsum by (parent_source_id) (\n    max without (job) (\n\
+                      \        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4403,7 +4498,7 @@ spec:
           \ it to a name via `SELECT id, name FROM mz_sources`. Idle sources are filtered\
           \ out (`> 0`). Log Y-axis so kB/s and tens-of-MB/s sources share the chart.\
           \ Scoped to the selected clusters/replicas."
-        id: 1055
+        id: 1057
         links: []
         title: Source Bytes Received (rate)
         vizConfig:
@@ -4417,6 +4512,188 @@ spec:
                     log: 10
                     type: log
                 unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    sources-errors:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: "\nsum by (source_id) (\n    max without (job) (\n     \
+                      \   rate(mz_source_offset_commit_failures{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      }[$__rate_interval])\n    )\n) > 0\n"
+                    legendFormat: '{{source_id}} commit failures'
+                    qryType: 1
+                    query: "\nsum by (source_id) (\n    max without (job) (\n    \
+                      \    rate(mz_source_offset_commit_failures{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      }[$__rate_interval])\n    )\n) > 0\n"
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: "\n(\n    max by (source_id) (\n        max without (job)\
+                      \ (mz_source_offset_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"})\n    ) > bool max by (source_id) (\n    \
+                      \    max without (job) (mz_source_offset_known{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      })\n    )\n) > 0\n"
+                    legendFormat: '{{source_id}} disconnected'
+                    qryType: 1
+                    query: "\n(\n    max by (source_id) (\n        max without (job)\
+                      \ (mz_source_offset_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
+                      $mzReplicaList\"})\n    ) > bool max by (source_id) (\n    \
+                      \    max without (job) (mz_source_offset_known{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      })\n    )\n) > 0\n"
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: "**Per-source upstream health \u2014 healthy sources are filtered\
+          \ out (`> 0`), so this panel is empty when all is well and any series at\
+          \ all means a source needs attention.** Two signals: **commit failures**\
+          \ (`mz_source_offset_commit_failures` rate) fire when the upstream is reachable\
+          \ but rejects the offset / replication-slot commit (auth/ACL, broker rejecting);\
+          \ the **disconnected** indicator flips to **1** when the source has lost\
+          \ sight of its upstream (`offset_known` fell below `offset_committed`) \u2014\
+          \ the broker/DB-unreachable case (`BrokerTransportFailure`, severed security\
+          \ group, DNS) that the commit-failure counter can't catch because the source\
+          \ never reaches the commit step. When `disconnected` is 1, _Source Bytes\
+          \ Received_ flat-lines and _Compute -> Freshness_ frontier lag climbs. Legend\
+          \ is `source_id` \u2014 name it with `SELECT id, name FROM mz_sources` and\
+          \ read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses\
+          \ WHERE status != 'running'`. (Data-decode errors are separate: `mz_source_error_inserts`.)"
+        id: 1059
+        links: []
+        title: Source Upstream Errors
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No matches for the current filters
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#FEDA8B'
+                    value: 1.0
+                  - color: '#FDB366'
+                    value: 1.0
+                  - color: '#F67E4B'
+                    value: 1.0
+                  - color: '#DD3D2D'
+                    value: 1.0
+                  - color: '#A50026'
+                    value: 1.0
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    sources-ingestion-by-replica:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: "\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id)\
+                      \ (\n    max without (job) (\n        rate(mz_source_messages_received{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      }[$__rate_interval])\n    )\n)\n"
+                    legendFormat: '{{parent_source_id}} / r{{cluster_environmentd_materialize_cloud_replica_id}}'
+                    qryType: 1
+                    query: "\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id)\
+                      \ (\n    max without (job) (\n        rate(mz_source_messages_received{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      }[$__rate_interval])\n    )\n)\n"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Messages ingested per second, split per source and replica.**\
+          \ Replicas read their upstream independently and should track together.\
+          \ **A replica flat at 0 while its siblings keep ingesting has lost its upstream\
+          \ connection** (e.g. it was restarted and couldn't resume pulling from Kafka)\
+          \ \u2014 the source still shows `Running` overall and the aggregate _Source\
+          \ Bytes Received_ hides it, so this split is where it surfaces. Legends\
+          \ are ids; map with `SELECT id, name FROM mz_sources` and the replica via\
+          \ `SELECT id, name FROM mz_cluster_replicas`. When you see a replica drop\
+          \ out, _Compute -> Freshness_ frontier lag will be climbing too; restarting\
+          \ that replica usually clears the stale connection."
+        id: 1058
+        links: []
+        title: Source Ingestion by Replica
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No matches for the current filters
+                unit: cps
               overrides: []
             options:
               legend:
@@ -4447,18 +4724,14 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: '
-
-                      mz_source_status{$environmentFilter}
-
-                      '
+                    expr: "\ngroup by (id, object_type, connection_type, envelope_type,\
+                      \ cluster_id) (\n    mz_storage_objects{$environmentFilter,\
+                      \ type=\"source\"}\n)\n"
                     instant: true
                     qryType: 1
-                    query: '
-
-                      mz_source_status{$environmentFilter}
-
-                      '
+                    query: "\ngroup by (id, object_type, connection_type, envelope_type,\
+                      \ cluster_id) (\n    mz_storage_objects{$environmentFilter,\
+                      \ type=\"source\"}\n)\n"
                     range: false
                   version: v0
                 refId: query-0
@@ -4470,11 +4743,11 @@ spec:
                 id: labelsToFields
                 options:
                   keepLabels:
-                  - source_name
-                  - source_type
-                  - status
+                  - id
+                  - object_type
                   - connection_type
-                  - source_id
+                  - envelope_type
+                  - cluster_id
             - group: merge
               kind: Transformation
               spec:
@@ -4488,19 +4761,18 @@ spec:
                   excludeByName:
                     Time: true
                     Value: true
-                    v2_mz_source_status: true
                   indexByName:
-                    connection_type: 3
-                    source_id: 4
-                    source_name: 0
-                    source_type: 1
-                    status: 2
+                    cluster_id: 4
+                    connection_type: 2
+                    envelope_type: 3
+                    id: 0
+                    object_type: 1
                   renameByName:
+                    cluster_id: Cluster
                     connection_type: Connection
-                    source_id: Source ID
-                    source_name: Source Name
-                    source_type: Type
-                    status: Status
+                    envelope_type: Envelope
+                    id: Source ID
+                    object_type: Type
             - group: sortBy
               kind: Transformation
               spec:
@@ -4508,17 +4780,18 @@ spec:
                 options:
                   fields: {}
                   sort:
-                  - field: Source Name
-        description: "**Per-source status table with `source_name`, type, current\
-          \ status, and connection info.** Status `running` is the steady state; `stalled`\
-          \ means the source is paused (often during catchup or after an error); `errored`\
-          \ indicates a hard failure. `stalled` isn't always bad \u2014 Postgres sources\
-          \ stall briefly during their initial snapshot, for example. For active throughput\
-          \ see _Source Bytes Received (rate)_; for richer source metadata use `SELECT\
-          \ * FROM mz_sources;`."
-        id: 1054
+                  - field: Source ID
+        description: "**Catalog of sources running in the environment \u2014 one row\
+          \ per source with its connector type, envelope, and the cluster it ingests\
+          \ on.** Self-managed Materialize exposes no source *status* metric, so running/stalled/errored\
+          \ isn't shown here \u2014 check live status with `SELECT name, type, status\
+          \ FROM mz_internal.mz_source_statuses;`, and use _Source Bytes Received\
+          \ (rate)_ to confirm a source is actively ingesting. Translate `Source ID`\
+          \ to a name via `SELECT id, name FROM mz_sources`. The hidden `_progress`\
+          \ subsources are excluded, so the row count matches _Active Sources_."
+        id: 1056
         links: []
-        title: Sources by Status
+        title: Sources
         vizConfig:
           group: table
           kind: VizConfig
@@ -4557,13 +4830,15 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (type) (\n    mz_sources_count{$environmentFilter}\n\
-                      ) > 0\n"
+                    expr: "\ncount by (object_type) (\n    group by (id, object_type)\
+                      \ (\n        mz_storage_objects{$environmentFilter, type=\"\
+                      source\"}\n    )\n) > 0\n"
                     instant: true
-                    legendFormat: '{{type}}'
+                    legendFormat: '{{object_type}}'
                     qryType: 1
-                    query: "\nsum by (type) (\n    mz_sources_count{$environmentFilter}\n\
-                      ) > 0\n"
+                    query: "\ncount by (object_type) (\n    group by (id, object_type)\
+                      \ (\n        mz_storage_objects{$environmentFilter, type=\"\
+                      source\"}\n    )\n) > 0\n"
                     range: false
                   version: v0
                 refId: query-0
@@ -4573,7 +4848,7 @@ spec:
           \ / etc.). Tells you what flavors of upstream feed make up your ingest workload.\
           \ Most environments concentrate on one or two types. Environment-scoped\
           \ \u2014 not affected by the cluster/replica filters."
-        id: 1053
+        id: 1055
         links: []
         title: Source Types
         vizConfig:
@@ -4624,22 +4899,23 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax(\n    sum by (instance) (mz_sinks_count{$environmentFilter})\n\
-                      ) or vector(0)\n"
-                    legendFormat: mz_sinks_count
+                    expr: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                      \ type=\"sink\"}\n    )\n) or vector(0)\n"
+                    legendFormat: sinks
                     qryType: 1
-                    query: "\nmax(\n    sum by (instance) (mz_sinks_count{$environmentFilter})\n\
-                      ) or vector(0)\n"
+                    query: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                      \ type=\"sink\"}\n    )\n) or vector(0)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
             transformations: []
         description: "**Number of active sinks in the catalog.** Each sink is an outbound\
           \ feed (Kafka, Iceberg, etc.) that emits the results of a materialized view\
-          \ or query to an external system. See _Sinks_ row below for per-sink throughput\
-          \ and lag. Environment-scoped \u2014 not affected by the cluster/replica\
-          \ filters."
-        id: 1051
+          \ or query to an external system. Counts distinct sink objects (excluding\
+          \ hidden `_progress` subsources), matching `mz_sinks`. See _Sinks_ row below\
+          \ for per-sink throughput and lag. Environment-scoped \u2014 not affected\
+          \ by the cluster/replica filters."
+        id: 1053
         links: []
         title: Active Sinks
         vizConfig:
@@ -4682,12 +4958,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax(\n    sum by (instance) (mz_sources_count{$environmentFilter})\n\
-                      ) or vector(0)\n"
-                    legendFormat: mz_sources_count
+                    expr: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                      \ type=\"source\"}\n    )\n) or vector(0)\n"
+                    legendFormat: sources
                     qryType: 1
-                    query: "\nmax(\n    sum by (instance) (mz_sources_count{$environmentFilter})\n\
-                      ) or vector(0)\n"
+                    query: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                      \ type=\"source\"}\n    )\n) or vector(0)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4695,10 +4971,12 @@ spec:
         description: "**Number of active sources in the catalog.** Each source is\
           \ a continuous ingestion connection from an external system (Kafka, Postgres,\
           \ MySQL, S3, etc.) \u2014 so this count is roughly the number of upstream\
-          \ feeds the environment is maintaining. See _Sources_ row below for type\
-          \ breakdown and per-source throughput. Environment-scoped \u2014 not affected\
-          \ by the cluster/replica filters."
-        id: 1050
+          \ feeds the environment is maintaining. Counts distinct source objects (the\
+          \ hidden per-source `_progress` subsources are excluded), so it matches\
+          \ what you'd see in `mz_sources`. See _Sources_ row below for type breakdown\
+          \ and per-source throughput. Environment-scoped \u2014 not affected by the\
+          \ cluster/replica filters."
+        id: 1052
         links: []
         title: Active Sources
         vizConfig:
@@ -4756,7 +5034,7 @@ spec:
           \ Mostly a catalog-shape signal \u2014 for actual ingest activity see _Sources\
           \ -> Source Bytes Received_. Environment-scoped \u2014 not affected by the\
           \ cluster/replica filters."
-        id: 1052
+        id: 1054
         links: []
         title: Active Tables
         vizConfig:
@@ -4818,7 +5096,7 @@ spec:
           REPLICA SIZE`, `CREATE`/`DROP CLUSTER REPLICA`, or pod restarts. On the
           Summary tab the monitoring exporter is excluded (so this reflects user-workload
           capacity); on the Kubernetes Workloads tab it''s included.'
-        id: 1007
+        id: 1008
         links: []
         title: Total CPU Capacity
         vizConfig:
@@ -4861,27 +5139,33 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount(\n    v2_mz_compute_hydration_time_seconds{\n \
-                      \       $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
-                      ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
-                      0\"\n    }\n) or vector(0)\n"
-                    legendFormat: unhydrated
+                    expr: "\ncount(\n    max by (instance_id, collection_id) (\n \
+                      \       mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
+                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
+                      \",\n            quantile=\"1\"\n        } > 1e15\n    )\n)\
+                      \ or vector(0)\n"
+                    legendFormat: hydrating
                     qryType: 1
-                    query: "\ncount(\n    v2_mz_compute_hydration_time_seconds{\n\
-                      \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
-                      ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
-                      0\"\n    }\n) or vector(0)\n"
+                    query: "\ncount(\n    max by (instance_id, collection_id) (\n\
+                      \        mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
+                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
+                      \",\n            quantile=\"1\"\n        } > 1e15\n    )\n)\
+                      \ or vector(0)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: "**Compute objects (indexes, materialized views) that haven't\
-          \ finished hydrating.** Hydration is the process of rebuilding a dataflow's\
-          \ in-memory state from persisted storage \u2014 it runs after a cluster\
-          \ restart, after creating a replica, and after some DDL. Nominal: 0 in steady\
-          \ state; non-zero is briefly expected after restarts. Sustained non-zero\
-          \ (more than a few minutes) means hydration is stuck \u2014 check _Slowest\
-          \ Hydrating Collections_ next, then pod restart history on _Kubernetes Workloads_."
+        description: "**Collections still (re)building their in-memory state \u2014\
+          \ a live hydration-queue proxy.** Hydration rebuilds a dataflow's state\
+          \ from persisted storage after a cluster/replica restart, replica creation,\
+          \ or some DDL; until it finishes, the collection has no output frontier,\
+          \ which this counts (via the `mz_dataflow_wallclock_lag_seconds` sentinel).\
+          \ **Nominal: 0, with brief spikes right after a replica restart that drain\
+          \ back to 0 as dataflows catch up \u2014 that's healthy.** A count that\
+          \ stays elevated means something can't finish hydrating (e.g. a source whose\
+          \ `CREATE` didn't complete, or a wedged dataflow). Confirm what's stuck\
+          \ with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`;\
+          \ watch _Compute -> Freshness_ for the lag those collections accrue."
         id: 1003
         links: []
         title: Currently Hydrating
@@ -4896,34 +5180,96 @@ spec:
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    summary-max-lag:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: "\nmax(\n    max_over_time(\n        (\n            mz_dataflow_wallclock_lag_seconds{\n\
+                      \                $environmentFilter, instance_id!=\"\", quantile=\"\
+                      1\"\n            } < 1e9\n        )[$__range:1m]\n    )\n)\n"
+                    instant: true
+                    legendFormat: max lag
+                    qryType: 1
+                    query: "\nmax(\n    max_over_time(\n        (\n            mz_dataflow_wallclock_lag_seconds{\n\
+                      \                $environmentFilter, instance_id!=\"\", quantile=\"\
+                      1\"\n            } < 1e9\n        )[$__range:1m]\n    )\n)\n"
+                    range: false
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Worst frontier lag seen anywhere in the environment over the\
+          \ dashboard's selected time range** \u2014 how far the most behind collection's\
+          \ output trailed real time. A top-level freshness pointer: low (seconds)\
+          \ is fine and stays gray; if it climbs toward an hour it turns red, meaning\
+          \ some collection is falling behind \u2014 open _Compute Objects -> Freshness_\
+          \ to see which one (and _Currently Hydrating_ / _Storage -> Sources_ for\
+          \ why). Not-yet-hydrated collections are excluded here (they show in _Currently\
+          \ Hydrating_)."
+        id: 1004
+        links: []
+        title: Max Lag (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No matches for the current filters
                 thresholds:
                   mode: absolute
                   steps:
                   - color: '#CEFFFF'
                     value: 2
                   - color: '#C6F7D6'
-                    value: 5
+                    value: 4
                   - color: '#A2F49B'
-                    value: 12
+                    value: 9
                   - color: '#BBE453'
-                    value: 29
+                    value: 19
                   - color: '#D5CE04'
-                    value: 68
+                    value: 41
                   - color: '#E7B503'
-                    value: 158
+                    value: 87
                   - color: '#F19903'
-                    value: 368
+                    value: 183
                   - color: '#F6790B'
-                    value: 857
+                    value: 385
                   - color: '#F94902'
-                    value: 1995
+                    value: 812
                   - color: '#E40515'
-                    value: 4642
+                    value: 1710
                   - color: '#AB0003'
-                    value: 10800
+                    value: 3600
+                unit: s
               overrides: []
             options:
-              colorMode: none
+              colorMode: background
               graphMode: area
               justifyMode: auto
               orientation: auto
@@ -4966,7 +5312,7 @@ spec:
           scope** (sum of memory limits from cAdvisor). Memory is the dominant constraint
           on Materialize: in-memory arrangements (see _Compute Objects -> Arrangements_)
           live in here. Steps correlate with `ALTER CLUSTER REPLICA SIZE` or pod restarts.'
-        id: 1008
+        id: 1009
         links: []
         title: Total Memory
         vizConfig:
@@ -5032,6 +5378,11 @@ spec:
                           element:
                             kind: ElementReference
                             name: summary-currently-hydrating
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: summary-max-lag
                       - kind: AutoGridLayoutItem
                         spec:
                           element:
@@ -5312,11 +5663,6 @@ spec:
                           element:
                             kind: ElementReference
                             name: replica-sizes
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: replica-azs
                       maxColumnCount: 3
                       rowHeightMode: standard
                   title: Replication / Availability
@@ -5386,9 +5732,19 @@ spec:
                   layout:
                     kind: AutoGridLayout
                     spec:
-                      columnWidthMode: standard
+                      columnWidthMode: wide
                       fillScreen: false
-                      items: []
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: freshness-lag-by-cluster
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: freshness-top-collections
                       maxColumnCount: 3
                       rowHeightMode: standard
                   title: Freshness
@@ -5541,6 +5897,16 @@ spec:
                           element:
                             kind: ElementReference
                             name: sources-bytes-received-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: sources-ingestion-by-replica
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: sources-errors
                       maxColumnCount: 3
                       rowHeightMode: standard
                   title: Sources
