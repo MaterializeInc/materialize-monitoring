@@ -31,7 +31,7 @@ spec:
                   spec:
                     expr: '
 
-                      max(sum by (instance) (mz_indexes_count{$environmentFilter}))
+                      max(sum by (instance) (${sqlMetricPrefix}indexes_count{$environmentFilter}))
                       or vector(0)
 
                       '
@@ -39,7 +39,7 @@ spec:
                     qryType: 1
                     query: '
 
-                      max(sum by (instance) (mz_indexes_count{$environmentFilter}))
+                      max(sum by (instance) (${sqlMetricPrefix}indexes_count{$environmentFilter}))
                       or vector(0)
 
                       '
@@ -99,14 +99,14 @@ spec:
                   spec:
                     expr: '
 
-                      max(mz_mzd_views_count{$environmentFilter})
+                      max(${sqlMetricPrefix}mzd_views_count{$environmentFilter})
 
                       '
                     legendFormat: materialized-views
                     qryType: 1
                     query: '
 
-                      max(mz_mzd_views_count{$environmentFilter})
+                      max(${sqlMetricPrefix}mzd_views_count{$environmentFilter})
 
                       '
                   version: v0
@@ -234,14 +234,14 @@ spec:
                   spec:
                     expr: '
 
-                      max(mz_views_count{$environmentFilter})
+                      max(${sqlMetricPrefix}views_count{$environmentFilter})
 
                       '
                     legendFormat: views
                     qryType: 1
                     query: '
 
-                      max(mz_views_count{$environmentFilter})
+                      max(${sqlMetricPrefix}views_count{$environmentFilter})
 
                       '
                   version: v0
@@ -557,13 +557,13 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n\
+                    expr: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       s.*\"\n    }\n)\n"
                     legendFormat: '{{collection_id}}'
                     qryType: 1
-                    query: "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n\
+                    query: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       s.*\"\n    }\n)\n"
@@ -646,13 +646,13 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n\
+                    expr: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       t.*|none\"\n    }\n)\n"
                     legendFormat: '{{collection_id}}'
                     qryType: 1
-                    query: "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n\
+                    query: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       t.*|none\"\n    }\n)\n"
@@ -734,13 +734,13 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n\
+                    expr: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       u.*\"\n    }\n)\n"
                     legendFormat: '{{collection_id}}'
                     qryType: 1
-                    query: "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n\
+                    query: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       u.*\"\n    }\n)\n"
@@ -893,13 +893,13 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ncount(\n    group by (compute_cluster_id) (\n       \
-                      \ mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\"}\n    )\n)\n"
+                      \ ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n"
                     legendFormat: Total Clusters
                     qryType: 1
                     query: "\ncount(\n    group by (compute_cluster_id) (\n      \
-                      \  mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\"}\n    )\n)\n"
+                      \  ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -912,13 +912,15 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ncount(\n    group by (compute_cluster_id) (\n       \
-                      \ mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n"
+                      \ ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"\
+                      ^s.*\"}\n    )\n)\n"
                     legendFormat: System Clusters
                     qryType: 1
                     query: "\ncount(\n    group by (compute_cluster_id) (\n      \
-                      \  mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n"
+                      \  ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"\
+                      ^s.*\"}\n    )\n)\n"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -974,16 +976,16 @@ spec:
                   spec:
                     expr: '
 
-                      mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList",
-                      compute_replica_id=~"$mzReplicaList"}
+                      ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,
+                      compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
 
                       '
                     instant: true
                     qryType: 1
                     query: '
 
-                      mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~"$mzClusterList",
-                      compute_replica_id=~"$mzReplicaList"}
+                      ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,
+                      compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
 
                       '
                     range: false
@@ -1019,6 +1021,7 @@ spec:
                   excludeByName:
                     Time: true
                     mz_compute_cluster_status: true
+                    v2_mz_compute_cluster_status: true
                   indexByName:
                     compute_cluster_id: 2
                     compute_cluster_name: 0
@@ -1480,14 +1483,14 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\nsum by (instance_id) (\n    max without (job) (\n   \
-                      \     rate(\n            mz_dataflow_elapsed_seconds_total{\n\
+                      \     rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n\
                       \                $environmentFilter,\n                instance_id=~\"\
                       $mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\
                       \n            }[$__rate_interval]\n        )\n    )\n)\n"
                     legendFormat: '{{instance_id}}'
                     qryType: 1
                     query: "\nsum by (instance_id) (\n    max without (job) (\n  \
-                      \      rate(\n            mz_dataflow_elapsed_seconds_total{\n\
+                      \      rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n\
                       \                $environmentFilter,\n                instance_id=~\"\
                       $mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\
                       \n            }[$__rate_interval]\n        )\n    )\n)\n"
@@ -1761,14 +1764,14 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ntopk(15,\n    v2_mz_compute_hydration_time_seconds{\n\
+                    expr: "\ntopk(15,\n    ${sqlMetricPrefix}compute_hydration_time_seconds{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
                       1\"\n    }\n)\n"
                     instant: true
                     legendFormat: '{{instance_id}} / {{replica_id}} / {{collection_id}}'
                     qryType: 1
-                    query: "\ntopk(15,\n    v2_mz_compute_hydration_time_seconds{\n\
+                    query: "\ntopk(15,\n    ${sqlMetricPrefix}compute_hydration_time_seconds{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
                       1\"\n    }\n)\n"
@@ -1941,12 +1944,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (relation_type) (\n    mz_indexes_count{$environmentFilter}\n\
+                    expr: "\nsum by (relation_type) (\n    ${sqlMetricPrefix}indexes_count{$environmentFilter}\n\
                       )\n"
                     instant: true
                     legendFormat: '{{relation_type}}'
                     qryType: 1
-                    query: "\nsum by (relation_type) (\n    mz_indexes_count{$environmentFilter}\n\
+                    query: "\nsum by (relation_type) (\n    ${sqlMetricPrefix}indexes_count{$environmentFilter}\n\
                       )\n"
                     range: false
                   version: v0
@@ -2298,12 +2301,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ngroup by (mz_version) (\n    mz_compute_cluster_status{$environmentFilter}\n\
+                    expr: "\ngroup by (mz_version) (\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\n\
                       )\n"
                     instant: true
                     legendFormat: '{{mz_version}}'
                     qryType: 1
-                    query: "\ngroup by (mz_version) (\n    mz_compute_cluster_status{$environmentFilter}\n\
+                    query: "\ngroup by (mz_version) (\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\n\
                       )\n"
                     range: false
                   version: v0
@@ -3349,15 +3352,15 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ncount(\n    group by (compute_cluster_id, compute_replica_id)\
-                      \ (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n\
-                      \    )\n)\n"
+                      \ (\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"\
+                      $mzReplicaList\"}\n    )\n)\n"
                     legendFormat: Total Replicas
                     qryType: 1
                     query: "\ncount(\n    group by (compute_cluster_id, compute_replica_id)\
-                      \ (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n\
-                      \    )\n)\n"
+                      \ (\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"\
+                      $mzReplicaList\"}\n    )\n)\n"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3370,15 +3373,17 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ncount(\n    group by (compute_cluster_id, compute_replica_id)\
-                      \ (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"\
-                      r1\"}\n    )\n) or vector(0)\n"
+                      \ (\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"\
+                      $mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or\
+                      \ vector(0)\n"
                     legendFormat: Additional Replicas
                     qryType: 1
                     query: "\ncount(\n    group by (compute_cluster_id, compute_replica_id)\
-                      \ (\n        mz_compute_cluster_status{$environmentFilter, compute_cluster_id=~\"\
-                      $mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"\
-                      r1\"}\n    )\n) or vector(0)\n"
+                      \ (\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
+                      \ compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"\
+                      $mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or\
+                      \ vector(0)\n"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -3432,13 +3437,13 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount by (size) (\n    mz_compute_cluster_status{$environmentFilter,\
+                    expr: "\ncount by (size) (\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
                       \ compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"\
                       $mzReplicaList\"}\n)\n"
                     instant: true
                     legendFormat: '{{size}}'
                     qryType: 1
-                    query: "\ncount by (size) (\n    mz_compute_cluster_status{$environmentFilter,\
+                    query: "\ncount by (size) (\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter,\
                       \ compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"\
                       $mzReplicaList\"}\n)\n"
                     range: false
@@ -4407,13 +4412,13 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ncount by (object_type, envelope_type) (\n    group by\
-                      \ (id, object_type, envelope_type) (\n        mz_storage_objects{$environmentFilter,\
+                      \ (id, object_type, envelope_type) (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"sink\"}\n    )\n) > 0\n"
                     instant: true
                     legendFormat: '{{object_type}} / {{envelope_type}}'
                     qryType: 1
                     query: "\ncount by (object_type, envelope_type) (\n    group by\
-                      \ (id, object_type, envelope_type) (\n        mz_storage_objects{$environmentFilter,\
+                      \ (id, object_type, envelope_type) (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"sink\"}\n    )\n) > 0\n"
                     range: false
                   version: v0
@@ -4725,12 +4730,12 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ngroup by (id, object_type, connection_type, envelope_type,\
-                      \ cluster_id) (\n    mz_storage_objects{$environmentFilter,\
+                      \ cluster_id) (\n    ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"source\"}\n)\n"
                     instant: true
                     qryType: 1
                     query: "\ngroup by (id, object_type, connection_type, envelope_type,\
-                      \ cluster_id) (\n    mz_storage_objects{$environmentFilter,\
+                      \ cluster_id) (\n    ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"source\"}\n)\n"
                     range: false
                   version: v0
@@ -4831,14 +4836,14 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\ncount by (object_type) (\n    group by (id, object_type)\
-                      \ (\n        mz_storage_objects{$environmentFilter, type=\"\
-                      source\"}\n    )\n) > 0\n"
+                      \ (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
+                      \ type=\"source\"}\n    )\n) > 0\n"
                     instant: true
                     legendFormat: '{{object_type}}'
                     qryType: 1
                     query: "\ncount by (object_type) (\n    group by (id, object_type)\
-                      \ (\n        mz_storage_objects{$environmentFilter, type=\"\
-                      source\"}\n    )\n) > 0\n"
+                      \ (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
+                      \ type=\"source\"}\n    )\n) > 0\n"
                     range: false
                   version: v0
                 refId: query-0
@@ -4899,11 +4904,11 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                    expr: "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"sink\"}\n    )\n) or vector(0)\n"
                     legendFormat: sinks
                     qryType: 1
-                    query: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                    query: "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"sink\"}\n    )\n) or vector(0)\n"
                   version: v0
                 refId: query-0
@@ -4958,11 +4963,11 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                    expr: "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"source\"}\n    )\n) or vector(0)\n"
                     legendFormat: sources
                     qryType: 1
-                    query: "\ncount(\n    group by (id) (\n        mz_storage_objects{$environmentFilter,\
+                    query: "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"source\"}\n    )\n) or vector(0)\n"
                   version: v0
                 refId: query-0
@@ -5019,11 +5024,11 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax(\n    sum by (instance) (mz_tables_count{$environmentFilter})\n\
+                    expr: "\nmax(\n    sum by (instance) (${sqlMetricPrefix}tables_count{$environmentFilter})\n\
                       ) or vector(0)\n"
-                    legendFormat: mz_tables_count
+                    legendFormat: ${sqlMetricPrefix}tables_count
                     qryType: 1
-                    query: "\nmax(\n    sum by (instance) (mz_tables_count{$environmentFilter})\n\
+                    query: "\nmax(\n    sum by (instance) (${sqlMetricPrefix}tables_count{$environmentFilter})\n\
                       ) or vector(0)\n"
                   version: v0
                 refId: query-0

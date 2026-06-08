@@ -360,9 +360,9 @@ class OverviewSummary(KubeResourcesMixin):
             query_group(
                 promql_query(
                     textwrap.dedent(
-                        """
+                        f"""
                         group by (mz_version) (
-                            mz_compute_cluster_status{$environmentFilter}
+                            {COMPUTE_CLUSTER_STATUS}
                         )
                         """
                     ),
