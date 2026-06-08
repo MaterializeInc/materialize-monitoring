@@ -27,8 +27,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    mz_compute_cluster_status{$environmentFilter} == 1\n) / count(\n    mz_compute_cluster_status{$environmentFilter}\n) * 100\n",
-                        "query": "\ncount(\n    mz_compute_cluster_status{$environmentFilter} == 1\n) / count(\n    mz_compute_cluster_status{$environmentFilter}\n) * 100\n",
+                        "expr": "\ncount(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter} == 1\n) / count(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\n) * 100\n",
+                        "query": "\ncount(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter} == 1\n) / count(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\n) * 100\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -126,7 +126,7 @@
         "spec": {
           "id": 1001,
           "title": "Environment Availability (Select Time Range)",
-          "description": "**Fraction of time the environment was healthy over the dashboard's selected time range** \u2014 computed from `mz_compute_cluster_status` averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000% (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate with cluster restarts or outages; widen the time range to find when they happened, then check _Last Restart Time_ and _Kubernetes Workloads_ for pod restart context.",
+          "description": "**Fraction of time the environment was healthy over the dashboard's selected time range** \u2014 computed from `${sqlMetricPrefix}compute_cluster_status{$environmentFilter}` averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000% (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate with cluster restarts or outages; widen the time range to find when they happened, then check _Last Restart Time_ and _Kubernetes Workloads_ for pod restart context.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -140,8 +140,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        mz_compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
-                        "query": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        mz_compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
+                        "expr": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
+                        "query": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -7393,6 +7393,41 @@
       {
         "kind": "QueryVariable",
         "spec": {
+          "name": "sqlMetricPrefix",
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "hide": "hideVariable",
+          "refresh": "never",
+          "skipUrlSync": true,
+          "query": {
+            "kind": "DataQuery",
+            "group": "prometheus",
+            "version": "v0",
+            "spec": {
+              "expr": "query_result(group by (__name__) ({__name__=~\".*compute_cluster_status\"}))",
+              "query": "query_result(group by (__name__) ({__name__=~\".*compute_cluster_status\"}))",
+              "qryType": 1
+            },
+            "datasource": {
+              "name": "${metricsDatasource}"
+            }
+          },
+          "regex": "/(?<text>(?<value>.*))compute_cluster_status.*/",
+          "sort": "disabled",
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": true,
+          "label": "SQL Metric Prefix",
+          "description": "The prefix for all SQL-derived metrics. In self-managed, this is `mz_`; in cloud, this uses `v2_mz_`.",
+          "definition": "query_result(group by (__name__) ({__name__=~\".*compute_cluster_status\"}))"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
           "name": "mzNamespaceList",
           "current": {
             "text": "",
@@ -7505,8 +7540,8 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
-              "query": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
+              "expr": "query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
+              "query": "query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
               "qryType": 1
             },
             "datasource": {
@@ -7521,7 +7556,7 @@
           "allowCustomValue": true,
           "label": "Cluster",
           "description": "The cluster within the current environment to filter to",
-          "definition": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })"
+          "definition": "query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })"
         }
       },
       {

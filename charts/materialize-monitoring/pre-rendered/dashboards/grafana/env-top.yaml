@@ -825,18 +825,18 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: "\navg by (kubernetes_namespace) (\n    avg_over_time(\n\
-                      \        mz_compute_cluster_status{$environmentFilter}[$__range]\n\
+                      \        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n\
                       \    ) * 100\n)\n"
                     qryType: 1
                     query: "\navg by (kubernetes_namespace) (\n    avg_over_time(\n\
-                      \        mz_compute_cluster_status{$environmentFilter}[$__range]\n\
+                      \        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n\
                       \    ) * 100\n)\n"
                   version: v0
                 refId: query-0
             queryOptions: {}
             transformations: []
         description: "**Fraction of time the environment was healthy over the dashboard's\
-          \ selected time range** \u2014 computed from `mz_compute_cluster_status`\
+          \ selected time range** \u2014 computed from `${sqlMetricPrefix}compute_cluster_status{$environmentFilter}`\
           \ averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000%\
           \ (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate\
           \ with cluster restarts or outages; widen the time range to find when they\
@@ -2010,12 +2010,12 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ncount(\n    mz_compute_cluster_status{$environmentFilter}\
-                      \ == 1\n) / count(\n    mz_compute_cluster_status{$environmentFilter}\n\
+                    expr: "\ncount(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\
+                      \ == 1\n) / count(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\n\
                       ) * 100\n"
                     qryType: 1
-                    query: "\ncount(\n    mz_compute_cluster_status{$environmentFilter}\
-                      \ == 1\n) / count(\n    mz_compute_cluster_status{$environmentFilter}\n\
+                    query: "\ncount(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\
+                      \ == 1\n) / count(\n    ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}\n\
                       ) * 100\n"
                   version: v0
                 refId: query-0
@@ -6060,6 +6060,35 @@ spec:
       current:
         text: ''
         value: ''
+      definition: query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))
+      description: The prefix for all SQL-derived metrics. In self-managed, this is
+        `mz_`; in cloud, this uses `v2_mz_`.
+      hide: hideVariable
+      includeAll: false
+      label: SQL Metric Prefix
+      multi: false
+      name: sqlMetricPrefix
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))
+          qryType: 1
+          query: query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))
+        version: v0
+      refresh: never
+      regex: /(?<text>(?<value>.*))compute_cluster_status.*/
+      skipUrlSync: true
+      sort: disabled
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
       definition: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentIdList"
         }, kubernetes_namespace)
       description: The current materialize namespace where environments live
@@ -6141,7 +6170,7 @@ spec:
       current:
         text: ''
         value: ''
-      definition: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList",
+      definition: query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList",
         compute_cluster_id=~"$includeSystemClusters" })
       description: The cluster within the current environment to filter to
       hide: inControlsMenu
@@ -6156,10 +6185,10 @@ spec:
         group: prometheus
         kind: DataQuery
         spec:
-          expr: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList",
+          expr: query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList",
             compute_cluster_id=~"$includeSystemClusters" })
           qryType: 1
-          query: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList",
+          query: query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList",
             compute_cluster_id=~"$includeSystemClusters" })
         version: v0
       refresh: never

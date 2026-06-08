@@ -13,10 +13,12 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import threshold, visualization
+from dashboards import threshold, variables, visualization
 
 from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, KubeResourcesMixin
+
+COMPUTE_CLUSTER_STATUS = f"${{{variables.VariableNames.SQL_METRIC_PREFIX}}}compute_cluster_status{{${variables.IntermediateNames.ENVIRONMENT_FILTER}}}"
 
 
 class OverviewSummary(KubeResourcesMixin):
@@ -33,11 +35,11 @@ class OverviewSummary(KubeResourcesMixin):
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     count(
-                        mz_compute_cluster_status{$environmentFilter} == 1
+                        {COMPUTE_CLUSTER_STATUS} == 1
                     ) / count(
-                        mz_compute_cluster_status{$environmentFilter}
+                        {COMPUTE_CLUSTER_STATUS}
                     ) * 100
                     """
                 ),
@@ -75,10 +77,10 @@ class OverviewSummary(KubeResourcesMixin):
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     avg by (kubernetes_namespace) (
                         avg_over_time(
-                            mz_compute_cluster_status{$environmentFilter}[$__range]
+                            {COMPUTE_CLUSTER_STATUS}[$__range]
                         ) * 100
                     )
                     """
@@ -93,7 +95,7 @@ class OverviewSummary(KubeResourcesMixin):
             .description(
                 "**Fraction of time the environment was healthy over "
                 "the dashboard's selected time range** — computed from "
-                "`mz_compute_cluster_status` averaged over "
+                f"`{COMPUTE_CLUSTER_STATUS}` averaged over "
                 "`$__range`. Effectively an SLO snapshot. Nominal: "
                 "100.0000% (note the four decimals — five-nines = "
                 "99.999%). Sustained dips correlate with cluster "

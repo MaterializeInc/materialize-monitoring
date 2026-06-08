@@ -33,6 +33,7 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     def configure_variables(self) -> None:
         """Add variables to the dashboard."""
+        self.add_variable(variables.sql_prefix_variable())
         self.add_variable(variables.environment_namespace())
         self.add_variable(variables.environment_id_variable())
         self.add_variable(
