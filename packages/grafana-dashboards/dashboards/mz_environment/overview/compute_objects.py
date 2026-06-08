@@ -147,11 +147,12 @@ class ComputeObjectsTab:
         # (env-scoped, no cluster label) — the replacement for the cloud-only
         # `v2_mz_production_object{type="materialized-view"}`. `max(...)` dedups
         # across exporter pods.
+        # mz_mzd_views_count / v2_mz_mzd_views_count
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
-                    max(mz_mzd_views_count{$environmentFilter})
+                    max(${sqlMetricPrefix}mzd_views_count{$environmentFilter})
                     """
                 )
             ).legend_format("materialized-views"),
@@ -189,11 +190,12 @@ class ComputeObjectsTab:
         # `mz_indexes_count` is absent until the first index is created, so
         # `or vector(0)` makes a fresh/empty environment read 0 rather than
         # "No data".
+        # mz_indexes_count / v2_mz_indexes_count
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
-                    max(sum by (instance) (mz_indexes_count{$environmentFilter})) or vector(0)
+                    max(sum by (instance) (${sqlMetricPrefix}indexes_count{$environmentFilter})) or vector(0)
                     """
                 )
             ).legend_format("indexes"),
@@ -226,11 +228,12 @@ class ComputeObjectsTab:
         one exporter ends up scraping the same value.
         """
         panel_id = "active-views"
+        # mz_views_count / v2_mz_views_count
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
-                    max(mz_views_count{$environmentFilter})
+                    max(${sqlMetricPrefix}views_count{$environmentFilter})
                     """
                 )
             ).legend_format("views"),
@@ -315,12 +318,13 @@ class ComputeObjectsTab:
         label — this panel is intentionally environment-scoped.
         """
         panel_id = "index-types"
+        # mz_indexes_count / v2_mz_indexes_count
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
                     sum by (relation_type) (
-                        mz_indexes_count{$environmentFilter}
+                        ${sqlMetricPrefix}indexes_count{$environmentFilter}
                     )
                     """
                 )
@@ -434,12 +438,13 @@ class ComputeObjectsTab:
         per-collection hydration-duration metric exists on self-managed.
         """
         panel_id = "hydration-slowest-collections"
+        # (self-managed: none yet) v2_mz_compute_hydration_time_seconds
         query = query_group(
             promql_query(
                 textwrap.dedent(
                     """
                     topk(15,
-                        v2_mz_compute_hydration_time_seconds{
+                        ${sqlMetricPrefix}compute_hydration_time_seconds{
                             $environmentFilter,
                             instance_id=~"$mzClusterList",
                             replica_id=~"$mzReplicaList",
@@ -936,6 +941,7 @@ class ComputeObjectsTab:
         everything else is in the 0.001-0.01 range.
         """
         panel_id = "dataflow-elapsed-rate"
+        # mz_dataflow_elapsed_seconds_total / v2_mz_dataflow_elapsed_seconds_total
         query = query_group(
             promql_query(
                 textwrap.dedent(
@@ -943,7 +949,7 @@ class ComputeObjectsTab:
                     sum by (instance_id) (
                         max without (job) (
                             rate(
-                                mz_dataflow_elapsed_seconds_total{
+                                ${sqlMetricPrefix}dataflow_elapsed_seconds_total{
                                     $environmentFilter,
                                     instance_id=~"$mzClusterList",
                                     replica_id=~"$mzReplicaList"
@@ -1045,13 +1051,15 @@ class ComputeObjectsTab:
         per series with the three calc columns; SortBy puts the biggest
         current value at the top.
         """
+        # mz_arrangement_record_count / v2_mz_arrangement_record_count
+        # (f-string here, so the prefix var is brace-escaped: ${{sqlMetricPrefix}})
         query = (
             query_group(
                 promql_query(
                     textwrap.dedent(
                         f"""
                         max by (collection_id) (
-                            mz_arrangement_record_count{{
+                            ${{sqlMetricPrefix}}arrangement_record_count{{
                                 $environmentFilter,
                                 instance_id=~"$mzClusterList",
                                 replica_id=~"$mzReplicaList",

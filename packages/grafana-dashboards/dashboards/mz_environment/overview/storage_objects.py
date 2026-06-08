@@ -59,6 +59,12 @@ ENV_SCOPED_NOTE = "Environment-scoped — not affected by the cluster/replica fi
 # "legacy" job (cluster_status, storage_objects, dataflow_elapsed, the *_count
 # metrics), so excluding job names by pattern would blank real panels.
 
+# SQL-derived metric used across this tab's count/type/catalog panels:
+#   ${sqlMetricPrefix}storage_objects
+#   -> mz_storage_objects (self-managed) / v2_mz_storage_objects (cloud)
+# The mz_source_*/mz_sink_* throughput/lag/error metrics below are genuine
+# instrumentation (same `mz_` name in both environments) and are NOT prefixed.
+
 STORAGE_THEME = palette.THEME_PALETTE[
     4
 ]  # yellow — distinct from compute (orange), connections (teal), k8s (cyan)
@@ -93,7 +99,9 @@ def _env_total_count_query(metric_name: str):
 
 
 def _storage_object_count_query(object_kind: str):
-    """Count distinct source/sink objects from `mz_storage_objects`.
+    """Count distinct source/sink objects from `${sqlMetricPrefix}storage_objects`.
+
+    Metric: `mz_storage_objects` (self-managed) / `v2_mz_storage_objects` (cloud).
 
     `mz_storage_objects` emits one series per (object, replica) with a `type`
     label of `source` / `sink`, an `id`, and `object_type` / `connection_type`
@@ -110,7 +118,7 @@ def _storage_object_count_query(object_kind: str):
                 f"""
                 count(
                     group by (id) (
-                        mz_storage_objects{{$environmentFilter, type="{object_kind}"}}
+                        ${{sqlMetricPrefix}}storage_objects{{$environmentFilter, type="{object_kind}"}}
                     )
                 ) or vector(0)
                 """
@@ -184,7 +192,8 @@ class StorageObjectsTab:
                 "Received_. "
                 f"{ENV_SCOPED_NOTE}"
             )
-            .data(_env_total_count_query("mz_tables_count"))
+            # mz_tables_count / v2_mz_tables_count
+            .data(_env_total_count_query("${sqlMetricPrefix}tables_count"))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
@@ -205,7 +214,7 @@ class StorageObjectsTab:
                     """
                     count by (object_type) (
                         group by (id, object_type) (
-                            mz_storage_objects{$environmentFilter, type="source"}
+                            ${sqlMetricPrefix}storage_objects{$environmentFilter, type="source"}
                         )
                     ) > 0
                     """
@@ -269,7 +278,7 @@ class StorageObjectsTab:
                     textwrap.dedent(
                         """
                         group by (id, object_type, connection_type, envelope_type, cluster_id) (
-                            mz_storage_objects{$environmentFilter, type="source"}
+                            ${sqlMetricPrefix}storage_objects{$environmentFilter, type="source"}
                         )
                         """
                     )
@@ -608,7 +617,7 @@ class StorageObjectsTab:
                     """
                     count by (object_type, envelope_type) (
                         group by (id, object_type, envelope_type) (
-                            mz_storage_objects{$environmentFilter, type="sink"}
+                            ${sqlMetricPrefix}storage_objects{$environmentFilter, type="sink"}
                         )
                     ) > 0
                     """

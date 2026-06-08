@@ -337,6 +337,27 @@ Putting the regex constants at module scope (next to `CADVISOR_MISSING` etc.) ke
 
 When verifying, query the live instance for what actually exists (`list_prometheus_metric_names`, `list_prometheus_label_names`) rather than trusting a remembered metric name.
 
+### Converging cloud and self-managed: `$sqlMetricPrefix`
+
+A subset of metrics is **SQL-derived** and differs between environments only by a name prefix: `mz_X` on self-managed (environmentd `/metrics/mz_*` endpoints) vs `v2_mz_X` in cloud (`new-promsql-exporter`). To write one query that works in both, prefix those metric names with the `$sqlMetricPrefix` template variable, which auto-detects per environment (`mz_` or `v2_mz_`) by inspecting which `…compute_cluster_status` exists. See `variables.py`.
+
+```promql
+${sqlMetricPrefix}compute_cluster_status{$environmentFilter}   # -> mz_… or v2_mz_…
+```
+
+**Only prefix SQL-derived metrics.** **Genuine instrumentation** (timely/differential counters scraped from environmentd/clusterd `/metrics`) carries the **same bare `mz_` name in both environments** — prefixing it produces `v2_mz_…` which doesn't exist in cloud and breaks the panel.
+
+- **Prefix (SQL-derived):** `compute_cluster_status`, the catalog `*_count` metrics (`tables`/`views`/`mzd_views`/`indexes`/`sources`/`sinks`/`clusters`/`cluster_reps`/`connections`/`secrets`/`catalog_items`), `storage_objects`, `object_id`, `workload_clusters`, the arrangement-introspection family (`arrangement_record_count`/`_size_bytes`/…), `dataflow_elapsed_seconds_total`, `compute_replica_park_duration_seconds_total`, `compute_hydration_time_seconds`.
+- **Do NOT prefix (genuine):** `arrangement_maintenance_seconds_total`, `compute_replica_history_dataflow_count`, `compute_peek_duration_seconds_*`, `source_*`/`sink_*` throughput/lag/error metrics, `query_total`, `adapter_commands`, `active_sessions`/`active_subscribes`, `compute_controller_hydration_queue_size`, `dataflow_wallclock_lag_seconds`.
+
+Quick test: a metric is genuine (don't prefix) if it appears under the plain-`mz_` name on the cloud `materialize` job; SQL-derived (prefix) if cloud only has it as `v2_mz_`.
+
+Conventions:
+- Write `${sqlMetricPrefix}` as a literal token in the PromQL string (like `$environmentFilter`). In Python **f-string** queries, brace-escape it as `${{sqlMetricPrefix}}`.
+- Leave a one-line reference comment with the concrete names, e.g. `# mz_tables_count / v2_mz_tables_count`, so the resolved names stay greppable.
+- In table transforms, the value-field name is the **resolved** metric, so `excludeByName` must list **both** `mz_X` and `v2_mz_X`.
+- This is a convergence shim: once cloud's `new-promsql-exporter` is replaced by native `mz_` instrumentation, `$sqlMetricPrefix` collapses to `mz_` everywhere and the variable retires.
+
 ## Materialize metric label families
 
 Materialize `mz_*` metrics come from two scraper paths with **different label naming conventions**. Picking the wrong filter is a common failure mode.
