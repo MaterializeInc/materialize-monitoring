@@ -7442,8 +7442,8 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, kubernetes_namespace)",
-              "query": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, kubernetes_namespace)",
+              "expr": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, materialize_cloud_organization_namespace)",
+              "query": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, materialize_cloud_organization_namespace)",
               "qryType": 1
             },
             "datasource": {
@@ -7458,7 +7458,7 @@
           "allowCustomValue": true,
           "label": "Materialize Namespace",
           "description": "The current materialize namespace where environments live",
-          "definition": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, kubernetes_namespace)"
+          "definition": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, materialize_cloud_organization_namespace)"
         }
       },
       {

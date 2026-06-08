@@ -6095,7 +6095,7 @@ spec:
         text: ''
         value: ''
       definition: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentIdList"
-        }, kubernetes_namespace)
+        }, materialize_cloud_organization_namespace)
       description: The current materialize namespace where environments live
       hide: hideVariable
       includeAll: true
@@ -6110,10 +6110,10 @@ spec:
         kind: DataQuery
         spec:
           expr: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentIdList"
-            }, kubernetes_namespace)
+            }, materialize_cloud_organization_namespace)
           qryType: 1
           query: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentIdList"
-            }, kubernetes_namespace)
+            }, materialize_cloud_organization_namespace)
         version: v0
       refresh: never
       regex: ''

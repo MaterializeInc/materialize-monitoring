@@ -113,11 +113,14 @@ def environment_namespace() -> dashboardv2_builders.QueryVariable:
         .sort(dashboardv2.VariableSort.ALPHABETICAL_ASC)
         .skip_url_sync(True)
         .definition(
-            f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, kubernetes_namespace)'
+            # HACK: materialize_cloud_organization_namespace is the only common label here
+            # self-managed: kubernetes_namespace, materialize_cloud_organization_namespace labels
+            # cloud: namespace, materialize_cloud_organization_namespace labels
+            f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, materialize_cloud_organization_namespace)'
         )
         .query(
             promql_query(
-                f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, kubernetes_namespace)'
+                f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, materialize_cloud_organization_namespace)'
             )
         )
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)

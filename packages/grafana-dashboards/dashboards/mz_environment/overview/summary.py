@@ -78,7 +78,7 @@ class OverviewSummary(KubeResourcesMixin):
             promql_query(
                 textwrap.dedent(
                     f"""
-                    avg by (kubernetes_namespace) (
+                    avg by (materialize_cloud_organization_namespace) (
                         avg_over_time(
                             {COMPUTE_CLUSTER_STATUS}[$__range]
                         ) * 100
