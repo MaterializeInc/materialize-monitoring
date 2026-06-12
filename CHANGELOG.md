@@ -10,19 +10,19 @@ component.
 
 ### Dependencies
 
-* Updated Dashboards to v0.7.0
+* Included Dashboards @ v0.6.0..v0.7.0
     * Fix cloud compatibility with Environment Monitoring dashboards
         * [materialize-monitoring#15](https://github.com/MaterializeInc/materialize-monitoring/pull/15)
     * Update for self-managed workloads
         * [materialize-monitoring#14](https://github.com/MaterializeInc/materialize-monitoring/pull/14)
-* Updated mzmon-lib (shared library) to v0.5.0
+* Included Pipelines @ v0.1.0..v0.2.0
     * Generate agent logging pipeline
         * [materialize-monitoring#13](https://github.com/MaterializeInc/materialize-monitoring/pull/13)
-    * Implement capsules and targets for alloy pipelines
-        * [materialize-monitoring#12](https://github.com/MaterializeInc/materialize-monitoring/pull/12)
     * Alloy Pipeline Generation
         * [materialize-monitoring#11](https://github.com/MaterializeInc/materialize-monitoring/pull/11)
-* Updated Pipelines to v0.2.0
+* Included mzmon-lib (shared library) @ v0.4.0..v0.5.0
+    * Implement capsules and targets for alloy pipelines
+        * [materialize-monitoring#12](https://github.com/MaterializeInc/materialize-monitoring/pull/12)
 
 ## Dashboards v0.7.0 (Unreleased)
 
@@ -33,7 +33,7 @@ component.
 
 ### Dependencies
 
-* Updated mzmon-lib (shared library) to v0.5.0
+* Included mzmon-lib (shared library) @ v0.4.0..v0.5.0
     * Generate agent logging pipeline
         * [materialize-monitoring#13](https://github.com/MaterializeInc/materialize-monitoring/pull/13)
     * Implement capsules and targets for alloy pipelines
@@ -50,7 +50,7 @@ component.
 
 ### Dependencies
 
-* Updated mzmon-lib (shared library) to v0.5.0
+* Included mzmon-lib (shared library) @ v0.4.0..v0.5.0
     * Implement capsules and targets for alloy pipelines
         * [materialize-monitoring#12](https://github.com/MaterializeInc/materialize-monitoring/pull/12)
 

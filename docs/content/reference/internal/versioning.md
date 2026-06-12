@@ -40,9 +40,12 @@ The tooling attributes *forward* from the last released ref rather than trying t
 ## Cascade
 
 A component's section lists its first-class changes — the PRs that touched its own paths — followed by a `### Dependencies` subsection.
-When a dependency bumps, the dependent bumps too and records an explicit `Updated <dep> to vX.Y.Z` entry under `### Dependencies`, with that dependency's own PRs nested beneath it, recursively through the dependency graph.
+When a dependency bumps, the dependent bumps too and records an `Included <dep> @ vPREV..vNEW` entry under `### Dependencies`, with that dependency's own PRs nested beneath it, recursively through the dependency graph.
+The range spans the dependency's latest released version to the version this release includes; a brand-new dependency with no prior release shows a single version.
+"Included" rather than "Updated" because the new version need not be released yet.
 This keeps each component's release notes self-contained and cumulative: the detail travels with the rollup, rather than a bare "updated to vX.Y.Z" with no context.
 A PR already shown as a first-class change in a section is not repeated under that section's dependencies, and each dependency is rolled up once per section.
+When a PR touches two sibling dependencies, the one declared first in `dependencies` claims it; order the main content components ahead of shared/common ones so changes surface in the more specific stream.
 A single PR can still appear in several components' sections; that duplication is intentional, so each component's release reads completely on its own.
 
 ## How versions are synced

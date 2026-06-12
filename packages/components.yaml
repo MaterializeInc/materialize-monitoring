@@ -29,9 +29,11 @@ components:
       # they have a source component.
       - charts/materialize-monitoring/pre-rendered/
     dependencies:
+      # Main content ones need to go first (to avoid ties in dependencies)
       - dashboards
-      - mzmon-lib
       - pipelines
+      # Common goes later
+      - mzmon-lib
       - repo-common
 
   # Optional CRDs
