@@ -8,9 +8,17 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## Dashboards v0.9.0 (Unreleased)
+## Dashboards v0.10.0 (Unreleased)
 
 _Changes Pending_
+
+## Dashboards v0.9.0
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Only upload artifacts while in a draft state
+        * [materialize-monitoring#29](https://github.com/MaterializeInc/materialize-monitoring/pull/29)
 
 ## mzmon-lib (shared library) v0.7.0 (Unreleased)
 
