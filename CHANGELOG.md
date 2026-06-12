@@ -8,9 +8,24 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring Helm Chart v0.3.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring Helm Chart v0.3.0
+
+* Monitoring Roadmap and Version/Changelog Management
+    * [materialize-monitoring#16](https://github.com/MaterializeInc/materialize-monitoring/pull/16)
+
+### Dependencies
+
+* Included Dashboards @ v0.7.0..v0.8.0
+* Included Pipelines @ v0.2.0..v0.3.0
+* Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
+    * Support auto-formatting based on labels
+        * [materialize-monitoring#22](https://github.com/MaterializeInc/materialize-monitoring/pull/22)
+    * Generated automated versioning PRs
+        * [materialize-monitoring#21](https://github.com/MaterializeInc/materialize-monitoring/pull/21)
 
 ## Dashboards v0.8.0 (Unreleased)
 
