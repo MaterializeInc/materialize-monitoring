@@ -17,7 +17,11 @@ Each component declares:
 - `title` — the human-readable name used in `CHANGELOG.md` headings.
 - `version_paths` — files whose version field is rewritten when the component is bumped (the *write targets*).
 - `content_paths` — the paths whose changes are attributed to this component (the *attribution inputs*).
+- `content_exclude` — paths to subtract from `content_paths`, typically generated outputs that belong to a dependency.
 - `dependencies` — other components whose bumps cascade into this one.
+
+Each changed file is attributed to the component with the longest matching `content_paths` entry, after dropping any component that excludes it.
+Generated outputs route to their source: the chart excludes its `pre-rendered/` tree, and `pre-rendered/dashboards` and `pre-rendered/pipelines` are claimed by the `dashboards` and `pipelines` components, so a dashboard change appears under Dashboards (and rolls up into the chart via cascade) rather than as a first-class chart change.
 
 A component may have an empty `version_paths` (its version lives only in `CHANGELOG.md`) or `changelog: false` (it is rebuilt on dependency changes but keeps no changelog of its own, like `docs`).
 
@@ -35,8 +39,11 @@ The tooling attributes *forward* from the last released ref rather than trying t
 
 ## Cascade
 
-When a PR also touches a component's dependency, the dependent is bumped and records an explicit entry — e.g. `Updated mzmon-lib to v0.5.0` — so a reader can see why a dependent moved without a direct change of its own.
-Cascade entries are **additive**: a dependent keeps its own direct bullets and adds the dependency notes.
+A component's section lists its first-class changes — the PRs that touched its own paths — followed by a `### Dependencies` subsection.
+When a dependency bumps, the dependent bumps too and records an explicit `Updated <dep> to vX.Y.Z` entry under `### Dependencies`, with that dependency's own PRs nested beneath it, recursively through the dependency graph.
+This keeps each component's release notes self-contained and cumulative: the detail travels with the rollup, rather than a bare "updated to vX.Y.Z" with no context.
+A PR already shown as a first-class change in a section is not repeated under that section's dependencies, and each dependency is rolled up once per section.
+A single PR can still appear in several components' sections; that duplication is intentional, so each component's release reads completely on its own.
 
 ## How versions are synced
 

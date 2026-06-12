@@ -1,7 +1,7 @@
 [project]
 name = "grafana-dashboards"
 # These versioned with all other dashboards.
-version = "0.0.0"
+version = "0.7.0"
 description = "Grafana Dashboards for Materialize"
 readme = "README.md"
 requires-python = ">=3.12"

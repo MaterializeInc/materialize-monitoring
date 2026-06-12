@@ -23,6 +23,11 @@ components:
     content_paths:
       - charts/materialize-monitoring/
       - tools/chartlib/
+    content_exclude:
+      # Generated outputs; attributed to their source components (dashboards,
+      # pipelines). pre-rendered/rules and pre-rendered/README are exempt until
+      # they have a source component.
+      - charts/materialize-monitoring/pre-rendered/
     dependencies:
       - dashboards
       - mzmon-lib
@@ -49,6 +54,8 @@ components:
       - packages/grafana-dashboards/pyproject.toml
     content_paths:
       - packages/grafana-dashboards/
+      # Generated dashboard output bundled into the chart.
+      - charts/materialize-monitoring/pre-rendered/dashboards/
     dependencies:
       - mzmon-lib
       - repo-common
@@ -59,6 +66,8 @@ components:
     version_paths: []
     content_paths:
       - packages/alloy-pipelines/
+      # Generated pipeline output bundled into the chart.
+      - charts/materialize-monitoring/pre-rendered/pipelines/
     dependencies:
       - mzmon-lib
       - repo-common
