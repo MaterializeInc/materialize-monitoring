@@ -13,7 +13,7 @@ and the dashboards / alerts / rules that consume the Materialize
 metrics surface.&lt;/p&gt;
 &lt;h2 id="source-code"&gt;Source Code&lt;a class="anchor" href="#source-code"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring"&gt;https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring" rel="external" class="external-link"&gt;https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="requirements"&gt;Requirements&lt;a class="anchor" href="#requirements"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;Kubernetes: &lt;code&gt;&amp;gt;=1.27.0-0&lt;/code&gt;&lt;/p&gt;

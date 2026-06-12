@@ -140,8 +140,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
-                        "query": "\navg by (kubernetes_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
+                        "expr": "\navg by (materialize_cloud_organization_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
+                        "query": "\navg by (materialize_cloud_organization_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}[$__range]\n    ) * 100\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
