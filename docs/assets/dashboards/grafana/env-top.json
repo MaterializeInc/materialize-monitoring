@@ -2399,9 +2399,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nhistogram_quantile(0.5,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}}",
-                        "query": "\nhistogram_quantile(0.5,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "(\n\nhistogram_quantile(0.5,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}}",
+                        "query": "(\n\nhistogram_quantile(0.5,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2473,9 +2473,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nhistogram_quantile(0.9,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}}",
-                        "query": "\nhistogram_quantile(0.9,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "(\n\nhistogram_quantile(0.9,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}}",
+                        "query": "(\n\nhistogram_quantile(0.9,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2547,9 +2547,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nhistogram_quantile(0.99,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}}",
-                        "query": "\nhistogram_quantile(0.99,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "(\n\nhistogram_quantile(0.99,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}}",
+                        "query": "(\n\nhistogram_quantile(0.99,\n    sum by (le, instance_id) (\n        rate(\n            mz_compute_peek_duration_seconds_bucket{$environmentFilter, instance_id=~\"$mzClusterList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3586,9 +3586,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (instance_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n    } < 1e9\n)\n",
-                        "legendFormat": "{{instance_id}}",
-                        "query": "\nmax by (instance_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n    } < 1e9\n)\n",
+                        "expr": "(\n\nmax by (instance_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}}",
+                        "query": "(\n\nmax by (instance_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3662,11 +3662,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "topk(15,\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)",
+                        "expr": "topk(15,\n(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
                         "instant": true,
                         "range": false,
-                        "legendFormat": "{{instance_id}} / {{name}}",
-                        "query": "topk(15,\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)",
+                        "legendFormat": "{{cluster_name}} / {{name}}",
+                        "query": "topk(15,\n(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3822,9 +3822,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (instance_id, replica_id) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n",
-                        "legendFormat": "{{instance_id}} / {{replica_id}}",
-                        "query": "\nsum by (instance_id, replica_id) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n",
+                        "expr": "(\n\nsum by (instance_id, replica_id) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}} / r{{replica_id}}",
+                        "query": "(\n\nsum by (instance_id, replica_id) (\n    mz_compute_controller_hydration_queue_size{\n        $environmentFilter,\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\"\n    }\n) > 0\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3892,11 +3892,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "topk(15,\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n    $environmentFilter,\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)",
+                        "expr": "topk(15,\n(\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n    $environmentFilter,\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
                         "instant": true,
                         "range": false,
-                        "legendFormat": "{{instance_id}} / {{replica_id}} / {{name}}",
-                        "query": "topk(15,\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n    $environmentFilter,\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)",
+                        "legendFormat": "{{cluster_name}} / r{{replica_id}} / {{name}}",
+                        "query": "topk(15,\n(\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n    $environmentFilter,\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4034,9 +4034,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}}",
-                        "query": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "expr": "(\n\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}}",
+                        "query": "(\n\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4103,9 +4103,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}",
-                        "query": "\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "expr": "(\n\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}",
+                        "query": "(\n\nmax by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    mz_compute_replica_history_dataflow_count{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4172,9 +4172,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n                $environmentFilter,\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{instance_id}}",
-                        "query": "\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n                $environmentFilter,\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "(\n\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n                $environmentFilter,\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}}",
+                        "query": "(\n\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n                $environmentFilter,\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4246,9 +4246,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}}",
-                        "query": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "(\n\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}}",
+                        "query": "(\n\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4314,9 +4314,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
-                        "legendFormat": "{{cluster_environmentd_materialize_cloud_cluster_id}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}",
-                        "query": "\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n",
+                        "expr": "(\n\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "legendFormat": "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}",
+                        "query": "(\n\nsum by (\n    cluster_environmentd_materialize_cloud_cluster_id,\n    cluster_environmentd_materialize_cloud_replica_id,\n    worker_id\n) (\n    max without (job) (\n        rate(\n            mz_arrangement_maintenance_seconds_total{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5228,9 +5228,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (\n    max without (job) (\n        rate(mz_source_messages_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n)\n",
-                        "legendFormat": "{{parent_source_id}} / r{{cluster_environmentd_materialize_cloud_replica_id}}",
-                        "query": "\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (\n    max without (job) (\n        rate(mz_source_messages_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n)\n",
+                        "expr": "(\n\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (\n    max without (job) (\n        rate(mz_source_messages_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (parent_source_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")",
+                        "legendFormat": "{{name}} / r{{cluster_environmentd_materialize_cloud_replica_id}}",
+                        "query": "(\n\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (\n    max without (job) (\n        rate(mz_source_messages_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (parent_source_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {

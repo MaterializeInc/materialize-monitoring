@@ -41,3 +41,23 @@ def with_object_name(value_expr: str, id_label: str, *, extra: str = "") -> str:
         f"* on ({id_label}) group_left({pulled})\n"
         f'label_replace({OBJECT_INFO}{{$environmentFilter}}, "{id_label}", "$1", "object_id", "(.*)")'
     )
+
+
+def with_cluster_name(value_expr: str, id_label: str = "instance_id") -> str:
+    """Attach `cluster_name` from `mz_cluster_info` (keyed on `cluster_id`).
+
+    For panels that legend on a cluster id under any label name —
+    `instance_id` (most compute metrics) or
+    `cluster_environmentd_materialize_cloud_cluster_id` (arrangement / dataflow
+    history) — pass that label as `id_label`. The pulled name is renamed to
+    `cluster_name` (not `name`) so it won't collide when composed with
+    `with_object_name` (e.g. Most-Lagged Collections: cluster + object name).
+    Legend on `{{cluster_name}}`. Replica names are intentionally not joined —
+    they're all `r1`; keep the more informative `replica_id` in legends.
+    """
+    info = (
+        f"label_replace(mz_cluster_info{{$environmentFilter}}, "
+        f'"{id_label}", "$1", "cluster_id", "(.*)")'
+    )
+    info = f'label_replace({info}, "cluster_name", "$1", "name", "(.*)")'
+    return f"(\n{value_expr}\n)\n* on ({id_label}) group_left(cluster_name)\n{info}"

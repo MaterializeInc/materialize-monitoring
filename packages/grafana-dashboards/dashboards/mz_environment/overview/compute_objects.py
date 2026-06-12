@@ -375,20 +375,22 @@ class ComputeObjectsTab:
         is non-zero, work is waiting to be hydrated.
         """
         panel_id = "hydration-queue-size"
+        # instance_id -> cluster_name via mz_cluster_info; replica_id kept (r1 names aren't useful)
+        hydration_queue = textwrap.dedent(
+            """
+            sum by (instance_id, replica_id) (
+                mz_compute_controller_hydration_queue_size{
+                    $environmentFilter,
+                    instance_id=~"$mzClusterList",
+                    replica_id=~"$mzReplicaList"
+                }
+            ) > 0
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    """
-                    sum by (instance_id, replica_id) (
-                        mz_compute_controller_hydration_queue_size{
-                            $environmentFilter,
-                            instance_id=~"$mzClusterList",
-                            replica_id=~"$mzReplicaList"
-                        }
-                    ) > 0
-                    """
-                )
-            ).legend_format("{{instance_id}} / {{replica_id}}"),
+                enrich.with_cluster_name(hydration_queue, "instance_id")
+            ).legend_format("{{cluster_name}} / r{{replica_id}}"),
         )
 
         self.dashboard.add_panel(
@@ -439,7 +441,7 @@ class ComputeObjectsTab:
         """
         panel_id = "hydration-slowest-collections"
         # (self-managed: none yet) v2_mz_compute_hydration_time_seconds
-        # collection_id -> name via mz_object_info
+        # collection_id -> object name; instance_id -> cluster_name; replica_id kept
         hydration_expr = textwrap.dedent(
             """
             ${sqlMetricPrefix}compute_hydration_time_seconds{
@@ -450,11 +452,12 @@ class ComputeObjectsTab:
             }
             """
         )
+        enriched_hydration = enrich.with_cluster_name(
+            enrich.with_object_name(hydration_expr, "collection_id"), "instance_id"
+        )
         query = query_group(
-            promql_query(
-                f"topk(15,\n{enrich.with_object_name(hydration_expr, 'collection_id')}\n)"
-            )
-            .legend_format("{{instance_id}} / {{replica_id}} / {{name}}")
+            promql_query(f"topk(15,\n{enriched_hydration}\n)")
+            .legend_format("{{cluster_name}} / r{{replica_id}} / {{name}}")
             .instant(),
         )
 
@@ -520,25 +523,26 @@ class ComputeObjectsTab:
         maintenance reads as N.0.
         """
         panel_id = "arrangement-rate"
+        # cluster id -> cluster_name via mz_cluster_info; replica_id kept
+        arrangement_rate = textwrap.dedent(
+            f"""
+            sum by (
+                {ARRANGEMENT_LABEL_CLUSTER_ID},
+                {ARRANGEMENT_LABEL_REPLICA_ID}
+            ) (
+                max without (job) (
+                    rate(
+                        mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
+                    )
+                )
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (
-                        {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_ID}
-                    ) (
-                        max without (job) (
-                            rate(
-                                mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
-                            )
-                        )
-                    )
-                    """
-                )
+                enrich.with_cluster_name(arrangement_rate, ARRANGEMENT_LABEL_CLUSTER_ID)
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
+                f"{{{{cluster_name}}}} / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
             ),
         )
 
@@ -574,26 +578,29 @@ class ComputeObjectsTab:
         between workers within a replica.
         """
         panel_id = "arrangement-rate-by-worker"
+        # cluster id -> cluster_name via mz_cluster_info; replica_id + worker_id kept
+        arrangement_rate_worker = textwrap.dedent(
+            f"""
+            sum by (
+                {ARRANGEMENT_LABEL_CLUSTER_ID},
+                {ARRANGEMENT_LABEL_REPLICA_ID},
+                worker_id
+            ) (
+                max without (job) (
+                    rate(
+                        mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
+                    )
+                )
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (
-                        {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_ID},
-                        worker_id
-                    ) (
-                        max without (job) (
-                            rate(
-                                mz_arrangement_maintenance_seconds_total{{{_ARRANGEMENT_FILTER}}}[$__rate_interval]
-                            )
-                        )
-                    )
-                    """
+                enrich.with_cluster_name(
+                    arrangement_rate_worker, ARRANGEMENT_LABEL_CLUSTER_ID
                 )
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
+                f"{{{{cluster_name}}}} / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
                 " / w{{worker_id}}"
             ),
         )
@@ -654,21 +661,23 @@ class ComputeObjectsTab:
         cluster (so no separate job dedup is needed).
         """
         panel_id = "freshness-lag-by-cluster"
+        # instance_id -> cluster_name via mz_cluster_info
+        lag_by_cluster = textwrap.dedent(
+            """
+            max by (instance_id) (
+                mz_dataflow_wallclock_lag_seconds{
+                    $environmentFilter,
+                    instance_id=~"$mzClusterList",
+                    instance_id!="",
+                    quantile="1"
+                } < 1e9
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    """
-                    max by (instance_id) (
-                        mz_dataflow_wallclock_lag_seconds{
-                            $environmentFilter,
-                            instance_id=~"$mzClusterList",
-                            instance_id!="",
-                            quantile="1"
-                        } < 1e9
-                    )
-                    """
-                )
-            ).legend_format("{{instance_id}}"),
+                enrich.with_cluster_name(lag_by_cluster, "instance_id")
+            ).legend_format("{{cluster_name}}"),
         )
 
         self.dashboard.add_panel(
@@ -731,11 +740,13 @@ class ComputeObjectsTab:
             )
             """
         )
+        # collection_id -> object name, then instance_id -> cluster_name
+        enriched_lag = enrich.with_cluster_name(
+            enrich.with_object_name(lag_expr, "collection_id"), "instance_id"
+        )
         query = query_group(
-            promql_query(
-                f"topk(15,\n{enrich.with_object_name(lag_expr, 'collection_id')}\n)"
-            )
-            .legend_format("{{instance_id}} / {{name}}")
+            promql_query(f"topk(15,\n{enriched_lag}\n)")
+            .legend_format("{{cluster_name}} / {{name}}")
             .instant(),
         )
 
@@ -828,21 +839,22 @@ class ComputeObjectsTab:
         one or more dataflows on its replica.
         """
         panel_id = "dataflow-count"
+        # cluster id -> cluster_name via mz_cluster_info; replica_id kept
+        dataflow_count = textwrap.dedent(
+            f"""
+            max by (
+                {ARRANGEMENT_LABEL_CLUSTER_ID},
+                {ARRANGEMENT_LABEL_REPLICA_ID}
+            ) (
+                mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    max by (
-                        {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_ID}
-                    ) (
-                        mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
-                    )
-                    """
-                )
+                enrich.with_cluster_name(dataflow_count, ARRANGEMENT_LABEL_CLUSTER_ID)
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
+                f"{{{{cluster_name}}}} / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
             ),
         )
 
@@ -878,22 +890,25 @@ class ComputeObjectsTab:
         something has gone wrong with the dataflow replication.
         """
         panel_id = "dataflow-count-by-worker"
+        # cluster id -> cluster_name via mz_cluster_info; replica_id + worker_id kept
+        dataflow_count_worker = textwrap.dedent(
+            f"""
+            max by (
+                {ARRANGEMENT_LABEL_CLUSTER_ID},
+                {ARRANGEMENT_LABEL_REPLICA_ID},
+                worker_id
+            ) (
+                mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    max by (
-                        {ARRANGEMENT_LABEL_CLUSTER_ID},
-                        {ARRANGEMENT_LABEL_REPLICA_ID},
-                        worker_id
-                    ) (
-                        mz_compute_replica_history_dataflow_count{{{_ARRANGEMENT_FILTER}}}
-                    )
-                    """
+                enrich.with_cluster_name(
+                    dataflow_count_worker, ARRANGEMENT_LABEL_CLUSTER_ID
                 )
             ).legend_format(
-                f"{{{{{ARRANGEMENT_LABEL_CLUSTER_ID}}}}}"
-                f" / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
+                f"{{{{cluster_name}}}} / {{{{{ARRANGEMENT_LABEL_REPLICA_ID}}}}}"
                 " / w{{worker_id}}"
             ),
         )
@@ -943,24 +958,26 @@ class ComputeObjectsTab:
         """
         panel_id = "dataflow-elapsed-rate"
         # mz_dataflow_elapsed_seconds_total / v2_mz_dataflow_elapsed_seconds_total
+        # instance_id -> cluster_name via mz_cluster_info
+        elapsed_expr = textwrap.dedent(
+            """
+            sum by (instance_id) (
+                max without (job) (
+                    rate(
+                        ${sqlMetricPrefix}dataflow_elapsed_seconds_total{
+                            $environmentFilter,
+                            instance_id=~"$mzClusterList",
+                            replica_id=~"$mzReplicaList"
+                        }[$__rate_interval]
+                    )
+                )
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    """
-                    sum by (instance_id) (
-                        max without (job) (
-                            rate(
-                                ${sqlMetricPrefix}dataflow_elapsed_seconds_total{
-                                    $environmentFilter,
-                                    instance_id=~"$mzClusterList",
-                                    replica_id=~"$mzReplicaList"
-                                }[$__rate_interval]
-                            )
-                        )
-                    )
-                    """
-                )
-            ).legend_format("{{instance_id}}"),
+                enrich.with_cluster_name(elapsed_expr, "instance_id")
+            ).legend_format("{{cluster_name}}"),
         )
 
         self.dashboard.add_panel(

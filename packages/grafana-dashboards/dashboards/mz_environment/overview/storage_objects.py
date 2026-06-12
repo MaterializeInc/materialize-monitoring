@@ -450,19 +450,22 @@ class StorageObjectsTab:
         climbing in parallel.
         """
         panel_id = "sources-ingestion-by-replica"
+        # mz_source_messages_received (genuine); parent_source_id -> source name,
+        # replica id kept so the per-replica split stays visible
+        ingest_expr = textwrap.dedent(
+            f"""
+            sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
+                max without (job) (
+                    rate(mz_source_messages_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                )
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
-                        max without (job) (
-                            rate(mz_source_messages_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                        )
-                    )
-                    """
-                )
+                enrich.with_object_name(ingest_expr, "parent_source_id")
             ).legend_format(
-                "{{parent_source_id}} / r{{cluster_environmentd_materialize_cloud_replica_id}}"
+                "{{name}} / r{{cluster_environmentd_materialize_cloud_replica_id}}"
             ),
         )
 
