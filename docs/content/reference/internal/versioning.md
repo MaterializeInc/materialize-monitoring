@@ -50,9 +50,9 @@ A single PR can still appear in several components' sections; that duplication i
 
 ## How versions are synced
 
-Versions are read from `CHANGELOG.md` at the top of the repo for each component.
-When a component is bumped, every file in its `version_paths` is rewritten to the new version.
-The next version defaults to a minor bump; the unreleased version can be set manually in the changelog if a different bump is wanted.
+Versions are read from `CHANGELOG.md` for each component.
+Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](releasing/)).
+The next version defaults to a minor bump; set the placeholder version manually for a different bump.
 
 ## Tooling
 

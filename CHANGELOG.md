@@ -2,11 +2,29 @@
 
 <!-- This repo uses different versioning streams for its artifacts.
 Artifacts are mapped out in packages/components.yaml.
-Each version path is synced to the latest unreleased version of a given
-component.
+Unreleased sections are placeholders ("_Changes Pending_") until a
+version-update/<component> PR populates and releases them; that PR also bumps
+the component's version_paths. See reference/internal/versioning.md and
+reference/internal/releasing.md.
 -->
 
-## materialize-monitoring Helm Chart v0.2.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.3.0 (Unreleased)
+
+_Changes Pending_
+
+## Dashboards v0.8.0 (Unreleased)
+
+_Changes Pending_
+
+## Pipelines v0.3.0 (Unreleased)
+
+_Changes Pending_
+
+## mzmon-lib (shared library) v0.6.0 (Unreleased)
+
+_Changes Pending_
+
+## materialize-monitoring Helm Chart v0.2.0
 
 ### Dependencies
 
@@ -24,7 +42,7 @@ component.
     * Implement capsules and targets for alloy pipelines
         * [materialize-monitoring#12](https://github.com/MaterializeInc/materialize-monitoring/pull/12)
 
-## Dashboards v0.7.0 (Unreleased)
+## Dashboards v0.7.0
 
 * Fix cloud compatibility with Environment Monitoring dashboards
     * [materialize-monitoring#15](https://github.com/MaterializeInc/materialize-monitoring/pull/15)
@@ -41,7 +59,7 @@ component.
     * Alloy Pipeline Generation
         * [materialize-monitoring#11](https://github.com/MaterializeInc/materialize-monitoring/pull/11)
 
-## Pipelines v0.2.0 (Unreleased)
+## Pipelines v0.2.0
 
 * Generate agent logging pipeline
     * [materialize-monitoring#13](https://github.com/MaterializeInc/materialize-monitoring/pull/13)
@@ -54,7 +72,7 @@ component.
     * Implement capsules and targets for alloy pipelines
         * [materialize-monitoring#12](https://github.com/MaterializeInc/materialize-monitoring/pull/12)
 
-## mzmon-lib (shared library) v0.5.0 (Unreleased)
+## mzmon-lib (shared library) v0.5.0
 
 * Generate agent logging pipeline
     * [materialize-monitoring#13](https://github.com/MaterializeInc/materialize-monitoring/pull/13)
