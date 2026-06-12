@@ -96,6 +96,28 @@ impl Gh {
         anyhow::bail!("github {status}: {text}");
     }
 
+    /// Upload a release asset. `upload_url` is the release's `upload_url`
+    /// template (the `{?name,label}` suffix is stripped); the upload targets
+    /// `uploads.github.com`.
+    pub(crate) async fn upload_asset(
+        &self,
+        upload_url: &str,
+        name: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> anyhow::Result<()> {
+        let base = upload_url.split_once('{').map_or(upload_url, |(b, _)| b);
+        let resp = self
+            .client
+            .post(format!("{base}?name={name}"))
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await?;
+        json_ok(resp).await?;
+        Ok(())
+    }
+
     pub(crate) async fn graphql(&self, body: &Value) -> anyhow::Result<Value> {
         json_ok(
             self.client

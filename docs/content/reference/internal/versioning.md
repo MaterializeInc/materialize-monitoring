@@ -19,6 +19,7 @@ Each component declares:
 - `content_paths` — the paths whose changes are attributed to this component (the *attribution inputs*).
 - `content_exclude` — paths to subtract from `content_paths`, typically generated outputs that belong to a dependency.
 - `dependencies` — other components whose bumps cascade into this one.
+- `artifacts` — glob patterns (repo-root-relative) for files attached as GitHub Release assets when the component is published; resolved file names must be unique.
 
 Each changed file is attributed to the component with the longest matching `content_paths` entry, after dropping any component that excludes it.
 Generated outputs route to their source: the chart excludes its `pre-rendered/` tree, and `pre-rendered/dashboards` and `pre-rendered/pipelines` are claimed by the `dashboards` and `pipelines` components, so a dashboard change appears under Dashboards (and rolls up into the chart via cascade) rather than as a first-class chart change.

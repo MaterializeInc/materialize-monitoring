@@ -35,6 +35,8 @@ components:
       # Common goes later
       - mzmon-lib
       - repo-common
+    artifacts:
+      - charts/materialize-monitoring*.tgz
 
   # Optional CRDs
   materialize-monitoring-crds:
@@ -61,6 +63,9 @@ components:
     dependencies:
       - mzmon-lib
       - repo-common
+    artifacts:
+      - charts/materialize-monitoring/pre-rendered/dashboards/**/*.yaml
+      - docs/assets/dashboards/**/*.json
 
   pipelines:
     changelog: true
