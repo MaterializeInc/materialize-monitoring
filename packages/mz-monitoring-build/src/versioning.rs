@@ -7,26 +7,31 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Changelog generation for the component streams declared in
-//! `packages/components.yaml`.
+//! Versioning and changelog logic for the component streams declared in
+//! `packages/components.yaml`. Hosts two subcommands:
+//!
+//! - `changelog` — a read-only report of which merged PRs each component would
+//!   collect (for validating `components.yaml` against history).
+//! - `release` — generates a `version-update/<component>` PR's changelog: it
+//!   promotes that component's `_Changes Pending_` placeholder in place into a
+//!   released section populated with its changes, inserts a fresh placeholder
+//!   at the top, and bumps the component's `version_paths`.
 //!
 //! Merged PRs in a commit range are attributed to a component by longest-prefix
-//! match against `content_paths`. Attribution works off each merge's own diff
-//! (`<merge>^1..<merge>`) rather than `git log -- <path>`, which is unreliable
-//! here: history simplification prunes merges, and the `crates/` -> `packages/`
-//! move means today's paths do not match historical ones. The hand-written
-//! `CHANGELOG.md` is the authoritative baseline; attribute forward from the
-//! `--since` ref (a release boundary).
+//! match against `content_paths` (minus `content_exclude`). Attribution works
+//! off each merge's own diff (`<merge>^1..<merge>`) rather than
+//! `git log -- <path>`, which is unreliable here: history simplification prunes
+//! merges, and the `crates/` -> `packages/` move means today's paths do not
+//! match historical ones.
 //!
 //! A component bumps when it has a directly-attributed PR. Bumps then cascade
 //! (transitively) to changelog-enabled dependents, which record an
 //! "Included <dep> @ vPREV..vNEW" entry (single version when there is no prior
-//! release), in addition to listing the PRs that touched its own paths directly.
-//! A PR touching several components appears in each, so every release's notes
-//! read on their own.
+//! release), with the dependency's own PRs nested beneath. A PR touching
+//! several components appears in each, so every release's notes read on their
+//! own.
 //!
-//! By default the command is a dry run: it prints the regenerated `CHANGELOG.md`
-//! and the version-file edits it would make. `--write` applies them.
+//! Both subcommands default to a dry run; `--write` applies the changes.
 
 use anyhow::{Context, anyhow};
 use indexmap::{IndexMap, IndexSet};
@@ -38,14 +43,14 @@ use std::process::Command;
 /// Repo slug used to build PR links in changelog entries.
 const REPO_SLUG: &str = "MaterializeInc/materialize-monitoring";
 
-/// Arguments for the `changelog` command.
+/// Arguments for the read-only `changelog` report.
 #[derive(clap::Args)]
 pub struct ChangelogArgs {
     /// Path to the component definitions.
     #[arg(long, default_value = "packages/components.yaml")]
     components: PathBuf,
 
-    /// Path to the changelog to read and (with --write) rewrite.
+    /// Path to the changelog (read to show each stream's next version).
     #[arg(long, default_value = "CHANGELOG.md")]
     changelog: PathBuf,
 
@@ -57,13 +62,46 @@ pub struct ChangelogArgs {
     #[arg(long, default_value = "HEAD")]
     until: String,
 
-    /// Apply the changes. Without this flag the command is a dry run.
-    #[arg(long)]
-    write: bool,
-
     /// Print the per-PR path -> component breakdown.
     #[arg(long)]
     verbose: bool,
+}
+
+/// Arguments for the `release` command.
+#[derive(clap::Args)]
+pub struct ReleaseArgs {
+    /// Path to the component definitions.
+    #[arg(long, default_value = "packages/components.yaml")]
+    components: PathBuf,
+
+    /// Path to the changelog to read and (with --write) rewrite.
+    #[arg(long, default_value = "CHANGELOG.md")]
+    changelog: PathBuf,
+
+    /// Component to release (a key in components.yaml).
+    #[arg(long)]
+    component: String,
+
+    /// Git ref to start from (exclusive) — the component's last release.
+    #[arg(long)]
+    since: String,
+
+    /// Git ref to collect up to (inclusive).
+    #[arg(long, default_value = "HEAD")]
+    until: String,
+
+    /// Apply the changes. Without this flag the command is a dry run.
+    #[arg(long)]
+    write: bool,
+}
+
+/// Load and parse `components.yaml`.
+fn load_components(path: &Path) -> anyhow::Result<IndexMap<String, Component>> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    Ok(serde_yaml_ng::from_str::<ComponentsFile>(&text)
+        .with_context(|| format!("parsing {}", path.display()))?
+        .components)
 }
 
 #[derive(Debug, Deserialize)]
@@ -520,15 +558,28 @@ fn render_deps(
     }
 }
 
-/// Rebuild the full changelog text: the preserved header, regenerated unreleased
-/// sections (in `comps` order) for bumping components, any unreleased sections we
-/// did not regenerate, then the released sections verbatim.
-fn regenerate(parsed: &ParsedChangelog, ctx: &RenderCtx<'_>) -> String {
-    let bumping_titles: IndexSet<&str> = ctx
-        .bumping
+/// Generate the changelog for a `version-update/<component>` PR.
+///
+/// `target`'s `_Changes Pending_` placeholder is promoted in place to a released
+/// section populated with [`render_section`]'s output, a fresh placeholder for
+/// the next (minor-bumped) version is inserted at the top, and every other
+/// section is preserved verbatim. Returns the new changelog text and the
+/// released version (for bumping `version_paths`).
+fn apply_version_update(
+    parsed: &ParsedChangelog,
+    target: &str,
+    ctx: &RenderCtx<'_>,
+) -> anyhow::Result<(String, SemVer)> {
+    let comp = &ctx.comps[target];
+    let title = comp.title.as_str();
+    let released = parsed
+        .sections
         .iter()
-        .map(|n| ctx.comps[n].title.as_str())
-        .collect();
+        .find(|s| s.title == title && s.unreleased)
+        .map(|s| s.version)
+        .ok_or_else(|| anyhow!("no pending placeholder for {title} in CHANGELOG"))?;
+    let next = released.bump_minor();
+    let body = render_section(target, comp, ctx);
 
     let mut out: Vec<String> = parsed.header.clone();
     while out.last().is_some_and(|l| l.trim().is_empty()) {
@@ -536,26 +587,24 @@ fn regenerate(parsed: &ParsedChangelog, ctx: &RenderCtx<'_>) -> String {
     }
     out.push(String::new());
 
-    for (name, c) in ctx.comps {
-        if !c.changelog || !ctx.bumping.contains(name) {
-            continue;
-        }
-        out.push(format!(
-            "## {} {} (Unreleased)",
-            c.title,
-            ctx.versions[name].changelog()
-        ));
-        out.push(String::new());
-        out.extend(render_section(name, c, ctx));
-        out.push(String::new());
-    }
+    // Fresh placeholder for the next version, at the top.
+    out.push(format!("## {title} {} (Unreleased)", next.changelog()));
+    out.push(String::new());
+    out.push("_Changes Pending_".to_string());
+    out.push(String::new());
+
     for s in &parsed.sections {
-        if s.unreleased && bumping_titles.contains(s.title.as_str()) {
-            continue; // regenerated above
+        if s.title == title && s.unreleased {
+            // Promote this placeholder in place into a released section.
+            out.push(format!("## {title} {}", released.changelog()));
+            out.push(String::new());
+            out.extend(body.iter().cloned());
+            out.push(String::new());
+        } else {
+            let suffix = if s.unreleased { " (Unreleased)" } else { "" };
+            out.push(format!("## {} {}{suffix}", s.title, s.version.changelog()));
+            out.extend(s.body.iter().cloned());
         }
-        let suffix = if s.unreleased { " (Unreleased)" } else { "" };
-        out.push(format!("## {} {}{suffix}", s.title, s.version.changelog()));
-        out.extend(s.body.iter().cloned());
     }
 
     let mut text = out.join("\n");
@@ -564,7 +613,7 @@ fn regenerate(parsed: &ParsedChangelog, ctx: &RenderCtx<'_>) -> String {
     while text.contains("\n\n\n\n") {
         text = text.replace("\n\n\n\n", "\n\n\n");
     }
-    text
+    Ok((text, released))
 }
 
 /// Rewrite the first `version` field in `text`, returning the old version and
@@ -610,14 +659,10 @@ fn rewrite_version(path: &Path, new: &str) -> anyhow::Result<(String, String)> {
     rewrite_version_str(&text, toml, new).with_context(|| format!("in {}", path.display()))
 }
 
-/// Main entrypoint for the `changelog` command.
+/// Read-only `changelog` report: which merged PRs each component would collect
+/// in the given range, and the version each would bump to.
 pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
-    let comps_text = std::fs::read_to_string(&args.components)
-        .with_context(|| format!("reading {}", args.components.display()))?;
-    let comps = serde_yaml_ng::from_str::<ComponentsFile>(&comps_text)
-        .with_context(|| format!("parsing {}", args.components.display()))?
-        .components;
-
+    let comps = load_components(&args.components)?;
     let merges = collect_merges(&args.since, &args.until)?;
     let attributed = attribute(&merges, &comps);
     let bumping = compute_bumps(&comps, &attributed);
@@ -627,38 +672,6 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
     let parsed = parse_changelog(&changelog_text)
         .with_context(|| format!("parsing {}", args.changelog.display()))?;
 
-    // Resolve the version each bumping component will carry, and its latest
-    // released version (for the `@ vPREV..vNEW` range on rollups).
-    let versions: IndexMap<String, SemVer> = bumping
-        .iter()
-        .map(|name| (name.clone(), next_version(&comps[name].title, &parsed)))
-        .collect();
-    let prev: IndexMap<String, SemVer> = bumping
-        .iter()
-        .filter_map(|name| latest_released(&comps[name].title, &parsed).map(|v| (name.clone(), v)))
-        .collect();
-
-    let ctx = RenderCtx {
-        comps: &comps,
-        attributed: &attributed,
-        bumping: &bumping,
-        versions: &versions,
-        prev: &prev,
-    };
-    let new_changelog = regenerate(&parsed, &ctx);
-
-    // Compute version-file edits for bumping components.
-    let mut version_edits: Vec<(PathBuf, String, String, String)> = Vec::new();
-    for name in &bumping {
-        let version = versions[name].plain();
-        for vp in &comps[name].version_paths {
-            let path = PathBuf::from(vp);
-            let (old, content) = rewrite_version(&path, &version)?;
-            version_edits.push((path, old, version.clone(), content));
-        }
-    }
-
-    // Report bumps.
     println!(
         "Range {}..{}: {} merged PR(s)",
         args.since,
@@ -668,7 +681,8 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
     println!("\n== Bumps ==");
     for (name, _) in &comps {
         if bumping.contains(name) {
-            println!("  {name} -> {}", versions[name].changelog());
+            let version = next_version(&comps[name].title, &parsed);
+            println!("  {name} -> {}", version.changelog());
         }
     }
 
@@ -690,21 +704,75 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// `release` command: generate (and optionally write) a `version-update` PR's
+/// changelog and version-file bumps for a single component.
+pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
+    let comps = load_components(&args.components)?;
+    let target = &args.component;
+    let comp = comps
+        .get(target)
+        .ok_or_else(|| anyhow!("unknown component {target:?}"))?;
+    if !comp.changelog {
+        anyhow::bail!("component {target:?} has no changelog stream");
+    }
+
+    let merges = collect_merges(&args.since, &args.until)?;
+    let attributed = attribute(&merges, &comps);
+    let bumping = compute_bumps(&comps, &attributed);
+    if !bumping.contains(target) {
+        anyhow::bail!("no changes attributed to {target:?} since {}", args.since);
+    }
+
+    let changelog_text = std::fs::read_to_string(&args.changelog)
+        .with_context(|| format!("reading {}", args.changelog.display()))?;
+    let parsed = parse_changelog(&changelog_text)
+        .with_context(|| format!("parsing {}", args.changelog.display()))?;
+
+    let versions: IndexMap<String, SemVer> = bumping
+        .iter()
+        .map(|name| (name.clone(), next_version(&comps[name].title, &parsed)))
+        .collect();
+    let prev: IndexMap<String, SemVer> = bumping
+        .iter()
+        .filter_map(|name| latest_released(&comps[name].title, &parsed).map(|v| (name.clone(), v)))
+        .collect();
+    let ctx = RenderCtx {
+        comps: &comps,
+        attributed: &attributed,
+        bumping: &bumping,
+        versions: &versions,
+        prev: &prev,
+    };
+
+    let (new_changelog, released) = apply_version_update(&parsed, target, &ctx)?;
+
+    // Version-file edits bump only the released component to its released version.
+    let mut version_edits: Vec<(PathBuf, String, String)> = Vec::new();
+    for vp in &comp.version_paths {
+        let path = PathBuf::from(vp);
+        let (old, content) = rewrite_version(&path, &released.plain())?;
+        version_edits.push((path, old, content));
+    }
+
+    println!("Releasing {target} {}", released.changelog());
     if args.write {
         std::fs::write(&args.changelog, &new_changelog)
             .with_context(|| format!("writing {}", args.changelog.display()))?;
-        for (path, _old, _new, content) in &version_edits {
+        for (path, _old, content) in &version_edits {
             std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
         }
         println!(
-            "\nWrote {} and {} version file(s).",
+            "Wrote {} and {} version file(s).",
             args.changelog.display(),
             version_edits.len()
         );
     } else {
         println!("\n== Proposed version-file edits (dry run) ==");
-        for (path, old, new, _) in &version_edits {
-            println!("  {}: {old} -> {new}", path.display());
+        for (path, old, _) in &version_edits {
+            println!("  {}: {old} -> {}", path.display(), released.plain());
         }
         println!("\n== Proposed {} (dry run) ==\n", args.changelog.display());
         println!("{new_changelog}");
@@ -1159,36 +1227,31 @@ mod tests {
         );
     }
 
-    // ---- regenerate -----------------------------------------------------
+    // ---- apply_version_update -------------------------------------------
+
+    fn semver(major: u64, minor: u64, patch: u64) -> SemVer {
+        SemVer {
+            major,
+            minor,
+            patch,
+        }
+    }
 
     #[test]
-    fn regenerate_rewrites_unreleased_preserves_rest() {
-        let text = "# Changelog\n\n## Foo v0.2.0 (Unreleased)\n\n* old\n\n## Bar v0.9.0 (Unreleased)\n\n* keep bar\n\n## Foo v0.1.0\n\n* released foo\n";
+    fn apply_version_update_promotes_and_inserts_placeholder() {
+        let text = "# Changelog\n\n## Foo v0.6.0 (Unreleased)\n\n_Changes Pending_\n\n## Bar v0.9.0 (Unreleased)\n\n_Changes Pending_\n\n## Foo v0.5.0\n\n* old released\n";
         let parsed = parse_changelog(text).unwrap();
-        let cs = comps(vec![("foo", comp(true, "Foo", &[], &["foo/"], &[], &[]))]);
-        let merges = vec![pr(Some(5), Some("New foo"), None, &["foo/x"])];
+        let cs = comps(vec![
+            ("foo", comp(true, "Foo", &[], &["foo/"], &[], &[])),
+            ("bar", comp(true, "Bar", &[], &["bar/"], &[], &[])),
+        ]);
+        let merges = vec![pr(Some(20), Some("Cool foo change"), None, &["foo/x"])];
         let attributed = attribute(&merges, &cs);
         let bumping = compute_bumps(&cs, &attributed);
-        let versions: IndexMap<String, SemVer> = [(
-            "foo".to_string(),
-            SemVer {
-                major: 0,
-                minor: 2,
-                patch: 0,
-            },
-        )]
-        .into_iter()
-        .collect();
-        let prev: IndexMap<String, SemVer> = [(
-            "foo".to_string(),
-            SemVer {
-                major: 0,
-                minor: 1,
-                patch: 0,
-            },
-        )]
-        .into_iter()
-        .collect();
+        let versions: IndexMap<String, SemVer> =
+            [("foo".to_string(), semver(0, 6, 0))].into_iter().collect();
+        let prev: IndexMap<String, SemVer> =
+            [("foo".to_string(), semver(0, 5, 0))].into_iter().collect();
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
@@ -1197,16 +1260,41 @@ mod tests {
             prev: &prev,
         };
 
-        let out = regenerate(&parsed, &ctx);
-        assert!(out.contains("## Foo v0.2.0 (Unreleased)"));
-        assert!(out.contains("* New foo"));
-        assert!(!out.contains("* old")); // regenerated, old content dropped
-        assert!(out.contains("## Bar v0.9.0 (Unreleased)")); // unbumped unreleased preserved
-        assert!(out.contains("* keep bar"));
-        assert!(out.contains("## Foo v0.1.0")); // released preserved
-        assert!(out.contains("* released foo"));
-        assert!(!out.contains("\n\n\n\n")); // no 4-blank runs
+        let (out, released) = apply_version_update(&parsed, "foo", &ctx).unwrap();
+        assert_eq!(released, semver(0, 6, 0));
+        // Fresh placeholder for the next version, at the top.
+        assert!(out.contains("## Foo v0.7.0 (Unreleased)\n\n_Changes Pending_"));
+        // The v0.6.0 placeholder is promoted in place and populated.
+        assert!(out.contains("## Foo v0.6.0\n\n* Cool foo change"));
+        assert!(!out.contains("## Foo v0.6.0 (Unreleased)"));
+        // Other sections preserved verbatim.
+        assert!(out.contains("## Bar v0.9.0 (Unreleased)"));
+        assert!(out.contains("## Foo v0.5.0"));
+        assert!(out.contains("* old released"));
+        assert!(!out.contains("\n\n\n\n"));
         assert!(out.ends_with('\n'));
+        // The new placeholder precedes the promoted release in the file.
+        assert!(out.find("## Foo v0.7.0").unwrap() < out.find("## Foo v0.6.0\n").unwrap());
+    }
+
+    #[test]
+    fn apply_version_update_errors_without_placeholder() {
+        let parsed = parse_changelog("# Changelog\n\n## Foo v0.5.0\n\n* released\n").unwrap();
+        let cs = comps(vec![("foo", comp(true, "Foo", &[], &["foo/"], &[], &[]))]);
+        let merges = vec![pr(Some(1), Some("x"), None, &["foo/x"])];
+        let attributed = attribute(&merges, &cs);
+        let bumping = compute_bumps(&cs, &attributed);
+        let versions: IndexMap<String, SemVer> =
+            [("foo".to_string(), semver(0, 6, 0))].into_iter().collect();
+        let prev: IndexMap<String, SemVer> = IndexMap::new();
+        let ctx = RenderCtx {
+            comps: &cs,
+            attributed: &attributed,
+            bumping: &bumping,
+            versions: &versions,
+            prev: &prev,
+        };
+        assert!(apply_version_update(&parsed, "foo", &ctx).is_err());
     }
 
     // ---- rewrite_version_str --------------------------------------------

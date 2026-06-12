@@ -56,16 +56,18 @@ The next version defaults to a minor bump; set the placeholder version manually 
 
 ## Tooling
 
-`mz-monitoring-build changelog --since <ref> [--until <ref>] [--verbose]` reports which merged PRs each component's changelog would collect, including cascade annotations and any paths owned by no component.
-It is currently **read-only** — a preview to validate `components.yaml` against real history.
-Writing the `CHANGELOG.md` unreleased sections, bumping `version_paths`, and the release-PR automation below are the next increments.
+Both subcommands live in `mz-monitoring-build` and default to a dry run; `--write` (on `release`) applies changes.
+
+- `mz-monitoring-build changelog --since <ref> [--until <ref>] [--verbose]` is **read-only**: it reports which merged PRs each component would collect and the version each would bump to — a preview for validating `components.yaml` against real history.
+- `mz-monitoring-build release --component <name> --since <ref> [--write]` generates a `version-update/<component>` PR: it promotes that component's `_Changes Pending_` placeholder in place into a populated released section, inserts a fresh placeholder at the top, and bumps the component's `version_paths`.
+
+The shared logic (component model, changelog parsing, attribution, cascade rendering, version rewriting) lives in the `versioning` module and is unit-tested without invoking git.
 
 ## Release PR automation (TODO)
 
-Release PRs are created automatically as a draft after any content for a component is released.
-Release PRs do not have an inherent version but instead grab the latest version from the changelog.
-An existing release PR is updated for all subsequent matching PRs merged.
-Publishing behavior is further documented in [Releasing](./releasing.md) after merging.
+The orchestration that drives `release` from CI is not built yet (see [Releasing](releasing/) for the intended state machine).
+Any merge to `main` should create or update the `version-update/*` PRs for components with changes; tags `<component>/vX.Y.Z` are created when such a PR merges; a GitHub Release follows each tag.
+The per-component tag doubles as that component's `--since` boundary.
 
 ## Design principles
 
