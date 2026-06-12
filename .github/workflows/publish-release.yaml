@@ -29,6 +29,11 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Build any build-output artifacts (e.g. the packaged chart .tgz, which is
+      # gitignored) before publishing so the component's `artifacts` globs can
+      # resolve them. Committed artifacts (pre-rendered dashboards, docs/assets)
+      # need no build. Add the toolchain (uv/helm/go) the chosen targets require.
+      # - run: make charts dashboards
       - name: publish release
         # Pass the branch/sha via env (never interpolate untrusted refs into the
         # shell). The component is the branch name minus the version-update/ prefix.

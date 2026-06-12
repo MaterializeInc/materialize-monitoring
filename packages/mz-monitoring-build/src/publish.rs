@@ -24,7 +24,7 @@
 
 use anyhow::{Context, anyhow};
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::github::Gh;
 use crate::versioning::{latest_released, load_components, parse_changelog, rev_parse, section_of};
@@ -95,6 +95,9 @@ pub fn publish_release(args: PublishReleaseArgs) -> anyhow::Result<()> {
         .to_string();
     let name = format!("{} {}", comp.title, released.changelog());
 
+    // Resolve release-asset globs against the working tree (the merged commit).
+    let artifacts = resolve_artifacts(&comp.artifacts)?;
+
     let sha = args
         .sha
         .clone()
@@ -105,6 +108,12 @@ pub fn publish_release(args: PublishReleaseArgs) -> anyhow::Result<()> {
     println!("Publishing {tag} at {sha}");
     if args.dry_run {
         println!("\n# {name}\n\n{notes}");
+        if !artifacts.is_empty() {
+            println!("\nassets:");
+            for path in &artifacts {
+                println!("  {}", path.display());
+            }
+        }
         return Ok(());
     }
 
@@ -126,20 +135,85 @@ pub fn publish_release(args: PublishReleaseArgs) -> anyhow::Result<()> {
             return anyhow::Ok(());
         }
         // Creating the release also creates the tag at `target_commitish`.
-        gh.post(
-            &format!("/repos/{owner}/{repo}/releases"),
-            &json!({
-                "tag_name": tag,
-                "target_commitish": sha,
-                "name": name,
-                "body": notes,
-                "draft": false,
-                "make_latest": "false",
-            }),
-        )
-        .await
-        .context("creating release")?;
+        let release = gh
+            .post(
+                &format!("/repos/{owner}/{repo}/releases"),
+                &json!({
+                    "tag_name": tag,
+                    "target_commitish": sha,
+                    "name": name,
+                    "body": notes,
+                    "draft": false,
+                    "make_latest": "false",
+                }),
+            )
+            .await
+            .context("creating release")?;
         println!("published release {tag}");
+
+        if !artifacts.is_empty() {
+            let upload_url = release["upload_url"]
+                .as_str()
+                .ok_or_else(|| anyhow!("release response has no upload_url"))?;
+            for path in &artifacts {
+                let asset = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or_else(|| anyhow!("bad artifact path {}", path.display()))?;
+                let bytes =
+                    std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+                gh.upload_asset(upload_url, asset, bytes, content_type(path))
+                    .await
+                    .with_context(|| format!("uploading {}", path.display()))?;
+                println!("  uploaded asset {asset}");
+            }
+        }
         anyhow::Ok(())
     })
+}
+
+/// Resolve artifact glob patterns (repo-root-relative) to existing files,
+/// deduplicated. A pattern matching nothing warns but is not fatal; asset names
+/// (basenames) must be unique across the resolved set.
+fn resolve_artifacts(patterns: &[String]) -> anyhow::Result<Vec<PathBuf>> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for pattern in patterns {
+        let mut matched = 0;
+        for entry in glob::glob(pattern).with_context(|| format!("bad glob {pattern:?}"))? {
+            let path = entry?;
+            if path.is_file() {
+                files.push(path);
+                matched += 1;
+            }
+        }
+        if matched == 0 {
+            eprintln!("warning: artifact pattern {pattern:?} matched no files");
+        }
+    }
+    files.sort();
+    files.dedup();
+
+    let mut names = std::collections::HashSet::new();
+    for path in &files {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if !names.insert(name.to_string()) {
+            anyhow::bail!(
+                "duplicate asset name {name:?}; artifact globs must resolve to unique file names"
+            );
+        }
+    }
+    Ok(files)
+}
+
+/// A reasonable Content-Type for a release asset, by extension.
+fn content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("tgz" | "gz") => "application/gzip",
+        Some("json") => "application/json",
+        Some("yaml" | "yml") => "application/yaml",
+        _ => "application/octet-stream",
+    }
 }

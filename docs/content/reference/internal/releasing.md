@@ -88,7 +88,9 @@ jobs:
 
 `mz-monitoring-build publish-release --component <name> --sha <commit>` reads the component's latest released section from `CHANGELOG.md`, creates the `<component>/vX.Y.Z` tag at `--sha`, and publishes a GitHub Release whose notes are that section (heading dropped — the release name carries it). It is **idempotent**: if the tag already exists it does nothing, and `make_latest=false` since each component is an independent stream.
 
-It runs off the PR *merge* (not pushes to the default branch), via the [`publish-release`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/publish-release.yaml) workflow gated on `version-update/*` head branches; the component is the branch name minus the `version-update/` prefix and the tag target is the merge commit. The default `GITHUB_TOKEN` is sufficient — nothing needs to chain off the tag or release. Same env contract as `propose-bumps` minus `pull-requests` (it only needs `contents: write`); `--dry-run` prints the tag and notes without calling GitHub.
+It runs off the PR *merge* (not pushes to the default branch), via the [`publish-release`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/publish-release.yaml) workflow gated on `version-update/*` head branches; the component is the branch name minus the `version-update/` prefix and the tag target is the merge commit. The default `GITHUB_TOKEN` is sufficient — nothing needs to chain off the tag or release. Same env contract as `propose-bumps` minus `pull-requests` (it only needs `contents: write`); `--dry-run` prints the tag, notes, and resolved assets without calling GitHub.
+
+A component's `artifacts` globs (in `components.yaml`) are attached to the release as assets. They resolve against the checked-out tree, so **committed** artifacts (e.g. `pre-rendered/` dashboards, `docs/assets/`) work as-is, but **build-output** artifacts (e.g. the packaged chart `.tgz`, which is gitignored) must be built earlier in the workflow — add the relevant `make` step before `publish-release`. A glob matching nothing only warns.
 
 ## Auto-format
 
