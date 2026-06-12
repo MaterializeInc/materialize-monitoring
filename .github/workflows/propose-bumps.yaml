@@ -1,0 +1,35 @@
+name: propose-bumps
+
+# On every merge to main, create or update one version-update PR per component
+# with changes since its last release tag. Releases/tags are handled separately.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Stateless force-push: the newest run reflects the current main, so an in-flight
+# run can be safely cancelled by a later merge.
+concurrency:
+  group: propose-bumps
+  cancel-in-progress: true
+
+jobs:
+  propose-bumps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history + tags: attribution windows are computed from each
+          # component's last release tag (<component>/vX.Y.Z).
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: propose version-update PRs
+        run: cargo run -p mz-monitoring-build -- propose-bumps --draft --automerge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
