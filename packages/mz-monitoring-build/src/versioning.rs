@@ -100,12 +100,24 @@ pub struct ReleaseArgs {
 }
 
 /// Load and parse `components.yaml`.
-fn load_components(path: &Path) -> anyhow::Result<IndexMap<String, Component>> {
+pub(crate) fn load_components(path: &Path) -> anyhow::Result<IndexMap<String, Component>> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     Ok(serde_yaml_ng::from_str::<ComponentsFile>(&text)
         .with_context(|| format!("parsing {}", path.display()))?
         .components)
+}
+
+/// Resolve a git refish to a commit SHA, or `None` if it does not exist.
+pub(crate) fn rev_parse(refish: &str) -> Option<String> {
+    git(&[
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        &format!("{refish}^{{commit}}"),
+    ])
+    .ok()
+    .filter(|s| !s.is_empty())
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,10 +126,10 @@ struct ComponentsFile {
 }
 
 #[derive(Debug, Deserialize)]
-struct Component {
+pub(crate) struct Component {
     #[serde(default)]
-    changelog: bool,
-    title: String,
+    pub(crate) changelog: bool,
+    pub(crate) title: String,
     #[serde(default)]
     version_paths: Vec<String>,
     #[serde(default)]
@@ -133,7 +145,7 @@ struct Component {
 /// A semantic version `vMAJOR.MINOR.PATCH`. Field order makes the derived `Ord`
 /// the natural precedence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct SemVer {
+pub(crate) struct SemVer {
     major: u64,
     minor: u64,
     patch: u64,
@@ -166,7 +178,7 @@ impl SemVer {
     }
 
     /// `vX.Y.Z` — the form used in `CHANGELOG.md` headings.
-    fn changelog(self) -> String {
+    pub(crate) fn changelog(self) -> String {
         format!("v{}.{}.{}", self.major, self.minor, self.patch)
     }
 
@@ -393,7 +405,7 @@ struct Section {
 }
 
 /// `CHANGELOG.md` split into a header and its sections.
-struct ParsedChangelog {
+pub(crate) struct ParsedChangelog {
     header: Vec<String>,
     sections: Vec<Section>,
 }
@@ -410,7 +422,7 @@ fn parse_heading(line: &str) -> Option<(String, SemVer, bool)> {
     Some((rest[..idx].trim().to_string(), version, unreleased))
 }
 
-fn parse_changelog(text: &str) -> anyhow::Result<ParsedChangelog> {
+pub(crate) fn parse_changelog(text: &str) -> anyhow::Result<ParsedChangelog> {
     let mut header = Vec::new();
     let mut sections: Vec<Section> = Vec::new();
     for line in text.lines() {
@@ -454,7 +466,7 @@ fn next_version(title: &str, parsed: &ParsedChangelog) -> SemVer {
 }
 
 /// The highest released (non-unreleased) version recorded for `title`, if any.
-fn latest_released(title: &str, parsed: &ParsedChangelog) -> Option<SemVer> {
+pub(crate) fn latest_released(title: &str, parsed: &ParsedChangelog) -> Option<SemVer> {
     parsed
         .sections
         .iter()
@@ -754,6 +766,112 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The complete set of file changes for releasing one component: the rewritten
+/// changelog plus its version-file (and uv.lock) bumps.
+pub(crate) struct ReleasePlan {
+    pub(crate) released: SemVer,
+    pub(crate) changelog_path: PathBuf,
+    pub(crate) changelog_content: String,
+    /// Version-file / uv.lock edits as (path, new content).
+    pub(crate) version_files: Vec<(PathBuf, String)>,
+    /// Human-readable per-edit lines for dry-run output.
+    pub(crate) summary: Vec<String>,
+}
+
+impl ReleasePlan {
+    /// Every (path, content) pair to write or commit, including the changelog.
+    pub(crate) fn files(&self) -> Vec<(PathBuf, String)> {
+        let mut files = vec![(self.changelog_path.clone(), self.changelog_content.clone())];
+        files.extend(self.version_files.iter().cloned());
+        files
+    }
+}
+
+/// Compute the release for `target` over `since..until`. Returns `Ok(None)` when
+/// the component has no changes in range (nothing to release). Reads the
+/// changelog and version files; collects merges via git. The caller is
+/// responsible for validating that `target` is a changelog-enabled component.
+pub(crate) fn plan_release(
+    comps: &IndexMap<String, Component>,
+    target: &str,
+    changelog_path: &Path,
+    uv_lock_path: &Path,
+    since: &str,
+    until: &str,
+) -> anyhow::Result<Option<ReleasePlan>> {
+    let merges = collect_merges(since, until)?;
+    let attributed = attribute(&merges, comps);
+    let bumping = compute_bumps(comps, &attributed);
+    if !bumping.contains(target) {
+        return Ok(None);
+    }
+
+    let changelog_text = std::fs::read_to_string(changelog_path)
+        .with_context(|| format!("reading {}", changelog_path.display()))?;
+    let parsed = parse_changelog(&changelog_text)
+        .with_context(|| format!("parsing {}", changelog_path.display()))?;
+
+    let versions: IndexMap<String, SemVer> = bumping
+        .iter()
+        .map(|name| (name.clone(), next_version(&comps[name].title, &parsed)))
+        .collect();
+    let prev: IndexMap<String, SemVer> = bumping
+        .iter()
+        .filter_map(|name| latest_released(&comps[name].title, &parsed).map(|v| (name.clone(), v)))
+        .collect();
+    let ctx = RenderCtx {
+        comps,
+        attributed: &attributed,
+        bumping: &bumping,
+        versions: &versions,
+        prev: &prev,
+    };
+
+    let (changelog_content, released) = apply_version_update(&parsed, target, &ctx)?;
+    let released_plain = released.plain();
+
+    // Version-file edits bump only the released component. Bumping a pyproject
+    // also bumps that package's entry in uv.lock, so the lockfile does not drift
+    // out of date behind the version files.
+    let mut version_files: Vec<(PathBuf, String)> = Vec::new();
+    let mut summary: Vec<String> = Vec::new();
+    let mut lock_packages: Vec<String> = Vec::new();
+    for vp in &comps[target].version_paths {
+        let path = PathBuf::from(vp);
+        let (old, content) = rewrite_version(&path, &released_plain)?;
+        if path.file_name().and_then(|n| n.to_str()) == Some("pyproject.toml")
+            && let Some(name) = pyproject_name(&content)
+        {
+            lock_packages.push(name);
+        }
+        summary.push(format!("{}: {old} -> {released_plain}", path.display()));
+        version_files.push((path, content));
+    }
+
+    if !lock_packages.is_empty() && uv_lock_path.exists() {
+        let mut lock = std::fs::read_to_string(uv_lock_path)
+            .with_context(|| format!("reading {}", uv_lock_path.display()))?;
+        for name in &lock_packages {
+            let (old, updated) = rewrite_lock_version(&lock, name, &released_plain)
+                .with_context(|| format!("in {}", uv_lock_path.display()))?;
+            summary.push(format!(
+                "{} [{name}: {old} -> {released_plain}]",
+                uv_lock_path.display()
+            ));
+            lock = updated;
+        }
+        version_files.push((uv_lock_path.to_path_buf(), lock));
+    }
+
+    Ok(Some(ReleasePlan {
+        released,
+        changelog_path: changelog_path.to_path_buf(),
+        changelog_content,
+        version_files,
+        summary,
+    }))
+}
+
 /// `release` command: generate (and optionally write) a `version-update` PR's
 /// changelog and version-file bumps for a single component.
 pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
@@ -766,100 +884,33 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
         anyhow::bail!("component {target:?} has no changelog stream");
     }
 
-    let merges = collect_merges(&args.since, &args.until)?;
-    let attributed = attribute(&merges, &comps);
-    let bumping = compute_bumps(&comps, &attributed);
-    if !bumping.contains(target) {
-        anyhow::bail!("no changes attributed to {target:?} since {}", args.since);
-    }
+    let plan = plan_release(
+        &comps,
+        target,
+        &args.changelog,
+        &args.uv_lock,
+        &args.since,
+        &args.until,
+    )?
+    .ok_or_else(|| anyhow!("no changes attributed to {target:?} since {}", args.since))?;
 
-    let changelog_text = std::fs::read_to_string(&args.changelog)
-        .with_context(|| format!("reading {}", args.changelog.display()))?;
-    let parsed = parse_changelog(&changelog_text)
-        .with_context(|| format!("parsing {}", args.changelog.display()))?;
-
-    let versions: IndexMap<String, SemVer> = bumping
-        .iter()
-        .map(|name| (name.clone(), next_version(&comps[name].title, &parsed)))
-        .collect();
-    let prev: IndexMap<String, SemVer> = bumping
-        .iter()
-        .filter_map(|name| latest_released(&comps[name].title, &parsed).map(|v| (name.clone(), v)))
-        .collect();
-    let ctx = RenderCtx {
-        comps: &comps,
-        attributed: &attributed,
-        bumping: &bumping,
-        versions: &versions,
-        prev: &prev,
-    };
-
-    let (new_changelog, released) = apply_version_update(&parsed, target, &ctx)?;
-
-    // Version-file edits bump only the released component to its released
-    // version. Bumping a pyproject also bumps that package's entry in uv.lock,
-    // so the lockfile does not drift out of date behind the version files.
-    let released_plain = released.plain();
-    let mut version_edits: Vec<(PathBuf, String, String)> = Vec::new();
-    let mut lock_packages: Vec<String> = Vec::new();
-    for vp in &comp.version_paths {
-        let path = PathBuf::from(vp);
-        let (old, content) = rewrite_version(&path, &released_plain)?;
-        if path.file_name().and_then(|n| n.to_str()) == Some("pyproject.toml")
-            && let Some(name) = pyproject_name(&content)
-        {
-            lock_packages.push(name);
-        }
-        version_edits.push((path, old, content));
-    }
-
-    // Sync uv.lock for any bumped Python packages, if a lockfile is present.
-    let mut lock_edit: Option<(PathBuf, String, Vec<String>)> = None;
-    if !lock_packages.is_empty() && args.uv_lock.exists() {
-        let mut lock = std::fs::read_to_string(&args.uv_lock)
-            .with_context(|| format!("reading {}", args.uv_lock.display()))?;
-        let mut summary = Vec::new();
-        for name in &lock_packages {
-            let (old, updated) = rewrite_lock_version(&lock, name, &released_plain)
-                .with_context(|| format!("in {}", args.uv_lock.display()))?;
-            summary.push(format!("{name}: {old} -> {released_plain}"));
-            lock = updated;
-        }
-        lock_edit = Some((args.uv_lock.clone(), lock, summary));
-    }
-
-    println!("Releasing {target} {}", released.changelog());
+    println!("Releasing {target} {}", plan.released.changelog());
     if args.write {
-        std::fs::write(&args.changelog, &new_changelog)
-            .with_context(|| format!("writing {}", args.changelog.display()))?;
-        for (path, _old, content) in &version_edits {
+        let files = plan.files();
+        for (path, content) in &files {
             std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
         }
-        if let Some((path, content, _)) = &lock_edit {
-            std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
+        println!("Wrote {} file(s).", files.len());
+    } else {
+        println!("\n== Proposed edits (dry run) ==");
+        for line in &plan.summary {
+            println!("  {line}");
         }
         println!(
-            "Wrote {}, {} version file(s){}.",
-            args.changelog.display(),
-            version_edits.len(),
-            if lock_edit.is_some() {
-                ", and uv.lock"
-            } else {
-                ""
-            }
+            "\n== Proposed {} (dry run) ==\n",
+            plan.changelog_path.display()
         );
-    } else {
-        println!("\n== Proposed version-file edits (dry run) ==");
-        for (path, old, _) in &version_edits {
-            println!("  {}: {old} -> {released_plain}", path.display());
-        }
-        if let Some((path, _, summary)) = &lock_edit {
-            for line in summary {
-                println!("  {} [{line}]", path.display());
-            }
-        }
-        println!("\n== Proposed {} (dry run) ==\n", args.changelog.display());
-        println!("{new_changelog}");
+        println!("{}", plan.changelog_content);
     }
 
     Ok(())

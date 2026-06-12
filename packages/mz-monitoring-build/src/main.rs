@@ -10,6 +10,7 @@
 use clap::{Parser, Subcommand};
 
 mod gen_pipelines;
+mod propose;
 mod versioning;
 
 #[derive(Parser)]
@@ -30,6 +31,8 @@ enum Command {
     Changelog(versioning::ChangelogArgs),
     /// Generate a version-update PR's changelog + version bumps for a component.
     Release(versioning::ReleaseArgs),
+    /// Create/update one version-update PR per changed component (runs in CI).
+    ProposeBumps(propose::ProposeBumpsArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -37,5 +40,6 @@ fn main() -> anyhow::Result<()> {
         Command::GenPipelines(args) => gen_pipelines::gen_pipelines(args),
         Command::Changelog(args) => versioning::changelog(args),
         Command::Release(args) => versioning::release(args),
+        Command::ProposeBumps(args) => propose::propose_bumps(args),
     }
 }
