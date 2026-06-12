@@ -92,6 +92,8 @@ It runs off the PR *merge* (not pushes to the default branch), via the [`publish
 
 A component's `artifacts` globs (in `components.yaml`) are attached to the release as assets. They resolve against the checked-out tree, so **committed** artifacts (e.g. `pre-rendered/` dashboards, `docs/assets/`) work as-is, but **build-output** artifacts (e.g. the packaged chart `.tgz`, which is gitignored) must be built earlier in the workflow — add the relevant `make` step before `publish-release`. A glob matching nothing only warns.
 
+When there are assets the release is created as a **draft**, the assets are uploaded, then it is published (repos with *immutable releases* reject uploads to an already-published release; the tag is created when the draft is published). Idempotency keys on the tag, so to re-publish after a failure you must delete the leftover tag/release first — and a run that died between creating the draft and publishing leaves an orphan draft (no tag) to clean up by hand.
+
 ## Auto-format
 
 `propose-bumps` builds branches via the GitHub API, so it cannot run formatters; the bump commit therefore leaves generated artifacts stale (e.g. the `helm-docs` chart README badge after a Chart.yaml version bump). Rather than install a toolchain in `propose-bumps`, the [`auto-format`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/auto-format.yaml) workflow runs the repo's formatters (`make helm-docs`, `cargo fmt`, `ruff`) on any PR labeled `auto-format` and pushes a single `style:` commit if anything changed. The same mechanism covers GitHub UI edits and renovate PRs — just apply the label.

@@ -65,6 +65,17 @@ impl Gh {
         .await
     }
 
+    pub(crate) async fn patch(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
+        json_ok(
+            self.client
+                .patch(format!("{GITHUB_API}{path}"))
+                .json(body)
+                .send()
+                .await?,
+        )
+        .await
+    }
+
     /// PATCH; returns whether the request succeeded (used for ref force-update,
     /// which 404s when the branch does not exist yet).
     pub(crate) async fn patch_ok(&self, path: &str, body: &Value) -> anyhow::Result<bool> {
