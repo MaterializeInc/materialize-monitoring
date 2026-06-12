@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.4.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
 _Changes Pending_
@@ -31,9 +35,19 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Pipelines v0.3.0 (Unreleased)
+## Pipelines v0.3.0
 
-_Changes Pending_
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
+    * Support generating a release when version bump PRs are merged
+        * [materialize-monitoring#25](https://github.com/MaterializeInc/materialize-monitoring/pull/25)
+    * Support auto-formatting based on labels
+        * [materialize-monitoring#22](https://github.com/MaterializeInc/materialize-monitoring/pull/22)
+    * Generated automated versioning PRs
+        * [materialize-monitoring#21](https://github.com/MaterializeInc/materialize-monitoring/pull/21)
+    * Monitoring Roadmap and Version/Changelog Management
+        * [materialize-monitoring#16](https://github.com/MaterializeInc/materialize-monitoring/pull/16)
 
 ## mzmon-lib (shared library) v0.6.0 (Unreleased)
 
