@@ -64,6 +64,11 @@ pub struct ProposeBumpsArgs {
     #[arg(long, default_value = "version-update/")]
     branch_prefix: String,
 
+    /// Label applied to opened PRs (e.g. to trigger an auto-format workflow).
+    /// Empty disables labeling. The label must already exist in the repo.
+    #[arg(long, default_value = "auto-format")]
+    label: String,
+
     /// Collect changes up to this ref.
     #[arg(long, default_value = "HEAD")]
     until: String,
@@ -89,17 +94,14 @@ struct Proposal {
     plan: ReleasePlan,
 }
 
-/// Build the PR body from a proposal's edit summary.
+/// Build the PR body: a header note plus the released changelog section.
 fn pr_body(p: &Proposal, base: &str) -> String {
-    let mut body = format!(
-        "Automated version-update for `{}` → {}.\n\nRecreated on each qualifying merge to `{base}`; do not push to this branch.\n\n## Edits\n\n",
+    format!(
+        "Automated version-update for `{}` → {}.\n\nChanges to this branch will be overwritten on subsequent updates to `{base}`.\n\n{}\n",
         p.name,
         p.plan.released.changelog(),
-    );
-    for line in &p.plan.summary {
-        body.push_str(&format!("- {line}\n"));
-    }
-    body
+        p.plan.section,
+    )
 }
 
 /// Main entrypoint for `propose-bumps`.
@@ -365,6 +367,23 @@ impl Gh {
                 )
                 .await
                 .context("creating PR")?;
+
+            // Label the new PR (e.g. to trigger an auto-format workflow).
+            if !args.label.is_empty()
+                && let Some(number) = pr["number"].as_u64()
+                && let Err(e) = self
+                    .post(
+                        &format!("/repos/{owner}/{repo}/issues/{number}/labels"),
+                        &json!({ "labels": [args.label] }),
+                    )
+                    .await
+            {
+                eprintln!(
+                    "  label {:?} not applied for {} (does it exist?): {e}",
+                    args.label, p.name
+                );
+            }
+
             // GitHub rejects enabling auto-merge on a draft PR, so only attempt
             // it on non-draft PRs (see the note emitted in `propose_bumps`).
             if args.automerge

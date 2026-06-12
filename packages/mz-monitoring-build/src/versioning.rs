@@ -772,6 +772,8 @@ pub(crate) struct ReleasePlan {
     pub(crate) released: SemVer,
     pub(crate) changelog_path: PathBuf,
     pub(crate) changelog_content: String,
+    /// Just the released component's section (heading + body), for PR bodies.
+    pub(crate) section: String,
     /// Version-file / uv.lock edits as (path, new content).
     pub(crate) version_files: Vec<(PathBuf, String)>,
     /// Human-readable per-edit lines for dry-run output.
@@ -829,6 +831,10 @@ pub(crate) fn plan_release(
 
     let (changelog_content, released) = apply_version_update(&parsed, target, &ctx)?;
     let released_plain = released.plain();
+    let section = section_of(
+        &changelog_content,
+        &format!("## {} {}", comps[target].title, released.changelog()),
+    );
 
     // Version-file edits bump only the released component. Bumping a pyproject
     // also bumps that package's entry in uv.lock, so the lockfile does not drift
@@ -867,9 +873,29 @@ pub(crate) fn plan_release(
         released,
         changelog_path: changelog_path.to_path_buf(),
         changelog_content,
+        section,
         version_files,
         summary,
     }))
+}
+
+/// Extract a single `## ...` section (heading + body, trailing blanks trimmed)
+/// from a changelog by its exact heading line.
+fn section_of(changelog: &str, heading: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    let mut in_section = false;
+    for line in changelog.lines() {
+        if in_section {
+            if line.starts_with("## ") {
+                break;
+            }
+            out.push(line);
+        } else if line == heading {
+            in_section = true;
+            out.push(line);
+        }
+    }
+    out.join("\n").trim_end().to_string()
 }
 
 /// `release` command: generate (and optionally write) a `version-update` PR's
@@ -1430,6 +1456,17 @@ mod tests {
             prev: &prev,
         };
         assert!(apply_version_update(&parsed, "foo", &ctx).is_err());
+    }
+
+    #[test]
+    fn section_of_extracts_one_section() {
+        let cl = "# CL\n\n## Foo v0.6.0 (Unreleased)\n\n_Changes Pending_\n\n## Foo v0.5.0\n\n* a\n    * link\n\n## Bar v0.1.0\n\n* b\n";
+        // Matches the released heading exactly, not the unreleased placeholder.
+        assert_eq!(
+            section_of(cl, "## Foo v0.5.0"),
+            "## Foo v0.5.0\n\n* a\n    * link"
+        );
+        assert_eq!(section_of(cl, "## Nope v9.9.9"), "");
     }
 
     // ---- rewrite_version_str --------------------------------------------

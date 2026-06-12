@@ -1,0 +1,59 @@
+name: auto-format
+
+# Pushes one formatting commit to PRs labeled `auto-format`. Generated PRs
+# (version-update) can't run formatters when their branch is built via the API,
+# and the same applies to GitHub UI edits and renovate; labeling opts a PR into
+# this fixup pass instead.
+#
+# NOTE: this fires on PR events from the actor that created/updated the PR. The
+# default GITHUB_TOKEN does NOT trigger downstream workflows, so the producer
+# (e.g. `propose-bumps`) must authenticate with a PAT or GitHub App token for
+# this to run. The push below uses GITHUB_TOKEN, which intentionally does not
+# re-trigger this workflow (no loop).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-format-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-format:
+    if: contains(github.event.pull_request.labels.*.name, 'auto-format')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          lfs: true
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - uses: azure/setup-helm@v4
+      - name: Run formatters
+        run: |
+          make helm-docs
+          cargo fmt --all
+          uv run ruff format
+          uv run ruff check --fix --exit-zero
+      - name: Commit and push if anything changed
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No formatting changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: apply auto-formatters"
+          git push
