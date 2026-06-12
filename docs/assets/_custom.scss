@@ -69,6 +69,22 @@ a[href]:visited {
   color: inherit;
 }
 
+// External links
+.book-page a[href].external-link {
+  &::after {
+    content: " ⧉";
+    font-size: 0.875em;
+  }
+}
+
+// External links
+.book-page a[href].internal-protected-link {
+  &::after {
+    content: " 🔒";
+    font-size: 0.875em;
+  }
+}
+
 // --- Site header ---------------------------------------------------------
 //
 // `--important` is used by the SVG logo paths (copied verbatim from

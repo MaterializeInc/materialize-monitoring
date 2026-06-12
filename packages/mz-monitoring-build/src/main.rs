@@ -10,6 +10,7 @@
 use clap::{Parser, Subcommand};
 
 mod gen_pipelines;
+mod versioning;
 
 #[derive(Parser)]
 #[command(
@@ -25,10 +26,16 @@ struct Cli {
 enum Command {
     /// Render alloy pipeline definitions into config.alloy files.
     GenPipelines(gen_pipelines::GenPipelinesArgs),
+    /// Report which merged PRs each component changelog would collect.
+    Changelog(versioning::ChangelogArgs),
+    /// Generate a version-update PR's changelog + version bumps for a component.
+    Release(versioning::ReleaseArgs),
 }
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::GenPipelines(args) => gen_pipelines::gen_pipelines(args),
+        Command::Changelog(args) => versioning::changelog(args),
+        Command::Release(args) => versioning::release(args),
     }
 }

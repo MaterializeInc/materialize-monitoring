@@ -10,6 +10,7 @@ import sys
 
 import yaml
 from py_mzmon_lib.dashboard import MzDashboard
+from py_mzmon_lib.version import DashboardAPI
 
 from dashboards.mz_environment.overview.overview_dashboard import (
     EnvironmentOverviewDashboard,
@@ -27,6 +28,7 @@ class RenderArgs(argparse.Namespace):
 
     output: str
     format: str
+    dashboard_api: DashboardAPI
     dashboards: list[str]
 
 
@@ -45,6 +47,12 @@ def get_parser() -> argparse.ArgumentParser:
         choices=["json", "yaml"],
         default="json",
         help="Output format for generated dashboards.",
+    )
+    parser.add_argument(
+        "--dashboard-api",
+        choices=DashboardAPI,
+        default=DashboardAPI.DASHBOARD_V2,
+        help="Grafana Dashboard API Version to target.",
     )
     parser.add_argument(
         "dashboards",

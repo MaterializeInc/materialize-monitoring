@@ -11,6 +11,11 @@ Self-Managed and Materialize Cloud.
 This readme will try to track changes with dates, but expect
 some amount of flux as this repository stabilizes.
 
+## Roadmap and Layout
+
+* [Roadmap](docs/content/reference/internal/roadmap.md) — the current source of truth for what is built, in flight, and planned next.
+* [Repository Layout](docs/content/reference/internal/repo-layout.md) — where things live in the repo.
+
 ## Getting Started
 
 This will be automatically (TODO: implement) deployed by our

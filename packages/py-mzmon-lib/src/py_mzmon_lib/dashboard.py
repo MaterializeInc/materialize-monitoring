@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import inspect
+import logging
 import typing
 from collections.abc import Sequence
 
@@ -11,8 +12,12 @@ from grafana_foundation_sdk.cog import builder as cogbuilder
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 from grafana_foundation_sdk.models.dashboard import Dashboard as DashboardV1
 
+from py_mzmon_lib.version import DashboardAPI
+
 from .config import GLOBAL_DASHBOARD_CONFIG
 from .models_v2 import dashboardv2
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _unique_list(items: Sequence[str]) -> list[str]:
@@ -42,8 +47,19 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
     UID: str
     """In v2, UIDs exist on the level above dashboards."""
 
-    def __init__(self, **kwargs):
+    dashboard_api: DashboardAPI
+    """The Grafana Dashboard API version to target with this dashboard.
+
+    This is set on initialization and is used as part of the render workflows.
+    Consumers can use this to conditionally change how their dashboard is built
+    before rendering.
+    """
+
+    def __init__(
+        self, dashboard_api: DashboardAPI = DashboardAPI.DASHBOARD_V2, **kwargs
+    ):
         """Initialize the MzDashboard."""
+        self.dashboard_api = dashboard_api
         if not kwargs.get("title"):
             kwargs["title"] = f"{GLOBAL_DASHBOARD_CONFIG.title_prefix} {self.TITLE}"
         if not kwargs.get("description"):
@@ -64,7 +80,15 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         self.layout = self.build_layout()
 
     def to_v1(self) -> DashboardV1:
-        """Generate a V1 dashboard from this dashboard."""
+        """Generate a V1 dashboard from this dashboard.
+
+        This is a best-effort downgrade.
+        """
+        assert self.dashboard_api == DashboardAPI.DASHBOARD_V1
+        LOGGER.warning(
+            "Converting dashboard to V1. This may result in loss of information or formatting. "
+            "Consider updating your dashboard to use a newer API version if possible."
+        )
         return DashboardV1(
             title=self.title,
             description=self.description,
@@ -117,17 +141,20 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         """Add variables to the dashboard."""
 
     @classmethod
-    def render(cls, **kwargs) -> str:
+    def render(
+        cls, *, dashboard_api: DashboardAPI = DashboardAPI.DASHBOARD_V2, **kwargs
+    ) -> str:
         """Render the dashboard with the given kwargs.
 
         This is the main entrypoint for our generator.
         """
-        dashboard = cls(**kwargs)
-        api_target = "v2"
+        dashboard = cls(dashboard_api=dashboard_api, **kwargs)
+        if dashboard_api == DashboardAPI.DASHBOARD_V1:
+            return JSONEncoder(indent=2).encode(dashboard.to_v1())
         return JSONEncoder(indent=2).encode(
             {
                 "kind": "Dashboard",
-                "apiVersion": f"dashboard.grafana.app/{api_target}",
+                "apiVersion": dashboard_api,
                 "metadata": {
                     "name": dashboard.uid,
                 },

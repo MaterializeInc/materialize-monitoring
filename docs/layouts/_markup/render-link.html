@@ -1,0 +1,8 @@
+<a href="{{ .Destination | safeURL }}"
+  {{- with .Title }} title="{{ . }}"{{ end -}}
+  {{- if strings.Contains .Destination "https://linear.com" }} rel="external nofollow" class="internal-protected-link"
+  {{- else if strings.Contains .Destination "://" }} rel="external" class="external-link"{{ end -}}
+>
+  {{- with .Text }}{{ . }}{{ end -}}
+</a>
+{{- /* chomp trailing newline */ -}}
