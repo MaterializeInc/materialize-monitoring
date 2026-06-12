@@ -44,6 +44,8 @@ A released section can therefore sit above other components' unreleased placehol
 - recreates the `version-update/<component>` branch as a **single commit atop the base**, applying that component's [`release`](versioning/) changelog + version + `uv.lock` edits (the version is not in the branch name);
 - force-pushes the branch (stateless — it never reconciles the PR's current state) and opens one PR per component if none is open.
 
+The PR body is the component's released changelog section. New PRs are labeled `auto-format` (`--label`, empty to disable) so the [auto-format](#auto-format) workflow can fix anything the commit cannot regenerate.
+
 It is **repository-agnostic** — owner/repo and the base commit come from the environment — so another repository can adopt it unchanged.
 
 Required environment:
@@ -81,6 +83,14 @@ jobs:
 ```
 
 **Bootstrapping:** the per-component "since" boundary is the tag `<component>/v<latest released>`. Create those tags at the current release point before the first run (e.g. `git tag mzmon-lib/v0.5.0 <commit>`); a component with no prior release or missing tag is skipped with a message. `propose-bumps` does **not** create tags or releases — those happen in a separate command.
+
+## Auto-format
+
+`propose-bumps` builds branches via the GitHub API, so it cannot run formatters; the bump commit therefore leaves generated artifacts stale (e.g. the `helm-docs` chart README badge after a Chart.yaml version bump). Rather than install a toolchain in `propose-bumps`, the [`auto-format`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/auto-format.yaml) workflow runs the repo's formatters (`make helm-docs`, `cargo fmt`, `ruff`) on any PR labeled `auto-format` and pushes a single `style:` commit if anything changed. The same mechanism covers GitHub UI edits and renovate PRs — just apply the label.
+
+**Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention). For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token**, not the default `GITHUB_TOKEN`. The auto-format commit itself is pushed with the default `GITHUB_TOKEN`, which conveniently does not re-trigger the workflow.
+
+`propose-bumps` still syncs `uv.lock` inline for now; once auto-format reliably handles lockfiles that inline logic can be dropped (deferred — only generated docs were stale in practice).
 
 ## Cascade and ordering
 
