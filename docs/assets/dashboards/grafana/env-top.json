@@ -5137,7 +5137,7 @@
         "spec": {
           "id": 1057,
           "title": "Source Bytes Received (rate)",
-          "description": "**Inbound throughput per primary source \u2014 bytes per second pulled from upstream.** Subsources (e.g., per-table Postgres replication subsources) are aggregated up to their primary, so each line represents one logical source. The legend is `parent_source_id` \u2014 translate it to a name via `SELECT id, name FROM mz_sources`. Idle sources are filtered out (`> 0`). Log Y-axis so kB/s and tens-of-MB/s sources share the chart. Scoped to the selected clusters/replicas.",
+          "description": "**Inbound throughput per primary source \u2014 bytes per second pulled from upstream.** Subsources (e.g., per-table Postgres replication subsources) are aggregated up to their primary, so each line represents one logical source, labeled by source name (resolved via `mz_object_info`). Idle sources are filtered out (`> 0`). Log Y-axis so kB/s and tens-of-MB/s sources share the chart. Scoped to the selected clusters/replicas.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -5151,9 +5151,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (parent_source_id) (\n    max without (job) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n",
-                        "legendFormat": "{{parent_source_id}}",
-                        "query": "\nsum by (parent_source_id) (\n    max without (job) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n",
+                        "expr": "(\n\nsum by (parent_source_id) (\n    max without (job) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n\n)\n* on (parent_source_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")",
+                        "legendFormat": "{{name}}",
+                        "query": "(\n\nsum by (parent_source_id) (\n    max without (job) (\n        rate(mz_source_bytes_received{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n\n)\n* on (parent_source_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5481,7 +5481,7 @@
         "spec": {
           "id": 1061,
           "title": "Sink Throughput (committed)",
-          "description": "**Outbound throughput per sink \u2014 bytes per second successfully committed to the downstream system** (Kafka broker, Iceberg catalog, etc.). Log Y-axis so low- and high-volume sinks share the chart. The legend uses `sink_id` rather than a friendly name; look the id up via `SELECT id, name FROM mz_sinks;`. Idle sinks are filtered out (`> 0`). Scoped to the selected clusters/replicas.",
+          "description": "**Outbound throughput per sink \u2014 bytes per second successfully committed to the downstream system** (Kafka broker, Iceberg catalog, etc.). Log Y-axis so low- and high-volume sinks share the chart. Labeled by sink name (resolved via `mz_object_info`). Idle sinks are filtered out (`> 0`). Scoped to the selected clusters/replicas.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -5495,9 +5495,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (sink_id) (\n    max without (job) (\n        rate(mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n",
-                        "legendFormat": "{{sink_id}}",
-                        "query": "\nsum by (sink_id) (\n    max without (job) (\n        rate(mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n",
+                        "expr": "(\n\nsum by (sink_id) (\n    max without (job) (\n        rate(mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n\n)\n* on (sink_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"sink_id\", \"$1\", \"object_id\", \"(.*)\")",
+                        "legendFormat": "{{name}}",
+                        "query": "(\n\nsum by (sink_id) (\n    max without (job) (\n        rate(mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n\n)\n* on (sink_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"sink_id\", \"$1\", \"object_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5569,9 +5569,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nclamp_min(\n    sum by (sink_id) (max without (job) (mz_sink_bytes_staged{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}))\n    - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"})),\n    0\n)\n",
-                        "legendFormat": "{{sink_id}}",
-                        "query": "\nclamp_min(\n    sum by (sink_id) (max without (job) (mz_sink_bytes_staged{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}))\n    - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"})),\n    0\n)\n",
+                        "expr": "(\n\nclamp_min(\n    sum by (sink_id) (max without (job) (mz_sink_bytes_staged{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}))\n    - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"})),\n    0\n)\n\n)\n* on (sink_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"sink_id\", \"$1\", \"object_id\", \"(.*)\")",
+                        "legendFormat": "{{name}}",
+                        "query": "(\n\nclamp_min(\n    sum by (sink_id) (max without (job) (mz_sink_bytes_staged{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"}))\n    - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"})),\n    0\n)\n\n)\n* on (sink_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter}, \"sink_id\", \"$1\", \"object_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {

@@ -22,7 +22,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, threshold, visualization
+from dashboards import enrich, palette, threshold, visualization
 
 # Clusterd-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
 # long-form `cluster_environmentd_materialize_cloud_*` id label family — the
@@ -382,18 +382,20 @@ class StorageObjectsTab:
         """
         panel_id = "sources-bytes-received-rate"
 
+        # mz_source_bytes_received (genuine); name resolved via mz_object_info
+        bytes_expr = textwrap.dedent(
+            f"""
+            sum by (parent_source_id) (
+                max without (job) (
+                    rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                )
+            ) > 0
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (parent_source_id) (
-                        max without (job) (
-                            rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                        )
-                    ) > 0
-                    """
-                )
-            ).legend_format("{{parent_source_id}}"),
+                enrich.with_object_name(bytes_expr, "parent_source_id")
+            ).legend_format("{{name}}"),
         )
 
         self.dashboard.add_panel(
@@ -405,9 +407,8 @@ class StorageObjectsTab:
                 "second pulled from upstream.** Subsources (e.g., "
                 "per-table Postgres replication subsources) are "
                 "aggregated up to their primary, so each line represents "
-                "one logical source. The legend is `parent_source_id` — "
-                "translate it to a name via `SELECT id, name FROM "
-                "mz_sources`. Idle sources are filtered out (`> 0`). "
+                "one logical source, labeled by source name (resolved via "
+                "`mz_object_info`). Idle sources are filtered out (`> 0`). "
                 "Log Y-axis so kB/s and tens-of-MB/s sources share the "
                 "chart. Scoped to the selected clusters/replicas."
             )
@@ -665,18 +666,20 @@ class StorageObjectsTab:
         friendly name is available. Legend is `sink_id`.
         """
         panel_id = "sinks-throughput"
+        # mz_sink_bytes_committed (genuine); name resolved via mz_object_info
+        throughput_expr = textwrap.dedent(
+            f"""
+            sum by (sink_id) (
+                max without (job) (
+                    rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                )
+            ) > 0
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                        )
-                    ) > 0
-                    """
-                )
-            ).legend_format("{{sink_id}}"),
+                enrich.with_object_name(throughput_expr, "sink_id")
+            ).legend_format("{{name}}"),
         )
 
         self.dashboard.add_panel(
@@ -687,9 +690,8 @@ class StorageObjectsTab:
                 "**Outbound throughput per sink — bytes per second "
                 "successfully committed to the downstream system** "
                 "(Kafka broker, Iceberg catalog, etc.). Log Y-axis so "
-                "low- and high-volume sinks share the chart. The legend "
-                "uses `sink_id` rather than a friendly name; look the id "
-                "up via `SELECT id, name FROM mz_sinks;`. "
+                "low- and high-volume sinks share the chart. Labeled by "
+                "sink name (resolved via `mz_object_info`). "
                 "Idle sinks are filtered out (`> 0`). Scoped to the "
                 "selected clusters/replicas."
             )
@@ -717,18 +719,20 @@ class StorageObjectsTab:
         `clamp_min(..., 0)`.
         """
         panel_id = "sinks-lag"
+        # mz_sink_bytes_staged/_committed (genuine); name resolved via mz_object_info
+        lag_expr = textwrap.dedent(
+            f"""
+            clamp_min(
+                sum by (sink_id) (max without (job) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}}))
+                - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}})),
+                0
+            )
+            """
+        )
         query = query_group(
-            promql_query(
-                textwrap.dedent(
-                    f"""
-                    clamp_min(
-                        sum by (sink_id) (max without (job) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}}))
-                        - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}})),
-                        0
-                    )
-                    """
-                )
-            ).legend_format("{{sink_id}}"),
+            promql_query(enrich.with_object_name(lag_expr, "sink_id")).legend_format(
+                "{{name}}"
+            ),
         )
 
         self.dashboard.add_panel(
