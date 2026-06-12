@@ -16,6 +16,11 @@
 //! it does nothing. The release is created with `make_latest=false` since each
 //! component is an independent stream.
 //!
+//! When the component has `artifacts`, the release is created as a draft, the
+//! assets are uploaded, then it is published — repos with immutable releases
+//! reject uploads to an already-published release, and the tag is only created
+//! once the draft is published.
+//!
 //! Required environment:
 //! - `CI=true` — the command refuses to run otherwise (set it to emulate CI).
 //! - `GITHUB_TOKEN` — token with `contents: write`.
@@ -134,7 +139,11 @@ pub fn publish_release(args: PublishReleaseArgs) -> anyhow::Result<()> {
             println!("tag {tag} already exists; nothing to publish");
             return anyhow::Ok(());
         }
-        // Creating the release also creates the tag at `target_commitish`.
+        // With assets, create the release as a draft (mutable) so assets can be
+        // attached, then publish it — repos with immutable releases reject
+        // uploads to an already-published release. Creating/publishing also
+        // creates the tag at `target_commitish`.
+        let with_assets = !artifacts.is_empty();
         let release = gh
             .post(
                 &format!("/repos/{owner}/{repo}/releases"),
@@ -143,15 +152,14 @@ pub fn publish_release(args: PublishReleaseArgs) -> anyhow::Result<()> {
                     "target_commitish": sha,
                     "name": name,
                     "body": notes,
-                    "draft": false,
+                    "draft": with_assets,
                     "make_latest": "false",
                 }),
             )
             .await
             .context("creating release")?;
-        println!("published release {tag}");
 
-        if !artifacts.is_empty() {
+        if with_assets {
             let upload_url = release["upload_url"]
                 .as_str()
                 .ok_or_else(|| anyhow!("release response has no upload_url"))?;
@@ -167,7 +175,18 @@ pub fn publish_release(args: PublishReleaseArgs) -> anyhow::Result<()> {
                     .with_context(|| format!("uploading {}", path.display()))?;
                 println!("  uploaded asset {asset}");
             }
+            // Publish the draft (creates the tag and, on immutable repos, locks it).
+            let id = release["id"]
+                .as_u64()
+                .ok_or_else(|| anyhow!("release response has no id"))?;
+            gh.patch(
+                &format!("/repos/{owner}/{repo}/releases/{id}"),
+                &json!({ "draft": false, "make_latest": "false" }),
+            )
+            .await
+            .context("publishing release draft")?;
         }
+        println!("published release {tag}");
         anyhow::Ok(())
     })
 }
