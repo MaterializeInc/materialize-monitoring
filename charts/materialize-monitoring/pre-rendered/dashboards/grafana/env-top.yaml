@@ -577,7 +577,7 @@ spec:
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
@@ -585,7 +585,7 @@ spec:
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -758,7 +758,7 @@ spec:
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
@@ -766,7 +766,7 @@ spec:
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
                       u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -1675,7 +1675,7 @@ spec:
                       \",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"\
                       1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\n\
+                      , \"$1\", \"global_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\n\
                       label_replace(label_replace(mz_cluster_info{$environmentFilter},\
                       \ \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\"\
                       , \"$1\", \"name\", \"(.*)\")\n)"
@@ -1688,7 +1688,7 @@ spec:
                       \",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"\
                       1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\n\
+                      , \"$1\", \"global_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\n\
                       label_replace(label_replace(mz_cluster_info{$environmentFilter},\
                       \ \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\"\
                       , \"$1\", \"name\", \"(.*)\")\n)"
@@ -1832,7 +1832,7 @@ spec:
                       \    $environmentFilter,\n    instance_id=~\"$mzClusterList\"\
                       ,\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n\
                       }\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)\n*\
+                      \ \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n*\
                       \ on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter},\
                       \ \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\"\
                       , \"$1\", \"name\", \"(.*)\")\n)"
@@ -1843,7 +1843,7 @@ spec:
                       \    $environmentFilter,\n    instance_id=~\"$mzClusterList\"\
                       ,\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n\
                       }\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)\n*\
+                      \ \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n*\
                       \ on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{$environmentFilter},\
                       \ \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\"\
                       , \"$1\", \"name\", \"(.*)\")\n)"
@@ -3946,7 +3946,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} failures'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -3955,7 +3955,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3973,7 +3973,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} conflicts'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -3982,7 +3982,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -4055,7 +4055,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} data'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4064,7 +4064,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -4082,7 +4082,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} deletes'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4091,7 +4091,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-1
             - kind: PanelQuery
@@ -4109,7 +4109,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} snapshots'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4118,7 +4118,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-2
             queryOptions: {}
@@ -4176,7 +4176,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} connects'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4184,7 +4184,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -4201,7 +4201,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} disconnects'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4209,7 +4209,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -4266,7 +4266,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4274,7 +4274,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4331,7 +4331,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4339,7 +4339,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4412,7 +4412,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"})),\n    0\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nclamp_min(\n    sum by (sink_id) (max without (job)\
@@ -4423,7 +4423,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"})),\n    0\n)\n\n)\n* on (sink_id) group_left(name)\n\
                       label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
-                      , \"$1\", \"object_id\", \"(.*)\")"
+                      , \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4483,7 +4483,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n\n)\n* on\
                       \ (sink_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
@@ -4491,7 +4491,7 @@ spec:
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
                       $mzReplicaList\"}[$__rate_interval])\n    )\n) > 0\n\n)\n* on\
                       \ (sink_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"sink_id\", \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4622,7 +4622,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n) > 0\n\n)\n* on (parent_source_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"parent_source_id\", \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}}'
                     qryType: 1
                     query: "(\n\nsum by (parent_source_id) (\n    max without (job)\
@@ -4631,7 +4631,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n) > 0\n\n)\n* on (parent_source_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"parent_source_id\", \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4806,7 +4806,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (parent_source_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"parent_source_id\", \"$1\", \"global_id\", \"(.*)\")"
                     legendFormat: '{{name}} / r{{cluster_environmentd_materialize_cloud_replica_id}}'
                     qryType: 1
                     query: "(\n\nsum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id)\
@@ -4815,7 +4815,7 @@ spec:
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
                       }[$__rate_interval])\n    )\n)\n\n)\n* on (parent_source_id)\
                       \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"parent_source_id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"parent_source_id\", \"$1\", \"global_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4875,13 +4875,13 @@ spec:
                     expr: "(\n\ngroup by (id, object_type, connection_type, envelope_type,\
                       \ cluster_id) (\n    ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"id\", \"$1\", \"global_id\", \"(.*)\")"
                     instant: true
                     qryType: 1
                     query: "(\n\ngroup by (id, object_type, connection_type, envelope_type,\
                       \ cluster_id) (\n    ${sqlMetricPrefix}storage_objects{$environmentFilter,\
                       \ type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
-                      \ \"id\", \"$1\", \"object_id\", \"(.*)\")"
+                      \ \"id\", \"$1\", \"global_id\", \"(.*)\")"
                     range: false
                   version: v0
                 refId: query-0
