@@ -24,7 +24,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, threshold, visualization
+from dashboards import enrich, palette, threshold, visualization
 
 NO_FILTER_MATCH = "No matches for the current filters"
 # Some metrics in this tab are pre-calculated by the promsql-exporter at the
@@ -439,22 +439,22 @@ class ComputeObjectsTab:
         """
         panel_id = "hydration-slowest-collections"
         # (self-managed: none yet) v2_mz_compute_hydration_time_seconds
+        # collection_id -> name via mz_object_info
+        hydration_expr = textwrap.dedent(
+            """
+            ${sqlMetricPrefix}compute_hydration_time_seconds{
+                $environmentFilter,
+                instance_id=~"$mzClusterList",
+                replica_id=~"$mzReplicaList",
+                hydrated="1"
+            }
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    """
-                    topk(15,
-                        ${sqlMetricPrefix}compute_hydration_time_seconds{
-                            $environmentFilter,
-                            instance_id=~"$mzClusterList",
-                            replica_id=~"$mzReplicaList",
-                            hydrated="1"
-                        }
-                    )
-                    """
-                )
+                f"topk(15,\n{enrich.with_object_name(hydration_expr, 'collection_id')}\n)"
             )
-            .legend_format("{{instance_id}} / {{replica_id}} / {{collection_id}}")
+            .legend_format("{{instance_id}} / {{replica_id}} / {{name}}")
             .instant(),
         )
 
@@ -715,25 +715,27 @@ class ComputeObjectsTab:
         state it's whatever dataflow is struggling to keep up.
         """
         panel_id = "freshness-top-collections"
+        # mz_dataflow_wallclock_lag_seconds (genuine); enrich collection_id -> name.
+        # Enrich the inner per-collection lag, then topk, so all 15 carry a name
+        # (collections with no catalog entry drop before ranking).
+        lag_expr = textwrap.dedent(
+            """
+            max by (instance_id, collection_id) (
+                mz_dataflow_wallclock_lag_seconds{
+                    $environmentFilter,
+                    instance_id=~"$mzClusterList",
+                    instance_id!="",
+                    replica_id=~"$mzReplicaList",
+                    quantile="1"
+                } < 1e9
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    """
-                    topk(15,
-                        max by (instance_id, collection_id) (
-                            mz_dataflow_wallclock_lag_seconds{
-                                $environmentFilter,
-                                instance_id=~"$mzClusterList",
-                                instance_id!="",
-                                replica_id=~"$mzReplicaList",
-                                quantile="1"
-                            } < 1e9
-                        )
-                    )
-                    """
-                )
+                f"topk(15,\n{enrich.with_object_name(lag_expr, 'collection_id')}\n)"
             )
-            .legend_format("{{instance_id}} / {{collection_id}}")
+            .legend_format("{{instance_id}} / {{name}}")
             .instant(),
         )
 
@@ -744,9 +746,8 @@ class ComputeObjectsTab:
             .description(
                 "**The 15 collections whose output frontier is furthest "
                 "behind real time.** This is the per-collection breakdown "
-                "behind _Frontier Lag by Cluster_. Translate `collection_id` "
-                "to a name via `SELECT id, name FROM mz_internal.mz_indexes` "
-                "(or `mz_materialized_views` / `mz_sources`). Collections with "
+                "behind _Frontier Lag by Cluster_, labeled by object name "
+                "(resolved via `mz_object_info`). Collections with "
                 "no frontier yet (idle or still hydrating) report a sentinel "
                 "and are filtered out here — check hydration state directly "
                 "with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE "
@@ -1036,6 +1037,8 @@ class ComputeObjectsTab:
         title: str,
         collection_id_regex: str,
         description: str,
+        *,
+        enrich_names: bool = True,
     ):
         """Build a table of `mz_arrangement_record_count` per collection.
 
@@ -1053,23 +1056,28 @@ class ComputeObjectsTab:
         """
         # mz_arrangement_record_count / v2_mz_arrangement_record_count
         # (f-string here, so the prefix var is brace-escaped: ${{sqlMetricPrefix}})
-        query = (
-            query_group(
-                promql_query(
-                    textwrap.dedent(
-                        f"""
-                        max by (collection_id) (
-                            ${{sqlMetricPrefix}}arrangement_record_count{{
-                                $environmentFilter,
-                                instance_id=~"$mzClusterList",
-                                replica_id=~"$mzReplicaList",
-                                collection_id=~"{collection_id_regex}"
-                            }}
-                        )
-                        """
-                    )
-                ).legend_format("{{collection_id}}"),
+        records_expr = textwrap.dedent(
+            f"""
+            max by (collection_id) (
+                ${{sqlMetricPrefix}}arrangement_record_count{{
+                    $environmentFilter,
+                    instance_id=~"$mzClusterList",
+                    replica_id=~"$mzReplicaList",
+                    collection_id=~"{collection_id_regex}"
+                }}
             )
+            """
+        )
+        # enrich_names=False for the transient/`none` table: those collections
+        # aren't catalog objects, so mz_object_info has no name and the inner
+        # join would drop every row. Keep collection_id there.
+        if enrich_names:
+            expr = enrich.with_object_name(records_expr, "collection_id")
+            legend, id_column = "{{name}}", "Collection"
+        else:
+            expr, legend, id_column = records_expr, "{{collection_id}}", "Collection ID"
+        query = (
+            query_group(promql_query(expr).legend_format(legend))
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("reduce")
@@ -1085,7 +1093,7 @@ class ComputeObjectsTab:
                 transform_builders.CompatTransformationBuilder()
                 .group("organize")
                 .id("organize")
-                .options({"renameByName": {"Field": "Collection ID"}})
+                .options({"renameByName": {"Field": id_column}})
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
@@ -1148,9 +1156,8 @@ class ComputeObjectsTab:
                 "collection tracks the size of its underlying data. "
                 "Columns are Min / Max / Last over the time range; sorted "
                 "by Last desc so the largest current arrangements are at "
-                "the top. Translate `collection_id` to a name via `SELECT "
-                "id, name FROM mz_internal.mz_indexes` (or "
-                "`mz_materialized_views`)."
+                "the top. Rows are labeled by object name (resolved via "
+                "`mz_object_info`)."
             ),
         )
 
@@ -1170,6 +1177,8 @@ class ComputeObjectsTab:
                 "here are worth investigating — they may indicate stuck "
                 "or leaked dataflows."
             ),
+            # transient/`none` collections aren't catalog objects -> no name
+            enrich_names=False,
         )
 
     def build(self) -> dashboardv2_builders.Tab:

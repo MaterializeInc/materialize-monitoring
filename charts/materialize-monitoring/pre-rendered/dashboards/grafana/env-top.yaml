@@ -557,16 +557,20 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
+                    expr: "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
-                      s.*\"\n    }\n)\n"
-                    legendFormat: '{{collection_id}}'
+                      s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}}'
                     qryType: 1
-                    query: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
+                    query: "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
-                      s.*\"\n    }\n)\n"
+                      s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -587,7 +591,7 @@ spec:
                 id: organize
                 options:
                   renameByName:
-                    Field: Collection ID
+                    Field: Collection
             - group: sortBy
               kind: Transformation
               spec:
@@ -734,16 +738,20 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
+                    expr: "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
-                      u.*\"\n    }\n)\n"
-                    legendFormat: '{{collection_id}}'
+                      u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}}'
                     qryType: 1
-                    query: "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
+                    query: "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n\
                       \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
                       ,\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"\
-                      u.*\"\n    }\n)\n"
+                      u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -764,7 +772,7 @@ spec:
                 id: organize
                 options:
                   renameByName:
-                    Field: Collection ID
+                    Field: Collection
             - group: sortBy
               kind: Transformation
               spec:
@@ -780,8 +788,7 @@ spec:
           \ primary driver of memory consumption. Sudden growth on a specific collection\
           \ tracks the size of its underlying data. Columns are Min / Max / Last over\
           \ the time range; sorted by Last desc so the largest current arrangements\
-          \ are at the top. Translate `collection_id` to a name via `SELECT id, name\
-          \ FROM mz_internal.mz_indexes` (or `mz_materialized_views`)."
+          \ are at the top. Rows are labeled by object name (resolved via `mz_object_info`)."
         id: 1050
         links: []
         title: "User Collections \u2014 Record Counts"
@@ -1620,19 +1627,23 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ntopk(15,\n    max by (instance_id, collection_id) (\n\
-                      \        mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
-                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
-                      \",\n            replica_id=~\"$mzReplicaList\",\n         \
-                      \   quantile=\"1\"\n        } < 1e9\n    )\n)\n"
+                    expr: "topk(15,\n(\n\nmax by (instance_id, collection_id) (\n\
+                      \    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n\
+                      \        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\
+                      \",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"\
+                      1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")\n)"
                     instant: true
-                    legendFormat: '{{instance_id}} / {{collection_id}}'
+                    legendFormat: '{{instance_id}} / {{name}}'
                     qryType: 1
-                    query: "\ntopk(15,\n    max by (instance_id, collection_id) (\n\
-                      \        mz_dataflow_wallclock_lag_seconds{\n            $environmentFilter,\n\
-                      \            instance_id=~\"$mzClusterList\",\n            instance_id!=\"\
-                      \",\n            replica_id=~\"$mzReplicaList\",\n         \
-                      \   quantile=\"1\"\n        } < 1e9\n    )\n)\n"
+                    query: "topk(15,\n(\n\nmax by (instance_id, collection_id) (\n\
+                      \    mz_dataflow_wallclock_lag_seconds{\n        $environmentFilter,\n\
+                      \        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\
+                      \",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"\
+                      1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"collection_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")\n)"
                     range: false
                   version: v0
                 refId: query-0
@@ -1640,11 +1651,10 @@ spec:
             transformations: []
         description: "**The 15 collections whose output frontier is furthest behind\
           \ real time.** This is the per-collection breakdown behind _Frontier Lag\
-          \ by Cluster_. Translate `collection_id` to a name via `SELECT id, name\
-          \ FROM mz_internal.mz_indexes` (or `mz_materialized_views` / `mz_sources`).\
-          \ Collections with no frontier yet (idle or still hydrating) report a sentinel\
-          \ and are filtered out here \u2014 check hydration state directly with `SELECT\
-          \ * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`. `s2` (catalog)\
+          \ by Cluster_, labeled by object name (resolved via `mz_object_info`). Collections\
+          \ with no frontier yet (idle or still hydrating) report a sentinel and are\
+          \ filtered out here \u2014 check hydration state directly with `SELECT *\
+          \ FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`. `s2` (catalog)\
           \ collections commonly appear with a small baseline lag; that's expected."
         id: 1040
         links: []
@@ -1764,17 +1774,19 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ntopk(15,\n    ${sqlMetricPrefix}compute_hydration_time_seconds{\n\
-                      \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
-                      ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
-                      1\"\n    }\n)\n"
+                    expr: "topk(15,\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n\
+                      \    $environmentFilter,\n    instance_id=~\"$mzClusterList\"\
+                      ,\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n\
+                      }\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)"
                     instant: true
-                    legendFormat: '{{instance_id}} / {{replica_id}} / {{collection_id}}'
+                    legendFormat: '{{instance_id}} / {{replica_id}} / {{name}}'
                     qryType: 1
-                    query: "\ntopk(15,\n    ${sqlMetricPrefix}compute_hydration_time_seconds{\n\
-                      \        $environmentFilter,\n        instance_id=~\"$mzClusterList\"\
-                      ,\n        replica_id=~\"$mzReplicaList\",\n        hydrated=\"\
-                      1\"\n    }\n)\n"
+                    query: "topk(15,\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n\
+                      \    $environmentFilter,\n    instance_id=~\"$mzClusterList\"\
+                      ,\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n\
+                      }\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"collection_id\", \"$1\", \"object_id\", \"(.*)\")\n)"
                     range: false
                   version: v0
                 refId: query-0
@@ -3850,17 +3862,22 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_iceberg_commit_failures{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
-                      $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} failures'
-                    qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_iceberg_commit_failures{$environmentFilter,\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_iceberg_commit_failures{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} failures'
+                    qryType: 1
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_iceberg_commit_failures{$environmentFilter,\
+                      \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
+                      , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3872,18 +3889,22 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} conflicts'
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} conflicts'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_iceberg_commit_conflicts{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -3950,18 +3971,22 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} data'
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} data'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_iceberg_data_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -3973,18 +3998,22 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} deletes'
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} deletes'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_iceberg_delete_files_written{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-1
             - kind: PanelQuery
@@ -3996,18 +4025,22 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} snapshots'
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} snapshots'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_iceberg_snapshots_committed{$environmentFilter,\
                       \ cluster_environmentd_materialize_cloud_cluster_id=~\"$mzClusterList\"\
                       , cluster_environmentd_materialize_cloud_replica_id=~\"$mzReplicaList\"\
-                      }[$__rate_interval])\n    )\n)\n"
+                      }[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-2
             queryOptions: {}
@@ -4060,16 +4093,20 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_rdkafka_connects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_rdkafka_connects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} connects'
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
+                      \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} connects'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_rdkafka_connects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_rdkafka_connects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
+                      \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -4081,16 +4118,20 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_rdkafka_disconnects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_rdkafka_disconnects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}} disconnects'
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
+                      \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}} disconnects'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_rdkafka_disconnects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_rdkafka_disconnects{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
+                      \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -4142,16 +4183,20 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}\n    )\n)\n"
-                    legendFormat: '{{sink_id}}'
+                      $mzReplicaList\"}\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}}'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     mz_sink_rdkafka_outbuf_msg_cnt{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}\n    )\n)\n"
+                      $mzReplicaList\"}\n    )\n)\n\n)\n* on (sink_id) group_left(name)\n\
+                      label_replace(mz_object_info{$environmentFilter}, \"sink_id\"\
+                      , \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4203,16 +4248,20 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\nsum by (sink_id) (\n    max without (job) (\n       \
-                      \ rate(mz_sink_rdkafka_txerrs{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    expr: "(\n\nsum by (sink_id) (\n    max without (job) (\n    \
+                      \    rate(mz_sink_rdkafka_txerrs{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
-                    legendFormat: '{{sink_id}}'
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
+                      \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
+                    legendFormat: '{{name}}'
                     qryType: 1
-                    query: "\nsum by (sink_id) (\n    max without (job) (\n      \
-                      \  rate(mz_sink_rdkafka_txerrs{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
+                    query: "(\n\nsum by (sink_id) (\n    max without (job) (\n   \
+                      \     rate(mz_sink_rdkafka_txerrs{$environmentFilter, cluster_environmentd_materialize_cloud_cluster_id=~\"\
                       $mzClusterList\", cluster_environmentd_materialize_cloud_replica_id=~\"\
-                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n"
+                      $mzReplicaList\"}[$__rate_interval])\n    )\n)\n\n)\n* on (sink_id)\
+                      \ group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"sink_id\", \"$1\", \"object_id\", \"(.*)\")"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4741,14 +4790,16 @@ spec:
                   group: prometheus
                   kind: DataQuery
                   spec:
-                    expr: "\ngroup by (id, object_type, connection_type, envelope_type,\
+                    expr: "(\n\ngroup by (id, object_type, connection_type, envelope_type,\
                       \ cluster_id) (\n    ${sqlMetricPrefix}storage_objects{$environmentFilter,\
-                      \ type=\"source\"}\n)\n"
+                      \ type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"id\", \"$1\", \"object_id\", \"(.*)\")"
                     instant: true
                     qryType: 1
-                    query: "\ngroup by (id, object_type, connection_type, envelope_type,\
+                    query: "(\n\ngroup by (id, object_type, connection_type, envelope_type,\
                       \ cluster_id) (\n    ${sqlMetricPrefix}storage_objects{$environmentFilter,\
-                      \ type=\"source\"}\n)\n"
+                      \ type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{$environmentFilter},\
+                      \ \"id\", \"$1\", \"object_id\", \"(.*)\")"
                     range: false
                   version: v0
                 refId: query-0
@@ -4760,6 +4811,7 @@ spec:
                 id: labelsToFields
                 options:
                   keepLabels:
+                  - name
                   - id
                   - object_type
                   - connection_type
@@ -4779,16 +4831,18 @@ spec:
                     Time: true
                     Value: true
                   indexByName:
-                    cluster_id: 4
-                    connection_type: 2
-                    envelope_type: 3
-                    id: 0
-                    object_type: 1
+                    cluster_id: 5
+                    connection_type: 3
+                    envelope_type: 4
+                    id: 1
+                    name: 0
+                    object_type: 2
                   renameByName:
                     cluster_id: Cluster
                     connection_type: Connection
                     envelope_type: Envelope
                     id: Source ID
+                    name: Name
                     object_type: Type
             - group: sortBy
               kind: Transformation
@@ -4797,14 +4851,14 @@ spec:
                 options:
                   fields: {}
                   sort:
-                  - field: Source ID
+                  - field: Name
         description: "**Catalog of sources running in the environment \u2014 one row\
-          \ per source with its connector type, envelope, and the cluster it ingests\
-          \ on.** Self-managed Materialize exposes no source *status* metric, so running/stalled/errored\
+          \ per source (by name) with its connector type, envelope, and the cluster\
+          \ it ingests on.** Names are resolved via `mz_object_info`. Self-managed\
+          \ Materialize exposes no source *status* metric, so running/stalled/errored\
           \ isn't shown here \u2014 check live status with `SELECT name, type, status\
           \ FROM mz_internal.mz_source_statuses;`, and use _Source Bytes Received\
-          \ (rate)_ to confirm a source is actively ingesting. Translate `Source ID`\
-          \ to a name via `SELECT id, name FROM mz_sources`. The hidden `_progress`\
+          \ (rate)_ to confirm a source is actively ingesting. The hidden `_progress`\
           \ subsources are excluded, so the row count matches _Active Sources_."
         id: 1056
         links: []
