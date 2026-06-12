@@ -37,6 +37,51 @@ A released section can therefore sit above other components' unreleased placehol
 - **GitHub Releases** are created when a tag is created.
 - Per-component tags double as the per-component "since" boundary for attribution, so each stream's changelog window is computed from its own last release.
 
+## `propose-bumps` (runs on merge to the default branch)
+
+`mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
+
+- recreates the `version-update/<component>` branch as a **single commit atop the base**, applying that component's [`release`](versioning/) changelog + version + `uv.lock` edits (the version is not in the branch name);
+- force-pushes the branch (stateless — it never reconciles the PR's current state) and opens one PR per component if none is open.
+
+It is **repository-agnostic** — owner/repo and the base commit come from the environment — so another repository can adopt it unchanged.
+
+Required environment:
+
+| Variable | Purpose |
+|---|---|
+| `CI=true` | The command refuses to run otherwise (set it to emulate CI locally). |
+| `GITHUB_TOKEN` | Auth; needs `contents: write` and `pull-requests: write`. |
+| `GITHUB_REPOSITORY` | `owner/repo` (set by GitHub Actions). |
+| `GITHUB_SHA` | Base commit the branches build on; falls back to `git rev-parse HEAD`. |
+
+`--dry-run` prints the plan and makes no GitHub calls (still requires `CI=true`).
+`--draft` opens PRs as drafts (the default in our workflow for now); draft state blocks accidental merges.
+`--automerge` best-effort enables auto-merge on newly opened PRs.
+
+A minimal workflow:
+
+```yaml
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  propose-bumps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags + full history for attribution
+      - run: cargo run -p mz-monitoring-build -- propose-bumps --draft --automerge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Bootstrapping:** the per-component "since" boundary is the tag `<component>/v<latest released>`. Create those tags at the current release point before the first run (e.g. `git tag mzmon-lib/v0.5.0 <commit>`); a component with no prior release or missing tag is skipped with a message. `propose-bumps` does **not** create tags or releases — those happen in a separate command.
+
 ## Cascade and ordering
 
 - Releasing a dependency updates its dependents' version-update PRs (cascade), recording an `Included <dep> @ vPREV..vNEW` entry.
