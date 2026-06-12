@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.9.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.7.0 (Unreleased)
 
 _Changes Pending_
@@ -35,9 +39,28 @@ _Changes Pending_
     * Generated automated versioning PRs
         * [materialize-monitoring#21](https://github.com/MaterializeInc/materialize-monitoring/pull/21)
 
-## Dashboards v0.8.0 (Unreleased)
+## Dashboards v0.8.0
 
-_Changes Pending_
+* Use global_id to not run into errors on right join
+    * [materialize-monitoring#24](https://github.com/MaterializeInc/materialize-monitoring/pull/24)
+* Coalesce object names into dashboards
+    * [materialize-monitoring#23](https://github.com/MaterializeInc/materialize-monitoring/pull/23)
+* Monitoring Roadmap and Version/Changelog Management
+    * [materialize-monitoring#16](https://github.com/MaterializeInc/materialize-monitoring/pull/16)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Release mzmon-lib (shared library) v0.6.0
+        * [materialize-monitoring#20](https://github.com/MaterializeInc/materialize-monitoring/pull/20)
+    * Include artifacts when creating github releases
+        * [materialize-monitoring#26](https://github.com/MaterializeInc/materialize-monitoring/pull/26)
+    * Support generating a release when version bump PRs are merged
+        * [materialize-monitoring#25](https://github.com/MaterializeInc/materialize-monitoring/pull/25)
+    * Support auto-formatting based on labels
+        * [materialize-monitoring#22](https://github.com/MaterializeInc/materialize-monitoring/pull/22)
+    * Generated automated versioning PRs
+        * [materialize-monitoring#21](https://github.com/MaterializeInc/materialize-monitoring/pull/21)
 
 ## Pipelines v0.3.0
 
