@@ -276,6 +276,11 @@ reference/internal/releasing.md.
 &lt;/ul&gt;
 &lt;h2 id="dashboards-v080"&gt;Dashboards v0.8.0&lt;a class="anchor" href="#dashboards-v080"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
+&lt;li&gt;Coalesce object names into dashboards
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/23" rel="external" class="external-link"&gt;materialize-monitoring#23&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;Monitoring Roadmap and Version/Changelog Management
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/16" rel="external" class="external-link"&gt;materialize-monitoring#16&lt;/a&gt;&lt;/li&gt;
