@@ -1,6 +1,6 @@
 [project]
 name = "grafana-dashboards"
-# These are unversioned
+# These versioned with all other dashboards.
 version = "0.0.0"
 description = "Grafana Dashboards for Materialize"
 readme = "README.md"

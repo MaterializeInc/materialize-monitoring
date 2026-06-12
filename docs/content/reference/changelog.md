@@ -3,4 +3,5 @@ title: "Changelog"
 weight: 190
 ---
 
-TODO
+<!-- Changelog lives in repo root, mounted in hugo.toml -->
+{{% include-render "repo/CHANGELOG.md" %}}

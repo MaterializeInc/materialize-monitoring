@@ -1,0 +1,17 @@
+{{/*
+    This file is used to include a Markdown file into a page.
+
+    You may wish to mount files via hugo.toml to make them available in the assets directory.
+
+    Params:
+      path    Path to the Markdown file, relative to the assets directory.
+
+    Usage:
+      {{% include-render "path/to/file.md" %}}
+*/}}
+{{- $path := .Get 0 -}}
+{{- with resources.Get $path }}
+  {{ .Content | safeHTML }}
+{{- else }}
+  <p>File not found: {{ $path }}</p>
+{{- end }}

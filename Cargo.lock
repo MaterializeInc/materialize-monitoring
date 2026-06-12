@@ -584,7 +584,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "indexmap",
  "mzmon-lib",
+ "serde",
+ "serde_yaml_ng",
 ]
 
 [[package]]

@@ -7,3 +7,6 @@ edition = "2024"
 mzmon-lib = { path = "../mzmon-lib" }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10.0"
+indexmap = { version = "2", features = ["serde"] }

@@ -1,0 +1,104 @@
+# Layout of components for versioning and release management.
+
+components:
+  docs:
+    changelog: false
+    title: "materialize-monitoring Docs"
+    version_paths: []
+    content_paths:
+      - docs/
+    dependencies:
+      - dashboards
+      - materialize-monitoring
+      - mzmon-lib
+      - pipelines
+      - repo-common
+
+  # Helm chart
+  materialize-monitoring:
+    changelog: true
+    title: "materialize-monitoring Helm Chart"
+    version_paths:
+      - charts/materialize-monitoring/Chart.yaml
+    content_paths:
+      - charts/materialize-monitoring/
+      - tools/chartlib/
+    dependencies:
+      - dashboards
+      - mzmon-lib
+      - pipelines
+      - repo-common
+
+  # Optional CRDs
+  materialize-monitoring-crds:
+    changelog: true
+    title: "materialize-monitoring Optional CRDs"
+    version_paths:
+      - charts/materialize-monitoring-crds/Chart.yaml
+    content_paths:
+      - charts/materialize-monitoring-crds/
+      - tools/chartlib/
+    dependencies:
+      - repo-common
+
+  dashboards:
+    changelog: true
+    title: "Dashboards"
+    version_paths:
+      # Only grafana dashboard supported for now
+      - packages/grafana-dashboards/pyproject.toml
+    content_paths:
+      - packages/grafana-dashboards/
+    dependencies:
+      - mzmon-lib
+      - repo-common
+
+  pipelines:
+    changelog: true
+    title: "Pipelines"
+    version_paths: []
+    content_paths:
+      - packages/alloy-pipelines/
+    dependencies:
+      - mzmon-lib
+      - repo-common
+
+  # TODO: container-images:
+
+  mzmon-lib:
+    changelog: true
+    title: "mzmon-lib (shared library)"
+    version_paths:
+      - Cargo.toml
+      - pyproject.toml
+    content_paths:
+      # python shared
+      - .python-version
+      - pyproject.toml
+      - uv.lock
+      # rust shared
+      - Cargo.lock
+      - Cargo.toml
+      # packages
+      - packages/mz-monitoring-build/
+      - packages/mz-monitoring-check/
+      - packages/mzmon-lib/
+      - packages/py-mzmon-lib/
+    dependencies:
+      - repo-common
+
+  repo-common:
+    changelog: false
+    title: "Repository Common"
+    version_paths: []
+    content_paths:
+      # go shared
+      - go.mod
+      - go.sum
+      # build common
+      - .github/workflows
+      - .gitignore
+      - bin
+      - Makefile
+      - packages/components.yaml
+      - tools/shlib
