@@ -1,0 +1,43 @@
+name: publish-release
+
+# When a version-update PR merges, tag <component>/vX.Y.Z at the merge commit
+# and publish a GitHub Release from that component's changelog section. This
+# runs off the PR merge, not every push to the default branch.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-release:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'version-update/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The merged state on the default branch, whose CHANGELOG carries the
+          # just-released section.
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: publish release
+        # Pass the branch/sha via env (never interpolate untrusted refs into the
+        # shell). The component is the branch name minus the version-update/ prefix.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          component="${HEAD_REF#version-update/}"
+          cargo run -p mz-monitoring-build -- publish-release \
+            --component "$component" \
+            --sha "$MERGE_SHA"

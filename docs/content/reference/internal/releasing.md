@@ -82,7 +82,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Bootstrapping:** the per-component "since" boundary is the tag `<component>/v<latest released>`. Create those tags at the current release point before the first run (e.g. `git tag mzmon-lib/v0.5.0 <commit>`); a component with no prior release or missing tag is skipped with a message. `propose-bumps` does **not** create tags or releases — those happen in a separate command.
+**Bootstrapping:** the per-component "since" boundary is the tag `<component>/v<latest released>`. Create those tags at the current release point before the first run (e.g. `git tag mzmon-lib/v0.5.0 <commit>`); a component with no prior release or missing tag is skipped with a message. `propose-bumps` does **not** create tags or releases — that is `publish-release` below.
+
+## `publish-release` (runs when a version-update PR merges)
+
+`mz-monitoring-build publish-release --component <name> --sha <commit>` reads the component's latest released section from `CHANGELOG.md`, creates the `<component>/vX.Y.Z` tag at `--sha`, and publishes a GitHub Release whose notes are that section (heading dropped — the release name carries it). It is **idempotent**: if the tag already exists it does nothing, and `make_latest=false` since each component is an independent stream.
+
+It runs off the PR *merge* (not pushes to the default branch), via the [`publish-release`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/publish-release.yaml) workflow gated on `version-update/*` head branches; the component is the branch name minus the `version-update/` prefix and the tag target is the merge commit. The default `GITHUB_TOKEN` is sufficient — nothing needs to chain off the tag or release. Same env contract as `propose-bumps` minus `pull-requests` (it only needs `contents: write`); `--dry-run` prints the tag and notes without calling GitHub.
 
 ## Auto-format
 
