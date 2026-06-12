@@ -30,16 +30,13 @@
 //! `CI=true`). GitHub releases/tags are handled by a separate command.
 
 use anyhow::{Context, anyhow};
-use reqwest::Client;
-use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+use crate::github::Gh;
 use crate::versioning::{
     ReleasePlan, latest_released, load_components, parse_changelog, plan_release, rev_parse,
 };
-
-const GITHUB_API: &str = "https://api.github.com";
 
 /// Arguments for the `propose-bumps` command.
 #[derive(clap::Args)]
@@ -194,7 +191,7 @@ pub fn propose_bumps(args: ProposeBumpsArgs) -> anyhow::Result<()> {
     runtime.block_on(async {
         let gh = Gh::new(&token)?;
         for p in &proposals {
-            gh.push_and_propose(owner, repo, &base_sha, &args, p)
+            push_and_propose(&gh, owner, repo, &base_sha, &args, p)
                 .await
                 .with_context(|| format!("proposing {}", p.name))?;
             println!(
@@ -208,219 +205,134 @@ pub fn propose_bumps(args: ProposeBumpsArgs) -> anyhow::Result<()> {
     })
 }
 
-/// A thin authenticated GitHub REST/GraphQL client.
-struct Gh {
-    client: Client,
-}
+/// Create a single commit with the proposal's files atop `base_sha`,
+/// force-update the branch ref to it, and ensure an open PR exists.
+async fn push_and_propose(
+    gh: &Gh,
+    owner: &str,
+    repo: &str,
+    base_sha: &str,
+    args: &ProposeBumpsArgs,
+    p: &Proposal,
+) -> anyhow::Result<()> {
+    // Tree from the base commit, overriding changed files with inline content.
+    let base_commit = gh
+        .get(&format!("/repos/{owner}/{repo}/git/commits/{base_sha}"))
+        .await?;
+    let base_tree = base_commit["tree"]["sha"]
+        .as_str()
+        .ok_or_else(|| anyhow!("base commit {base_sha} has no tree"))?;
 
-impl Gh {
-    fn new(token: &str) -> anyhow::Result<Self> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            ACCEPT,
-            HeaderValue::from_static("application/vnd.github+json"),
-        );
-        headers.insert(
-            "X-GitHub-Api-Version",
-            HeaderValue::from_static("2022-11-28"),
-        );
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {token}"))?,
-        );
-        let client = Client::builder()
-            .user_agent("mz-monitoring-build")
-            .default_headers(headers)
-            .build()?;
-        Ok(Self { client })
-    }
-
-    async fn get(&self, path: &str) -> anyhow::Result<Value> {
-        json_ok(
-            self.client
-                .get(format!("{GITHUB_API}{path}"))
-                .send()
-                .await?,
-        )
-        .await
-    }
-
-    async fn post(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        json_ok(
-            self.client
-                .post(format!("{GITHUB_API}{path}"))
-                .json(body)
-                .send()
-                .await?,
-        )
-        .await
-    }
-
-    /// PATCH; returns whether the request succeeded (used for ref force-update,
-    /// which 404s when the branch does not exist yet).
-    async fn patch_ok(&self, path: &str, body: &Value) -> anyhow::Result<bool> {
-        let resp = self
-            .client
-            .patch(format!("{GITHUB_API}{path}"))
-            .json(body)
-            .send()
-            .await?;
-        Ok(resp.status().is_success())
-    }
-
-    async fn graphql(&self, body: &Value) -> anyhow::Result<Value> {
-        json_ok(
-            self.client
-                .post(format!("{GITHUB_API}/graphql"))
-                .json(body)
-                .send()
-                .await?,
-        )
-        .await
-    }
-
-    /// Create a single commit with the proposal's files atop `base_sha`,
-    /// force-update the branch ref to it, and ensure an open PR exists.
-    async fn push_and_propose(
-        &self,
-        owner: &str,
-        repo: &str,
-        base_sha: &str,
-        args: &ProposeBumpsArgs,
-        p: &Proposal,
-    ) -> anyhow::Result<()> {
-        // Tree from the base commit, overriding changed files with inline content.
-        let base_commit = self
-            .get(&format!("/repos/{owner}/{repo}/git/commits/{base_sha}"))
-            .await?;
-        let base_tree = base_commit["tree"]["sha"]
-            .as_str()
-            .ok_or_else(|| anyhow!("base commit {base_sha} has no tree"))?;
-
-        let entries: Vec<Value> = p
-            .plan
-            .files()
-            .iter()
-            .map(|(path, content)| {
-                json!({
-                    "path": path.to_string_lossy().replace('\\', "/"),
-                    "mode": "100644",
-                    "type": "blob",
-                    "content": content,
-                })
+    let entries: Vec<Value> = p
+        .plan
+        .files()
+        .iter()
+        .map(|(path, content)| {
+            json!({
+                "path": path.to_string_lossy().replace('\\', "/"),
+                "mode": "100644",
+                "type": "blob",
+                "content": content,
             })
-            .collect();
-        let tree = self
-            .post(
-                &format!("/repos/{owner}/{repo}/git/trees"),
-                &json!({ "base_tree": base_tree, "tree": entries }),
-            )
-            .await?;
-        let tree_sha = tree["sha"]
-            .as_str()
-            .ok_or_else(|| anyhow!("tree create failed"))?;
+        })
+        .collect();
+    let tree = gh
+        .post(
+            &format!("/repos/{owner}/{repo}/git/trees"),
+            &json!({ "base_tree": base_tree, "tree": entries }),
+        )
+        .await?;
+    let tree_sha = tree["sha"]
+        .as_str()
+        .ok_or_else(|| anyhow!("tree create failed"))?;
 
-        let commit = self
-            .post(
-                &format!("/repos/{owner}/{repo}/git/commits"),
-                &json!({ "message": p.title, "tree": tree_sha, "parents": [base_sha] }),
-            )
-            .await?;
-        let commit_sha = commit["sha"]
-            .as_str()
-            .ok_or_else(|| anyhow!("commit create failed"))?;
+    let commit = gh
+        .post(
+            &format!("/repos/{owner}/{repo}/git/commits"),
+            &json!({ "message": p.title, "tree": tree_sha, "parents": [base_sha] }),
+        )
+        .await?;
+    let commit_sha = commit["sha"]
+        .as_str()
+        .ok_or_else(|| anyhow!("commit create failed"))?;
 
-        // Force the branch ref to the new commit, creating it if absent.
-        let forced = self
-            .patch_ok(
-                &format!("/repos/{owner}/{repo}/git/refs/heads/{}", p.branch),
-                &json!({ "sha": commit_sha, "force": true }),
-            )
-            .await?;
-        if !forced {
-            self.post(
-                &format!("/repos/{owner}/{repo}/git/refs"),
-                &json!({ "ref": format!("refs/heads/{}", p.branch), "sha": commit_sha }),
+    // Force the branch ref to the new commit, creating it if absent.
+    let forced = gh
+        .patch_ok(
+            &format!("/repos/{owner}/{repo}/git/refs/heads/{}", p.branch),
+            &json!({ "sha": commit_sha, "force": true }),
+        )
+        .await?;
+    if !forced {
+        gh.post(
+            &format!("/repos/{owner}/{repo}/git/refs"),
+            &json!({ "ref": format!("refs/heads/{}", p.branch), "sha": commit_sha }),
+        )
+        .await
+        .context("creating branch ref")?;
+    }
+
+    // Open a PR if one is not already open for this branch.
+    let existing = gh
+        .get(&format!(
+            "/repos/{owner}/{repo}/pulls?state=open&head={owner}:{}",
+            p.branch
+        ))
+        .await?;
+    if existing.as_array().is_none_or(|prs| prs.is_empty()) {
+        let pr = gh
+            .post(
+                &format!("/repos/{owner}/{repo}/pulls"),
+                &json!({
+                    "title": p.title,
+                    "head": p.branch,
+                    "base": args.base,
+                    "body": pr_body(p, &args.base),
+                    "draft": args.draft,
+                }),
             )
             .await
-            .context("creating branch ref")?;
-        }
+            .context("creating PR")?;
 
-        // Open a PR if one is not already open for this branch.
-        let existing = self
-            .get(&format!(
-                "/repos/{owner}/{repo}/pulls?state=open&head={owner}:{}",
-                p.branch
-            ))
-            .await?;
-        if existing.as_array().is_none_or(|prs| prs.is_empty()) {
-            let pr = self
+        // Label the new PR (e.g. to trigger an auto-format workflow).
+        if !args.label.is_empty()
+            && let Some(number) = pr["number"].as_u64()
+            && let Err(e) = gh
                 .post(
-                    &format!("/repos/{owner}/{repo}/pulls"),
-                    &json!({
-                        "title": p.title,
-                        "head": p.branch,
-                        "base": args.base,
-                        "body": pr_body(p, &args.base),
-                        "draft": args.draft,
-                    }),
+                    &format!("/repos/{owner}/{repo}/issues/{number}/labels"),
+                    &json!({ "labels": [args.label] }),
                 )
                 .await
-                .context("creating PR")?;
-
-            // Label the new PR (e.g. to trigger an auto-format workflow).
-            if !args.label.is_empty()
-                && let Some(number) = pr["number"].as_u64()
-                && let Err(e) = self
-                    .post(
-                        &format!("/repos/{owner}/{repo}/issues/{number}/labels"),
-                        &json!({ "labels": [args.label] }),
-                    )
-                    .await
-            {
-                eprintln!(
-                    "  label {:?} not applied for {} (does it exist?): {e}",
-                    args.label, p.name
-                );
-            }
-
-            // GitHub rejects enabling auto-merge on a draft PR, so only attempt
-            // it on non-draft PRs (see the note emitted in `propose_bumps`).
-            if args.automerge
-                && !args.draft
-                && let Some(node_id) = pr["node_id"].as_str()
-                && let Err(e) = self.enable_automerge(node_id).await
-            {
-                eprintln!("  auto-merge not enabled for {}: {e}", p.name);
-            }
+        {
+            eprintln!(
+                "  label {:?} not applied for {} (does it exist?): {e}",
+                args.label, p.name
+            );
         }
-        Ok(())
-    }
 
-    /// Enable auto-merge on a PR via GraphQL (best-effort).
-    async fn enable_automerge(&self, pr_node_id: &str) -> anyhow::Result<()> {
-        let query = "mutation($id: ID!) { \
-            enablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } \
-        }";
-        let resp = self
-            .graphql(&json!({ "query": query, "variables": { "id": pr_node_id } }))
-            .await?;
-        if let Some(errors) = resp.get("errors") {
-            anyhow::bail!("{errors}");
+        // GitHub rejects enabling auto-merge on a draft PR, so only attempt it
+        // on non-draft PRs (see the note emitted in `propose_bumps`).
+        if args.automerge
+            && !args.draft
+            && let Some(node_id) = pr["node_id"].as_str()
+            && let Err(e) = enable_automerge(gh, node_id).await
+        {
+            eprintln!("  auto-merge not enabled for {}: {e}", p.name);
         }
-        Ok(())
     }
+    Ok(())
 }
 
-/// Parse a JSON response, turning non-2xx into an error with the body.
-async fn json_ok(resp: reqwest::Response) -> anyhow::Result<Value> {
-    let status = resp.status();
-    let text = resp.text().await?;
-    if !status.is_success() {
-        anyhow::bail!("github {status}: {text}");
+/// Enable auto-merge on a PR via GraphQL (best-effort).
+async fn enable_automerge(gh: &Gh, pr_node_id: &str) -> anyhow::Result<()> {
+    let query = "mutation($id: ID!) { \
+        enablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } \
+    }";
+    let resp = gh
+        .graphql(&json!({ "query": query, "variables": { "id": pr_node_id } }))
+        .await?;
+    if let Some(errors) = resp.get("errors") {
+        anyhow::bail!("{errors}");
     }
-    if text.is_empty() {
-        return Ok(Value::Null);
-    }
-    serde_json::from_str(&text).with_context(|| format!("parsing github response: {text}"))
+    Ok(())
 }

@@ -881,7 +881,7 @@ pub(crate) fn plan_release(
 
 /// Extract a single `## ...` section (heading + body, trailing blanks trimmed)
 /// from a changelog by its exact heading line.
-fn section_of(changelog: &str, heading: &str) -> String {
+pub(crate) fn section_of(changelog: &str, heading: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut in_section = false;
     for line in changelog.lines() {

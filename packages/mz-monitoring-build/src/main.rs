@@ -10,7 +10,9 @@
 use clap::{Parser, Subcommand};
 
 mod gen_pipelines;
+mod github;
 mod propose;
+mod publish;
 mod versioning;
 
 #[derive(Parser)]
@@ -33,6 +35,8 @@ enum Command {
     Release(versioning::ReleaseArgs),
     /// Create/update one version-update PR per changed component (runs in CI).
     ProposeBumps(propose::ProposeBumpsArgs),
+    /// Tag and publish a GitHub Release for a merged version-update (runs in CI).
+    PublishRelease(publish::PublishReleaseArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -41,5 +45,6 @@ fn main() -> anyhow::Result<()> {
         Command::Changelog(args) => versioning::changelog(args),
         Command::Release(args) => versioning::release(args),
         Command::ProposeBumps(args) => propose::propose_bumps(args),
+        Command::PublishRelease(args) => publish::publish_release(args),
     }
 }
