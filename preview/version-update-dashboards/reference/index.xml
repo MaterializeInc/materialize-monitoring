@@ -26,7 +26,15 @@ reference/internal/releasing.md.
 &lt;/ul&gt;
 &lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.5.0..v0.6.0&lt;/li&gt;
+&lt;li&gt;Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
+&lt;ul&gt;
+&lt;li&gt;Generated automated versioning PRs
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/21" rel="external" class="external-link"&gt;materialize-monitoring#21&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="pipelines-v030-unreleased"&gt;Pipelines v0.3.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>
