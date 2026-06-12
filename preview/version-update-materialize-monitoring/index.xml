@@ -259,6 +259,11 @@ reference/internal/releasing.md.
 &lt;li&gt;Included Pipelines @ v0.2.0..v0.3.0&lt;/li&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
 &lt;ul&gt;
+&lt;li&gt;Support auto-formatting based on labels
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/22" rel="external" class="external-link"&gt;materialize-monitoring#22&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;Generated automated versioning PRs
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/21" rel="external" class="external-link"&gt;materialize-monitoring#21&lt;/a&gt;&lt;/li&gt;
