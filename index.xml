@@ -243,6 +243,8 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
+&lt;h2 id="pipelines-v040-unreleased"&gt;Pipelines v0.4.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v040-unreleased"&gt;materialize-monitoring Helm Chart v0.4.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v030"&gt;materialize-monitoring Helm Chart v0.3.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v030"&gt;#&lt;/a&gt;&lt;/h2&gt;
