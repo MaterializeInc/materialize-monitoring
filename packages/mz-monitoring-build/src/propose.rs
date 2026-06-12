@@ -172,6 +172,12 @@ pub fn propose_bumps(args: ProposeBumpsArgs) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if args.automerge && args.draft {
+        eprintln!(
+            "note: --automerge is ignored while --draft is set (GitHub rejects auto-merge on draft PRs)"
+        );
+    }
+
     let token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
     let repository = std::env::var("GITHUB_REPOSITORY").context("GITHUB_REPOSITORY not set")?;
     let (owner, repo) = repository
@@ -359,7 +365,10 @@ impl Gh {
                 )
                 .await
                 .context("creating PR")?;
+            // GitHub rejects enabling auto-merge on a draft PR, so only attempt
+            // it on non-draft PRs (see the note emitted in `propose_bumps`).
             if args.automerge
+                && !args.draft
                 && let Some(node_id) = pr["node_id"].as_str()
                 && let Err(e) = self.enable_automerge(node_id).await
             {
