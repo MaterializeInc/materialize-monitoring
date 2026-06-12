@@ -23,7 +23,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, threshold, visualization
+from dashboards import enrich, palette, threshold, visualization
 
 CONNECTIONS_THEME = palette.THEME_PALETTE[1]
 
@@ -325,20 +325,22 @@ class ConnectionsActivityTab:
         # it further. (The cloud-only `v2_mz_compute_replica_peek_duration_*`
         # histogram was per-replica; no self-managed equivalent exists.)
         bucket_filter = '$environmentFilter, instance_id=~"$mzClusterList"'
+        # instance_id -> cluster_name via mz_cluster_info
+        peek_expr = textwrap.dedent(
+            f"""
+            histogram_quantile({percentile},
+                sum by (le, instance_id) (
+                    rate(
+                        mz_compute_peek_duration_seconds_bucket{{{bucket_filter}}}[$__rate_interval]
+                    )
+                )
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    histogram_quantile({percentile},
-                        sum by (le, instance_id) (
-                            rate(
-                                mz_compute_peek_duration_seconds_bucket{{{bucket_filter}}}[$__rate_interval]
-                            )
-                        )
-                    )
-                    """
-                )
-            ).legend_format("{{instance_id}}"),
+                enrich.with_cluster_name(peek_expr, "instance_id")
+            ).legend_format("{{cluster_name}}"),
         )
 
         self.dashboard.add_panel(

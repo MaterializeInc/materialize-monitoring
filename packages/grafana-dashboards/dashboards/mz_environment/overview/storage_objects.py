@@ -22,7 +22,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, threshold, visualization
+from dashboards import enrich, palette, threshold, visualization
 
 # Clusterd-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
 # long-form `cluster_environmentd_materialize_cloud_*` id label family — the
@@ -262,27 +262,30 @@ class StorageObjectsTab:
         the closest metric-side catalog: one series per (object, replica), with
         `id`, `object_type`, `connection_type`, `envelope_type`, `cluster_id`.
         `group by (...)` collapses the per-replica duplicates to one row per
-        source; labelsToFields + organize promote the labels to columns.
+        source; `mz_object_info` is joined (on `id`) to add the `name`, and
+        labelsToFields + organize promote the labels to columns (Name first).
         """
         panel_id = "sources-status-table"
         columns = [
+            "name",
             "id",
             "object_type",
             "connection_type",
             "envelope_type",
             "cluster_id",
         ]
+        # ${sqlMetricPrefix}storage_objects, with source name joined in from
+        # mz_object_info (on id) so the table leads with a human-readable name.
+        catalog_expr = textwrap.dedent(
+            """
+            group by (id, object_type, connection_type, envelope_type, cluster_id) (
+                ${sqlMetricPrefix}storage_objects{$environmentFilter, type="source"}
+            )
+            """
+        )
         query = (
             query_group(
-                promql_query(
-                    textwrap.dedent(
-                        """
-                        group by (id, object_type, connection_type, envelope_type, cluster_id) (
-                            ${sqlMetricPrefix}storage_objects{$environmentFilter, type="source"}
-                        )
-                        """
-                    )
-                ).instant()
+                promql_query(enrich.with_object_name(catalog_expr, "id")).instant()
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
@@ -307,6 +310,7 @@ class StorageObjectsTab:
                             "Value": True,
                         },
                         "renameByName": {
+                            "name": "Name",
                             "id": "Source ID",
                             "object_type": "Type",
                             "connection_type": "Connection",
@@ -326,7 +330,7 @@ class StorageObjectsTab:
                 .options(
                     {
                         "fields": {},
-                        "sort": [{"field": "Source ID"}],
+                        "sort": [{"field": "Name"}],
                     }
                 )
             )
@@ -338,14 +342,14 @@ class StorageObjectsTab:
             .title("Sources")
             .description(
                 "**Catalog of sources running in the environment — one row "
-                "per source with its connector type, envelope, and the "
-                "cluster it ingests on.** Self-managed Materialize exposes no "
+                "per source (by name) with its connector type, envelope, and "
+                "the cluster it ingests on.** Names are resolved via "
+                "`mz_object_info`. Self-managed Materialize exposes no "
                 "source *status* metric, so running/stalled/errored isn't "
                 "shown here — check live status with `SELECT name, type, "
                 "status FROM mz_internal.mz_source_statuses;`, and use _Source "
                 "Bytes Received (rate)_ to confirm a source is actively "
-                "ingesting. Translate `Source ID` to a name via `SELECT id, "
-                "name FROM mz_sources`. The hidden `_progress` subsources are "
+                "ingesting. The hidden `_progress` subsources are "
                 "excluded, so the row count matches _Active Sources_."
             )
             .data(query)
@@ -382,18 +386,20 @@ class StorageObjectsTab:
         """
         panel_id = "sources-bytes-received-rate"
 
+        # mz_source_bytes_received (genuine); name resolved via mz_object_info
+        bytes_expr = textwrap.dedent(
+            f"""
+            sum by (parent_source_id) (
+                max without (job) (
+                    rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                )
+            ) > 0
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (parent_source_id) (
-                        max without (job) (
-                            rate(mz_source_bytes_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                        )
-                    ) > 0
-                    """
-                )
-            ).legend_format("{{parent_source_id}}"),
+                enrich.with_object_name(bytes_expr, "parent_source_id")
+            ).legend_format("{{name}}"),
         )
 
         self.dashboard.add_panel(
@@ -405,9 +411,8 @@ class StorageObjectsTab:
                 "second pulled from upstream.** Subsources (e.g., "
                 "per-table Postgres replication subsources) are "
                 "aggregated up to their primary, so each line represents "
-                "one logical source. The legend is `parent_source_id` — "
-                "translate it to a name via `SELECT id, name FROM "
-                "mz_sources`. Idle sources are filtered out (`> 0`). "
+                "one logical source, labeled by source name (resolved via "
+                "`mz_object_info`). Idle sources are filtered out (`> 0`). "
                 "Log Y-axis so kB/s and tens-of-MB/s sources share the "
                 "chart. Scoped to the selected clusters/replicas."
             )
@@ -445,19 +450,22 @@ class StorageObjectsTab:
         climbing in parallel.
         """
         panel_id = "sources-ingestion-by-replica"
+        # mz_source_messages_received (genuine); parent_source_id -> source name,
+        # replica id kept so the per-replica split stays visible
+        ingest_expr = textwrap.dedent(
+            f"""
+            sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
+                max without (job) (
+                    rate(mz_source_messages_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                )
+            )
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
-                        max without (job) (
-                            rate(mz_source_messages_received{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                        )
-                    )
-                    """
-                )
+                enrich.with_object_name(ingest_expr, "parent_source_id")
             ).legend_format(
-                "{{parent_source_id}} / r{{cluster_environmentd_materialize_cloud_replica_id}}"
+                "{{name}} / r{{cluster_environmentd_materialize_cloud_replica_id}}"
             ),
         )
 
@@ -665,18 +673,20 @@ class StorageObjectsTab:
         friendly name is available. Legend is `sink_id`.
         """
         panel_id = "sinks-throughput"
+        # mz_sink_bytes_committed (genuine); name resolved via mz_object_info
+        throughput_expr = textwrap.dedent(
+            f"""
+            sum by (sink_id) (
+                max without (job) (
+                    rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                )
+            ) > 0
+            """
+        )
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_bytes_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
-                        )
-                    ) > 0
-                    """
-                )
-            ).legend_format("{{sink_id}}"),
+                enrich.with_object_name(throughput_expr, "sink_id")
+            ).legend_format("{{name}}"),
         )
 
         self.dashboard.add_panel(
@@ -687,9 +697,8 @@ class StorageObjectsTab:
                 "**Outbound throughput per sink — bytes per second "
                 "successfully committed to the downstream system** "
                 "(Kafka broker, Iceberg catalog, etc.). Log Y-axis so "
-                "low- and high-volume sinks share the chart. The legend "
-                "uses `sink_id` rather than a friendly name; look the id "
-                "up via `SELECT id, name FROM mz_sinks;`. "
+                "low- and high-volume sinks share the chart. Labeled by "
+                "sink name (resolved via `mz_object_info`). "
                 "Idle sinks are filtered out (`> 0`). Scoped to the "
                 "selected clusters/replicas."
             )
@@ -717,18 +726,20 @@ class StorageObjectsTab:
         `clamp_min(..., 0)`.
         """
         panel_id = "sinks-lag"
+        # mz_sink_bytes_staged/_committed (genuine); name resolved via mz_object_info
+        lag_expr = textwrap.dedent(
+            f"""
+            clamp_min(
+                sum by (sink_id) (max without (job) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}}))
+                - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}})),
+                0
+            )
+            """
+        )
         query = query_group(
-            promql_query(
-                textwrap.dedent(
-                    f"""
-                    clamp_min(
-                        sum by (sink_id) (max without (job) (mz_sink_bytes_staged{{{_COMPUTE_FILTER}}}))
-                        - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{{{_COMPUTE_FILTER}}})),
-                        0
-                    )
-                    """
-                )
-            ).legend_format("{{sink_id}}"),
+            promql_query(enrich.with_object_name(lag_expr, "sink_id")).legend_format(
+                "{{name}}"
+            ),
         )
 
         self.dashboard.add_panel(
@@ -836,29 +847,36 @@ class StorageObjectsTab:
     def _iceberg_failures_panel(self):
         """Iceberg commit failures + conflicts rate (threshold-colored)."""
         panel_id = "sinks-iceberg-failures"
+        # mz_sink_iceberg_* (genuine); sink name resolved via mz_object_info
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_iceberg_commit_failures{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_iceberg_commit_failures{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} failures"),
+            ).legend_format("{{name}} failures"),
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_iceberg_commit_conflicts{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_iceberg_commit_conflicts{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} conflicts"),
+            ).legend_format("{{name}} conflicts"),
         )
 
         self.dashboard.add_panel(
@@ -891,40 +909,50 @@ class StorageObjectsTab:
     def _iceberg_files_panel(self):
         """Iceberg data/delete files written + snapshots committed rate."""
         panel_id = "sinks-iceberg-files"
+        # mz_sink_iceberg_* (genuine); sink name resolved via mz_object_info
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_iceberg_data_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_iceberg_data_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} data"),
+            ).legend_format("{{name}} data"),
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_iceberg_delete_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_iceberg_delete_files_written{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} deletes"),
+            ).legend_format("{{name}} deletes"),
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_iceberg_snapshots_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_iceberg_snapshots_committed{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} snapshots"),
+            ).legend_format("{{name}} snapshots"),
         )
 
         self.dashboard.add_panel(
@@ -974,18 +1002,22 @@ class StorageObjectsTab:
     def _kafka_tx_errors_panel(self):
         """Kafka rdkafka TX error rate per sink (threshold-colored)."""
         panel_id = "sinks-kafka-tx-errors"
+        # mz_sink_rdkafka_txerrs (genuine); sink name resolved via mz_object_info
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_rdkafka_txerrs{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_rdkafka_txerrs{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}}"),
+            ).legend_format("{{name}}"),
         )
 
         self.dashboard.add_panel(
@@ -1016,18 +1048,22 @@ class StorageObjectsTab:
     def _kafka_outbuf_panel(self):
         """Kafka rdkafka outgoing message buffer per sink."""
         panel_id = "sinks-kafka-outbuf"
+        # mz_sink_rdkafka_outbuf_msg_cnt (genuine); sink name resolved via mz_object_info
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            mz_sink_rdkafka_outbuf_msg_cnt{{{_COMPUTE_FILTER}}}
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                mz_sink_rdkafka_outbuf_msg_cnt{{{_COMPUTE_FILTER}}}
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}}"),
+            ).legend_format("{{name}}"),
         )
 
         self.dashboard.add_panel(
@@ -1057,29 +1093,36 @@ class StorageObjectsTab:
     def _kafka_connects_panel(self):
         """Kafka connect & disconnect event rates per sink."""
         panel_id = "sinks-kafka-connects"
+        # mz_sink_rdkafka_connects/_disconnects (genuine); name via mz_object_info
         query = query_group(
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_rdkafka_connects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_rdkafka_connects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} connects"),
+            ).legend_format("{{name}} connects"),
             promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (sink_id) (
-                        max without (job) (
-                            rate(mz_sink_rdkafka_disconnects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                enrich.with_object_name(
+                    textwrap.dedent(
+                        f"""
+                        sum by (sink_id) (
+                            max without (job) (
+                                rate(mz_sink_rdkafka_disconnects{{{_COMPUTE_FILTER}}}[$__rate_interval])
+                            )
                         )
-                    )
-                    """
+                        """
+                    ),
+                    "sink_id",
                 )
-            ).legend_format("{{sink_id}} disconnects"),
+            ).legend_format("{{name}} disconnects"),
         )
 
         self.dashboard.add_panel(
