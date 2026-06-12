@@ -232,6 +232,7 @@ Each component declares:&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;content_paths&lt;/code&gt; — the paths whose changes are attributed to this component (the &lt;em&gt;attribution inputs&lt;/em&gt;).&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;content_exclude&lt;/code&gt; — paths to subtract from &lt;code&gt;content_paths&lt;/code&gt;, typically generated outputs that belong to a dependency.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;dependencies&lt;/code&gt; — other components whose bumps cascade into this one.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;artifacts&lt;/code&gt; — glob patterns (repo-root-relative) for files attached as GitHub Release assets when the component is published; resolved file names must be unique.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;Each changed file is attributed to the component with the longest matching &lt;code&gt;content_paths&lt;/code&gt; entry, after dropping any component that excludes it.
 Generated outputs route to their source: the chart excludes its &lt;code&gt;pre-rendered/&lt;/code&gt; tree, and &lt;code&gt;pre-rendered/dashboards&lt;/code&gt; and &lt;code&gt;pre-rendered/pipelines&lt;/code&gt; are claimed by the &lt;code&gt;dashboards&lt;/code&gt; and &lt;code&gt;pipelines&lt;/code&gt; components, so a dashboard change appears under Dashboards (and rolls up into the chart via cascade) rather than as a first-class chart change.&lt;/p&gt;</description></item><item><title>Changelog</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/changelog/</guid><description>&lt;!-- Changelog lives in repo root, mounted in hugo.toml --&gt;
@@ -245,64 +246,7 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v090-unreleased"&gt;Dashboards v0.9.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v040-unreleased"&gt;materialize-monitoring Helm Chart v0.4.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="mzmon-lib-shared-library-v070-unreleased"&gt;mzmon-lib (shared library) v0.7.0 (Unreleased)&lt;a class="anchor" href="#mzmon-lib-shared-library-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v030"&gt;materialize-monitoring Helm Chart v0.3.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v030"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;Monitoring Roadmap and Version/Changelog Management
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/16" rel="external" class="external-link"&gt;materialize-monitoring#16&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Included Dashboards @ v0.7.0..v0.8.0&lt;/li&gt;
-&lt;li&gt;Included Pipelines @ v0.2.0..v0.3.0&lt;/li&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
-&lt;ul&gt;
-&lt;li&gt;Support auto-formatting based on labels
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/22" rel="external" class="external-link"&gt;materialize-monitoring#22&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Generated automated versioning PRs
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/21" rel="external" class="external-link"&gt;materialize-monitoring#21&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="dashboards-v080"&gt;Dashboards v0.8.0&lt;a class="anchor" href="#dashboards-v080"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;Coalesce object names into dashboards
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/23" rel="external" class="external-link"&gt;materialize-monitoring#23&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Monitoring Roadmap and Version/Changelog Management
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/16" rel="external" class="external-link"&gt;materialize-monitoring#16&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="dependencies-1"&gt;Dependencies&lt;a class="anchor" href="#dependencies-1"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
-&lt;ul&gt;
-&lt;li&gt;Support auto-formatting based on labels
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/22" rel="external" class="external-link"&gt;materialize-monitoring#22&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Generated automated versioning PRs
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/21" rel="external" class="external-link"&gt;materialize-monitoring#21&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="pipelines-v030-unreleased"&gt;Pipelines v0.3.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="pipelines-v040-unreleased"&gt;Pipelines v0.4.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>
