@@ -90,6 +90,10 @@ pub struct ReleaseArgs {
     #[arg(long, default_value = "HEAD")]
     until: String,
 
+    /// `uv` lockfile to keep in sync when a Python `version_paths` is bumped.
+    #[arg(long, default_value = "uv.lock")]
+    uv_lock: PathBuf,
+
     /// Apply the changes. Without this flag the command is a dry run.
     #[arg(long)]
     write: bool,
@@ -659,6 +663,49 @@ fn rewrite_version(path: &Path, new: &str) -> anyhow::Result<(String, String)> {
     rewrite_version_str(&text, toml, new).with_context(|| format!("in {}", path.display()))
 }
 
+/// The `[project].name` of a `pyproject.toml` — the package name `uv.lock`
+/// keys on. Takes the first top-level `name = "..."`.
+fn pyproject_name(text: &str) -> Option<String> {
+    text.lines().find_map(|l| {
+        l.strip_prefix("name = \"")
+            .and_then(|r| r.strip_suffix('"'))
+            .map(str::to_string)
+    })
+}
+
+/// Bump the `version` of a `[[package]]` in a `uv.lock`, matched by package
+/// name, returning the old version and the new contents. The version line is
+/// the first `version = "..."` after the matching `name = "..."` line.
+fn rewrite_lock_version(lock: &str, package: &str, new: &str) -> anyhow::Result<(String, String)> {
+    let needle = format!("name = \"{package}\"");
+    let mut in_target = false;
+    let mut old = None;
+    let mut out = Vec::new();
+    for line in lock.lines() {
+        if old.is_none() && in_target && line.starts_with("version = \"") {
+            old = Some(
+                line.trim_start_matches("version = \"")
+                    .trim_end_matches('"')
+                    .to_string(),
+            );
+            out.push(format!("version = \"{new}\""));
+            in_target = false;
+            continue;
+        }
+        if line.trim() == needle {
+            in_target = true;
+        }
+        out.push(line.to_string());
+    }
+
+    let old = old.ok_or_else(|| anyhow!("package {package:?} not found in lockfile"))?;
+    let mut content = out.join("\n");
+    if lock.ends_with('\n') {
+        content.push('\n');
+    }
+    Ok((old, content))
+}
+
 /// Read-only `changelog` report: which merged PRs each component would collect
 /// in the given range, and the version each would bump to.
 pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
@@ -749,12 +796,36 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
 
     let (new_changelog, released) = apply_version_update(&parsed, target, &ctx)?;
 
-    // Version-file edits bump only the released component to its released version.
+    // Version-file edits bump only the released component to its released
+    // version. Bumping a pyproject also bumps that package's entry in uv.lock,
+    // so the lockfile does not drift out of date behind the version files.
+    let released_plain = released.plain();
     let mut version_edits: Vec<(PathBuf, String, String)> = Vec::new();
+    let mut lock_packages: Vec<String> = Vec::new();
     for vp in &comp.version_paths {
         let path = PathBuf::from(vp);
-        let (old, content) = rewrite_version(&path, &released.plain())?;
+        let (old, content) = rewrite_version(&path, &released_plain)?;
+        if path.file_name().and_then(|n| n.to_str()) == Some("pyproject.toml")
+            && let Some(name) = pyproject_name(&content)
+        {
+            lock_packages.push(name);
+        }
         version_edits.push((path, old, content));
+    }
+
+    // Sync uv.lock for any bumped Python packages, if a lockfile is present.
+    let mut lock_edit: Option<(PathBuf, String, Vec<String>)> = None;
+    if !lock_packages.is_empty() && args.uv_lock.exists() {
+        let mut lock = std::fs::read_to_string(&args.uv_lock)
+            .with_context(|| format!("reading {}", args.uv_lock.display()))?;
+        let mut summary = Vec::new();
+        for name in &lock_packages {
+            let (old, updated) = rewrite_lock_version(&lock, name, &released_plain)
+                .with_context(|| format!("in {}", args.uv_lock.display()))?;
+            summary.push(format!("{name}: {old} -> {released_plain}"));
+            lock = updated;
+        }
+        lock_edit = Some((args.uv_lock.clone(), lock, summary));
     }
 
     println!("Releasing {target} {}", released.changelog());
@@ -764,15 +835,28 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
         for (path, _old, content) in &version_edits {
             std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
         }
+        if let Some((path, content, _)) = &lock_edit {
+            std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
+        }
         println!(
-            "Wrote {} and {} version file(s).",
+            "Wrote {}, {} version file(s){}.",
             args.changelog.display(),
-            version_edits.len()
+            version_edits.len(),
+            if lock_edit.is_some() {
+                ", and uv.lock"
+            } else {
+                ""
+            }
         );
     } else {
         println!("\n== Proposed version-file edits (dry run) ==");
         for (path, old, _) in &version_edits {
-            println!("  {}: {old} -> {}", path.display(), released.plain());
+            println!("  {}: {old} -> {released_plain}", path.display());
+        }
+        if let Some((path, _, summary)) = &lock_edit {
+            for line in summary {
+                println!("  {} [{line}]", path.display());
+            }
         }
         println!("\n== Proposed {} (dry run) ==\n", args.changelog.display());
         println!("{new_changelog}");
@@ -1332,5 +1416,27 @@ mod tests {
         // Missing trailing newline is preserved.
         let (_, new) = rewrite_version_str("version = \"1\"", true, "2").unwrap();
         assert!(!new.ends_with('\n'));
+    }
+
+    // ---- pyproject_name / rewrite_lock_version --------------------------
+
+    #[test]
+    fn pyproject_name_takes_first_top_level_name() {
+        let text = "[project]\nname = \"grafana-dashboards\"\nversion = \"0.7.0\"\n";
+        assert_eq!(pyproject_name(text).as_deref(), Some("grafana-dashboards"));
+        assert_eq!(pyproject_name("[project]\nversion = \"1\"\n"), None);
+    }
+
+    #[test]
+    fn rewrite_lock_version_bumps_matching_package() {
+        let lock = "[[package]]\nname = \"other\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"grafana-dashboards\"\nversion = \"0.0.0\"\nsource = { editable = \"packages/grafana-dashboards\" }\n";
+        let (old, new) = rewrite_lock_version(lock, "grafana-dashboards", "0.7.0").unwrap();
+        assert_eq!(old, "0.0.0");
+        assert!(new.contains("name = \"grafana-dashboards\"\nversion = \"0.7.0\""));
+        assert!(new.contains("name = \"other\"\nversion = \"1.0.0\"")); // untouched
+        assert!(new.ends_with('\n'));
+
+        // Unknown package -> error.
+        assert!(rewrite_lock_version(lock, "missing", "1.0.0").is_err());
     }
 }

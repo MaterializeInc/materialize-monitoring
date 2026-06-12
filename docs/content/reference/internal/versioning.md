@@ -52,6 +52,7 @@ A single PR can still appear in several components' sections; that duplication i
 
 Versions are read from `CHANGELOG.md` for each component.
 Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](releasing/)).
+Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
 The next version defaults to a minor bump; set the placeholder version manually for a different bump.
 
 ## Tooling
