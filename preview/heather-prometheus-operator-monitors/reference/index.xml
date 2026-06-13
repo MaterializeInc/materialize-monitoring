@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Reference on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/</link><description>Recent content in Reference on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/index.xml" rel="self" type="application/rss+xml"/><item><title>Compatibility</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/compatibility/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/compatibility/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Custom Resource Definitions (CRDs)</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/crds/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/crds/</guid><description>&lt;h1 id="custom-resource-definitions-crds"&gt;Custom Resource Definitions (CRDs)&lt;a class="anchor" href="#custom-resource-definitions-crds"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;Kubernetes Custom Resource Definitions (CRDs) are a powerful way to extend the Kubernetes API with custom resources that can be managed using standard Kubernetes tools.
+&lt;code&gt;materialize-monitoring&lt;/code&gt; relies on several CRDs to function properly, and this section provides an overview of these CRDs and how to install them.&lt;/p&gt;
+&lt;h2 id="servicemonitor-monitoringcoreoscomv1"&gt;ServiceMonitor (monitoring.coreos.com/v1)&lt;a class="anchor" href="#servicemonitor-monitoringcoreoscomv1"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;ServiceMonitors can be written by any application which indicates
+that it should have metrics scraped by Prometheus Operator / Alloy.&lt;/p&gt;</description></item><item><title>Changelog</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prometheus-operator-monitors/reference/changelog/</guid><description>&lt;!-- Changelog lives in repo root, mounted in hugo.toml --&gt;
+&lt;h1 id="materialize-monitoring-changelog"&gt;materialize-monitoring Changelog&lt;a class="anchor" href="#materialize-monitoring-changelog"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;!-- This repo uses different versioning streams for its artifacts.
+Artifacts are mapped out in packages/components.yaml.
+Unreleased sections are placeholders ("_Changes Pending_") until a
+version-update/&lt;component&gt; PR populates and releases them; that PR also bumps
+the component's version_paths. See reference/internal/versioning.md and
+reference/internal/releasing.md.
+--&gt;
+&lt;h2 id="dashboards-v0100-unreleased"&gt;Dashboards v0.10.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v011-unreleased"&gt;Prometheus Scrapers v0.1.1 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v011-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v010"&gt;Prometheus Scrapers v0.1.0&lt;a class="anchor" href="#prometheus-scrapers-v010"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Bootstrapped&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="dashboards-v090"&gt;Dashboards v0.9.0&lt;a class="anchor" href="#dashboards-v090"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+&lt;ul&gt;
+&lt;li&gt;Only upload artifacts while in a draft state
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/29" rel="external" class="external-link"&gt;materialize-monitoring#29&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="mzmon-lib-shared-library-v070-unreleased"&gt;mzmon-lib (shared library) v0.7.0 (Unreleased)&lt;a class="anchor" href="#mzmon-lib-shared-library-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>

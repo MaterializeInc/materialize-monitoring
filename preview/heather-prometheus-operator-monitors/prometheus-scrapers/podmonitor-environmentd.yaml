@@ -1,0 +1,29 @@
+# Scrape materialize pods
+# Environmentd has the following endpoints:
+# - /metrics (prometheus metrics about environmentd itself)
+# - /metrics/mz_compute (sql-based metrics for the mz_compute subsystem)
+# - /metrics/mz_frontier (sql-based metrics for the mz_frontier subsystem)
+# - /metrics/mz_storage (sql-based metrics for the mz_storage subsystem)
+# - /metrics/mz_usage (sql-based metrics for the mz_usage subsystem)
+# clusterd replicas have their own endpoint:
+# - /metrics (prometheus metrics about clusterd itself)
+apiVersion: monitoring.coreos.com/v1
+# FIXME: switch to ServiceMonitor (can't distinguish by gen vs non-gen)
+kind: PodMonitor
+metadata:
+  name: environmentd
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: environmentd
+spec:
+  selector:
+    matchLabels:
+      # Added in v26.24.0
+      # https://github.com/MaterializeInc/materialize/pull/36415
+      app.kubernetes.io/name: environmentd
+      # Before v26.24.0,
+      # app: environmentd
+  podMetricsEndpoints:
+    - port: internal-http
+      path: /metrics
+      relabelings: []
