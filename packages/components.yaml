@@ -9,9 +9,10 @@ components:
       - docs/
     dependencies:
       - dashboards
+      - pipelines
+      - scrapers
       - materialize-monitoring
       - mzmon-lib
-      - pipelines
       - repo-common
 
   # Helm chart
@@ -32,6 +33,7 @@ components:
       # Main content ones need to go first (to avoid ties in dependencies)
       - dashboards
       - pipelines
+      - scrapers
       # Common goes later
       - mzmon-lib
       - repo-common
@@ -78,6 +80,18 @@ components:
     dependencies:
       - mzmon-lib
       - repo-common
+
+  scrapers:
+    changelog: true
+    title: "Prometheus Scrapers"
+    version_paths: []
+    content_paths:
+      - packages/prometheus-scrapers/
+    dependencies:
+      - mzmon-lib
+      - repo-common
+    artifacts:
+      - charts/materialize-monitoring/pre-rendered/scrapers/
 
   # TODO: container-images:
 
