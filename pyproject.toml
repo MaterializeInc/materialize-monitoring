@@ -1,7 +1,7 @@
 [project]
 name = "materialize-monitoring"
 # unversioned (do not upload)
-version = "0.6.0"
+version = "0.7.0"
 description = "Infrastructure for Monitoring Materialize"
 readme = "README.md"
 requires-python = ">=3.12"
