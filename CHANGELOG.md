@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards v0.10.0 (Unreleased)
 
 _Changes Pending_
@@ -24,9 +28,21 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Pipelines v0.4.0 (Unreleased)
+## Pipelines v0.4.0
 
-_Changes Pending_
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Release Dashboards v0.9.0
+        * [materialize-monitoring#30](https://github.com/MaterializeInc/materialize-monitoring/pull/30)
+    * Only upload artifacts while in a draft state
+        * [materialize-monitoring#29](https://github.com/MaterializeInc/materialize-monitoring/pull/29)
+    * Release Dashboards v0.8.0
+        * [materialize-monitoring#18](https://github.com/MaterializeInc/materialize-monitoring/pull/18)
+    * Release mzmon-lib (shared library) v0.6.0
+        * [materialize-monitoring#20](https://github.com/MaterializeInc/materialize-monitoring/pull/20)
+    * Include artifacts when creating github releases
+        * [materialize-monitoring#26](https://github.com/MaterializeInc/materialize-monitoring/pull/26)
 
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
