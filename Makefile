@@ -10,9 +10,6 @@
 # make with no target invokes this (FIXME: binaries is a placeholder for now)
 .DEFAULT_GOAL := all
 
-# Helm chart names
-CHARTS = materialize-monitoring
-
 # Rust targets
 ALL_BINARIES = mz-monitoring-build mz-monitoring-check
 # Rust sources
@@ -51,7 +48,7 @@ binaries: $(addprefix target/debug/,$(ALL_BINARIES))
 .PHONY: binaries
 
 # Build all Helm charts
-charts: $(addprefix charts/,$(CHARTS))
+charts: materialize-monitoring-chart
 .PHONY: charts
 
 docs: docs/public
@@ -125,6 +122,23 @@ charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: packages/alloy-pip
 charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materialize-monitoring/pre-rendered/pipelines/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
 	touch "$@"
 
+### SCRAPER SYNC ###
+
+SCRAPER_NAMES = $(notdir $(wildcard packages/prometheus-scrapers/*.yaml))
+# defensive check for typo'd extensions
+_BAD_SCRAPER_NAMES = $(wildcard packages/prometheus-scrapers/*.json packages/prometheus-scrapers/*.kyaml packages/prometheus-scrapers/*.yml)
+ifneq ($(_BAD_SCRAPER_NAMES),)
+$(error "Unexpected scraper files with non-.yaml extensions: $(_BAD_SCRAPER_NAMES)")
+endif
+
+charts/materialize-monitoring/pre-rendered/scrapers/%.yaml: packages/prometheus-scrapers/%.yaml
+	mkdir -p "$(@D)"
+	# TODO: pre-process (support prefixes and overrides)
+	cp "$<" "$@"
+
+charts/materialize-monitoring/pre-rendered/scrapers: $(addprefix charts/materialize-monitoring/pre-rendered/scrapers/,$(SCRAPER_NAMES))
+	touch "$@"
+
 ### HELM CHARTS ###
 
 # Helm chart name
@@ -134,6 +148,9 @@ CHART_NAME = $(dir $(patsubst charts/%,%,$@))
 HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
+
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
+	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.
 charts/materialize-monitoring/README.md: \
@@ -165,15 +182,17 @@ docs/content/reference/helm/materialize-monitoring-values.md: \
 		--log-level debug \
 		--ignore-non-descriptions
 
+# Do any necessary generation for this chart
+charts/materialize-monitoring: charts/materialize-monitoring/README.md charts/materialize-monitoring/pre-rendered
+	touch "$@"
+
 HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
-charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring/README.md
+charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring
 	helm package charts/materialize-monitoring --destination charts/
 	test -f "$@"
 
-# Do any necessary generation for this chart
-charts/materialize-monitoring: charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz
-	touch "$@"
-
+materialize-monitoring-chart: charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz
+.PHONY: materialize-monitoring-chart
 
 ### HUGO DOCS ###
 

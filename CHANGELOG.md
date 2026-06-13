@@ -12,6 +12,14 @@ reference/internal/releasing.md.
 
 _Changes Pending_
 
+## Prometheus Scrapers v0.1.1 (Unreleased)
+
+_Changes Pending_
+
+## Prometheus Scrapers v0.1.0
+
+* Bootstrapped
+
 ## Dashboards v0.9.0
 
 ### Dependencies
@@ -28,24 +36,13 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.2.1 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring Helm Chart v0.3.0
+## materialize-monitoring Optional CRDs v0.2.0 (Unreleased)
 
-* Monitoring Roadmap and Version/Changelog Management
-    * [materialize-monitoring#16](https://github.com/MaterializeInc/materialize-monitoring/pull/16)
-
-### Dependencies
-
-* Included Dashboards @ v0.7.0..v0.8.0
-* Included Pipelines @ v0.2.0..v0.3.0
-* Included mzmon-lib (shared library) @ v0.5.0..v0.6.0
-    * Support auto-formatting based on labels
-        * [materialize-monitoring#22](https://github.com/MaterializeInc/materialize-monitoring/pull/22)
-    * Generated automated versioning PRs
-        * [materialize-monitoring#21](https://github.com/MaterializeInc/materialize-monitoring/pull/21)
+_Changes Pending_
 
 ## Dashboards v0.8.0
 
@@ -187,6 +184,11 @@ _Changes Pending_
     * [materialize-monitoring#6](https://github.com/MaterializeInc/materialize-monitoring/pull/6)
 * Update contributor documentation around dashboards
     * [materialize-monitoring#5](https://github.com/MaterializeInc/materialize-monitoring/pull/5)
+
+## materialize-monitoring Optional CRDs v0.1.0
+
+* Linting in CI and with pre-commit; Contributing
+    * [materialize-monitoring#10](https://github.com/MaterializeInc/materialize-monitoring/pull/10)
 
 ## mzmon-lib (shared library) v0.3.0
 
