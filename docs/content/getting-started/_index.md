@@ -12,9 +12,8 @@ The contents of this chapter describe how to install and configure
 
 ## `materialize-terraform-self-managed` Terraform Module
 
-{{% hint warning %}}
-TODO: integrate `materialize-monitoring` into `materialize-terraform-self-managed`.
-{{% /hint %}}
+> [!WARNING]
+> TODO: integrate `materialize-monitoring` into `materialize-terraform-self-managed`.
 
 _`materialize-monitoring` is supported in `materialize-terraform-self-managed` as of version: TODO_
 

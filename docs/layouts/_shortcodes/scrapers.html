@@ -1,0 +1,44 @@
+{{/*
+  scrapers: renders a table of available Prometheus Scrapers.
+
+  Scans scraper YAML files under assets/prometheus-scrapers/
+  and shows the name, kind, and a download link for each.
+
+  Params (optional):
+    pattern     Source directory, relative to the asset directory.
+                Defaults to "prometheus-scrapers/*.yaml".
+
+  Usage:
+    {{< scrapers >}}
+*/}}
+{{- $pattern := .Get "pattern" | default "prometheus-scrapers/*.yaml" -}}
+{{- $found := resources.Match $pattern -}}
+{{- if not $found }}
+  <p>No matching scrapers found.</p>
+{{- else }}
+<table class="prometheus-scrapers">
+  <thead>
+    <tr>
+      <th>Scraper</th>
+      <th>Kind</th>
+      <th>Download</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range $found }}
+      {{- $content := .Content }}
+      {{- $contentHash := hash.XxHash $content }}
+      {{- $data := transform.Unmarshal $content }}
+      {{- $spec := $data.spec }}
+      {{- $name := $data.metadata.name }}
+      {{- $href := printf "%s?xxhash=%s" .RelPermalink $contentHash | relURL }}
+      {{- $downloadName := printf "%s-%s.yaml" $name $contentHash }}
+    <tr>
+      <td>{{ $name }}</td>
+      <td>{{ $data.kind }}</td>
+      <td><a href="{{ $href }}" download="{{ $downloadName }}"><code>{{ path.Base .Name }}</code></a></td>
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
+{{- end }}
