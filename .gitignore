@@ -23,7 +23,6 @@ go.work.sum
 charts/*.tgz
 # vendored charts (git lfs)
 !charts/*/charts/*.tgz
-charts/*/Chart.lock
 # Local values overrides
 values.local.yaml
 values.*.local.yaml

@@ -1,0 +1,6 @@
+dependencies:
+- name: prometheus-operator-crds
+  repository: oci://ghcr.io/prometheus-community/charts
+  version: 29.0.0
+digest: sha256:4703282667402d02307c4c67da43b5dc86646a3068e555051cb01b1c4da5b2fe
+generated: "2026-06-14T10:32:13.294148-04:00"
