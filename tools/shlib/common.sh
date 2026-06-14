@@ -89,7 +89,7 @@ function _register_traceback() {
     # Ensure _show_traceback is propagated through functions (errtrace)
     set -E
 
-    if [[ "${SHELL}" != *bash* ]]; then
+    if [ -z "${BASH:-}" ]; then
         _error "The current trace handler only works in bash. Current shell: ${SHELL}"
         exit 1
     fi
