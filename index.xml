@@ -136,7 +136,9 @@ If it disagrees with what is actually in the tree, trust the repo and update thi
 &lt;p&gt;By default, &lt;code&gt;materialize-monitoring&lt;/code&gt; is configured to scrape metrics from any ServiceMonitor or PodMonitor resources in the cluster.
 This allows you to easily add new metrics to your monitoring stack by simply creating a new ServiceMonitor resources.&lt;/p&gt;
 &lt;h2 id="scrape-architecture-with-grafana-alloy"&gt;Scrape Architecture with Grafana Alloy&lt;a class="anchor" href="#scrape-architecture-with-grafana-alloy"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;&lt;code&gt;materialize-monitoring&lt;/code&gt; runs Grafana Alloy with a &lt;code&gt;prometheus.operator&lt;/code&gt; component on &lt;code&gt;alloy-gateway&lt;/code&gt; instances (Deployment) which reads ServiceMonitors and PodMonitors in order to determine what targets to scrape.&lt;/p&gt;</description></item><item><title>Architecture</title><link>https://materializeinc.github.io/materialize-monitoring/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/architecture/</guid><description>&lt;h1 id="architecture-overview"&gt;Architecture Overview&lt;a class="anchor" href="#architecture-overview"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;&lt;code&gt;materialize-monitoring&lt;/code&gt; runs Grafana Alloy with &lt;code&gt;prometheus.operator&lt;/code&gt; components on &lt;code&gt;alloy-gateway&lt;/code&gt; instances (Deployment) which read ServiceMonitors and PodMonitors in order to determine what targets to scrape.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;alloy-gateway&lt;/code&gt; runs in &lt;a href="https://grafana.com/docs/alloy/latest/get-started/clustering/" rel="external" class="external-link"&gt;clustering mode&lt;/a&gt; by default, which means that
+scraping is distributed across all replicas of &lt;code&gt;alloy-gateway&lt;/code&gt; and the scrape state is shared between them.&lt;/p&gt;</description></item><item><title>Architecture</title><link>https://materializeinc.github.io/materialize-monitoring/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/architecture/</guid><description>&lt;h1 id="architecture-overview"&gt;Architecture Overview&lt;a class="anchor" href="#architecture-overview"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;This section provides an overview of the architecture of &lt;code&gt;materialize-monitoring&lt;/code&gt; and its components.&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-helm-umbrella-chart"&gt;&lt;code&gt;materialize-monitoring&lt;/code&gt; Helm Umbrella Chart&lt;a class="anchor" href="#materialize-monitoring-helm-umbrella-chart"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;An Umbrella Helm Chart is a Helm Chart that orchestrates the installation of multiple dependent charts.&lt;/p&gt;
@@ -191,10 +193,8 @@ The number of unique time series (or log streams) a metric produces. The dominan
 &lt;/div&gt;
 
 &lt;p&gt;If you are not using the terraform module to install &lt;code&gt;materialize-monitoring&lt;/code&gt;, you can use the provided Helm charts to install the monitoring stack in your Kubernetes cluster.&lt;/p&gt;
-&lt;blockquote class="book-hint success" &gt;
-&lt;p&gt;During early development (May 2026), the helm charts are the only way to install &lt;code&gt;materialize-monitoring&lt;/code&gt;.&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;blockquote class="book-hint info" &gt;
+&lt;blockquote class='book-hint success'&gt;
+&lt;p&gt;During early development (June 2026), the helm charts are the only way to install &lt;code&gt;materialize-monitoring&lt;/code&gt;.&lt;/p&gt;&lt;/blockquote&gt;&lt;blockquote class='book-hint info'&gt;
 &lt;p&gt;The terraform module is the recommended way to install &lt;code&gt;materialize-monitoring&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>Prometheus Operator</title><link>https://materializeinc.github.io/materialize-monitoring/metrics/collecting/prometheus-operator/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/metrics/collecting/prometheus-operator/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Rules</title><link>https://materializeinc.github.io/materialize-monitoring/logs-and-events/rules/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/logs-and-events/rules/</guid><description>&lt;h1 id="log-and-event-rules"&gt;Log and Event Rules&lt;a class="anchor" href="#log-and-event-rules"&gt;#&lt;/a&gt;&lt;/h1&gt;</description></item><item><title>Rules</title><link>https://materializeinc.github.io/materialize-monitoring/metrics/rules/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/metrics/rules/</guid><description>&lt;h1 id="metric-rules"&gt;Metric Rules&lt;a class="anchor" href="#metric-rules"&gt;#&lt;/a&gt;&lt;/h1&gt;</description></item><item><title>Testing</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/testing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/testing/</guid><description>&lt;h1 id="testing"&gt;Testing&lt;a class="anchor" href="#testing"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;Dashboard code is tested with &lt;code&gt;pytest&lt;/code&gt;. Unit tests are recommended to be placed next to their code with the &lt;code&gt;_test.py&lt;/code&gt; suffix.&lt;/p&gt;
 &lt;p&gt;For broader code-quality tooling (&lt;code&gt;ruff&lt;/code&gt;, &lt;code&gt;pyright&lt;/code&gt;, configured linter rules), see &lt;a href="https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/generating/#code-quality"&gt;Generating and Pushing Dashboards &amp;gt; Code quality&lt;/a&gt;.&lt;/p&gt;
@@ -246,6 +246,12 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v0100-unreleased"&gt;Dashboards v0.10.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v011-unreleased"&gt;Prometheus Scrapers v0.1.1 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v011-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v010"&gt;Prometheus Scrapers v0.1.0&lt;a class="anchor" href="#prometheus-scrapers-v010"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Bootstrapped&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id="dashboards-v090"&gt;Dashboards v0.9.0&lt;a class="anchor" href="#dashboards-v090"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;

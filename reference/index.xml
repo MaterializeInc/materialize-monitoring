@@ -14,6 +14,12 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v0100-unreleased"&gt;Dashboards v0.10.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v011-unreleased"&gt;Prometheus Scrapers v0.1.1 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v011-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v010"&gt;Prometheus Scrapers v0.1.0&lt;a class="anchor" href="#prometheus-scrapers-v010"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Bootstrapped&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id="dashboards-v090"&gt;Dashboards v0.9.0&lt;a class="anchor" href="#dashboards-v090"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;

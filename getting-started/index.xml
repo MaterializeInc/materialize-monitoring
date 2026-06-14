@@ -24,8 +24,6 @@ somewhere.&lt;/p&gt;
 &lt;/div&gt;
 
 &lt;p&gt;If you are not using the terraform module to install &lt;code&gt;materialize-monitoring&lt;/code&gt;, you can use the provided Helm charts to install the monitoring stack in your Kubernetes cluster.&lt;/p&gt;
-&lt;blockquote class="book-hint success" &gt;
-&lt;p&gt;During early development (May 2026), the helm charts are the only way to install &lt;code&gt;materialize-monitoring&lt;/code&gt;.&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;blockquote class="book-hint info" &gt;
+&lt;blockquote class='book-hint success'&gt;
+&lt;p&gt;During early development (June 2026), the helm charts are the only way to install &lt;code&gt;materialize-monitoring&lt;/code&gt;.&lt;/p&gt;&lt;/blockquote&gt;&lt;blockquote class='book-hint info'&gt;
 &lt;p&gt;The terraform module is the recommended way to install &lt;code&gt;materialize-monitoring&lt;/code&gt;.&lt;/p&gt;</description></item></channel></rss>
