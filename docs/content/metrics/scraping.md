@@ -30,7 +30,7 @@ EndpointSlices instead of looking at Pods directly.
 
 ## prometheus.operator Scrape Downloads
 
-This individual files can be used with a manual `prometheus-operator`
+These individual files can be used with a manual `prometheus-operator`
 (including `kube-prometheus-stack` and `kube-prometheus`)
 setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
 

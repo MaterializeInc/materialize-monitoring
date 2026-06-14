@@ -10,12 +10,12 @@ weight: 40
 If you are not using the terraform module to install `materialize-monitoring`, you can use the provided Helm charts to install the monitoring stack in your Kubernetes cluster.
 
 > [!SUCCESS]
-  During early development (June 2026), the helm charts are the only way to install `materialize-monitoring`.
+>  During early development (June 2026), the helm charts are the only way to install `materialize-monitoring`.
 
 > [!INFO]
-  The terraform module is the recommended way to install `materialize-monitoring`.
-
-  However, the Helm charts allow for access to the full configuration.
+>  The terraform module is the recommended way to install `materialize-monitoring`.
+>
+>  However, the Helm charts allow for access to the full configuration.
 
 ## Dependency: Installing CRDs
 
@@ -49,23 +49,23 @@ You may start fresh or you can copy an example from
 the `charts/materialize-monitoring/examples/` directory in this repository.
 
 > [!WARNING]
-  Be aware that when merging examples together that you do not have
-  multiple of the same key on the same level since they do not automatically merge.
-  YAML is whitespace sensitive.
+>  Be aware that when merging examples together that you do not have
+>  multiple of the same key on the same level since they do not automatically merge.
+>  YAML is whitespace sensitive.
 
 You must specify `-f YOUR_VALUES.yaml` in your `helm install`/`helm upgrade` command to apply these customizations.
 These are automatically overlaid on top of the default values of the
 chart, so you only need to specify the values that are different from the default.
 
 > [!INFO]
-  This documentation may refer to values in dotted notation (e.g., `component.subcomponent.key=value`)
-  which corresponds roughly to this YAML structure:
-
-  ```yaml
-  component:
-    subcomponent:
-      key: value
-  ```
+>  This documentation may refer to values in dotted notation (e.g., `component.subcomponent.key=value`)
+>  which corresponds roughly to this YAML structure:
+>
+>  ```yaml
+>  component:
+>    subcomponent:
+>      key: value
+>  ```
 
 ### Configuring a Profile via Tags
 
