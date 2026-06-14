@@ -10,6 +10,7 @@
 use clap::{Parser, Subcommand};
 
 mod gen_pipelines;
+mod gen_scrape_configs;
 mod github;
 mod propose;
 mod publish;
@@ -29,6 +30,8 @@ struct Cli {
 enum Command {
     /// Render alloy pipeline definitions into config.alloy files.
     GenPipelines(gen_pipelines::GenPipelinesArgs),
+    /// Transpile prometheus-operator Monitors into a classic scrape_configs file.
+    GenScrapeConfigs(gen_scrape_configs::GenScrapeConfigsArgs),
     /// Report which merged PRs each component changelog would collect.
     Changelog(versioning::ChangelogArgs),
     /// Generate a version-update PR's changelog + version bumps for a component.
@@ -42,6 +45,7 @@ enum Command {
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::GenPipelines(args) => gen_pipelines::gen_pipelines(args),
+        Command::GenScrapeConfigs(args) => gen_scrape_configs::gen_scrape_configs(args),
         Command::Changelog(args) => versioning::changelog(args),
         Command::Release(args) => versioning::release(args),
         Command::ProposeBumps(args) => propose::propose_bumps(args),

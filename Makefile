@@ -139,6 +139,20 @@ charts/materialize-monitoring/pre-rendered/scrapers/%.yaml: packages/prometheus-
 charts/materialize-monitoring/pre-rendered/scrapers: $(addprefix charts/materialize-monitoring/pre-rendered/scrapers/,$(SCRAPER_NAMES))
 	touch "$@"
 
+### SCRAPE-CONFIG SYNC ###
+
+# Best-effort transpile of the prometheus-operator Monitors into a single classic
+# Prometheus scrape_configs document, for older deployments / documentation.
+charts/materialize-monitoring/pre-rendered/scrape-configs/scrape_config.yaml: $(wildcard packages/prometheus-scrapers/*.yaml) target/debug/mz-monitoring-build
+	mkdir -p "$(@D)"
+	target/debug/mz-monitoring-build gen-scrape-configs --output "$@"
+
+# Re-extract the prometheus-operator CRD JSONSchemas from the vendored
+# materialize-monitoring-crds chart. Output is checked in; re-run on version bump.
+.PHONY: crd-schemas
+crd-schemas:
+	bin/extract-crd-schemas.sh
+
 ### HELM CHARTS ###
 
 # Helm chart name
@@ -149,7 +163,7 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
 
-charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers charts/materialize-monitoring/pre-rendered/scrape-configs/scrape_config.yaml
 	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.
