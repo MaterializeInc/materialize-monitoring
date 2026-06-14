@@ -18,8 +18,12 @@
 
 use serde_json::Value;
 
-use crate::scrape::classic::config::{GlobalConfig, ScrapeConfigDocument, ScrapeJob};
+use crate::scrape::classic::config::RelabelConfig as ClassicRelabelConfig;
+use crate::scrape::classic::config::{
+    GlobalConfig, KubernetesSdConfig, Namespaces, ScrapeConfigDocument, ScrapeJob,
+};
 use crate::scrape::error::{Error, Result};
+use crate::scrape::operator::common::{NamespaceSelector, RelabelConfig as OperatorRelabelConfig};
 use crate::scrape::operator::pod_monitor::PodMonitor;
 use crate::scrape::operator::scrape_config::ScrapeConfigCrd;
 use crate::scrape::operator::service_monitor::ServiceMonitor;
@@ -78,6 +82,70 @@ impl Monitor {
     }
 }
 
+impl OperatorRelabelConfig {
+    pub fn to_classic_relabel_config(&self) -> ClassicRelabelConfig {
+        ClassicRelabelConfig {
+            source_labels: self.source_labels.clone(),
+            target_label: self.target_label.clone(),
+            regex: self.regex.clone(),
+            replacement: self.replacement.clone(),
+            action: self.action.clone(),
+            modulus: self.modulus,
+            separator: self.separator.clone(),
+        }
+    }
+}
+
+impl NamespaceSelector {
+    // Convert NamespaceSelector to classic Namespaces within KubernetesSdConfig
+    // NB: Result<> is probably YAGNI but we may reject any+matchNames later
+    pub fn to_classic_sd_namespaces(&self) -> Result<Option<Namespaces>> {
+        match self.any {
+            // any:true is highest precedence -> all namespaces
+            // (matchNames is ignored)
+            Some(true) => Ok(None),
+            // Explicit any:false -> current + explicit matchNames
+            Some(false) => Ok(Some(Namespaces {
+                own_namespace: true,
+                names: self.match_names.clone(),
+            })),
+            // any: not set
+            None => {
+                if self.match_names.is_empty() {
+                    // No namespaces selected → cluster-wide discovery (no `namespaces:` block).
+                    Ok(None)
+                } else {
+                    Ok(Some(Namespaces {
+                        own_namespace: false,
+                        names: self.match_names.clone(),
+                    }))
+                }
+            }
+        }
+    }
+}
+
+// Implicit relabelings that prometheus-operator normally applies to every job
+fn get_implicit_relabels() -> Vec<ClassicRelabelConfig> {
+    vec![
+        ClassicRelabelConfig {
+            source_labels: vec!["__meta_kubernetes_namespace".into()],
+            target_label: Some("namespace".into()),
+            ..Default::default()
+        },
+        ClassicRelabelConfig {
+            source_labels: vec!["__meta_kubernetes_pod_container_name".into()],
+            target_label: Some("container".into()),
+            ..Default::default()
+        },
+        ClassicRelabelConfig {
+            source_labels: vec!["__meta_kubernetes_pod_name".into()],
+            target_label: Some("pod".into()),
+            ..Default::default()
+        },
+    ]
+}
+
 // ============================================================
 // Per-kind transpilation — IMPLEMENTATION TARGET (currently `todo!()`).
 //
@@ -96,8 +164,95 @@ impl Monitor {
 // ============================================================
 
 /// PodMonitor → one `role: pod` job per `podMetricsEndpoints` entry.
-fn transpile_pod_monitor(_pm: &PodMonitor) -> Result<Vec<ScrapeJob>> {
-    todo!("transpile PodMonitor: one role:pod job per endpoint (see module + tests)")
+fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
+    let mut jobs = Vec::new();
+    let prefix = format!(
+        "podMonitor/{}",
+        pod_monitor
+            .metadata
+            .name
+            .clone()
+            .unwrap_or("default".into())
+    );
+    if pod_monitor.spec.selector.match_labels.is_empty() {
+        return Err(Error::Unsupported("matchLabels is required".into()));
+    }
+    if !pod_monitor.spec.selector.match_expressions.is_empty() {
+        return Err(Error::Unsupported(
+            "matchExpressions is not supported".into(),
+        ));
+    }
+    let sd_namespaces = match &pod_monitor.spec.namespace_selector {
+        Some(ns_selector) => ns_selector.to_classic_sd_namespaces()?,
+        None => None,
+    };
+    let mut common_relabels: Vec<ClassicRelabelConfig> = Vec::new();
+    // NB: operator sorts keys, but this is fine
+    for (k, v) in &pod_monitor.spec.selector.match_labels {
+        let sanitized_k = k.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        common_relabels.push(ClassicRelabelConfig {
+            // Same labelpresent logic as prometheus-operator (detects `label: ""` edge case specifically)
+            source_labels: vec![
+                format!("__meta_kubernetes_pod_label_{sanitized_k}"),
+                format!("__meta_kubernetes_pod_labelpresent_{sanitized_k}"),
+            ],
+            regex: Some(format!("({v});true")),
+            action: Some("keep".into()),
+            ..Default::default()
+        });
+    }
+    for (idx, endpoint) in pod_monitor.spec.pod_metrics_endpoints.iter().enumerate() {
+        let job_name = format!("{}/{}", prefix, idx);
+        let mut job = ScrapeJob {
+            job_name,
+            honor_labels: endpoint.honor_labels,
+            scheme: endpoint.scheme.clone(),
+            metrics_path: endpoint.path.clone(),
+            scrape_interval: endpoint.interval.clone(),
+            scrape_timeout: endpoint.scrape_timeout.clone(),
+            kubernetes_sd_configs: vec![KubernetesSdConfig {
+                role: "pod".into(),
+                namespaces: sd_namespaces.clone(),
+            }],
+            ..Default::default()
+        };
+        job.relabel_configs.extend(common_relabels.clone());
+        if let Some(port) = &endpoint.port {
+            if endpoint.port_number.is_some() {
+                return Err(Error::Unsupported(
+                    "endpoint cannot specify both port and portNumber".into(),
+                ));
+            }
+            job.relabel_configs.push(ClassicRelabelConfig {
+                source_labels: vec!["__meta_kubernetes_pod_container_port_name".into()],
+                regex: Some(port.clone()),
+                action: Some("keep".into()),
+                ..Default::default()
+            });
+        } else if let Some(port) = endpoint.port_number {
+            job.relabel_configs.push(ClassicRelabelConfig {
+                source_labels: vec!["__meta_kubernetes_pod_container_port_number".into()],
+                regex: Some(port.to_string()),
+                action: Some("keep".into()),
+                ..Default::default()
+            });
+        } else {
+            return Err(Error::Unsupported(
+                "endpoint must specify either port or portNumber".into(),
+            ));
+        }
+        job.relabel_configs.extend(get_implicit_relabels());
+        for relabel in &endpoint.relabelings {
+            job.relabel_configs
+                .push(relabel.to_classic_relabel_config());
+        }
+        for relabel in &endpoint.metric_relabelings {
+            job.metric_relabel_configs
+                .push(relabel.to_classic_relabel_config());
+        }
+        jobs.push(job);
+    }
+    Ok(jobs)
 }
 
 /// ServiceMonitor → one `role: endpoints` job per `endpoints` entry.
@@ -209,10 +364,10 @@ mod tests {
                   action: keep
                 - source_labels: [__meta_kubernetes_namespace]
                   target_label: namespace
-                - source_labels: [__meta_kubernetes_pod_name]
-                  target_label: pod
                 - source_labels: [__meta_kubernetes_pod_container_name]
                   target_label: container
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
             "#,
         );
     }
@@ -238,10 +393,10 @@ mod tests {
                   action: keep
                 - source_labels: [__meta_kubernetes_namespace]
                   target_label: namespace
-                - source_labels: [__meta_kubernetes_pod_name]
-                  target_label: pod
                 - source_labels: [__meta_kubernetes_pod_container_name]
                   target_label: container
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
               metrics_path: /metrics
             "#,
         );

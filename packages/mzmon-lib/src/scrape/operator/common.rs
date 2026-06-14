@@ -21,11 +21,6 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-/// `false` predicate for `skip_serializing_if` on bool fields.
-fn is_false(b: &bool) -> bool {
-    !*b
-}
-
 /// Subset of `metav1.ObjectMeta` — what the transpiler needs for naming and
 /// namespace scoping.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -64,8 +59,8 @@ pub struct LabelSelectorRequirement {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceSelector {
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub any: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub any: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub match_names: Vec<String>,
 }

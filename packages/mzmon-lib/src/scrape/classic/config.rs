@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::scrape::error::Result;
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 /// A full classic Prometheus config document: a `global` block plus the list of
 /// scrape jobs. This is the single combined artifact the transpiler emits.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -91,6 +95,9 @@ pub struct KubernetesSdConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Namespaces {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub own_namespace: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 
