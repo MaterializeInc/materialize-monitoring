@@ -79,13 +79,13 @@ The agent pipeline is in place; the gateway pipeline and the OTLP export path ar
 
 ### Scraping (ScrapeConfigs & ServiceMonitors)
 
-Metric collection is configured through two surfaces: **ScrapeConfigs** (consumed manually, e.g. dropped into a Prometheus/Agent config) and **ServiceMonitors** (consumed by `prometheus-operator`, or by Alloy via `prometheus.operator.servicemonitor`).
+Metric collection is configured through two surfaces: **ScrapeConfigs** (consumed manually, e.g. dropped into a Prometheus/Agent config) and **ServiceMonitors** (to be consumed by `prometheus-operator`, or by Alloy via `prometheus.operator.servicemonitor`).
 Both are needed ASAP — they were targeted for the M1 baseline — and must be synced into the charts and the docs.
 
 | Item | Milestone | Status |
 |---|---|---|
-| ScrapeConfigs (consumed manually) | M1 (ASAP) | 🔨 |
-| ServiceMonitors (consumed by `prometheus-operator` or Alloy `prometheus.operator.servicemonitor`) | M1 (ASAP) | 🔨 |
+| ScrapeConfigs (consumed manually) | M1 (ASAP) | ✅ |
+| ServiceMonitors (to be consumed by `prometheus-operator` or Alloy `prometheus.operator.servicemonitor`) | M1 (ASAP) | 🔨 |
 | Sync ScrapeConfigs + ServiceMonitors into the charts and docs | M1 (ASAP) | 🔨 |
 | Move ServiceMonitors to the `materialize-operator` Helm chart | M4 | ⬜ (long-term) |
 

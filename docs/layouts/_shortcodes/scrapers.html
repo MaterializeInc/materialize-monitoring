@@ -7,11 +7,13 @@
   Params (optional):
     pattern     Source directory, relative to the asset directory.
                 Defaults to "prometheus-scrapers/*.yaml".
+    classic      If "true", only show scrapers with kind "Classic ScrapeConfig".
 
   Usage:
     {{< scrapers >}}
 */}}
 {{- $pattern := .Get "pattern" | default "prometheus-scrapers/*.yaml" -}}
+{{- $classic := .Get "classic" | default false -}}
 {{- $found := resources.Match $pattern -}}
 {{- if not $found }}
   <p>No matching scrapers found.</p>
@@ -29,15 +31,22 @@
       {{- $content := .Content }}
       {{- $contentHash := hash.XxHash $content }}
       {{- $data := transform.Unmarshal $content }}
-      {{- $spec := $data.spec }}
-      {{- $name := $data.metadata.name }}
-      {{- $href := printf "%s?xxhash=%s" .RelPermalink $contentHash | relURL }}
-      {{- $downloadName := printf "%s-%s.yaml" $name $contentHash }}
+      {{- $kind := $data.kind | default "Classic ScrapeConfig" }}
+      {{/* silly xnor: only show classic scrapeconfigs when $classic is true */}}
+      {{- if eq ( $classic ) ( eq $kind "Classic ScrapeConfig" ) }}
+        {{- $name := "scrape_config" }}
+        {{- if $data.metadata }}
+          {{- $name = $data.metadata.name }}
+        {{- end }}
+
+        {{- $href := printf "%s?xxhash=%s" .RelPermalink $contentHash | relURL }}
+        {{- $downloadName := printf "%s-%s.yaml" $name $contentHash }}
     <tr>
       <td>{{ $name }}</td>
-      <td>{{ $data.kind }}</td>
+      <td>{{ $kind }}</td>
       <td><a href="{{ $href }}" download="{{ $downloadName }}"><code>{{ path.Base .Name }}</code></a></td>
     </tr>
+      {{- end }}
     {{- end }}
   </tbody>
 </table>

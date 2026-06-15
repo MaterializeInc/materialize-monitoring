@@ -19,9 +19,9 @@ baseURL = 'https://materializeinc.github.io/materialize-monitoring/'
   [[module.mounts]]
     source = "assets"
     target = "assets"
-  [[module.mounts]]
-    source = "../packages/prometheus-scrapers"
-    target = "assets/prometheus-scrapers/"
+  # [[module.mounts]]
+  #   source = "../packages/prometheus-scrapers"
+  #   target = "assets/prometheus-scrapers/"
   [[module.mounts]]
     disableWatch = true
     source = "../"

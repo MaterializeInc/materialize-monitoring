@@ -36,7 +36,8 @@ repos:
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-added-large-files
-        args: [--maxkb=512]
+        # scrapeconfig schema is largest file
+        args: [--maxkb=640]
       - id: check-yaml
         # Helm templates contain Go template syntax and are not valid YAML.
         exclude: ^charts/[^/]+/templates/
