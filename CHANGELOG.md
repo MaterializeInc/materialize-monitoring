@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring Optional CRDs v0.3.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards v0.10.0 (Unreleased)
 
 _Changes Pending_
@@ -40,9 +44,10 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring Optional CRDs v0.2.0 (Unreleased)
+## materialize-monitoring Optional CRDs v0.2.0
 
-_Changes Pending_
+* Expose classic scrapeconfigs
+    * [materialize-monitoring#34](https://github.com/MaterializeInc/materialize-monitoring/pull/34)
 
 ## Dashboards v0.8.0
 
