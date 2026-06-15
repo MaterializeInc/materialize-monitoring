@@ -97,7 +97,7 @@ impl OperatorRelabelConfig {
 }
 
 impl NamespaceSelector {
-    // Convert NamespaceSelector to classic Namespaces within KubernetesSdConfig
+    /// Convert NamespaceSelector to classic Namespaces within KubernetesSdConfig
     // NB: Result<> is probably YAGNI but we may reject any+matchNames later
     pub fn to_classic_sd_namespaces(&self) -> Result<Option<Namespaces>> {
         match self.any {
@@ -125,7 +125,7 @@ impl NamespaceSelector {
     }
 }
 
-// Implicit relabelings that prometheus-operator normally applies to every job
+/// Implicit relabelings that prometheus-operator normally applies to every job
 fn get_implicit_relabels() -> Vec<ClassicRelabelConfig> {
     vec![
         ClassicRelabelConfig {
@@ -262,8 +262,32 @@ fn transpile_service_monitor(_sm: &ServiceMonitor) -> Result<Vec<ScrapeJob>> {
 
 /// ScrapeConfig → a single job; near 1:1 (lowercase `role`, passthrough
 /// relabelings).
-fn transpile_scrape_config(_sc: &ScrapeConfigCrd) -> Result<Vec<ScrapeJob>> {
-    todo!("transpile ScrapeConfig: single job, lowercase role, passthrough relabelings")
+fn transpile_scrape_config(scrape_config: &ScrapeConfigCrd) -> Result<Vec<ScrapeJob>> {
+    let job_name = scrape_config
+        .metadata
+        .name
+        .clone()
+        .unwrap_or("default".into());
+    let mut job = ScrapeJob {
+        job_name: job_name.clone(),
+        scheme: scrape_config.spec.scheme.clone(),
+        ..Default::default()
+    };
+    for sd_config in &scrape_config.spec.kubernetes_sd_configs {
+        job.kubernetes_sd_configs.push(KubernetesSdConfig {
+            role: sd_config.role.to_lowercase(),
+            namespaces: None,
+        });
+    }
+    for relabel in &scrape_config.spec.relabelings {
+        job.relabel_configs
+            .push(relabel.to_classic_relabel_config());
+    }
+    for relabel in &scrape_config.spec.metric_relabelings {
+        job.metric_relabel_configs
+            .push(relabel.to_classic_relabel_config());
+    }
+    Ok(vec![job])
 }
 
 impl ScrapeConfigDocument {
