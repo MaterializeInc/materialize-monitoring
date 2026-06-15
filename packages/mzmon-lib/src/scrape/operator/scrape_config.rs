@@ -35,6 +35,7 @@ pub struct ScrapeConfigCrd {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ScrapeConfigSpec {
     /// Note the SD/configs casing: the CRD field is `kubernetesSDConfigs`.
     #[serde(
@@ -51,6 +52,8 @@ pub struct ScrapeConfigSpec {
     pub metric_relabelings: Vec<RelabelConfig>,
     // Other SD config kinds (static, http, file, ...) are out of scope for the
     // first pass; add typed fields here as they are needed.
+    // (deny_unknown_fields will expose those required translations earlier
+    // though it won't catch missing handlers in transpile_scrape_config)
 }
 
 /// Subset of `v1alpha1.KubernetesSDConfig` (operator input). `role` is

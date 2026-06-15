@@ -125,8 +125,8 @@ impl NamespaceSelector {
     }
 }
 
-/// Implicit relabelings that prometheus-operator normally applies to every job
-fn get_implicit_relabels() -> Vec<ClassicRelabelConfig> {
+/// Implicit relabelings that prometheus-operator normally applies to every job to every podmonitor job
+fn get_implicit_pod_relabels() -> Vec<ClassicRelabelConfig> {
     vec![
         ClassicRelabelConfig {
             source_labels: vec!["__meta_kubernetes_namespace".into()],
@@ -136,6 +136,27 @@ fn get_implicit_relabels() -> Vec<ClassicRelabelConfig> {
         ClassicRelabelConfig {
             source_labels: vec!["__meta_kubernetes_pod_container_name".into()],
             target_label: Some("container".into()),
+            ..Default::default()
+        },
+        ClassicRelabelConfig {
+            source_labels: vec!["__meta_kubernetes_pod_name".into()],
+            target_label: Some("pod".into()),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Implicit relabelings that prometheus-operator normally applies to every servicemonitor job
+fn get_implicit_service_relabels() -> Vec<ClassicRelabelConfig> {
+    vec![
+        ClassicRelabelConfig {
+            source_labels: vec!["__meta_kubernetes_namespace".into()],
+            target_label: Some("namespace".into()),
+            ..Default::default()
+        },
+        ClassicRelabelConfig {
+            source_labels: vec!["__meta_kubernetes_service_name".into()],
+            target_label: Some("service".into()),
             ..Default::default()
         },
         ClassicRelabelConfig {
@@ -241,7 +262,7 @@ fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
                 "endpoint must specify either port or portNumber".into(),
             ));
         }
-        job.relabel_configs.extend(get_implicit_relabels());
+        job.relabel_configs.extend(get_implicit_pod_relabels());
         for relabel in &endpoint.relabelings {
             job.relabel_configs
                 .push(relabel.to_classic_relabel_config());
@@ -256,8 +277,110 @@ fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
 }
 
 /// ServiceMonitor → one `role: endpoints` job per `endpoints` entry.
-fn transpile_service_monitor(_sm: &ServiceMonitor) -> Result<Vec<ScrapeJob>> {
-    todo!("transpile ServiceMonitor: one role:endpoints job per endpoint (see module + tests)")
+/// This varies from PodMonitors in the following ways:
+///  * the selector applies to services/endpoints, so the `keep` relabels are on `__meta_kubernetes_service_label_*`
+///  * the SD role is `endpoints`, not `pod` (but namespaces are handled the same);
+///  * implicit relabels on namespace, service, and pod (not container)
+///  * only port name on service (and targetPort against backing pod)
+fn transpile_service_monitor(service_monitor: &ServiceMonitor) -> Result<Vec<ScrapeJob>> {
+    let mut jobs = Vec::new();
+    let prefix = format!(
+        "serviceMonitor/{}",
+        service_monitor
+            .metadata
+            .name
+            .clone()
+            .unwrap_or("default".into())
+    );
+    if service_monitor.spec.selector.match_labels.is_empty() {
+        return Err(Error::Unsupported("matchLabels is required".into()));
+    }
+    if !service_monitor.spec.selector.match_expressions.is_empty() {
+        return Err(Error::Unsupported(
+            "matchExpressions is not supported".into(),
+        ));
+    }
+    let sd_namespaces = match &service_monitor.spec.namespace_selector {
+        Some(ns_selector) => ns_selector.to_classic_sd_namespaces()?,
+        None => None,
+    };
+    let mut common_relabels: Vec<ClassicRelabelConfig> = Vec::new();
+    // This is different from podmonitor by just the source_labels
+    for (k, v) in &service_monitor.spec.selector.match_labels {
+        let sanitized_k = k.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        common_relabels.push(ClassicRelabelConfig {
+            // Same labelpresent logic as prometheus-operator (detects `label: ""` edge case specifically)
+            source_labels: vec![
+                format!("__meta_kubernetes_service_label_{sanitized_k}"),
+                format!("__meta_kubernetes_service_labelpresent_{sanitized_k}"),
+            ],
+            regex: Some(format!("({v});true")),
+            action: Some("keep".into()),
+            ..Default::default()
+        });
+    }
+    // This is uncomfortably close to podmonitor endpoints
+    for (idx, endpoint) in service_monitor.spec.endpoints.iter().enumerate() {
+        let job_name = format!("{}/{}", prefix, idx);
+        let mut job = ScrapeJob {
+            job_name,
+            honor_labels: endpoint.honor_labels,
+            scheme: endpoint.scheme.clone(),
+            metrics_path: endpoint.path.clone(),
+            scrape_interval: endpoint.interval.clone(),
+            scrape_timeout: endpoint.scrape_timeout.clone(),
+            kubernetes_sd_configs: vec![KubernetesSdConfig {
+                role: "endpoints".into(),
+                namespaces: sd_namespaces.clone(),
+            }],
+            ..Default::default()
+        };
+        job.relabel_configs.extend(common_relabels.clone());
+        if let Some(port) = &endpoint.port {
+            job.relabel_configs.push(ClassicRelabelConfig {
+                source_labels: vec!["__meta_kubernetes_endpoint_port_name".into()],
+                regex: Some(port.clone()),
+                action: Some("keep".into()),
+                ..Default::default()
+            });
+        } else {
+            match &endpoint.target_port {
+                Some(Value::String(s)) => job.relabel_configs.push(ClassicRelabelConfig {
+                    source_labels: vec!["FIXME_target_port".into()],
+                    regex: Some(s.clone()),
+                    action: Some("keep".into()),
+                    ..Default::default()
+                }),
+                Some(Value::Number(n)) => job.relabel_configs.push(ClassicRelabelConfig {
+                    source_labels: vec!["FIXME_target_port".into()],
+                    regex: Some(n.to_string()),
+                    action: Some("keep".into()),
+                    ..Default::default()
+                }),
+                Some(_) => {
+                    return Err(Error::Unsupported(
+                        "endpoint targetPort must be a string or number".into(),
+                    ));
+                }
+                None => {
+                    return Err(Error::Unsupported(
+                        "endpoint must specify either port or targetPort".into(),
+                    ));
+                }
+            }
+        }
+        job.relabel_configs.extend(get_implicit_service_relabels());
+        for relabel in &endpoint.relabelings {
+            job.relabel_configs
+                .push(relabel.to_classic_relabel_config());
+        }
+        for relabel in &endpoint.metric_relabelings {
+            job.metric_relabel_configs
+                .push(relabel.to_classic_relabel_config());
+        }
+        jobs.push(job);
+    }
+    Ok(jobs)
 }
 
 /// ScrapeConfig → a single job; near 1:1 (lowercase `role`, passthrough
