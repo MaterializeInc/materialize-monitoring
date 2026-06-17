@@ -21,8 +21,9 @@
 //!   a future `--helm` mutator will turn it into a parse → mutate → serialize
 //!   pipeline (e.g. templating `metadata.name`).
 //! * `gmp` — Google Managed Prometheus `PodMonitoring` / `ClusterPodMonitoring`
-//!   (`gmp/<stem>.yaml`), one per PodMonitor. Kinds with no GMP equivalent
-//!   (ServiceMonitor, ScrapeConfig) are skipped with a logged note.
+//!   (`gmp/<resource-name>.yaml`), one resource **per endpoint** (GMP requires
+//!   unique ports per resource). Kinds with no GMP equivalent (ServiceMonitor,
+//!   ScrapeConfig) are skipped with a logged note.
 
 use anyhow::Context;
 use mzmon_lib::scrape::classic::config::{GlobalConfig, ScrapeConfigDocument};
@@ -207,8 +208,10 @@ fn render_prometheus_operator(
     Ok(())
 }
 
-/// One PodMonitoring / ClusterPodMonitoring per PodMonitor. Kinds with no GMP
-/// equivalent are skipped with a logged note (not an error).
+/// PodMonitoring / ClusterPodMonitoring, one resource per endpoint (GMP requires
+/// unique ports within a resource). Files are named by the GMP resource name, so
+/// a multi-endpoint PodMonitor fans out to several `<name>-<suffix>.yaml`. Kinds
+/// with no GMP equivalent are skipped with a logged note (not an error).
 fn render_gmp(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::Result<()> {
     let prefix = OutputFormat::Gmp.prefix();
     let dir = args.output_dir.join(prefix);
@@ -216,24 +219,30 @@ fn render_gmp(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::
         .with_context(|| format!("creating GMP output dir {}", dir.display()))?;
     let mut written = 0usize;
     for p in parsed {
-        match p
+        let resources = p
             .monitor
             .to_gmp()
-            .map_err(|e| anyhow::anyhow!("converting {} to GMP:\n{e}", p.stem))?
-        {
-            Some(resource) => {
-                let rendered = serde_yaml_ng::to_string(&resource)
-                    .with_context(|| format!("serializing GMP resource for {}", p.stem))?;
-                let output = dir.join(format!("{}.yaml", p.stem));
-                std::fs::write(&output, rendered)
-                    .with_context(|| format!("writing {}", output.display()))?;
-                written += 1;
-            }
-            None => eprintln!("gmp: skipping {} (no GMP equivalent for this kind)", p.stem),
+            .map_err(|e| anyhow::anyhow!("converting {} to GMP:\n{e}", p.stem))?;
+        if resources.is_empty() {
+            eprintln!("gmp: skipping {} (no GMP equivalent for this kind)", p.stem);
+            continue;
+        }
+        for resource in &resources {
+            let name = resource
+                .metadata
+                .name
+                .clone()
+                .unwrap_or_else(|| p.stem.clone());
+            let rendered = serde_yaml_ng::to_string(resource)
+                .with_context(|| format!("serializing GMP resource {name}"))?;
+            let output = dir.join(format!("{name}.yaml"));
+            std::fs::write(&output, rendered)
+                .with_context(|| format!("writing {}", output.display()))?;
+            written += 1;
         }
     }
     println!(
-        "gmp: {written} monitor(s) -> {}/{}*.yaml",
+        "gmp: {written} resource(s) -> {}/{}*.yaml",
         args.output_dir.display(),
         prefix
     );

@@ -1,7 +1,7 @@
 apiVersion: monitoring.googleapis.com/v1
 kind: PodMonitoring
 metadata:
-  name: materialize-sql
+  name: materialize-sql-mz-frontier
   labels:
     app.kubernetes.io/part-of: materialize
     app.kubernetes.io/name: environmentd
@@ -13,13 +13,4 @@ spec:
   endpoints:
   - port: internal-http
     interval: 60s
-    path: /metrics/mz_compute
-  - port: internal-http
-    interval: 60s
     path: /metrics/mz_frontier
-  - port: internal-http
-    interval: 60s
-    path: /metrics/mz_storage
-  - port: internal-http
-    interval: 60s
-    path: /metrics/mz_usage

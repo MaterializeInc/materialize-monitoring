@@ -1,0 +1,16 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: materialize-sql-mz-usage
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: environmentd
+    app.kubernetes.io/component: sql-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: environmentd
+  endpoints:
+  - port: internal-http
+    interval: 60s
+    path: /metrics/mz_usage
