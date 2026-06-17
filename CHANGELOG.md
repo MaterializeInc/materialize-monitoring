@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Prometheus Scrapers v0.2.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Optional CRDs v0.3.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,40 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Prometheus Scrapers v0.1.1 (Unreleased)
+## Prometheus Scrapers v0.1.1
 
-_Changes Pending_
+* Attach explicit pod labels to scrapers in GCP
+    * [materialize-monitoring#39](https://github.com/MaterializeInc/materialize-monitoring/pull/39)
+* Expose classic scrapeconfigs
+    * [materialize-monitoring#34](https://github.com/MaterializeInc/materialize-monitoring/pull/34)
+* Add PodMonitors for prometheus.operator
+    * [materialize-monitoring#31](https://github.com/MaterializeInc/materialize-monitoring/pull/31)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Generate PodMonitoring resources for GCP
+        * [materialize-monitoring#38](https://github.com/MaterializeInc/materialize-monitoring/pull/38)
+    * Upgrade to rust 1.96
+        * [materialize-monitoring#37](https://github.com/MaterializeInc/materialize-monitoring/pull/37)
+    * Release Dashboards v0.9.0
+        * [materialize-monitoring#30](https://github.com/MaterializeInc/materialize-monitoring/pull/30)
+    * Only upload artifacts while in a draft state
+        * [materialize-monitoring#29](https://github.com/MaterializeInc/materialize-monitoring/pull/29)
+    * Release Dashboards v0.8.0
+        * [materialize-monitoring#18](https://github.com/MaterializeInc/materialize-monitoring/pull/18)
+    * Release mzmon-lib (shared library) v0.6.0
+        * [materialize-monitoring#20](https://github.com/MaterializeInc/materialize-monitoring/pull/20)
+    * Include artifacts when creating github releases
+        * [materialize-monitoring#26](https://github.com/MaterializeInc/materialize-monitoring/pull/26)
+    * Support generating a release when version bump PRs are merged
+        * [materialize-monitoring#25](https://github.com/MaterializeInc/materialize-monitoring/pull/25)
+    * Support auto-formatting based on labels
+        * [materialize-monitoring#22](https://github.com/MaterializeInc/materialize-monitoring/pull/22)
+    * Generated automated versioning PRs
+        * [materialize-monitoring#21](https://github.com/MaterializeInc/materialize-monitoring/pull/21)
+    * Monitoring Roadmap and Version/Changelog Management
+        * [materialize-monitoring#16](https://github.com/MaterializeInc/materialize-monitoring/pull/16)
 
 ## Prometheus Scrapers v0.1.0
 
