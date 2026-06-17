@@ -23,6 +23,15 @@ spec:
       app.kubernetes.io/name: environmentd
       # Before v26.24.0,
       # app: environmentd
+  # Pod labels copied onto scraped metrics (consumed by the dashboards).
+  # Harmless on pods lacking a given label. Node-level labels (zone, instance
+  # type, nodepool) are intentionally excluded — they are not pod labels.
+  podTargetLabels:
+    - materialize.cloud/organization-name
+    - materialize.cloud/organization-namespace
+    - materialize.cloud/organization-id
+    - cluster.environmentd.materialize.cloud/cluster-id
+    - cluster.environmentd.materialize.cloud/replica-id
   podMetricsEndpoints:
     - port: internal-http
       path: /metrics

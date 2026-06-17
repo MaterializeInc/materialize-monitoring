@@ -790,6 +790,16 @@ mod tests {
                   target_label: container
                 - source_labels: [__meta_kubernetes_pod_name]
                   target_label: pod
+                - source_labels: [__meta_kubernetes_pod_label_materialize_cloud_organization_name]
+                  target_label: materialize_cloud_organization_name
+                - source_labels: [__meta_kubernetes_pod_label_materialize_cloud_organization_namespace]
+                  target_label: materialize_cloud_organization_namespace
+                - source_labels: [__meta_kubernetes_pod_label_materialize_cloud_organization_id]
+                  target_label: materialize_cloud_organization_id
+                - source_labels: [__meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id]
+                  target_label: cluster_environmentd_materialize_cloud_cluster_id
+                - source_labels: [__meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id]
+                  target_label: cluster_environmentd_materialize_cloud_replica_id
               metrics_path: /metrics
             "#,
         );
@@ -990,6 +1000,18 @@ mod tests {
                 - port: internal-http
                   interval: 60s
                   path: /metrics
+              targetLabels:
+                fromPod:
+                  - from: materialize.cloud/organization-name
+                    to: materialize_cloud_organization_name
+                  - from: materialize.cloud/organization-namespace
+                    to: materialize_cloud_organization_namespace
+                  - from: materialize.cloud/organization-id
+                    to: materialize_cloud_organization_id
+                  - from: cluster.environmentd.materialize.cloud/cluster-id
+                    to: cluster_environmentd_materialize_cloud_cluster_id
+                  - from: cluster.environmentd.materialize.cloud/replica-id
+                    to: cluster_environmentd_materialize_cloud_replica_id
             "#,
         );
     }
