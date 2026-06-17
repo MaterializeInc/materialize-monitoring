@@ -14,3 +14,15 @@ spec:
   - port: internal-http
     interval: 60s
     path: /metrics/mz_compute
+  targetLabels:
+    fromPod:
+    - from: materialize.cloud/organization-name
+      to: materialize_cloud_organization_name
+    - from: materialize.cloud/organization-namespace
+      to: materialize_cloud_organization_namespace
+    - from: materialize.cloud/organization-id
+      to: materialize_cloud_organization_id
+    - from: cluster.environmentd.materialize.cloud/cluster-id
+      to: cluster_environmentd_materialize_cloud_cluster_id
+    - from: cluster.environmentd.materialize.cloud/replica-id
+      to: cluster_environmentd_materialize_cloud_replica_id

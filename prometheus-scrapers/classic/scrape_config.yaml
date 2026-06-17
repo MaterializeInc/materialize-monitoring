@@ -26,6 +26,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/environmentd/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
@@ -49,6 +64,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-operator/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
@@ -72,6 +102,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-compute
   metrics_path: /metrics/mz_compute
   kubernetes_sd_configs:
@@ -95,6 +140,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-frontier
   metrics_path: /metrics/mz_frontier
   kubernetes_sd_configs:
@@ -118,6 +178,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-storage
   metrics_path: /metrics/mz_storage
   kubernetes_sd_configs:
@@ -141,6 +216,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-usage
   metrics_path: /metrics/mz_usage
   kubernetes_sd_configs:
@@ -164,6 +254,21 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_name
+    target_label: materialize_cloud_organization_name
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_namespace
+    target_label: materialize_cloud_organization_namespace
+  - source_labels:
+    - __meta_kubernetes_pod_label_materialize_cloud_organization_id
+    target_label: materialize_cloud_organization_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id
+    target_label: cluster_environmentd_materialize_cloud_cluster_id
+  - source_labels:
+    - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
+    target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: mz-kubelet-cadvisor
   kubernetes_sd_configs:
   - role: node
