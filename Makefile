@@ -130,33 +130,32 @@ charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materia
 
 ### SCRAPER SYNC ###
 
-SCRAPER_NAMES = $(notdir $(wildcard packages/prometheus-scrapers/*.yaml)) scrape_config.yaml
 # defensive check for typo'd extensions
 _BAD_SCRAPER_NAMES = $(wildcard packages/prometheus-scrapers/*.json packages/prometheus-scrapers/*.kyaml packages/prometheus-scrapers/*.yml)
 ifneq ($(_BAD_SCRAPER_NAMES),)
 $(error "Unexpected scraper files with non-.yaml extensions: $(_BAD_SCRAPER_NAMES)")
 endif
 
-charts/materialize-monitoring/pre-rendered/scrapers/%.yaml: packages/prometheus-scrapers/%.yaml
-	mkdir -p "$(@D)"
-	# TODO: pre-process (support prefixes and overrides)
-	cp "$<" "$@"
+SCRAPER_FORMATS = classic prometheus-operator gmp
 
-charts/materialize-monitoring/pre-rendered/scrapers: $(addprefix charts/materialize-monitoring/pre-rendered/scrapers/,$(SCRAPER_NAMES))
+# Render the prometheus-operator Monitors into every consumer format, prefixed by
+# format: classic/ (combined classic scrape_configs), prometheus-operator/ (one
+# per monitor; today a validated passthrough), and gmp/ (one PodMonitoring per
+# PodMonitor). Clear stale outputs first so renamed
+# or removed monitors don't leave orphans behind.
+charts/materialize-monitoring/pre-rendered/scrapers: $(wildcard packages/prometheus-scrapers/*.yaml) target/debug/mz-monitoring-build
+	mkdir -p "$@"
+	rm -f "$@/"*/*.yaml
+	target/debug/mz-monitoring-build gen-scrape-configs \
+		$(foreach format,$(SCRAPER_FORMATS),--format $(format)) \
+		--output-dir "$@"
 	touch "$@"
 
 docs/assets/prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers
+	rm -rf "$@/"
 	mkdir -p "$@"
-	rm -f "$@/"*.yaml
-	cp charts/materialize-monitoring/pre-rendered/scrapers/*.yaml "$@"
+	cp -r charts/materialize-monitoring/pre-rendered/scrapers/* "$@"
 	touch "$@"
-
-# Best-effort transpile of the prometheus-operator Monitors into a single classic
-# Prometheus scrape_configs document, for older deployments / documentation.
-charts/materialize-monitoring/pre-rendered/scrapers/scrape_config.yaml: $(wildcard packages/prometheus-scrapers/*.yaml) target/debug/mz-monitoring-build
-	mkdir -p "$(@D)"
-	target/debug/mz-monitoring-build gen-scrape-configs --output "$@"
-	test -f "$@"
 
 # Re-extract the prometheus-operator CRD JSONSchemas from the vendored
 # materialize-monitoring-crds chart. Output is checked in; re-run on version bump.
@@ -174,7 +173,7 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
 
-charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers charts/materialize-monitoring/pre-rendered/scrape-configs/scrape_config.yaml
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
 	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.

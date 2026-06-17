@@ -3,7 +3,7 @@ global:
   scrape_interval: 1m
   scrape_timeout: 10s
 scrape_configs:
-- job_name: podMonitor/clusterd/0
+- job_name: podMonitor/clusterd/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
   - role: pod
@@ -26,7 +26,7 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
-- job_name: podMonitor/environmentd/0
+- job_name: podMonitor/environmentd/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
   - role: pod
@@ -49,7 +49,7 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
-- job_name: podMonitor/materialize-operator/0
+- job_name: podMonitor/materialize-operator/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
   - role: pod
@@ -72,7 +72,7 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
-- job_name: podMonitor/materialize-sql/0
+- job_name: podMonitor/materialize-sql/mz-compute
   metrics_path: /metrics/mz_compute
   kubernetes_sd_configs:
   - role: pod
@@ -95,7 +95,7 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
-- job_name: podMonitor/materialize-sql/1
+- job_name: podMonitor/materialize-sql/mz-frontier
   metrics_path: /metrics/mz_frontier
   kubernetes_sd_configs:
   - role: pod
@@ -118,7 +118,7 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
-- job_name: podMonitor/materialize-sql/2
+- job_name: podMonitor/materialize-sql/mz-storage
   metrics_path: /metrics/mz_storage
   kubernetes_sd_configs:
   - role: pod
@@ -141,7 +141,7 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_name
     target_label: pod
-- job_name: podMonitor/materialize-sql/3
+- job_name: podMonitor/materialize-sql/mz-usage
   metrics_path: /metrics/mz_usage
   kubernetes_sd_configs:
   - role: pod

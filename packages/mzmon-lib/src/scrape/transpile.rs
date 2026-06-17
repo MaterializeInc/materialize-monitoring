@@ -7,14 +7,18 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Parse a prometheus-operator Monitor and transpile it to classic
-//! `scrape_configs`.
+//! Parse a prometheus-operator Monitor and convert it to a consumer format.
 //!
-//! IMPLEMENTATION STATUS (TDD scaffold): the parse/validate plumbing
-//! (`Monitor::from_yaml_str`) and the document assembly
-//! (`ScrapeConfigDocument::from_monitors`) are implemented. The per-kind
-//! `transpile_*` bodies are `todo!()` — they are the implementation target
-//! driven by the tests at the bottom of this file.
+//! [`Monitor::from_yaml_str`] parses + validates an input (kind auto-detected).
+//! From there:
+//! * [`Monitor::transpile`] → classic Prometheus `scrape_configs` jobs, and
+//!   [`ScrapeConfigDocument::from_monitors`] assembles the combined document;
+//! * [`Monitor::to_gmp`] → a GMP `PodMonitoring` / `ClusterPodMonitoring`
+//!   (`None` for kinds with no GMP equivalent).
+//!
+//! Tests at the bottom of this file pin the per-kind output shapes (compared
+//! structurally, so YAML key order / quoting don't matter — but relabel order
+//! does).
 
 use serde_json::Value;
 
@@ -23,7 +27,10 @@ use crate::scrape::classic::config::{
     GlobalConfig, KubernetesSdConfig, Namespaces, ScrapeConfigDocument, ScrapeJob,
 };
 use crate::scrape::error::{Error, Result};
-use crate::scrape::operator::common::{NamespaceSelector, RelabelConfig as OperatorRelabelConfig};
+use crate::scrape::gmp::config as gmp;
+use crate::scrape::operator::common::{
+    NamespaceSelector, ObjectMeta, RelabelConfig as OperatorRelabelConfig,
+};
 use crate::scrape::operator::pod_monitor::PodMonitor;
 use crate::scrape::operator::scrape_config::ScrapeConfigCrd;
 use crate::scrape::operator::service_monitor::ServiceMonitor;
@@ -80,6 +87,128 @@ impl Monitor {
             Monitor::ScrapeConfig(sc) => transpile_scrape_config(sc),
         }
     }
+
+    /// Convert this Monitor to GMP `PodMonitoring` / `ClusterPodMonitoring`
+    /// resources.
+    ///
+    /// Returns one resource **per endpoint**: GMP's `unique-ports` admission
+    /// policy forbids two endpoints sharing a port within one resource, and
+    /// Materialize commonly scrapes several paths on the same port. A
+    /// single-endpoint PodMonitor keeps the base name; a multi-endpoint one fans
+    /// out to `<name>-<endpoint-suffix>`.
+    ///
+    /// Returns an empty `Vec` for kinds with no GMP equivalent — GMP scrapes
+    /// pods only, so `ServiceMonitor` (service-based) and `ScrapeConfig`
+    /// (node/static SD) are skipped. Best-effort: a PodMonitor's target
+    /// `relabelings` are dropped (GMP has no target-relabeling surface) and a
+    /// cluster-wide `namespaceSelector` becomes a `ClusterPodMonitoring`.
+    pub fn to_gmp(&self) -> Result<Vec<gmp::PodMonitoring>> {
+        match self {
+            Monitor::PodMonitor(pm) => pod_monitor_to_gmp(pm),
+            Monitor::ServiceMonitor(_) | Monitor::ScrapeConfig(_) => Ok(Vec::new()),
+        }
+    }
+}
+
+/// GMP requires a scrape `interval` on every endpoint; prometheus-operator
+/// leaves it optional (inheriting `global`). Fill this when the source omits it.
+const GMP_DEFAULT_INTERVAL: &str = "60s";
+
+/// PodMonitor → one GMP `PodMonitoring` (namespaced) or `ClusterPodMonitoring`
+/// (cluster-wide) **per endpoint** (GMP requires unique ports within a
+/// resource). See [`Monitor::to_gmp`] for the naming and lossiness contract.
+fn pod_monitor_to_gmp(pod_monitor: &PodMonitor) -> Result<Vec<gmp::PodMonitoring>> {
+    let selector = &pod_monitor.spec.selector;
+    if selector.match_labels.is_empty() && selector.match_expressions.is_empty() {
+        return Err(Error::Unsupported(
+            "PodMonitor selector is empty (would select all pods)".into(),
+        ));
+    }
+
+    // Scope: a cluster-wide namespaceSelector (`any: true`, or one naming
+    // namespaces other than the resource's own) maps to ClusterPodMonitoring.
+    // GMP's cluster variant can't restrict to specific namespaces, so explicit
+    // `matchNames` are dropped (lossy, best-effort).
+    let cluster_scoped = matches!(
+        &pod_monitor.spec.namespace_selector,
+        Some(ns) if ns.any == Some(true) || !ns.match_names.is_empty()
+    );
+    let (kind, namespace) = if cluster_scoped {
+        ("ClusterPodMonitoring".to_string(), None)
+    } else {
+        (
+            "PodMonitoring".to_string(),
+            pod_monitor.metadata.namespace.clone(),
+        )
+    };
+
+    let base_name = pod_monitor
+        .metadata
+        .name
+        .clone()
+        .unwrap_or_else(|| "default".into());
+    let endpoints = &pod_monitor.spec.pod_metrics_endpoints;
+    let multi = endpoints.len() > 1;
+    let suffixes = disambiguate_suffixes(
+        endpoints
+            .iter()
+            .enumerate()
+            .map(|(i, e)| endpoint_suffix(e.path.as_deref(), e.port.as_deref(), e.port_number, i))
+            .collect(),
+    );
+
+    endpoints
+        .iter()
+        .enumerate()
+        .map(|(idx, endpoint)| {
+            let port = match (&endpoint.port, endpoint.port_number) {
+                (Some(name), None) => gmp::IntOrString::Str(name.clone()),
+                (None, Some(number)) => gmp::IntOrString::Int(number as i64),
+                (Some(_), Some(_)) => {
+                    return Err(Error::Unsupported(
+                        "endpoint cannot specify both port and portNumber".into(),
+                    ));
+                }
+                (None, None) => {
+                    return Err(Error::Unsupported(
+                        "endpoint must specify either port or portNumber".into(),
+                    ));
+                }
+            };
+            // Single-endpoint PodMonitors keep the base name; multi-endpoint ones
+            // fan out to `<name>-<suffix>` so each resource has one (unique) port.
+            let name = if multi {
+                format!("{base_name}-{}", suffixes[idx])
+            } else {
+                base_name.clone()
+            };
+            Ok(gmp::PodMonitoring {
+                api_version: gmp::API_VERSION.to_string(),
+                kind: kind.clone(),
+                metadata: ObjectMeta {
+                    name: Some(name),
+                    namespace: namespace.clone(),
+                    labels: pod_monitor.metadata.labels.clone(),
+                },
+                spec: gmp::PodMonitoringSpec {
+                    selector: selector.clone(),
+                    endpoints: vec![gmp::ScrapeEndpoint {
+                        port,
+                        interval: endpoint
+                            .interval
+                            .clone()
+                            .unwrap_or_else(|| GMP_DEFAULT_INTERVAL.to_string()),
+                        path: endpoint.path.clone(),
+                        scheme: endpoint.scheme.clone(),
+                        timeout: endpoint.scrape_timeout.clone(),
+                        // operator `relabelings` (target relabeling) have no GMP
+                        // equivalent and are dropped; only metric relabeling carries over.
+                        metric_relabeling: endpoint.metric_relabelings.clone(),
+                    }],
+                },
+            })
+        })
+        .collect()
 }
 
 impl OperatorRelabelConfig {
@@ -167,8 +296,69 @@ fn get_implicit_service_relabels() -> Vec<ClassicRelabelConfig> {
     ]
 }
 
+/// DNS-1123-style sanitization: lowercase, runs of non-alphanumerics collapse to
+/// a single `-`, leading/trailing `-` trimmed. Keeps the result usable as both a
+/// classic job-name segment and a Kubernetes (GMP) resource-name segment.
+fn sanitize_name_segment(raw: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for c in raw.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// A short, stable per-endpoint name suffix used to disambiguate the jobs /
+/// resources produced from a multi-endpoint Monitor. Prefers the last path
+/// segment (`/metrics/mz_compute` → `mz-compute`), then the port name, then the
+/// numeric port, finally the endpoint index.
+fn endpoint_suffix(
+    path: Option<&str>,
+    port: Option<&str>,
+    port_number: Option<i32>,
+    index: usize,
+) -> String {
+    if let Some(seg) = path.and_then(|p| p.rsplit('/').find(|s| !s.is_empty())) {
+        let s = sanitize_name_segment(seg);
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    if let Some(name) = port {
+        let s = sanitize_name_segment(name);
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    if let Some(n) = port_number {
+        return n.to_string();
+    }
+    index.to_string()
+}
+
+/// Ensure per-endpoint suffixes are unique within a single Monitor by appending
+/// the index to any that collide (rare — endpoints usually differ by path).
+fn disambiguate_suffixes(mut suffixes: Vec<String>) -> Vec<String> {
+    let mut counts = std::collections::HashMap::new();
+    for s in &suffixes {
+        *counts.entry(s.clone()).or_insert(0usize) += 1;
+    }
+    for (i, s) in suffixes.iter_mut().enumerate() {
+        if counts[s] > 1 {
+            *s = format!("{s}-{i}");
+        }
+    }
+    suffixes
+}
+
 // ============================================================
-// Per-kind transpilation — IMPLEMENTATION TARGET (currently `todo!()`).
+// Per-kind transpilation.
 //
 // Faithful operator-style semantics (see the tests below for the exact shape):
 //   * the selector's `matchLabels` become an ordered `keep` relabel per label on
@@ -176,8 +366,9 @@ fn get_implicit_service_relabels() -> Vec<ClassicRelabelConfig> {
 //     with `regex: (<v>);true`, where `<scope>` is `pod` (PodMonitor) or
 //     `service` (ServiceMonitor); dotted/slashed label names are sanitized to
 //     underscores;
-//   * each endpoint yields one job with a `keep` on the port-name meta label and
-//     the standard namespace / pod / container (or service) metadata relabels;
+//   * each endpoint yields one job named `<prefix>/<name>/<endpoint-suffix>`,
+//     with a `keep` on the port-name meta label and the standard namespace /
+//     pod / container (or service) metadata relabels;
 //   * endpoint `path`/`scheme`/`interval`/`scrapeTimeout` map to the job's
 //     `metrics_path`/`scheme`/`scrape_interval`/`scrape_timeout`;
 //   * operator `relabelings` / `metricRelabelings` append to the job's
@@ -222,8 +413,17 @@ fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
             ..Default::default()
         });
     }
+    let suffixes = disambiguate_suffixes(
+        pod_monitor
+            .spec
+            .pod_metrics_endpoints
+            .iter()
+            .enumerate()
+            .map(|(i, e)| endpoint_suffix(e.path.as_deref(), e.port.as_deref(), e.port_number, i))
+            .collect(),
+    );
     for (idx, endpoint) in pod_monitor.spec.pod_metrics_endpoints.iter().enumerate() {
-        let job_name = format!("{}/{}", prefix, idx);
+        let job_name = format!("{}/{}", prefix, suffixes[idx]);
         let mut job = ScrapeJob {
             job_name,
             honor_labels: endpoint.honor_labels,
@@ -319,9 +519,18 @@ fn transpile_service_monitor(service_monitor: &ServiceMonitor) -> Result<Vec<Scr
             ..Default::default()
         });
     }
+    let suffixes = disambiguate_suffixes(
+        service_monitor
+            .spec
+            .endpoints
+            .iter()
+            .enumerate()
+            .map(|(i, e)| endpoint_suffix(e.path.as_deref(), e.port.as_deref(), None, i))
+            .collect(),
+    );
     // This is uncomfortably close to podmonitor endpoints
     for (idx, endpoint) in service_monitor.spec.endpoints.iter().enumerate() {
-        let job_name = format!("{}/{}", prefix, idx);
+        let job_name = format!("{}/{}", prefix, suffixes[idx]);
         let mut job = ScrapeJob {
             job_name,
             honor_labels: endpoint.honor_labels,
@@ -461,16 +670,15 @@ mod tests {
     }
 
     // ========================================================
-    // Transpilation goldens — the IMPLEMENTATION TARGET.
+    // Classic transpilation goldens.
     //
-    // These are RED until `transpile_*` is implemented (`todo!()` panics).
     // Goldens are compared structurally, so YAML key order / quoting don't
     // matter — but `relabel_configs` is an array, so RELABEL ORDER is asserted.
     //
-    // Conventions encoded below (the implementer may revise these, but must
-    // update the goldens in lockstep):
-    //   * job_name = "podMonitor"/"serviceMonitor" + "/<name>/<endpointIdx>";
-    //     for a ScrapeConfig, job_name = metadata.name.
+    // Conventions:
+    //   * job_name = "podMonitor"/"serviceMonitor" + "/<name>/<endpoint-suffix>",
+    //     where the suffix is the endpoint's last path segment (else port name,
+    //     else index); for a ScrapeConfig, job_name = metadata.name.
     //   * fixtures carry no namespace/namespaceSelector → cluster-wide discovery
     //     (no `namespaces:` on the SD config).
     // ========================================================
@@ -499,7 +707,7 @@ mod tests {
         assert_jobs(
             monitor.transpile(),
             r#"
-            - job_name: podMonitor/mini/0
+            - job_name: podMonitor/mini/metrics
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
@@ -528,7 +736,7 @@ mod tests {
         assert_jobs(
             monitor.transpile(),
             r#"
-            - job_name: podMonitor/environmentd/0
+            - job_name: podMonitor/environmentd/metrics
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
@@ -550,8 +758,8 @@ mod tests {
     }
 
     /// A PodMonitor with N endpoints yields N jobs, one per endpoint, each with
-    /// its own `metrics_path` and a `/<index>` job-name suffix. (Real
-    /// `podmonitor-sql.yaml` fixture: 4 SQL subsystem endpoints.)
+    /// its own `metrics_path` and a path-derived job-name suffix. (Real
+    /// `podmonitor-sql.yaml` fixture: 4 SQL subsystem endpoints on one port.)
     #[test]
     fn pod_monitor_sql_fixture_one_job_per_endpoint() {
         let monitor = Monitor::from_yaml_str(fixture("podmonitor-sql")).unwrap();
@@ -560,10 +768,10 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "podMonitor/materialize-sql/0",
-                "podMonitor/materialize-sql/1",
-                "podMonitor/materialize-sql/2",
-                "podMonitor/materialize-sql/3",
+                "podMonitor/materialize-sql/mz-compute",
+                "podMonitor/materialize-sql/mz-frontier",
+                "podMonitor/materialize-sql/mz-storage",
+                "podMonitor/materialize-sql/mz-usage",
             ]
         );
         let paths: Vec<Option<&str>> = jobs.iter().map(|j| j.metrics_path.as_deref()).collect();
@@ -602,7 +810,7 @@ mod tests {
         assert_jobs(
             monitor.transpile(),
             r#"
-            - job_name: serviceMonitor/example/0
+            - job_name: serviceMonitor/example/metrics
               kubernetes_sd_configs:
                 - role: endpoints
               relabel_configs:
@@ -669,5 +877,165 @@ mod tests {
 
         let yaml = doc.to_yaml().expect("serialize document");
         crate::scrape::test_support::assert_promtool_ok(&yaml);
+    }
+
+    // ========================================================
+    // GMP output (`to_gmp`).
+    // ========================================================
+
+    use crate::scrape::test_support::assert_serializes_to;
+
+    /// Core PodMonitor → PodMonitoring mapping: a single-endpoint monitor yields
+    /// one resource keeping the base name; selector and endpoint carry over; a
+    /// named port becomes a string `port`; the endpoint's `interval` is kept.
+    #[test]
+    fn pod_monitor_to_gmp_minimal() {
+        let monitor = Monitor::from_yaml_str(
+            r#"
+            apiVersion: monitoring.coreos.com/v1
+            kind: PodMonitor
+            metadata:
+              name: mini
+            spec:
+              selector:
+                matchLabels:
+                  app: foo
+              podMetricsEndpoints:
+                - port: metrics
+                  interval: 30s
+            "#,
+        )
+        .unwrap();
+        let resources = monitor.to_gmp().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_serializes_to(
+            &resources[0],
+            r#"
+            apiVersion: monitoring.googleapis.com/v1
+            kind: PodMonitoring
+            metadata:
+              name: mini
+            spec:
+              selector:
+                matchLabels:
+                  app: foo
+              endpoints:
+                - port: metrics
+                  interval: 30s
+            "#,
+        );
+    }
+
+    /// Real `podmonitor-environmentd.yaml`: labels carry through, the selector is
+    /// preserved verbatim (GMP keeps the dotted label key — no sanitization), and
+    /// the missing `interval` is defaulted.
+    #[test]
+    fn pod_monitor_environmentd_to_gmp() {
+        let monitor = Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap();
+        let resources = monitor.to_gmp().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_serializes_to(
+            &resources[0],
+            r#"
+            apiVersion: monitoring.googleapis.com/v1
+            kind: PodMonitoring
+            metadata:
+              name: environmentd
+              labels:
+                app.kubernetes.io/part-of: materialize
+                app.kubernetes.io/name: environmentd
+            spec:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: environmentd
+              endpoints:
+                - port: internal-http
+                  interval: 60s
+                  path: /metrics
+            "#,
+        );
+    }
+
+    /// The unique-ports fix: a PodMonitor whose endpoints share a port (the four
+    /// SQL endpoints, all on `internal-http`) fans out to one PodMonitoring per
+    /// endpoint — each `<name>-<suffix>` with a single endpoint — so GMP's
+    /// `unique-ports` admission policy is satisfied.
+    #[test]
+    fn pod_monitor_sql_fans_out_one_gmp_resource_per_endpoint() {
+        let monitor = Monitor::from_yaml_str(fixture("podmonitor-sql")).unwrap();
+        let resources = monitor.to_gmp().unwrap();
+        let names: Vec<&str> = resources
+            .iter()
+            .map(|r| r.metadata.name.as_deref().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "materialize-sql-mz-compute",
+                "materialize-sql-mz-frontier",
+                "materialize-sql-mz-storage",
+                "materialize-sql-mz-usage",
+            ]
+        );
+        for r in &resources {
+            assert_eq!(r.spec.endpoints.len(), 1, "one endpoint per resource");
+            assert!(
+                matches!(&r.spec.endpoints[0].port, gmp::IntOrString::Str(s) if s == "internal-http"),
+                "all SQL endpoints share the internal-http port",
+            );
+        }
+    }
+
+    /// A cluster-wide `namespaceSelector` (`any: true`) maps to the cluster-scoped
+    /// kind, and the resource carries no namespace.
+    #[test]
+    fn cluster_wide_namespace_selector_yields_clusterpodmonitoring() {
+        let monitor = Monitor::from_yaml_str(
+            r#"
+            apiVersion: monitoring.coreos.com/v1
+            kind: PodMonitor
+            metadata:
+              name: wide
+              namespace: mz
+            spec:
+              namespaceSelector:
+                any: true
+              selector:
+                matchLabels:
+                  app: foo
+              podMetricsEndpoints:
+                - port: metrics
+            "#,
+        )
+        .unwrap();
+        let resources = monitor.to_gmp().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0].kind, "ClusterPodMonitoring");
+        assert!(resources[0].metadata.namespace.is_none());
+    }
+
+    /// ServiceMonitor and ScrapeConfig have no GMP equivalent (GMP scrapes pods
+    /// only) — `to_gmp` returns an empty `Vec` so the caller can skip them.
+    #[test]
+    fn service_monitor_and_scrape_config_have_no_gmp_form() {
+        let sm = Monitor::from_yaml_str(
+            r#"
+            apiVersion: monitoring.coreos.com/v1
+            kind: ServiceMonitor
+            metadata:
+              name: example
+            spec:
+              selector:
+                matchLabels:
+                  app: example
+              endpoints:
+                - port: http
+            "#,
+        )
+        .unwrap();
+        assert!(sm.to_gmp().unwrap().is_empty());
+
+        let sc = Monitor::from_yaml_str(fixture("scrapeconfig-cadvisor")).unwrap();
+        assert!(sc.to_gmp().unwrap().is_empty());
     }
 }

@@ -35,6 +35,10 @@ pub mod classic {
     pub mod config;
 }
 
+pub mod gmp {
+    pub mod config;
+}
+
 pub mod operator {
     pub mod common;
     pub mod pod_monitor;

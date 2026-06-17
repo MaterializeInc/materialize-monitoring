@@ -72,6 +72,19 @@ pub(crate) fn assert_jobs(produced: Result<Vec<ScrapeJob>>, expected_yaml: &str)
     );
 }
 
+/// Assert an arbitrary serializable value matches `expected_yaml` structurally
+/// (order- and quoting-independent). Used for the GMP output goldens.
+pub(crate) fn assert_serializes_to<T: serde::Serialize>(value: &T, expected_yaml: &str) {
+    let produced_val = serde_json::to_value(value).expect("serialize value");
+    let expected_val: Value = serde_yaml_ng::from_str(expected_yaml).expect("parse expected YAML");
+    assert_eq!(
+        produced_val,
+        expected_val,
+        "serialized value mismatch\n--- produced ---\n{}",
+        serde_yaml_ng::to_string(value).unwrap()
+    );
+}
+
 /// True if the `promtool` binary is available on PATH.
 fn promtool_available() -> bool {
     Command::new("promtool").arg("--version").output().is_ok()
