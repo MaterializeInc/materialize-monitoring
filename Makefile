@@ -136,23 +136,25 @@ ifneq ($(_BAD_SCRAPER_NAMES),)
 $(error "Unexpected scraper files with non-.yaml extensions: $(_BAD_SCRAPER_NAMES)")
 endif
 
+SCRAPER_FORMATS = classic prometheus-operator gmp
+
 # Render the prometheus-operator Monitors into every consumer format, prefixed by
-# format: classic- (combined classic scrape_configs), prometheus-operator- (one
-# per monitor; today a validated passthrough), and gmp- (one PodMonitoring per
-# PodMonitor). Replaces the old per-file cp. Clear stale outputs first so renamed
+# format: classic/ (combined classic scrape_configs), prometheus-operator/ (one
+# per monitor; today a validated passthrough), and gmp/ (one PodMonitoring per
+# PodMonitor). Clear stale outputs first so renamed
 # or removed monitors don't leave orphans behind.
 charts/materialize-monitoring/pre-rendered/scrapers: $(wildcard packages/prometheus-scrapers/*.yaml) target/debug/mz-monitoring-build
 	mkdir -p "$@"
-	rm -f "$@/"*.yaml
+	rm -f "$@/"*/*.yaml
 	target/debug/mz-monitoring-build gen-scrape-configs \
-		--format classic --format prometheus-operator --format gmp \
+		$(foreach format,$(SCRAPER_FORMATS),--format $(format)) \
 		--output-dir "$@"
 	touch "$@"
 
 docs/assets/prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers
+	rm -rf "$@/"
 	mkdir -p "$@"
-	rm -f "$@/"*.yaml
-	cp charts/materialize-monitoring/pre-rendered/scrapers/*.yaml "$@"
+	cp -r charts/materialize-monitoring/pre-rendered/scrapers/* "$@"
 	touch "$@"
 
 # Re-extract the prometheus-operator CRD JSONSchemas from the vendored

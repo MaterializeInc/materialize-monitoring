@@ -15,13 +15,13 @@
 //! into `--output-dir`:
 //!
 //! * `classic` — one combined classic Prometheus `scrape_configs` document
-//!   (`classic-scrape_config.yaml`), for plain Prometheus / Agent.
+//!   (`classic/scrape_config.yaml`), for plain Prometheus / Agent.
 //! * `prometheus-operator` — the source manifests, one per monitor
-//!   (`prometheus-operator-<stem>.yaml`). Today this is a validated passthrough;
+//!   (`prometheus-operator/<stem>.yaml`). Today this is a validated passthrough;
 //!   a future `--helm` mutator will turn it into a parse → mutate → serialize
 //!   pipeline (e.g. templating `metadata.name`).
 //! * `gmp` — Google Managed Prometheus `PodMonitoring` / `ClusterPodMonitoring`
-//!   (`gmp-<stem>.yaml`), one per PodMonitor. Kinds with no GMP equivalent
+//!   (`gmp/<stem>.yaml`), one per PodMonitor. Kinds with no GMP equivalent
 //!   (ServiceMonitor, ScrapeConfig) are skipped with a logged note.
 
 use anyhow::Context;
@@ -42,9 +42,9 @@ impl OutputFormat {
     /// Filename prefix for this format (the docs shortcode keys off it).
     fn prefix(self) -> &'static str {
         match self {
-            OutputFormat::Classic => "classic-",
-            OutputFormat::PrometheusOperator => "prometheus-operator-",
-            OutputFormat::Gmp => "gmp-",
+            OutputFormat::Classic => "classic/",
+            OutputFormat::PrometheusOperator => "prometheus-operator/",
+            OutputFormat::Gmp => "gmp/",
         }
     }
 }
@@ -169,10 +169,10 @@ fn render_classic(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyh
         .to_yaml()
         .map_err(|e| anyhow::anyhow!("serializing classic scrape_configs:\n{e}"))?;
 
-    let output = args.output_dir.join(format!(
-        "{}scrape_config.yaml",
-        OutputFormat::Classic.prefix()
-    ));
+    let dir = args.output_dir.join(OutputFormat::Classic.prefix());
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("creating classic output dir {}", dir.display()))?;
+    let output = dir.join("scrape_config.yaml");
     std::fs::write(&output, rendered).with_context(|| format!("writing {}", output.display()))?;
     println!(
         "classic: {} monitor(s) -> {}",
@@ -190,8 +190,11 @@ fn render_prometheus_operator(
     parsed: &[ParsedMonitor],
 ) -> anyhow::Result<()> {
     let prefix = OutputFormat::PrometheusOperator.prefix();
+    let dir = args.output_dir.join(prefix);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("creating prometheus-operator output dir {}", dir.display()))?;
     for p in parsed {
-        let output = args.output_dir.join(format!("{prefix}{}.yaml", p.stem));
+        let output = dir.join(format!("{}.yaml", p.stem));
         std::fs::write(&output, &p.yaml)
             .with_context(|| format!("writing {}", output.display()))?;
     }
@@ -208,6 +211,9 @@ fn render_prometheus_operator(
 /// equivalent are skipped with a logged note (not an error).
 fn render_gmp(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::Result<()> {
     let prefix = OutputFormat::Gmp.prefix();
+    let dir = args.output_dir.join(prefix);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("creating GMP output dir {}", dir.display()))?;
     let mut written = 0usize;
     for p in parsed {
         match p
@@ -218,7 +224,7 @@ fn render_gmp(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::
             Some(resource) => {
                 let rendered = serde_yaml_ng::to_string(&resource)
                     .with_context(|| format!("serializing GMP resource for {}", p.stem))?;
-                let output = args.output_dir.join(format!("{prefix}{}.yaml", p.stem));
+                let output = dir.join(format!("{}.yaml", p.stem));
                 std::fs::write(&output, rendered)
                     .with_context(|| format!("writing {}", output.display()))?;
                 written += 1;
