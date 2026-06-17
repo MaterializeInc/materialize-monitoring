@@ -51,8 +51,29 @@ pub struct PodMonitoring {
 pub struct PodMonitoringSpec {
     pub selector: LabelSelector,
     pub endpoints: Vec<ScrapeEndpoint>,
-    // `targetLabels` is intentionally omitted: GMP attaches sensible identity
-    // labels by default, and we lean on that rather than reproducing them.
+    /// Emitted only when the source declares `podTargetLabels`. We leave GMP's
+    /// `metadata` default (`container`, `pod`, `top_level_controller_*`) intact
+    /// by omitting it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_labels: Option<TargetLabels>,
+}
+
+/// GMP `spec.targetLabels`. We only populate `fromPod`; `metadata` is omitted so
+/// the CRD default applies.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetLabels {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub from_pod: Vec<LabelMapping>,
+}
+
+/// One `fromPod` mapping: copy pod label `from` onto metric label `to`
+/// (`to` must be a valid Prometheus label name).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LabelMapping {
+    pub from: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
 }
 
 /// One `spec.endpoints[]` entry. Subset of the GMP `ScrapeEndpoint`.

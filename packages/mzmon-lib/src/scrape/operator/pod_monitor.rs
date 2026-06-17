@@ -37,6 +37,11 @@ pub struct PodMonitorSpec {
     /// Scopes which namespaces are discovered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace_selector: Option<NamespaceSelector>,
+    /// Pod label keys to copy onto the scraped metrics (e.g.
+    /// `materialize.cloud/organization-name`). classic → a per-label `replace`
+    /// relabel from `__meta_kubernetes_pod_label_*`; GMP → `targetLabels.fromPod`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pod_target_labels: Vec<String>,
     /// One classic scrape job is generated per endpoint.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pod_metrics_endpoints: Vec<PodMetricsEndpoint>,
