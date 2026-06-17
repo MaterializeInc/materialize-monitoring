@@ -1,0 +1,15 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: clusterd
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: clusterd
+spec:
+  selector:
+    matchLabels:
+      cluster.environmentd.materialize.cloud/type: cluster
+  endpoints:
+  - port: internal-http
+    interval: 60s
+    path: /metrics
