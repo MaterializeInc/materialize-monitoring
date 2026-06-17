@@ -7,23 +7,54 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! `gen-scrape-configs`: transpile prometheus-operator Monitors into a single
-//! classic Prometheus `scrape_configs` document.
+//! `gen-scrape-configs`: render the prometheus-operator Monitors under
+//! `packages/prometheus-scrapers/` into one or more consumer formats.
 //!
-//! Mirrors `gen_pipelines`, but the output is one combined file (a `global`
-//! block plus every monitor's jobs) rather than one file per input.
+//! Input is always prometheus-operator (auto-detected by `kind`). The output
+//! format(s) are chosen with `--format` (repeatable); each writes prefixed files
+//! into `--output-dir`:
+//!
+//! * `classic` — one combined classic Prometheus `scrape_configs` document
+//!   (`classic-scrape_config.yaml`), for plain Prometheus / Agent.
+//! * `prometheus-operator` — the source manifests, one per monitor
+//!   (`prometheus-operator-<stem>.yaml`). Today this is a validated passthrough;
+//!   a future `--helm` mutator will turn it into a parse → mutate → serialize
+//!   pipeline (e.g. templating `metadata.name`).
+//! * `gmp` — Google Managed Prometheus `PodMonitoring` / `ClusterPodMonitoring`
+//!   (`gmp-<stem>.yaml`), one per PodMonitor. Kinds with no GMP equivalent
+//!   (ServiceMonitor, ScrapeConfig) are skipped with a logged note.
 
 use anyhow::Context;
 use mzmon_lib::scrape::classic::config::{GlobalConfig, ScrapeConfigDocument};
 use mzmon_lib::scrape::transpile::Monitor;
 use std::path::PathBuf;
 
+/// Output formats `gen-scrape-configs` can render. The clap kebab spelling is
+/// `classic` / `prometheus-operator` / `gmp`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutputFormat {
+    Classic,
+    PrometheusOperator,
+    Gmp,
+}
+
+impl OutputFormat {
+    /// Filename prefix for this format (the docs shortcode keys off it).
+    fn prefix(self) -> &'static str {
+        match self {
+            OutputFormat::Classic => "classic-",
+            OutputFormat::PrometheusOperator => "prometheus-operator-",
+            OutputFormat::Gmp => "gmp-",
+        }
+    }
+}
+
 /// Arguments for the `gen-scrape-configs` command.
 #[derive(clap::Args)]
 pub struct GenScrapeConfigsArgs {
-    /// File to write the combined classic scrape_configs document into.
+    /// Directory to write the rendered, format-prefixed files into.
     #[arg(long)]
-    output: PathBuf,
+    output_dir: PathBuf,
 
     /// Directory containing prometheus-operator Monitor YAML definitions.
     #[arg(long, default_value = "packages/prometheus-scrapers")]
@@ -33,21 +64,25 @@ pub struct GenScrapeConfigsArgs {
     #[arg(long)]
     target: Vec<String>,
 
-    /// `global.scrape_interval`.
+    /// Output format(s) to render (repeatable). Defaults to `classic`.
+    #[arg(long, value_enum)]
+    format: Vec<OutputFormat>,
+
+    /// `global.scrape_interval` (classic only).
     #[arg(long, default_value = "1m")]
     scrape_interval: String,
 
-    /// `global.scrape_timeout`.
+    /// `global.scrape_timeout` (classic only).
     #[arg(long, default_value = "10s")]
     scrape_timeout: String,
 
-    /// `global.evaluation_interval`.
+    /// `global.evaluation_interval` (classic only).
     #[arg(long, default_value = "1m")]
     evaluation_interval: String,
 }
 
 /// Discover Monitor targets by their `.yaml` stems, sorted for deterministic
-/// combined output. (Skips files starting with `_`, like `gen-pipelines`.)
+/// output. (Skips files starting with `_`, like `gen-pipelines`.)
 fn discover_targets(input_dir: &PathBuf) -> anyhow::Result<Vec<String>> {
     let mut targets = Vec::new();
     for entry in std::fs::read_dir(input_dir)
@@ -65,52 +100,136 @@ fn discover_targets(input_dir: &PathBuf) -> anyhow::Result<Vec<String>> {
     Ok(targets)
 }
 
+/// A parsed input monitor plus the raw YAML it came from (the latter feeds the
+/// `prometheus-operator` passthrough).
+struct ParsedMonitor {
+    stem: String,
+    yaml: String,
+    monitor: Monitor,
+}
+
 /// Main entrypoint for `gen-scrape-configs`.
 pub fn gen_scrape_configs(args: GenScrapeConfigsArgs) -> anyhow::Result<()> {
+    let formats = if args.format.is_empty() {
+        vec![OutputFormat::Classic]
+    } else {
+        args.format.clone()
+    };
+
     let targets = if args.target.is_empty() {
         discover_targets(&args.input_dir)?
     } else {
-        let mut t = args.target;
+        let mut t = args.target.clone();
         t.sort();
         t
     };
-
     if targets.is_empty() {
         anyhow::bail!("no monitor targets found in {}", args.input_dir.display());
     }
 
-    let mut monitors = Vec::with_capacity(targets.len());
-    for target in &targets {
-        let input = args.input_dir.join(format!("{target}.yaml"));
+    // Parse + validate every input once, keeping the raw YAML for passthrough.
+    let mut parsed = Vec::with_capacity(targets.len());
+    for stem in &targets {
+        let input = args.input_dir.join(format!("{stem}.yaml"));
         let yaml = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let monitor = Monitor::from_yaml_str(&yaml)
             .map_err(|e| anyhow::anyhow!("parsing {}:\n{e}", input.display()))?;
-        monitors.push(monitor);
+        parsed.push(ParsedMonitor {
+            stem: stem.clone(),
+            yaml,
+            monitor,
+        });
     }
 
+    std::fs::create_dir_all(&args.output_dir)
+        .with_context(|| format!("creating output dir {}", args.output_dir.display()))?;
+
+    for format in &formats {
+        match format {
+            OutputFormat::Classic => render_classic(&args, &parsed)?,
+            OutputFormat::PrometheusOperator => render_prometheus_operator(&args, &parsed)?,
+            OutputFormat::Gmp => render_gmp(&args, &parsed)?,
+        }
+    }
+    Ok(())
+}
+
+/// One combined classic document (`global` + every monitor's jobs).
+fn render_classic(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::Result<()> {
+    let monitors: Vec<Monitor> = parsed.iter().map(|p| p.monitor.clone()).collect();
     let global = GlobalConfig {
-        evaluation_interval: args.evaluation_interval,
-        scrape_interval: args.scrape_interval,
-        scrape_timeout: args.scrape_timeout,
+        evaluation_interval: args.evaluation_interval.clone(),
+        scrape_interval: args.scrape_interval.clone(),
+        scrape_timeout: args.scrape_timeout.clone(),
     };
     let document = ScrapeConfigDocument::from_monitors(global, &monitors)
-        .map_err(|e| anyhow::anyhow!("transpiling monitors:\n{e}"))?;
+        .map_err(|e| anyhow::anyhow!("transpiling monitors to classic:\n{e}"))?;
     let rendered = document
         .to_yaml()
-        .map_err(|e| anyhow::anyhow!("serializing scrape_configs:\n{e}"))?;
+        .map_err(|e| anyhow::anyhow!("serializing classic scrape_configs:\n{e}"))?;
 
-    if let Some(parent) = args.output.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating output dir {}", parent.display()))?;
-    }
-    std::fs::write(&args.output, rendered)
-        .with_context(|| format!("writing {}", args.output.display()))?;
+    let output = args.output_dir.join(format!(
+        "{}scrape_config.yaml",
+        OutputFormat::Classic.prefix()
+    ));
+    std::fs::write(&output, rendered).with_context(|| format!("writing {}", output.display()))?;
     println!(
-        "{} monitor(s) from {} -> {}",
-        targets.len(),
-        args.input_dir.display(),
-        args.output.display()
+        "classic: {} monitor(s) -> {}",
+        parsed.len(),
+        output.display()
+    );
+    Ok(())
+}
+
+/// One file per source monitor. Validated passthrough of the original YAML
+/// (comments preserved). The future `--helm` mutator will replace this with a
+/// parse → mutate → re-serialize pipeline.
+fn render_prometheus_operator(
+    args: &GenScrapeConfigsArgs,
+    parsed: &[ParsedMonitor],
+) -> anyhow::Result<()> {
+    let prefix = OutputFormat::PrometheusOperator.prefix();
+    for p in parsed {
+        let output = args.output_dir.join(format!("{prefix}{}.yaml", p.stem));
+        std::fs::write(&output, &p.yaml)
+            .with_context(|| format!("writing {}", output.display()))?;
+    }
+    println!(
+        "prometheus-operator: {} monitor(s) -> {}/{}*.yaml",
+        parsed.len(),
+        args.output_dir.display(),
+        prefix
+    );
+    Ok(())
+}
+
+/// One PodMonitoring / ClusterPodMonitoring per PodMonitor. Kinds with no GMP
+/// equivalent are skipped with a logged note (not an error).
+fn render_gmp(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::Result<()> {
+    let prefix = OutputFormat::Gmp.prefix();
+    let mut written = 0usize;
+    for p in parsed {
+        match p
+            .monitor
+            .to_gmp()
+            .map_err(|e| anyhow::anyhow!("converting {} to GMP:\n{e}", p.stem))?
+        {
+            Some(resource) => {
+                let rendered = serde_yaml_ng::to_string(&resource)
+                    .with_context(|| format!("serializing GMP resource for {}", p.stem))?;
+                let output = args.output_dir.join(format!("{prefix}{}.yaml", p.stem));
+                std::fs::write(&output, rendered)
+                    .with_context(|| format!("writing {}", output.display()))?;
+                written += 1;
+            }
+            None => eprintln!("gmp: skipping {} (no GMP equivalent for this kind)", p.stem),
+        }
+    }
+    println!(
+        "gmp: {written} monitor(s) -> {}/{}*.yaml",
+        args.output_dir.display(),
+        prefix
     );
     Ok(())
 }
