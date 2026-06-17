@@ -147,6 +147,26 @@ fn pod_monitor_to_gmp(pod_monitor: &PodMonitor) -> Result<Vec<gmp::PodMonitoring
         .name
         .clone()
         .unwrap_or_else(|| "default".into());
+
+    // `podTargetLabels` → `targetLabels.fromPod`. `to` is the sanitized label
+    // name (GMP requires a valid Prometheus label there); `metadata` is left to
+    // the GMP default by omitting it.
+    let target_labels = if pod_monitor.spec.pod_target_labels.is_empty() {
+        None
+    } else {
+        Some(gmp::TargetLabels {
+            from_pod: pod_monitor
+                .spec
+                .pod_target_labels
+                .iter()
+                .map(|label| gmp::LabelMapping {
+                    from: label.clone(),
+                    to: Some(sanitize_label_name(label)),
+                })
+                .collect(),
+        })
+    };
+
     let endpoints = &pod_monitor.spec.pod_metrics_endpoints;
     let multi = endpoints.len() > 1;
     let suffixes = disambiguate_suffixes(
@@ -205,6 +225,7 @@ fn pod_monitor_to_gmp(pod_monitor: &PodMonitor) -> Result<Vec<gmp::PodMonitoring
                         // equivalent and are dropped; only metric relabeling carries over.
                         metric_relabeling: endpoint.metric_relabelings.clone(),
                     }],
+                    target_labels: target_labels.clone(),
                 },
             })
         })
@@ -314,6 +335,13 @@ fn sanitize_name_segment(raw: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
+/// Sanitize a Kubernetes label key into a Prometheus label name (a meta-label
+/// suffix or a `target_label`): every non-alphanumeric becomes `_`. E.g.
+/// `materialize.cloud/organization-name` → `materialize_cloud_organization_name`.
+fn sanitize_label_name(key: &str) -> String {
+    key.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+}
+
 /// A short, stable per-endpoint name suffix used to disambiguate the jobs /
 /// resources produced from a multi-endpoint Monitor. Prefers the last path
 /// segment (`/metrics/mz_compute` → `mz-compute`), then the port name, then the
@@ -401,7 +429,7 @@ fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
     let mut common_relabels: Vec<ClassicRelabelConfig> = Vec::new();
     // NB: operator sorts keys, but this is fine
     for (k, v) in &pod_monitor.spec.selector.match_labels {
-        let sanitized_k = k.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        let sanitized_k = sanitize_label_name(k);
         common_relabels.push(ClassicRelabelConfig {
             // Same labelpresent logic as prometheus-operator (detects `label: ""` edge case specifically)
             source_labels: vec![
@@ -463,6 +491,16 @@ fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
             ));
         }
         job.relabel_configs.extend(get_implicit_pod_relabels());
+        // `podTargetLabels`: copy each pod label onto the metric (`replace` from
+        // the `__meta_kubernetes_pod_label_*` meta-label to the same name).
+        for label in &pod_monitor.spec.pod_target_labels {
+            let sanitized = sanitize_label_name(label);
+            job.relabel_configs.push(ClassicRelabelConfig {
+                source_labels: vec![format!("__meta_kubernetes_pod_label_{sanitized}")],
+                target_label: Some(sanitized),
+                ..Default::default()
+            });
+        }
         for relabel in &endpoint.relabelings {
             job.relabel_configs
                 .push(relabel.to_classic_relabel_config());
@@ -507,7 +545,7 @@ fn transpile_service_monitor(service_monitor: &ServiceMonitor) -> Result<Vec<Scr
     let mut common_relabels: Vec<ClassicRelabelConfig> = Vec::new();
     // This is different from podmonitor by just the source_labels
     for (k, v) in &service_monitor.spec.selector.match_labels {
-        let sanitized_k = k.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        let sanitized_k = sanitize_label_name(k);
         common_relabels.push(ClassicRelabelConfig {
             // Same labelpresent logic as prometheus-operator (detects `label: ""` edge case specifically)
             source_labels: vec![
@@ -752,6 +790,16 @@ mod tests {
                   target_label: container
                 - source_labels: [__meta_kubernetes_pod_name]
                   target_label: pod
+                - source_labels: [__meta_kubernetes_pod_label_materialize_cloud_organization_name]
+                  target_label: materialize_cloud_organization_name
+                - source_labels: [__meta_kubernetes_pod_label_materialize_cloud_organization_namespace]
+                  target_label: materialize_cloud_organization_namespace
+                - source_labels: [__meta_kubernetes_pod_label_materialize_cloud_organization_id]
+                  target_label: materialize_cloud_organization_id
+                - source_labels: [__meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_cluster_id]
+                  target_label: cluster_environmentd_materialize_cloud_cluster_id
+                - source_labels: [__meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id]
+                  target_label: cluster_environmentd_materialize_cloud_replica_id
               metrics_path: /metrics
             "#,
         );
@@ -952,6 +1000,18 @@ mod tests {
                 - port: internal-http
                   interval: 60s
                   path: /metrics
+              targetLabels:
+                fromPod:
+                  - from: materialize.cloud/organization-name
+                    to: materialize_cloud_organization_name
+                  - from: materialize.cloud/organization-namespace
+                    to: materialize_cloud_organization_namespace
+                  - from: materialize.cloud/organization-id
+                    to: materialize_cloud_organization_id
+                  - from: cluster.environmentd.materialize.cloud/cluster-id
+                    to: cluster_environmentd_materialize_cloud_cluster_id
+                  - from: cluster.environmentd.materialize.cloud/replica-id
+                    to: cluster_environmentd_materialize_cloud_replica_id
             "#,
         );
     }
@@ -1037,5 +1097,59 @@ mod tests {
 
         let sc = Monitor::from_yaml_str(fixture("scrapeconfig-cadvisor")).unwrap();
         assert!(sc.to_gmp().unwrap().is_empty());
+    }
+
+    const POD_MONITOR_WITH_TARGET_LABELS: &str = r#"
+        apiVersion: monitoring.coreos.com/v1
+        kind: PodMonitor
+        metadata:
+          name: mini
+        spec:
+          selector:
+            matchLabels:
+              app: foo
+          podTargetLabels:
+            - materialize.cloud/organization-name
+          podMetricsEndpoints:
+            - port: metrics
+        "#;
+
+    /// `podTargetLabels` → a classic `replace` relabel copying the sanitized
+    /// `__meta_kubernetes_pod_label_*` onto the same-named metric label.
+    #[test]
+    fn pod_target_labels_become_classic_relabels() {
+        let monitor = Monitor::from_yaml_str(POD_MONITOR_WITH_TARGET_LABELS).unwrap();
+        let jobs = monitor.transpile().unwrap();
+        let last = jobs[0].relabel_configs.last().unwrap();
+        assert_eq!(
+            last.source_labels,
+            vec!["__meta_kubernetes_pod_label_materialize_cloud_organization_name"]
+        );
+        assert_eq!(
+            last.target_label.as_deref(),
+            Some("materialize_cloud_organization_name")
+        );
+    }
+
+    /// `podTargetLabels` → GMP `targetLabels.fromPod` with `from` = raw pod label
+    /// key and `to` = sanitized Prometheus label name.
+    #[test]
+    fn pod_target_labels_become_gmp_from_pod() {
+        let monitor = Monitor::from_yaml_str(POD_MONITOR_WITH_TARGET_LABELS).unwrap();
+        let resources = monitor.to_gmp().unwrap();
+        let target_labels = resources[0]
+            .spec
+            .target_labels
+            .as_ref()
+            .expect("targetLabels populated");
+        assert_eq!(target_labels.from_pod.len(), 1);
+        assert_eq!(
+            target_labels.from_pod[0].from,
+            "materialize.cloud/organization-name"
+        );
+        assert_eq!(
+            target_labels.from_pod[0].to.as_deref(),
+            Some("materialize_cloud_organization_name")
+        );
     }
 }
