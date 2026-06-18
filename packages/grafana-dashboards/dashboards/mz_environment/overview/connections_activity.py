@@ -23,7 +23,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import enrich, palette, threshold, visualization
+from dashboards import enrich, palette, threshold, variables, visualization
 
 CONNECTIONS_THEME = palette.THEME_PALETTE[1]
 
@@ -85,9 +85,9 @@ class ConnectionsActivityTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (session_type) (
-                        mz_active_sessions{$environmentFilter}
+                        mz_active_sessions{{{variables.ENVIRONMENT_FILTER}}}
                     )
                     """
                 )
@@ -129,9 +129,9 @@ class ConnectionsActivityTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (session_type) (
-                        rate(mz_query_total{$environmentFilter}[$__rate_interval])
+                        rate(mz_query_total{{{variables.ENVIRONMENT_FILTER}}}[$__rate_interval])
                     )
                     """
                 )
@@ -174,9 +174,9 @@ class ConnectionsActivityTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum(
-                        rate(mz_adapter_commands{$environmentFilter}[$__rate_interval])
+                        rate(mz_adapter_commands{{{variables.ENVIRONMENT_FILTER}}}[$__rate_interval])
                     )
                     """
                 )
@@ -218,9 +218,9 @@ class ConnectionsActivityTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (statement_type) (
-                        increase(mz_query_total{$environmentFilter}[$__range])
+                        increase(mz_query_total{{{variables.ENVIRONMENT_FILTER}}}[$__range])
                     ) > 0
                     """
                 )
@@ -269,9 +269,9 @@ class ConnectionsActivityTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (statement_type, session_type) (
-                        rate(mz_query_total{$environmentFilter}[$__rate_interval])
+                        rate(mz_query_total{{{variables.ENVIRONMENT_FILTER}}}[$__rate_interval])
                     ) > 0
                     """
                 )
@@ -324,7 +324,7 @@ class ConnectionsActivityTab:
         # latency is per-cluster here, and the replica selector does not split
         # it further. (The cloud-only `v2_mz_compute_replica_peek_duration_*`
         # histogram was per-replica; no self-managed equivalent exists.)
-        bucket_filter = '$environmentFilter, instance_id=~"$mzClusterList"'
+        bucket_filter = f'{variables.ENVIRONMENT_FILTER}, instance_id=~"$mzClusterList"'
         # instance_id -> cluster_name via mz_cluster_info
         peek_expr = textwrap.dedent(
             f"""
@@ -416,9 +416,9 @@ class ConnectionsActivityTab:
             query_group(
                 promql_query(
                     textwrap.dedent(
-                        """
+                        f"""
                         sum by (application_name, status) (
-                            increase(mz_adapter_commands{$environmentFilter}[$__range])
+                            increase(mz_adapter_commands{{{variables.ENVIRONMENT_FILTER}}}[$__range])
                         )
                         """
                     )

@@ -58,17 +58,30 @@ class VariableNames:
     """A list of replicas within the current materialize cluster."""
 
 
-class IntermediateNames:
-    """Intermediate variable names used for defining other variables."""
+# Inlined PromQL filter fragments.
+#
+# These were previously hidden Grafana ConstantVariables ($environmentFilter,
+# $containerFilter, …) referenced from queries. We inline the literal PromQL
+# instead: constant-variable interpolation does not recursively resolve the
+# nested variable references they contain ($environmentIdList, $mzNamespaceList)
+# and mangles the embedded commas/quotes when the value is spliced into a label
+# matcher. The nested `$…List` references below stay as Grafana variables and
+# are resolved at render time in the browser.
 
-    CONTAINER_FILTER: Final[str] = "containerFilter"
-    """A filter to apply to cAdvisor queries to remove irrelevant series."""
-    ENVIRONMENT_FILTER: Final[str] = "environmentFilter"
-    """A filter to apply to materialize queries to filter to the current environment."""
-    MZ_CLUSTER_FILTER: Final[str] = "clusterFilter"
-    """A filter to apply to materialize queries to filter to the current cluster."""
-    MZ_REPLICA_FILTER: Final[str] = "replicaFilter"
-    """A filter to apply to materialize queries to filter to the current replica."""
+ENVIRONMENT_FILTER: Final[str] = (
+    'materialize_cloud_organization_name=~"$environmentIdList"'
+)
+"""PromQL label matcher scoping a query to the selected environment(s)."""
+
+
+def container_filter(*filters: str) -> str:
+    """PromQL label matchers selecting real Materialize containers in cAdvisor queries.
+
+    Always drops the empty-name cgroup series (`container!=""`) and the pause
+    container (`container!="POD"`); pass extra matchers (e.g. a namespace
+    selector) to prepend them.
+    """
+    return ",".join([*filters, 'container!=""', 'container!="POD"'])
 
 
 def environment_id_variable(
@@ -123,38 +136,6 @@ def environment_namespace() -> dashboardv2_builders.QueryVariable:
                 f'label_values({_MZ_INFO_METRIC}{{ materialize_cloud_organization_name=~"$environmentIdList" }}, materialize_cloud_organization_namespace)'
             )
         )
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
-    )
-
-
-def container_filter_variable(*filters: str) -> dashboardv2_builders.ConstantVariable:
-    """Create a hidden variable for fixing cadvisor container queries.
-
-    All queries generally should have a `container!="",container!="POD"` filter.
-    """
-    filter_list = [*filters, 'container!=""', 'container!="POD"']
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.CONTAINER_FILTER)
-        .label("Container Filter")
-        .description(
-            "A filter to apply to cAdvisor queries to remove irrelevant series"
-        )
-        .query(",".join(filter_list))
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
-    )
-
-
-def environment_filter_variable() -> dashboardv2_builders.ConstantVariable:
-    """Create a hidden variable for filtering to the current environment."""
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.ENVIRONMENT_FILTER)
-        .label("Environment Filter")
-        .description(
-            "A filter to apply to queries to filter to the current environment"
-        )
-        .query('materialize_cloud_organization_name=~"$environmentIdList"')
-        .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
@@ -260,34 +241,6 @@ def replica_list_variable() -> dashboardv2_builders.QueryVariable:
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
-    )
-
-
-def cluster_filter_variable() -> dashboardv2_builders.ConstantVariable:
-    """A variable for filtering to the current cluster."""
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.MZ_CLUSTER_FILTER)
-        .label("Cluster Filter")
-        .description("A filter to apply to queries to filter to the current cluster")
-        .query(
-            'materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList"'
-        )
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
-    )
-
-
-def replica_filter_variable() -> dashboardv2_builders.ConstantVariable:
-    """A variable for filtering to the current replica."""
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.MZ_REPLICA_FILTER)
-        .label("Replica Filter")
-        .description("A filter to apply to queries to filter to the current replica")
-        .query(
-            'materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList"'
-        )
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
 

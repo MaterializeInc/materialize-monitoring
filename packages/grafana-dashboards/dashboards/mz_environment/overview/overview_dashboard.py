@@ -36,18 +36,9 @@ class EnvironmentOverviewDashboard(MzDashboard):
         self.add_variable(variables.sql_prefix_variable())
         self.add_variable(variables.environment_namespace())
         self.add_variable(variables.environment_id_variable())
-        self.add_variable(
-            variables.container_filter_variable(
-                'namespace=~"$mzNamespaceList"',
-            )
-        )
         self.add_variable(variables.include_system_clusters_variable())
         self.add_variable(variables.cluster_list_variable())
         self.add_variable(variables.replica_list_variable())
-
-        self.add_variable(variables.environment_filter_variable())
-        self.add_variable(variables.cluster_filter_variable())
-        self.add_variable(variables.replica_filter_variable())
 
     def build_summary_tab(self) -> dashboardv2_builders.Tab:
         """Get a summary tab."""

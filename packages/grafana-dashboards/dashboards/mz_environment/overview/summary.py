@@ -16,9 +16,9 @@ from py_mzmon_lib.query import promql_query, query_group
 from dashboards import threshold, variables, visualization
 
 from .compute_objects import add_currently_hydrating_panel
-from .k8s_resources import CADVISOR_MISSING, KubeResourcesMixin
+from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixin
 
-COMPUTE_CLUSTER_STATUS = f"${{{variables.VariableNames.SQL_METRIC_PREFIX}}}compute_cluster_status{{${variables.IntermediateNames.ENVIRONMENT_FILTER}}}"
+COMPUTE_CLUSTER_STATUS = f"${{{variables.VariableNames.SQL_METRIC_PREFIX}}}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
 
 
 class OverviewSummary(KubeResourcesMixin):
@@ -129,10 +129,10 @@ class OverviewSummary(KubeResourcesMixin):
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     time()
                     - topk(1,
-                        container_start_time_seconds{$containerFilter, container!="new-promsql-exporter"}
+                        container_start_time_seconds{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
                     )
                     """
                 )
@@ -175,13 +175,13 @@ class OverviewSummary(KubeResourcesMixin):
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (namespace, container) (
                         rate(
-                            container_cpu_usage_seconds_total{$containerFilter}[5m]
+                            container_cpu_usage_seconds_total{{{CONTAINER_FILTER}}}[5m]
                         )
                     ) / sum by (namespace, container) (
-                        kube_pod_container_resource_limits{resource="cpu", namespace=~"$mzNamespaceList"}
+                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList"}}
                     )
                     """
                 )
@@ -222,14 +222,14 @@ class OverviewSummary(KubeResourcesMixin):
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (namespace, container) (
                         avg by (namespace, pod, container) (
-                            container_memory_working_set_bytes{$containerFilter, container!="new-promsql-exporter"}
+                            container_memory_working_set_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
                         )
                     ) / sum by (namespace, container) (
                         avg by (namespace, pod, container) (
-                            container_spec_memory_limit_bytes{$containerFilter, container!="new-promsql-exporter"}
+                            container_spec_memory_limit_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
                         )
                     )
                     """
@@ -290,13 +290,13 @@ class OverviewSummary(KubeResourcesMixin):
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     max(
                         max_over_time(
                             (
-                                mz_dataflow_wallclock_lag_seconds{
-                                    $environmentFilter, instance_id!="", quantile="1"
-                                } < 1e9
+                                mz_dataflow_wallclock_lag_seconds{{
+                                    {variables.ENVIRONMENT_FILTER}, instance_id!="", quantile="1"
+                                }} < 1e9
                             )[$__range:1m]
                         )
                     )

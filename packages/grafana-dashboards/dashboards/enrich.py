@@ -13,6 +13,8 @@ Most data-plane metrics carry only an id (`source_id`, `sink_id`, `collection_id
 
 from __future__ import annotations
 
+from dashboards import variables
+
 OBJECT_INFO = "mz_object_info"
 """Canonical id->name catalog metric. Not SQL-prefixed (genuine, both envs)."""
 
@@ -41,7 +43,7 @@ def with_object_name(value_expr: str, id_label: str, *, extra: str = "") -> str:
     `none`/transient sentinel are not, so don't enrich those panels (or expect
     them to drop). Legend on `{{name}}`.
 
-    `mz_object_info` is scoped by `$environmentFilter`: ids are only unique within
+    `mz_object_info` is scoped to the selected environment(s): ids are only unique within
     an environment, so an unscoped join would match the same id across orgs in
     multi-tenant cloud and break `group_left`. Every panel using this already
     filters its value side by env.
@@ -50,7 +52,7 @@ def with_object_name(value_expr: str, id_label: str, *, extra: str = "") -> str:
     return (
         f"(\n{value_expr}\n)\n"
         f"* on ({id_label}) group_left({pulled})\n"
-        f'label_replace({OBJECT_INFO}{{$environmentFilter}}, "{id_label}", "$1", "global_id", "(.*)")'
+        f'label_replace({OBJECT_INFO}{{{variables.ENVIRONMENT_FILTER}}}, "{id_label}", "$1", "global_id", "(.*)")'
     )
 
 
@@ -67,7 +69,7 @@ def with_cluster_name(value_expr: str, id_label: str = "instance_id") -> str:
     they're all `r1`; keep the more informative `replica_id` in legends.
     """
     info = (
-        f"label_replace(mz_cluster_info{{$environmentFilter}}, "
+        f"label_replace(mz_cluster_info{{{variables.ENVIRONMENT_FILTER}}}, "
         f'"{id_label}", "$1", "cluster_id", "(.*)")'
     )
     info = f'label_replace({info}, "cluster_name", "$1", "name", "(.*)")'

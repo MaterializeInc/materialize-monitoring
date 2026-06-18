@@ -22,7 +22,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import enrich, palette, threshold, visualization
+from dashboards import enrich, palette, threshold, variables, visualization
 
 # Clusterd-side storage metrics (mz_source_*, mz_sink_*, etc.) use the
 # long-form `cluster_environmentd_materialize_cloud_*` id label family — the
@@ -35,7 +35,7 @@ from dashboards import enrich, palette, threshold, visualization
 # everything; selecting a specific compute cluster will hide storage objects
 # that live on a dedicated ingest cluster.
 _COMPUTE_FILTER = (
-    "$environmentFilter, "
+    f"{variables.ENVIRONMENT_FILTER}, "
     'cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", '
     'cluster_environmentd_materialize_cloud_replica_id=~"$mzReplicaList"'
 )
@@ -90,7 +90,7 @@ def _env_total_count_query(metric_name: str):
             textwrap.dedent(
                 f"""
                 max(
-                    sum by (instance) ({metric_name}{{$environmentFilter}})
+                    sum by (instance) ({metric_name}{{{variables.ENVIRONMENT_FILTER}}})
                 ) or vector(0)
                 """
             )
@@ -118,7 +118,7 @@ def _storage_object_count_query(object_kind: str):
                 f"""
                 count(
                     group by (id) (
-                        ${{sqlMetricPrefix}}storage_objects{{$environmentFilter, type="{object_kind}"}}
+                        ${{sqlMetricPrefix}}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="{object_kind}"}}
                     )
                 ) or vector(0)
                 """
@@ -211,10 +211,10 @@ class StorageObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     count by (object_type) (
                         group by (id, object_type) (
-                            ${sqlMetricPrefix}storage_objects{$environmentFilter, type="source"}
+                            ${{sqlMetricPrefix}}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="source"}}
                         )
                     ) > 0
                     """
@@ -277,9 +277,9 @@ class StorageObjectsTab:
         # ${sqlMetricPrefix}storage_objects, with source name joined in from
         # mz_object_info (on id) so the table leads with a human-readable name.
         catalog_expr = textwrap.dedent(
-            """
+            f"""
             group by (id, object_type, connection_type, envelope_type, cluster_id) (
-                ${sqlMetricPrefix}storage_objects{$environmentFilter, type="source"}
+                ${{sqlMetricPrefix}}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="source"}}
             )
             """
         )
@@ -622,10 +622,10 @@ class StorageObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     count by (object_type, envelope_type) (
                         group by (id, object_type, envelope_type) (
-                            ${sqlMetricPrefix}storage_objects{$environmentFilter, type="sink"}
+                            ${{sqlMetricPrefix}}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="sink"}}
                         )
                     ) > 0
                     """
