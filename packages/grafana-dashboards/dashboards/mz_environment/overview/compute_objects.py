@@ -152,7 +152,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     f"""
-                    max(${{sqlMetricPrefix}}mzd_views_count{{{variables.ENVIRONMENT_FILTER}}})
+                    max({variables.SQL_METRIC_PREFIX}mzd_views_count{{{variables.ENVIRONMENT_FILTER}}})
                     """
                 )
             ).legend_format("materialized-views"),
@@ -195,7 +195,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     f"""
-                    max(sum by (instance) (${{sqlMetricPrefix}}indexes_count{{{variables.ENVIRONMENT_FILTER}}})) or vector(0)
+                    max(sum by (instance) ({variables.SQL_METRIC_PREFIX}indexes_count{{{variables.ENVIRONMENT_FILTER}}})) or vector(0)
                     """
                 )
             ).legend_format("indexes"),
@@ -233,7 +233,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     f"""
-                    max(${{sqlMetricPrefix}}views_count{{{variables.ENVIRONMENT_FILTER}}})
+                    max({variables.SQL_METRIC_PREFIX}views_count{{{variables.ENVIRONMENT_FILTER}}})
                     """
                 )
             ).legend_format("views"),
@@ -324,7 +324,7 @@ class ComputeObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (relation_type) (
-                        ${{sqlMetricPrefix}}indexes_count{{{variables.ENVIRONMENT_FILTER}}}
+                        {variables.SQL_METRIC_PREFIX}indexes_count{{{variables.ENVIRONMENT_FILTER}}}
                     )
                     """
                 )
@@ -444,7 +444,7 @@ class ComputeObjectsTab:
         # collection_id -> object name; instance_id -> cluster_name; replica_id kept
         hydration_expr = textwrap.dedent(
             f"""
-            ${{sqlMetricPrefix}}compute_hydration_time_seconds{{
+            {variables.SQL_METRIC_PREFIX}compute_hydration_time_seconds{{
                 {variables.ENVIRONMENT_FILTER},
                 instance_id=~"$mzClusterList",
                 replica_id=~"$mzReplicaList",
@@ -964,7 +964,7 @@ class ComputeObjectsTab:
             sum by (instance_id) (
                 max without (job) (
                     rate(
-                        ${{sqlMetricPrefix}}dataflow_elapsed_seconds_total{{
+                        {variables.SQL_METRIC_PREFIX}dataflow_elapsed_seconds_total{{
                             {variables.ENVIRONMENT_FILTER},
                             instance_id=~"$mzClusterList",
                             replica_id=~"$mzReplicaList"
@@ -1072,11 +1072,11 @@ class ComputeObjectsTab:
         current value at the top.
         """
         # mz_arrangement_record_count / v2_mz_arrangement_record_count
-        # (f-string here, so the prefix var is brace-escaped: ${{sqlMetricPrefix}})
+        # (f-string here, so the prefix var is brace-escaped: {variables.SQL_METRIC_PREFIX})
         records_expr = textwrap.dedent(
             f"""
             max by (collection_id) (
-                ${{sqlMetricPrefix}}arrangement_record_count{{
+                {variables.SQL_METRIC_PREFIX}arrangement_record_count{{
                     {variables.ENVIRONMENT_FILTER},
                     instance_id=~"$mzClusterList",
                     replica_id=~"$mzReplicaList",

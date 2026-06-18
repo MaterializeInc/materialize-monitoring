@@ -27,8 +27,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"} == 1\n) / count(\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n) * 100\n",
-                        "query": "\ncount(\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"} == 1\n) / count(\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n) * 100\n",
+                        "expr": "\ncount(\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"} == 1\n) / count(\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n) * 100\n",
+                        "query": "\ncount(\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"} == 1\n) / count(\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n) * 100\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -126,7 +126,7 @@
         "spec": {
           "id": 1001,
           "title": "Environment Availability (Select Time Range)",
-          "description": "**Fraction of time the environment was healthy over the dashboard's selected time range** \u2014 computed from `${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}` averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000% (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate with cluster restarts or outages; widen the time range to find when they happened, then check _Last Restart Time_ and _Kubernetes Workloads_ for pod restart context.",
+          "description": "**Fraction of time the environment was healthy over the dashboard's selected time range** \u2014 computed from `mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}` averaged over `$__range`. Effectively an SLO snapshot. Nominal: 100.0000% (note the four decimals \u2014 five-nines = 99.999%). Sustained dips correlate with cluster restarts or outages; widen the time range to find when they happened, then check _Last Restart Time_ and _Kubernetes Workloads_ for pod restart context.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -140,8 +140,8 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\navg by (materialize_cloud_organization_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range]\n    ) * 100\n)\n",
-                        "query": "\navg by (materialize_cloud_organization_namespace) (\n    avg_over_time(\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range]\n    ) * 100\n)\n",
+                        "expr": "\navg by (materialize_cloud_organization_namespace) (\n    avg_over_time(\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range]\n    ) * 100\n)\n",
+                        "query": "\navg by (materialize_cloud_organization_namespace) (\n    avg_over_time(\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range]\n    ) * 100\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -760,11 +760,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ngroup by (mz_version) (\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
+                        "expr": "\ngroup by (mz_version) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{mz_version}}",
-                        "query": "\ngroup by (mz_version) (\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
+                        "query": "\ngroup by (mz_version) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2804,9 +2804,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
                         "legendFormat": "Total Clusters",
-                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\"}\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2825,9 +2825,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
                         "legendFormat": "System Clusters",
-                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_cluster_id=~\"^s.*\"}\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2895,9 +2895,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
                         "legendFormat": "Total Replicas",
-                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n    )\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2916,9 +2916,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
+                        "expr": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
                         "legendFormat": "Additional Replicas",
-                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
+                        "query": "\ncount(\n    group by (compute_cluster_id, compute_replica_id) (\n        mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\", compute_replica_name!=\"r1\"}\n    )\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -2986,11 +2986,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount by (size) (\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "expr": "\ncount by (size) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{size}}",
-                        "query": "\ncount by (size) (\n    ${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
+                        "query": "\ncount by (size) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3070,10 +3070,10 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\n${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
+                        "expr": "\nmz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
                         "instant": true,
                         "range": false,
-                        "query": "\n${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
+                        "query": "\nmz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3208,9 +3208,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(${sqlMetricPrefix}mzd_views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
+                        "expr": "\nmax(mz_mzd_views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
                         "legendFormat": "materialized-views",
-                        "query": "\nmax(${sqlMetricPrefix}mzd_views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
+                        "query": "\nmax(mz_mzd_views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3278,9 +3278,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(sum by (instance) (${sqlMetricPrefix}indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"})) or vector(0)\n",
+                        "expr": "\nmax(sum by (instance) (mz_indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"})) or vector(0)\n",
                         "legendFormat": "indexes",
-                        "query": "\nmax(sum by (instance) (${sqlMetricPrefix}indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"})) or vector(0)\n",
+                        "query": "\nmax(sum by (instance) (mz_indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"})) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3348,9 +3348,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(${sqlMetricPrefix}views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
+                        "expr": "\nmax(mz_views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
                         "legendFormat": "views",
-                        "query": "\nmax(${sqlMetricPrefix}views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
+                        "query": "\nmax(mz_views_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3502,11 +3502,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nsum by (relation_type) (\n    ${sqlMetricPrefix}indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
+                        "expr": "\nsum by (relation_type) (\n    mz_indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{relation_type}}",
-                        "query": "\nsum by (relation_type) (\n    ${sqlMetricPrefix}indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
+                        "query": "\nsum by (relation_type) (\n    mz_indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -3892,11 +3892,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "topk(15,\n(\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
+                        "expr": "topk(15,\n(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{cluster_name}} / r{{replica_id}} / {{name}}",
-                        "query": "topk(15,\n(\n(\n\n${sqlMetricPrefix}compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
+                        "query": "topk(15,\n(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4172,9 +4172,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "(\n\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n                materialize_cloud_organization_name=~\"$environmentIdList\",\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "expr": "(\n\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            mz_dataflow_elapsed_seconds_total{\n                materialize_cloud_organization_name=~\"$environmentIdList\",\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "legendFormat": "{{cluster_name}}",
-                        "query": "(\n\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            ${sqlMetricPrefix}dataflow_elapsed_seconds_total{\n                materialize_cloud_organization_name=~\"$environmentIdList\",\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
+                        "query": "(\n\nsum by (instance_id) (\n    max without (job) (\n        rate(\n            mz_dataflow_elapsed_seconds_total{\n                materialize_cloud_organization_name=~\"$environmentIdList\",\n                instance_id=~\"$mzClusterList\",\n                replica_id=~\"$mzReplicaList\"\n            }[$__rate_interval]\n        )\n    )\n)\n\n)\n* on (instance_id) group_left(cluster_name)\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4382,9 +4382,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
+                        "expr": "(\n\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
                         "legendFormat": "{{name}}",
-                        "query": "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
+                        "query": "(\n\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"s.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4495,9 +4495,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
+                        "expr": "(\n\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
                         "legendFormat": "{{name}}",
-                        "query": "(\n\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
+                        "query": "(\n\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"u.*\"\n    }\n)\n\n)\n* on (collection_id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4608,9 +4608,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
+                        "expr": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
                         "legendFormat": "{{collection_id}}",
-                        "query": "\nmax by (collection_id) (\n    ${sqlMetricPrefix}arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
+                        "query": "\nmax by (collection_id) (\n    mz_arrangement_record_count{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        replica_id=~\"$mzReplicaList\",\n        collection_id=~\"t.*|none\"\n    }\n)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4721,9 +4721,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) or vector(0)\n",
+                        "expr": "\ncount(\n    group by (id) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) or vector(0)\n",
                         "legendFormat": "sources",
-                        "query": "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) or vector(0)\n",
+                        "query": "\ncount(\n    group by (id) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4791,9 +4791,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) or vector(0)\n",
+                        "expr": "\ncount(\n    group by (id) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) or vector(0)\n",
                         "legendFormat": "sinks",
-                        "query": "\ncount(\n    group by (id) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) or vector(0)\n",
+                        "query": "\ncount(\n    group by (id) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4861,9 +4861,9 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\nmax(\n    sum by (instance) (${sqlMetricPrefix}tables_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n) or vector(0)\n",
-                        "legendFormat": "${sqlMetricPrefix}tables_count",
-                        "query": "\nmax(\n    sum by (instance) (${sqlMetricPrefix}tables_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n) or vector(0)\n",
+                        "expr": "\nmax(\n    sum by (instance) (mz_tables_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n) or vector(0)\n",
+                        "legendFormat": "mz_tables_count",
+                        "query": "\nmax(\n    sum by (instance) (mz_tables_count{materialize_cloud_organization_name=~\"$environmentIdList\"})\n) or vector(0)\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -4931,11 +4931,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount by (object_type) (\n    group by (id, object_type) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) > 0\n",
+                        "expr": "\ncount by (object_type) (\n    group by (id, object_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) > 0\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{object_type}}",
-                        "query": "\ncount by (object_type) (\n    group by (id, object_type) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) > 0\n",
+                        "query": "\ncount by (object_type) (\n    group by (id, object_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) > 0\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5015,10 +5015,10 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")",
+                        "expr": "(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")",
                         "instant": true,
                         "range": false,
-                        "query": "(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")",
+                        "query": "(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")",
                         "qryType": 1
                       },
                       "datasource": {
@@ -5414,11 +5414,11 @@
                       "group": "prometheus",
                       "version": "v0",
                       "spec": {
-                        "expr": "\ncount by (object_type, envelope_type) (\n    group by (id, object_type, envelope_type) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) > 0\n",
+                        "expr": "\ncount by (object_type, envelope_type) (\n    group by (id, object_type, envelope_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) > 0\n",
                         "instant": true,
                         "range": false,
                         "legendFormat": "{{object_type}} / {{envelope_type}}",
-                        "query": "\ncount by (object_type, envelope_type) (\n    group by (id, object_type, envelope_type) (\n        ${sqlMetricPrefix}storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) > 0\n",
+                        "query": "\ncount by (object_type, envelope_type) (\n    group by (id, object_type, envelope_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) > 0\n",
                         "qryType": 1
                       },
                       "datasource": {
@@ -7397,41 +7397,6 @@
       {
         "kind": "QueryVariable",
         "spec": {
-          "name": "sqlMetricPrefix",
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "hide": "hideVariable",
-          "refresh": "never",
-          "skipUrlSync": true,
-          "query": {
-            "kind": "DataQuery",
-            "group": "prometheus",
-            "version": "v0",
-            "spec": {
-              "expr": "query_result(group by (__name__) ({__name__=~\".*compute_cluster_status\"}))",
-              "query": "query_result(group by (__name__) ({__name__=~\".*compute_cluster_status\"}))",
-              "qryType": 1
-            },
-            "datasource": {
-              "name": "${metricsDatasource}"
-            }
-          },
-          "regex": "/(?<text>(?<value>.*))compute_cluster_status.*/",
-          "sort": "disabled",
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": true,
-          "label": "SQL Metric Prefix",
-          "description": "The prefix for all SQL-derived metrics. In self-managed, this is `mz_`; in cloud, this uses `v2_mz_`.",
-          "definition": "query_result(group by (__name__) ({__name__=~\".*compute_cluster_status\"}))"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
           "name": "mzNamespaceList",
           "current": {
             "text": "",
@@ -7529,8 +7494,8 @@
             "group": "prometheus",
             "version": "v0",
             "spec": {
-              "expr": "query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
-              "query": "query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
+              "expr": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
+              "query": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })",
               "qryType": 1
             },
             "datasource": {
@@ -7545,7 +7510,7 @@
           "allowCustomValue": true,
           "label": "Cluster",
           "description": "The cluster within the current environment to filter to",
-          "definition": "query_result(${sqlMetricPrefix}compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })"
+          "definition": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })"
         }
       },
       {

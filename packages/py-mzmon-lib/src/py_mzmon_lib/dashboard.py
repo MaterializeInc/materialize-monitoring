@@ -56,7 +56,7 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
     """
 
     def __init__(
-        self, dashboard_api: DashboardAPI = DashboardAPI.DASHBOARD_V2, **kwargs
+        self, *, dashboard_api: DashboardAPI = DashboardAPI.DASHBOARD_V2, **kwargs
     ):
         """Initialize the MzDashboard."""
         self.dashboard_api = dashboard_api

@@ -6,14 +6,23 @@ from typing import Final
 
 from grafana_foundation_sdk.cog import builder as cogbuilder
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
+from py_mzmon_lib.config import GLOBAL_DASHBOARD_CONFIG
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import METRICS_DATASOURCE_VAR_NAME, promql_query
+
+SQL_METRIC_PREFIX: Final[str] = GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix
+"""Prefix for all SQL-derived metrics, baked in at generation time.
+
+Resolved from `GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix` (`mz_` self-managed;
+a `v2_mz_` cloud variant is planned). GMP cannot dynamically detect metric or
+label names, so we bake the prefix into the rendered PromQL rather than using a
+`$sqlMetricPrefix` Grafana query variable that auto-detects at view time.
+"""
 
 _MZ_INFO_METRIC = "mz_compute_commands_total"
 # Info variables that can be used to discover environment/cluster/replica
 # context for other variables to filter on.
-# You must prefix these with SQL_METRIC_PREFIX (mz_ or v2_mz_) to work.
-_MZ_CLUSTER_INFO_METRIC = "${sqlMetricPrefix}compute_cluster_status"
+_MZ_CLUSTER_INFO_METRIC = f"{SQL_METRIC_PREFIX}compute_cluster_status"
 
 
 class VariableNames:
@@ -30,18 +39,6 @@ class VariableNames:
     """
     NAMESPACE_LIST: Final[str] = "namespaceList"
     """A list of Kubernetes namespaces."""
-
-    SQL_METRIC_PREFIX: Final[str] = "sqlMetricPrefix"
-    """The prefix for all SQL-derived metrics.
-
-    As of June 2026, in self-managed, this is `mz_`; in cloud, this uses `v2_mz_`.
-
-    Historically, this was `sql_` for some very old promsql setups (justwatchcom/sql_exporter).
-    Cloud introduced new-promsql-exporter later with the `v2_mz_` prefix (never made it to self-managed).
-    Self-managed introduced its own environmentd sql endpoints with the `mz_` prefix (never made it to cloud).
-
-    In the future, these should converge (unplanned).
-    """
 
     ENVIRONMENT_ID_LIST: Final[str] = "environmentIdList"
     """A list of environment IDs to filter to.
@@ -155,31 +152,6 @@ def include_system_clusters_variable() -> dashboardv2_builders.SwitchVariable:
         .current(".*")
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
-    )
-
-
-def sql_prefix_variable() -> dashboardv2_builders.QueryVariable:
-    """A variable for the prefix of all SQL-derived metrics.
-
-    We can guess this by looking at _MZ_CLUSTER_INFO_METRIC.
-    """
-    return (
-        dashboardv2_builders.QueryVariable(VariableNames.SQL_METRIC_PREFIX)
-        .label("SQL Metric Prefix")
-        .description(
-            "The prefix for all SQL-derived metrics. In self-managed, this is `mz_`; in cloud, this uses `v2_mz_`."
-        )
-        .definition(
-            'query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))'
-        )
-        .query(
-            promql_query(
-                'query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))'
-            )
-        )
-        .skip_url_sync(True)
-        .regex(r"/(?<text>(?<value>.*))compute_cluster_status.*/")
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
 

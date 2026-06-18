@@ -18,7 +18,7 @@ from dashboards import threshold, variables, visualization
 from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixin
 
-COMPUTE_CLUSTER_STATUS = f"${{{variables.VariableNames.SQL_METRIC_PREFIX}}}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
+COMPUTE_CLUSTER_STATUS = f"{variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
 
 
 class OverviewSummary(KubeResourcesMixin):
