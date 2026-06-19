@@ -2164,7 +2164,7 @@
         "kind": "Panel",
         "spec": {
           "id": 1023,
-          "title": "Adapter Command Rate",
+          "title": "SQL Control Plane Command Rate",
           "description": "**Commands per second across the adapter** \u2014 the SQL protocol layer that handles parse, execute, prepare, fetch, etc. Usually higher than the query rate because each query produces several commands. Sudden flat-line on a usually-busy env is unusual (could indicate adapter trouble). Use _Adapter Commands by Application_ below to see which clients dominate, and watch its Errors column for failed commands. Environment-scoped.",
           "links": [],
           "data": {
@@ -2606,8 +2606,8 @@
         "kind": "Panel",
         "spec": {
           "id": 1029,
-          "title": "Adapter Commands by Application",
-          "description": "**Adapter command totals per `application_name` over the dashboard time range, split into Success and Errors columns.** Rows sorted by Errors (descending) so anything bad floats to the top. The Errors column is threshold-colored \u2014 non-zero jumps out visually. Most clients set `application_name` via the PostgreSQL connection string; clients that don't are bucketed as `unrecognized` or `unspecified` (normal). Sustained non-zero Errors on a real application means that app is consistently failing \u2014 investigate by correlating with that application's own logs, and inspect recent failures via Materialize's `mz_internal` activity-log views.",
+          "title": "SQL Control Plane Commands by Application",
+          "description": "**SQL control plane command totals per `application_name` over the dashboard time range, split into Success and Errors columns.** Rows sorted by Errors (descending) so anything bad floats to the top. The Errors column is threshold-colored \u2014 non-zero jumps out visually. Most clients set `application_name` via the PostgreSQL connection string; clients that don't are bucketed as `unrecognized` or `unspecified` (normal). Sustained non-zero Errors on a real application means that app is consistently failing \u2014 investigate by correlating with that application's own logs, and inspect recent failures via Materialize's `mz_internal` activity-log views.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3487,7 +3487,7 @@
         "kind": "Panel",
         "spec": {
           "id": 1038,
-          "title": "Index Types",
+          "title": "Index Relationship Types",
           "description": "**Indexes by the underlying relation type** (view / table / materialized-view). Most workloads heavily favor indexes on views \u2014 that's the canonical 'maintain a query's result' pattern. A high ratio of indexes on tables is unusual and worth understanding (often a misunderstanding of materialization). Environment-scoped \u2014 not affected by the cluster/replica filters.",
           "links": [],
           "data": {
@@ -3571,7 +3571,7 @@
         "kind": "Panel",
         "spec": {
           "id": 1039,
-          "title": "Frontier Lag by Cluster",
+          "title": "Freshness Lag by Cluster",
           "description": "**How far behind real time each cluster's most-lagged collection is** \u2014 the worst-case freshness across all indexes, materialized views, and sources on the cluster. Nominal: low and flat (sub-second to a few seconds) for a keeping-up cluster. A sustained climb means a collection can't keep pace with its input rate (under-provisioned cluster or an expensive dataflow); a sharp spike that decays back down is normal right after a restart or DDL while dataflows re-hydrate. The catalog cluster (`s2`) sits a couple seconds back as its baseline. For which collection is responsible see _Most-Lagged Collections_; for hydration specifically see the _Hydration_ row.",
           "links": [],
           "data": {
@@ -6683,7 +6683,7 @@
                             "fillScreen": false
                           }
                         },
-                        "title": "Adapter Commands",
+                        "title": "SQL Control Plane Commands",
                         "hideHeader": false
                       }
                     }

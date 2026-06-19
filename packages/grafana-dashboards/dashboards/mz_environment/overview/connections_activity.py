@@ -186,7 +186,7 @@ class ConnectionsActivityTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Adapter Command Rate")
+            .title("SQL Control Plane Command Rate")
             .description(
                 "**Commands per second across the adapter** — the SQL "
                 "protocol layer that handles parse, execute, prepare, "
@@ -489,9 +489,9 @@ class ConnectionsActivityTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Adapter Commands by Application")
+            .title("SQL Control Plane Commands by Application")
             .description(
-                "**Adapter command totals per `application_name` over "
+                "**SQL control plane command totals per `application_name` over "
                 "the dashboard time range, split into Success and Errors "
                 "columns.** Rows sorted by Errors (descending) so "
                 "anything bad floats to the top. The Errors column is "
@@ -530,10 +530,14 @@ class ConnectionsActivityTab:
         return panel_id
 
     def build_adapter_commands_row(self) -> dashboardv2_builders.Row:
-        """Adapter Commands row: per-application Success/Errors breakdown table."""
+        """Adapter Commands row: per-application Success/Errors breakdown table.
+
+        NB: internal (and metrics) refer to "adapter", but externally we
+        refer to "SQL Control Plane" for consumers.
+        """
         return (
             dashboardv2_builders.Row()
-            .title("Adapter Commands")
+            .title("SQL Control Plane Commands")
             .hide_header(False)
             .layout(
                 dashboardv2_builders.AutoGrid()

@@ -351,18 +351,18 @@ spec:
                   sort:
                   - desc: true
                     field: Errors
-        description: "**Adapter command totals per `application_name` over the dashboard\
-          \ time range, split into Success and Errors columns.** Rows sorted by Errors\
-          \ (descending) so anything bad floats to the top. The Errors column is threshold-colored\
-          \ \u2014 non-zero jumps out visually. Most clients set `application_name`\
-          \ via the PostgreSQL connection string; clients that don't are bucketed\
-          \ as `unrecognized` or `unspecified` (normal). Sustained non-zero Errors\
-          \ on a real application means that app is consistently failing \u2014 investigate\
-          \ by correlating with that application's own logs, and inspect recent failures\
-          \ via Materialize's `mz_internal` activity-log views."
+        description: "**SQL control plane command totals per `application_name` over\
+          \ the dashboard time range, split into Success and Errors columns.** Rows\
+          \ sorted by Errors (descending) so anything bad floats to the top. The Errors\
+          \ column is threshold-colored \u2014 non-zero jumps out visually. Most clients\
+          \ set `application_name` via the PostgreSQL connection string; clients that\
+          \ don't are bucketed as `unrecognized` or `unspecified` (normal). Sustained\
+          \ non-zero Errors on a real application means that app is consistently failing\
+          \ \u2014 investigate by correlating with that application's own logs, and\
+          \ inspect recent failures via Materialize's `mz_internal` activity-log views."
         id: 1029
         links: []
-        title: Adapter Commands by Application
+        title: SQL Control Plane Commands by Application
         vizConfig:
           group: table
           kind: VizConfig
@@ -1353,7 +1353,7 @@ spec:
           \ and watch its Errors column for failed commands. Environment-scoped."
         id: 1023
         links: []
-        title: Adapter Command Rate
+        title: SQL Control Plane Command Rate
         vizConfig:
           group: stat
           kind: VizConfig
@@ -1829,7 +1829,7 @@ spec:
           \ row."
         id: 1039
         links: []
-        title: Frontier Lag by Cluster
+        title: Freshness Lag by Cluster
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -2382,7 +2382,7 @@ spec:
           \ filters."
         id: 1038
         links: []
-        title: Index Types
+        title: Index Relationship Types
         vizConfig:
           group: piechart
           kind: VizConfig
@@ -6450,7 +6450,7 @@ spec:
                             name: adapter-commands-by-app
                       maxColumnCount: 1
                       rowHeightMode: standard
-                  title: Adapter Commands
+                  title: SQL Control Plane Commands
           title: Connections / Activity
       - kind: TabsLayoutTab
         spec:

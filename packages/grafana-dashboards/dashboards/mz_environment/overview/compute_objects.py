@@ -336,7 +336,7 @@ class ComputeObjectsTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Index Types")
+            .title("Index Relationship Types")
             .description(
                 "**Indexes by the underlying relation type** (view / table "
                 "/ materialized-view). Most workloads heavily favor indexes "
@@ -683,7 +683,7 @@ class ComputeObjectsTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Frontier Lag by Cluster")
+            .title("Freshness Lag by Cluster")
             .description(
                 "**How far behind real time each cluster's most-lagged "
                 "collection is** — the worst-case freshness across all "
