@@ -79,8 +79,13 @@ For variables which should generally be left on their defaults but may be modifi
 ### Intermediates
 
 Intermediate variables are variables that are computed from other variables and are hidden from the UI (in v2: `hideVariable`; in v1: VariableHide "2").
+The hidden discovery variables still use this pattern — e.g. `mzNamespaceList`, which is derived from `environmentIdList`.
 
-Constant Variables may contain "chained variables" and may use other variables as part of their definition. This pattern slightly contradicts the documentation which says Constant Variables are "static", but the pattern is useful for reusable snippets.
+**Do not use Constant Variables for reusable PromQL filter snippets.**
+We used to express shared label-matcher fragments (`$environmentFilter`, `$containerFilter`, `$clusterFilter`, `$replicaFilter`) as hidden Constant Variables whose values chained other variables.
+Grafana's constant-variable interpolation does not recursively resolve those nested `$…List` references and mangles the embedded commas/quotes when the value is spliced into a label matcher, so the rendered query broke.
+These are now **inlined as Python fragments** at generation time instead — a module constant `variables.ENVIRONMENT_FILTER` and a `variables.container_filter(*extra)` helper — interpolated into the query f-strings.
+The nested `$…List` references inside those fragments stay as real Grafana variables and resolve at view time; only the wrapper indirection is gone.
 
 ### Multi-select variables in regex contexts
 
@@ -287,9 +292,9 @@ Use `[$__rate_interval]` for `rate()` window selectors. Grafana derives this fro
 
 ### Filtering cAdvisor metrics
 
-The `$containerFilter` constant variable expands to `namespace=~"$mzNamespaceList",container!="",container!="POD"`. This excludes the pod-network-namespace sentinel and the empty-container series cAdvisor reports for pod-level metrics.
+The inlined container filter (`variables.container_filter('namespace=~"$mzNamespaceList"')`, exposed as the `CONTAINER_FILTER` constant in `k8s_resources.py`) expands to `namespace=~"$mzNamespaceList",container!="",container!="POD"`. This excludes the pod-network-namespace sentinel and the empty-container series cAdvisor reports for pod-level metrics.
 
-That means **don't use `$containerFilter` for `container_network_*` metrics** — those *are* the pod-level metrics it excludes. For network queries, scope only with `namespace=~"$mzNamespaceList"` (plus pod regex matchers as needed).
+That means **don't use `CONTAINER_FILTER` for `container_network_*` metrics** — those *are* the pod-level metrics it excludes. For network queries, scope only with `namespace=~"$mzNamespaceList"` (plus pod regex matchers as needed).
 
 ### Aggregation defaults
 
@@ -317,11 +322,12 @@ Materialize cluster pods follow the naming convention `…-cluster-<cluster_id>-
 CLUSTER_POD_RE = ".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"
 NONCLUSTER_POD_RE = ".*-cluster-.*-replica-.*"
 
+# In an f-string query, `{CONTAINER_FILTER}` interpolates the inlined filter:
 # Query 1 — cluster-replica pods, filtered by selection:
-container_cpu_usage_seconds_total{$containerFilter, pod=~"<CLUSTER_POD_RE>"}
+container_cpu_usage_seconds_total{{{CONTAINER_FILTER}, pod=~"{CLUSTER_POD_RE}"}}
 
 # Query 2 — everything else, always shown:
-container_cpu_usage_seconds_total{$containerFilter, pod!~"<NONCLUSTER_POD_RE>"}
+container_cpu_usage_seconds_total{{{CONTAINER_FILTER}, pod!~"{NONCLUSTER_POD_RE}"}}
 ```
 
 Putting the regex constants at module scope (next to `CADVISOR_MISSING` etc.) keeps them shareable across all panels in the file and prevents drift between numerator and denominator patterns.
@@ -337,13 +343,25 @@ Putting the regex constants at module scope (next to `CADVISOR_MISSING` etc.) ke
 
 When verifying, query the live instance for what actually exists (`list_prometheus_metric_names`, `list_prometheus_label_names`) rather than trusting a remembered metric name.
 
-### Converging cloud and self-managed: `$sqlMetricPrefix`
+### Converging cloud and self-managed: the SQL metric prefix
 
-A subset of metrics is **SQL-derived** and differs between environments only by a name prefix: `mz_X` on self-managed (environmentd `/metrics/mz_*` endpoints) vs `v2_mz_X` in cloud (`new-promsql-exporter`). To write one query that works in both, prefix those metric names with the `$sqlMetricPrefix` template variable, which auto-detects per environment (`mz_` or `v2_mz_`) by inspecting which `…compute_cluster_status` exists. See `variables.py`.
+A subset of metrics is **SQL-derived** and differs between environments only by a name prefix: `mz_X` on self-managed (environmentd `/metrics/mz_*` endpoints) vs `v2_mz_X` in cloud (`new-promsql-exporter`).
+To write one query that works in both, prefix those metric names with `variables.SQL_METRIC_PREFIX`.
 
-```promql
-${sqlMetricPrefix}compute_cluster_status{$environmentFilter}   # -> mz_… or v2_mz_…
+**The prefix is baked in at generation time**, not resolved by Grafana at view time.
+`variables.SQL_METRIC_PREFIX` is read from `GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix` (`py_mzmon_lib.config`), which defaults to `mz_`.
+This replaced an earlier `$sqlMetricPrefix` Grafana query variable that auto-detected the prefix by inspecting which `…compute_cluster_status` series existed — **Google Managed Prometheus (GMP) can't run that `query_result(...)` + regex auto-detection**, so the prefix must be decided in Python and emitted as a literal metric name.
+
+```python
+# In a Python f-string query:
+f"{variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
+# renders -> mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentIdList"}
 ```
+
+A `v2_mz_` cloud variant is **planned but not built yet**.
+It is selected by config (`GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix`, settable via the `SQL_METRIC_PREFIX` env var), so flipping it regenerates every SQL-derived metric name.
+**Caveat:** `variables.SQL_METRIC_PREFIX` is captured at module import, so a single process generates one prefix — produce the `mz_` and `v2_mz_` boards in separate invocations.
+(Threading a build context through panel construction, so one process can emit both variants, is under consideration — see the open question at the end of this section.)
 
 **Only prefix SQL-derived metrics.** **Genuine instrumentation** (timely/differential counters scraped from environmentd/clusterd `/metrics`) carries the **same bare `mz_` name in both environments** — prefixing it produces `v2_mz_…` which doesn't exist in cloud and breaks the panel.
 
@@ -353,10 +371,25 @@ ${sqlMetricPrefix}compute_cluster_status{$environmentFilter}   # -> mz_… or v2
 Quick test: a metric is genuine (don't prefix) if it appears under the plain-`mz_` name on the cloud `materialize` job; SQL-derived (prefix) if cloud only has it as `v2_mz_`.
 
 Conventions:
-- Write `${sqlMetricPrefix}` as a literal token in the PromQL string (like `$environmentFilter`). In Python **f-string** queries, brace-escape it as `${{sqlMetricPrefix}}`.
+- Interpolate `{variables.SQL_METRIC_PREFIX}` into the query f-string (a metric prose name in a panel *description* stays the literal self-managed name — don't substitute there).
 - Leave a one-line reference comment with the concrete names, e.g. `# mz_tables_count / v2_mz_tables_count`, so the resolved names stay greppable.
 - In table transforms, the value-field name is the **resolved** metric, so `excludeByName` must list **both** `mz_X` and `v2_mz_X`.
-- This is a convergence shim: once cloud's `new-promsql-exporter` is replaced by native `mz_` instrumentation, `$sqlMetricPrefix` collapses to `mz_` everywhere and the variable retires.
+- This is a convergence shim: once cloud's `new-promsql-exporter` is replaced by native `mz_` instrumentation, the prefix collapses to `mz_` everywhere and the config knob retires.
+
+<!--
+Open question (raised June 2026): the prefix is currently a module-import-time
+constant, so emitting both mz_ and v2_mz_ variants needs separate processes.
+A BuildContext threaded through panel construction (carrying sql_metric_prefix
+and any other per-variant knobs) would let one run produce multiple variants and
+make the dependency explicit rather than reading module/global state. Not yet
+decided; revisit when the v2_mz_ variant is actually built.
+-->
+
+### Rendering and verifying generation-time substitutions
+
+When a change only rewrites how queries are *generated* (inlining a filter, baking the prefix) but should not change the *rendered* PromQL, verify it mechanically.
+Render the dashboard before and after, apply the expected textual expansion to the baseline (e.g. `${sqlMetricPrefix}` → `mz_`, `$environmentFilter` → `materialize_cloud_organization_name=~"$environmentIdList"`), and assert the query bodies are byte-identical and only the intended template variables were removed.
+This catches f-string brace-escaping mistakes that lint and type-checks miss.
 
 ## Materialize metric label families
 
@@ -479,8 +512,9 @@ Real example: `add_currently_hydrating_panel`.
 
 To get a single env-wide count from a metric that may carry breakdown labels (like a `type`/`size` split), without falling for the "max grabs the biggest bucket, not the total" trap:
 
-```promql
-max(sum by (instance) (<metric>{$environmentFilter})) or vector(0)
+```python
+# authored as a Python f-string; the env filter is inlined, not a Grafana variable:
+f"max(sum by (instance) (<metric>{{{variables.ENVIRONMENT_FILTER}}})) or vector(0)"
 ```
 
 `sum by (instance)` collapses all label dimensions per scraper instance, then `max(...)` dedups across multiple exporter pods if there's more than one. Real example: `_env_total_count_query` in `storage_objects.py` (used for `mz_tables_count`; the source/sink count callers have no self-managed metric and read 0 via `or vector(0)`).
@@ -489,12 +523,13 @@ max(sum by (instance) (<metric>{$environmentFilter})) or vector(0)
 
 For Kubernetes panels (CPU, memory, networking) where you want the cluster/replica selectors to scope cluster pods but not hide infra pods:
 
-```promql
+```python
+# authored as Python f-strings; CONTAINER_FILTER is inlined, not a Grafana variable:
 # Cluster pods (filtered)
-<metric>{$containerFilter, pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}
+f'<metric>{{{CONTAINER_FILTER}, pod=~".*-cluster-${{mzClusterList:regex}}-replica-${{mzReplicaList:regex}}-.*"}}'
 
 # Non-cluster pods (always shown)
-<metric>{$containerFilter, pod!~".*-cluster-.*-replica-.*"}
+f'<metric>{{{CONTAINER_FILTER}, pod!~".*-cluster-.*-replica-.*"}}'
 ```
 
 Constants `CLUSTER_POD_RE` and `NONCLUSTER_POD_RE` in `k8s_resources.py` hold the regex strings — reuse them rather than re-typing.

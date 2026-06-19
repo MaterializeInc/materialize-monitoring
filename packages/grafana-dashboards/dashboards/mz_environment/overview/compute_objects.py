@@ -24,7 +24,7 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import enrich, palette, threshold, visualization
+from dashboards import enrich, palette, threshold, variables, visualization
 
 NO_FILTER_MATCH = "No matches for the current filters"
 # Some metrics in this tab are pre-calculated by the promsql-exporter at the
@@ -54,10 +54,10 @@ ARRANGEMENT_LABEL_REPLICA_ID = "cluster_environmentd_materialize_cloud_replica_i
 # job names: the authoritative name varies by deploy and some metrics live only
 # on a "legacy" job. See the longer note in storage_objects.py.
 
-# A short PromQL fragment that filters by the current $environmentFilter,
+# A short PromQL fragment that filters by the current environment,
 # $mzClusterList, and $mzReplicaList using the long-form label names.
 _ARRANGEMENT_FILTER = (
-    f"$environmentFilter, "
+    f"{variables.ENVIRONMENT_FILTER}, "
     f'{ARRANGEMENT_LABEL_CLUSTER_ID}=~"$mzClusterList", '
     f'{ARRANGEMENT_LABEL_REPLICA_ID}=~"$mzReplicaList"'
 )
@@ -93,15 +93,15 @@ def add_currently_hydrating_panel(
     query = query_group(
         promql_query(
             textwrap.dedent(
-                """
+                f"""
                 count(
                     max by (instance_id, collection_id) (
-                        mz_dataflow_wallclock_lag_seconds{
-                            $environmentFilter,
+                        mz_dataflow_wallclock_lag_seconds{{
+                            {variables.ENVIRONMENT_FILTER},
                             instance_id=~"$mzClusterList",
                             instance_id!="",
                             quantile="1"
-                        } > 1e15
+                        }} > 1e15
                     )
                 ) or vector(0)
                 """
@@ -151,8 +151,8 @@ class ComputeObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
-                    max(${sqlMetricPrefix}mzd_views_count{$environmentFilter})
+                    f"""
+                    max({variables.SQL_METRIC_PREFIX}mzd_views_count{{{variables.ENVIRONMENT_FILTER}}})
                     """
                 )
             ).legend_format("materialized-views"),
@@ -194,8 +194,8 @@ class ComputeObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
-                    max(sum by (instance) (${sqlMetricPrefix}indexes_count{$environmentFilter})) or vector(0)
+                    f"""
+                    max(sum by (instance) ({variables.SQL_METRIC_PREFIX}indexes_count{{{variables.ENVIRONMENT_FILTER}}})) or vector(0)
                     """
                 )
             ).legend_format("indexes"),
@@ -232,8 +232,8 @@ class ComputeObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
-                    max(${sqlMetricPrefix}views_count{$environmentFilter})
+                    f"""
+                    max({variables.SQL_METRIC_PREFIX}views_count{{{variables.ENVIRONMENT_FILTER}}})
                     """
                 )
             ).legend_format("views"),
@@ -269,9 +269,9 @@ class ComputeObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (session_type) (
-                        mz_active_subscribes{$environmentFilter}
+                        mz_active_subscribes{{{variables.ENVIRONMENT_FILTER}}}
                     )
                     """
                 )
@@ -322,9 +322,9 @@ class ComputeObjectsTab:
         query = query_group(
             promql_query(
                 textwrap.dedent(
-                    """
+                    f"""
                     sum by (relation_type) (
-                        ${sqlMetricPrefix}indexes_count{$environmentFilter}
+                        {variables.SQL_METRIC_PREFIX}indexes_count{{{variables.ENVIRONMENT_FILTER}}}
                     )
                     """
                 )
@@ -336,7 +336,7 @@ class ComputeObjectsTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Index Types")
+            .title("Index Relationship Types")
             .description(
                 "**Indexes by the underlying relation type** (view / table "
                 "/ materialized-view). Most workloads heavily favor indexes "
@@ -377,13 +377,13 @@ class ComputeObjectsTab:
         panel_id = "hydration-queue-size"
         # instance_id -> cluster_name via mz_cluster_info; replica_id kept (r1 names aren't useful)
         hydration_queue = textwrap.dedent(
-            """
+            f"""
             sum by (instance_id, replica_id) (
-                mz_compute_controller_hydration_queue_size{
-                    $environmentFilter,
+                mz_compute_controller_hydration_queue_size{{
+                    {variables.ENVIRONMENT_FILTER},
                     instance_id=~"$mzClusterList",
                     replica_id=~"$mzReplicaList"
-                }
+                }}
             ) > 0
             """
         )
@@ -443,13 +443,13 @@ class ComputeObjectsTab:
         # (self-managed: none yet) v2_mz_compute_hydration_time_seconds
         # collection_id -> object name; instance_id -> cluster_name; replica_id kept
         hydration_expr = textwrap.dedent(
-            """
-            ${sqlMetricPrefix}compute_hydration_time_seconds{
-                $environmentFilter,
+            f"""
+            {variables.SQL_METRIC_PREFIX}compute_hydration_time_seconds{{
+                {variables.ENVIRONMENT_FILTER},
                 instance_id=~"$mzClusterList",
                 replica_id=~"$mzReplicaList",
                 hydrated="1"
-            }
+            }}
             """
         )
         enriched_hydration = enrich.with_cluster_name(
@@ -663,14 +663,14 @@ class ComputeObjectsTab:
         panel_id = "freshness-lag-by-cluster"
         # instance_id -> cluster_name via mz_cluster_info
         lag_by_cluster = textwrap.dedent(
-            """
+            f"""
             max by (instance_id) (
-                mz_dataflow_wallclock_lag_seconds{
-                    $environmentFilter,
+                mz_dataflow_wallclock_lag_seconds{{
+                    {variables.ENVIRONMENT_FILTER},
                     instance_id=~"$mzClusterList",
                     instance_id!="",
                     quantile="1"
-                } < 1e9
+                }} < 1e9
             )
             """
         )
@@ -683,7 +683,7 @@ class ComputeObjectsTab:
         self.dashboard.add_panel(
             panel_id,
             dashboardv2_builders.Panel()
-            .title("Frontier Lag by Cluster")
+            .title("Freshness Lag by Cluster")
             .description(
                 "**How far behind real time each cluster's most-lagged "
                 "collection is** — the worst-case freshness across all "
@@ -728,15 +728,15 @@ class ComputeObjectsTab:
         # Enrich the inner per-collection lag, then topk, so all 15 carry a name
         # (collections with no catalog entry drop before ranking).
         lag_expr = textwrap.dedent(
-            """
+            f"""
             max by (instance_id, collection_id) (
-                mz_dataflow_wallclock_lag_seconds{
-                    $environmentFilter,
+                mz_dataflow_wallclock_lag_seconds{{
+                    {variables.ENVIRONMENT_FILTER},
                     instance_id=~"$mzClusterList",
                     instance_id!="",
                     replica_id=~"$mzReplicaList",
                     quantile="1"
-                } < 1e9
+                }} < 1e9
             )
             """
         )
@@ -960,15 +960,15 @@ class ComputeObjectsTab:
         # mz_dataflow_elapsed_seconds_total / v2_mz_dataflow_elapsed_seconds_total
         # instance_id -> cluster_name via mz_cluster_info
         elapsed_expr = textwrap.dedent(
-            """
+            f"""
             sum by (instance_id) (
                 max without (job) (
                     rate(
-                        ${sqlMetricPrefix}dataflow_elapsed_seconds_total{
-                            $environmentFilter,
+                        {variables.SQL_METRIC_PREFIX}dataflow_elapsed_seconds_total{{
+                            {variables.ENVIRONMENT_FILTER},
                             instance_id=~"$mzClusterList",
                             replica_id=~"$mzReplicaList"
-                        }[$__rate_interval]
+                        }}[$__rate_interval]
                     )
                 )
             )
@@ -1072,12 +1072,12 @@ class ComputeObjectsTab:
         current value at the top.
         """
         # mz_arrangement_record_count / v2_mz_arrangement_record_count
-        # (f-string here, so the prefix var is brace-escaped: ${{sqlMetricPrefix}})
+        # (f-string here, so the prefix var is brace-escaped: {variables.SQL_METRIC_PREFIX})
         records_expr = textwrap.dedent(
             f"""
             max by (collection_id) (
-                ${{sqlMetricPrefix}}arrangement_record_count{{
-                    $environmentFilter,
+                {variables.SQL_METRIC_PREFIX}arrangement_record_count{{
+                    {variables.ENVIRONMENT_FILTER},
                     instance_id=~"$mzClusterList",
                     replica_id=~"$mzReplicaList",
                     collection_id=~"{collection_id_regex}"

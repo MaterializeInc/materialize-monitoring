@@ -53,5 +53,11 @@ class GlobalDashboardConfig(BaseSettings):
         description="Default timezone for all dashboards",
     )
 
+    # WARNING: This is mz_ EXCEPT in new-promsql-exporter (`v2_mz_`) and legacy sql-exporter (`sql_`)
+    sql_metric_prefix: str = Field(
+        default="mz_",
+        description="Prefix for Materialize SQL metric endpoints (new-promsql-exporter, /metrics/mz_compute, etc.)",
+    )
+
 
 GLOBAL_DASHBOARD_CONFIG = GlobalDashboardConfig()

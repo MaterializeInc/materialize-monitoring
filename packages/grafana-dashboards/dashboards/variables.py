@@ -6,14 +6,23 @@ from typing import Final
 
 from grafana_foundation_sdk.cog import builder as cogbuilder
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
+from py_mzmon_lib.config import GLOBAL_DASHBOARD_CONFIG
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import METRICS_DATASOURCE_VAR_NAME, promql_query
+
+SQL_METRIC_PREFIX: Final[str] = GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix
+"""Prefix for all SQL-derived metrics, baked in at generation time.
+
+Resolved from `GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix` (`mz_` self-managed;
+a `v2_mz_` cloud variant is planned). GMP cannot dynamically detect metric or
+label names, so we bake the prefix into the rendered PromQL rather than using a
+`$sqlMetricPrefix` Grafana query variable that auto-detects at view time.
+"""
 
 _MZ_INFO_METRIC = "mz_compute_commands_total"
 # Info variables that can be used to discover environment/cluster/replica
 # context for other variables to filter on.
-# You must prefix these with SQL_METRIC_PREFIX (mz_ or v2_mz_) to work.
-_MZ_CLUSTER_INFO_METRIC = "${sqlMetricPrefix}compute_cluster_status"
+_MZ_CLUSTER_INFO_METRIC = f"{SQL_METRIC_PREFIX}compute_cluster_status"
 
 
 class VariableNames:
@@ -31,18 +40,6 @@ class VariableNames:
     NAMESPACE_LIST: Final[str] = "namespaceList"
     """A list of Kubernetes namespaces."""
 
-    SQL_METRIC_PREFIX: Final[str] = "sqlMetricPrefix"
-    """The prefix for all SQL-derived metrics.
-
-    As of June 2026, in self-managed, this is `mz_`; in cloud, this uses `v2_mz_`.
-
-    Historically, this was `sql_` for some very old promsql setups (justwatchcom/sql_exporter).
-    Cloud introduced new-promsql-exporter later with the `v2_mz_` prefix (never made it to self-managed).
-    Self-managed introduced its own environmentd sql endpoints with the `mz_` prefix (never made it to cloud).
-
-    In the future, these should converge (unplanned).
-    """
-
     ENVIRONMENT_ID_LIST: Final[str] = "environmentIdList"
     """A list of environment IDs to filter to.
 
@@ -58,17 +55,30 @@ class VariableNames:
     """A list of replicas within the current materialize cluster."""
 
 
-class IntermediateNames:
-    """Intermediate variable names used for defining other variables."""
+# Inlined PromQL filter fragments.
+#
+# These were previously hidden Grafana ConstantVariables ($environmentFilter,
+# $containerFilter, …) referenced from queries. We inline the literal PromQL
+# instead: constant-variable interpolation does not recursively resolve the
+# nested variable references they contain ($environmentIdList, $mzNamespaceList)
+# and mangles the embedded commas/quotes when the value is spliced into a label
+# matcher. The nested `$…List` references below stay as Grafana variables and
+# are resolved at render time in the browser.
 
-    CONTAINER_FILTER: Final[str] = "containerFilter"
-    """A filter to apply to cAdvisor queries to remove irrelevant series."""
-    ENVIRONMENT_FILTER: Final[str] = "environmentFilter"
-    """A filter to apply to materialize queries to filter to the current environment."""
-    MZ_CLUSTER_FILTER: Final[str] = "clusterFilter"
-    """A filter to apply to materialize queries to filter to the current cluster."""
-    MZ_REPLICA_FILTER: Final[str] = "replicaFilter"
-    """A filter to apply to materialize queries to filter to the current replica."""
+ENVIRONMENT_FILTER: Final[str] = (
+    'materialize_cloud_organization_name=~"$environmentIdList"'
+)
+"""PromQL label matcher scoping a query to the selected environment(s)."""
+
+
+def container_filter(*filters: str) -> str:
+    """PromQL label matchers selecting real Materialize containers in cAdvisor queries.
+
+    Always drops the empty-name cgroup series (`container!=""`) and the pause
+    container (`container!="POD"`); pass extra matchers (e.g. a namespace
+    selector) to prepend them.
+    """
+    return ",".join([*filters, 'container!=""', 'container!="POD"'])
 
 
 def environment_id_variable(
@@ -127,38 +137,6 @@ def environment_namespace() -> dashboardv2_builders.QueryVariable:
     )
 
 
-def container_filter_variable(*filters: str) -> dashboardv2_builders.ConstantVariable:
-    """Create a hidden variable for fixing cadvisor container queries.
-
-    All queries generally should have a `container!="",container!="POD"` filter.
-    """
-    filter_list = [*filters, 'container!=""', 'container!="POD"']
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.CONTAINER_FILTER)
-        .label("Container Filter")
-        .description(
-            "A filter to apply to cAdvisor queries to remove irrelevant series"
-        )
-        .query(",".join(filter_list))
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
-    )
-
-
-def environment_filter_variable() -> dashboardv2_builders.ConstantVariable:
-    """Create a hidden variable for filtering to the current environment."""
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.ENVIRONMENT_FILTER)
-        .label("Environment Filter")
-        .description(
-            "A filter to apply to queries to filter to the current environment"
-        )
-        .query('materialize_cloud_organization_name=~"$environmentIdList"')
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
-    )
-
-
 def include_system_clusters_variable() -> dashboardv2_builders.SwitchVariable:
     """A variable for whether to include `s*` clusters when filtering for clusters."""
     return (
@@ -174,31 +152,6 @@ def include_system_clusters_variable() -> dashboardv2_builders.SwitchVariable:
         .current(".*")
         .skip_url_sync(True)
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
-    )
-
-
-def sql_prefix_variable() -> dashboardv2_builders.QueryVariable:
-    """A variable for the prefix of all SQL-derived metrics.
-
-    We can guess this by looking at _MZ_CLUSTER_INFO_METRIC.
-    """
-    return (
-        dashboardv2_builders.QueryVariable(VariableNames.SQL_METRIC_PREFIX)
-        .label("SQL Metric Prefix")
-        .description(
-            "The prefix for all SQL-derived metrics. In self-managed, this is `mz_`; in cloud, this uses `v2_mz_`."
-        )
-        .definition(
-            'query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))'
-        )
-        .query(
-            promql_query(
-                'query_result(group by (__name__) ({__name__=~".*compute_cluster_status"}))'
-            )
-        )
-        .skip_url_sync(True)
-        .regex(r"/(?<text>(?<value>.*))compute_cluster_status.*/")
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
 
@@ -260,34 +213,6 @@ def replica_list_variable() -> dashboardv2_builders.QueryVariable:
             )
         )
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
-    )
-
-
-def cluster_filter_variable() -> dashboardv2_builders.ConstantVariable:
-    """A variable for filtering to the current cluster."""
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.MZ_CLUSTER_FILTER)
-        .label("Cluster Filter")
-        .description("A filter to apply to queries to filter to the current cluster")
-        .query(
-            'materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList"'
-        )
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
-    )
-
-
-def replica_filter_variable() -> dashboardv2_builders.ConstantVariable:
-    """A variable for filtering to the current replica."""
-    return (
-        dashboardv2_builders.ConstantVariable(IntermediateNames.MZ_REPLICA_FILTER)
-        .label("Replica Filter")
-        .description("A filter to apply to queries to filter to the current replica")
-        .query(
-            'materialize_cloud_organization_name=~"$environmentIdList", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList"'
-        )
-        .skip_url_sync(True)
-        .hide(dashboardv2.VariableHide.HIDE_VARIABLE)
     )
 
 

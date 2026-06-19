@@ -16,7 +16,11 @@ from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
-from dashboards import palette, visualization
+from dashboards import palette, variables, visualization
+
+# Inlined cAdvisor container filter (was the $containerFilter ConstantVariable):
+# scope to the Materialize namespaces and drop the empty-name / pause series.
+CONTAINER_FILTER = variables.container_filter('namespace=~"$mzNamespaceList"')
 
 CADVISOR_MISSING = "No metrics: cadvisor metrics are required (via kubelet)"
 KSM_MISSING = "No metrics: kube-state-metrics is required"
@@ -45,7 +49,7 @@ class KubeResourcesMixin:
         We show a stat for total cores available.
         """
         panel_id = f"{self.panel_id_prefix}-cpu-total"
-        metric_filter = "$containerFilter"
+        metric_filter = CONTAINER_FILTER
         if not include_monitoring:
             metric_filter += ', container!="new-promsql-exporter"'
         query = query_group(
@@ -92,7 +96,7 @@ class KubeResourcesMixin:
         FIXME: we don't have a swap totals available...
         """
         panel_id = f"{self.panel_id_prefix}-memory-total"
-        metric_filter = "$containerFilter"
+        metric_filter = CONTAINER_FILTER
         if not include_monitoring:
             metric_filter += ', container!="new-promsql-exporter"'
         query = query_group(
@@ -319,7 +323,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                     f"""
                     sum by (namespace, pod, container) (
                         rate(
-                            container_cpu_usage_seconds_total{{$containerFilter, pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
+                            container_cpu_usage_seconds_total{{{CONTAINER_FILTER}, pod=~"{CLUSTER_POD_RE}"}}[$__rate_interval]
                         )
                     ) / sum by (namespace, pod, container) (
                         kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod=~"{CLUSTER_POD_RE}"}}
@@ -332,7 +336,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                     f"""
                     sum by (namespace, pod, container) (
                         rate(
-                            container_cpu_usage_seconds_total{{$containerFilter, pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
+                            container_cpu_usage_seconds_total{{{CONTAINER_FILTER}, pod!~"{NONCLUSTER_POD_RE}"}}[$__rate_interval]
                         )
                     ) / sum by (namespace, pod, container) (
                         kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList", pod!~"{NONCLUSTER_POD_RE}"}}
@@ -379,9 +383,9 @@ class KubeResourcesTab(KubeResourcesMixin):
                 textwrap.dedent(
                     f"""
                     avg by (namespace, pod, container) (
-                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{CLUSTER_POD_RE}"}}
+                        container_memory_working_set_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter", pod=~"{CLUSTER_POD_RE}"}}
                     ) / avg by (namespace, pod, container) (
-                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod=~"{CLUSTER_POD_RE}"}}
+                        container_spec_memory_limit_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter", pod=~"{CLUSTER_POD_RE}"}}
                     )
                     """
                 )
@@ -390,9 +394,9 @@ class KubeResourcesTab(KubeResourcesMixin):
                 textwrap.dedent(
                     f"""
                     avg by (namespace, pod, container) (
-                        container_memory_working_set_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{NONCLUSTER_POD_RE}"}}
+                        container_memory_working_set_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter", pod!~"{NONCLUSTER_POD_RE}"}}
                     ) / avg by (namespace, pod, container) (
-                        container_spec_memory_limit_bytes{{$containerFilter, container!="new-promsql-exporter", pod!~"{NONCLUSTER_POD_RE}"}}
+                        container_spec_memory_limit_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter", pod!~"{NONCLUSTER_POD_RE}"}}
                     )
                     """
                 )

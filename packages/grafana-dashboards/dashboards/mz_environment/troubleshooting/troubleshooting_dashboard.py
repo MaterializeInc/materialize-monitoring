@@ -23,11 +23,6 @@ class LiveTroubleshootingDashboard(MzDashboard):
         """Add variables to the dashboard."""
         self.add_variable(variables.environment_namespace())
         self.add_variable(variables.environment_id_variable())
-        self.add_variable(
-            variables.container_filter_variable(
-                'namespace="$mzNamespace"',
-            )
-        )
 
     def build_layout(self):
         """Get the layout for the dashboard."""
