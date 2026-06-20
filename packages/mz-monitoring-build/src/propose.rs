@@ -11,10 +11,11 @@
 //!
 //! For each changelog-enabled component with changes since its last release, it
 //! recreates a `version-update/<component>` branch as a single commit atop the
-//! base and opens (or force-updates) one PR per component. The version number is
-//! not part of the branch name, so a branch is reused across versions; each
-//! update force-pushes a fresh single commit (no reconciliation with the PR's
-//! current state). A component with no changes is left untouched.
+//! base and opens (or updates) one PR per component. The version number is not
+//! part of the branch name, so a branch is reused across versions; each update
+//! force-pushes a fresh single commit and refreshes the PR title/body, but does
+//! not otherwise reconcile the PR's state. A component with no changes is left
+//! untouched.
 //!
 //! The command is repository-agnostic: owner/repo and the base commit come from
 //! the environment, so another repository can adopt it unchanged.
@@ -272,14 +273,26 @@ async fn push_and_propose(
         .context("creating branch ref")?;
     }
 
-    // Open a PR if one is not already open for this branch.
+    // Open a PR for this branch, or update the open one's title/body so the
+    // description tracks the freshly pushed commit.
     let existing = gh
         .get(&format!(
             "/repos/{owner}/{repo}/pulls?state=open&head={owner}:{}",
             p.branch
         ))
         .await?;
-    if existing.as_array().is_none_or(|prs| prs.is_empty()) {
+    if let Some(number) = existing
+        .as_array()
+        .and_then(|prs| prs.first())
+        .and_then(|pr| pr["number"].as_u64())
+    {
+        gh.patch(
+            &format!("/repos/{owner}/{repo}/pulls/{number}"),
+            &json!({ "title": p.title, "body": pr_body(p, &args.base) }),
+        )
+        .await
+        .context("updating PR")?;
+    } else {
         let pr = gh
             .post(
                 &format!("/repos/{owner}/{repo}/pulls"),
