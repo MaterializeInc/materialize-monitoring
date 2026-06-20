@@ -42,7 +42,7 @@ A released section can therefore sit above other components' unreleased placehol
 `mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
 
 - recreates the `version-update/<component>` branch as a **single commit atop the base**, applying that component's [`release`](versioning/) changelog + version + `uv.lock` edits (the version is not in the branch name);
-- force-pushes the branch (stateless — it never reconciles the PR's current state) and opens one PR per component if none is open.
+- force-pushes the branch (stateless) and either opens the PR or refreshes the open one's title/body so the description tracks the new commit.
 
 The PR body is the component's released changelog section. New PRs are labeled `auto-format` (`--label`, empty to disable) so the [auto-format](#auto-format) workflow can fix anything the commit cannot regenerate.
 
