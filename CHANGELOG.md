@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.11.0 (Unreleased)
+
+_Changes Pending_
+
 ## Prometheus Scrapers v0.2.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,24 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Dashboards v0.10.0 (Unreleased)
+## Dashboards v0.10.0
 
-_Changes Pending_
+* Improvements to better support GCP/GKE/GMP Dashboards/Datasources
+    * [materialize-monitoring#40](https://github.com/MaterializeInc/materialize-monitoring/pull/40)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Update PR description on bump updates
+        * [materialize-monitoring#42](https://github.com/MaterializeInc/materialize-monitoring/pull/42)
+    * Attach explicit pod labels to scrapers in GCP
+        * [materialize-monitoring#39](https://github.com/MaterializeInc/materialize-monitoring/pull/39)
+    * Generate PodMonitoring resources for GCP
+        * [materialize-monitoring#38](https://github.com/MaterializeInc/materialize-monitoring/pull/38)
+    * Upgrade to rust 1.96
+        * [materialize-monitoring#37](https://github.com/MaterializeInc/materialize-monitoring/pull/37)
+    * Expose classic scrapeconfigs
+        * [materialize-monitoring#34](https://github.com/MaterializeInc/materialize-monitoring/pull/34)
 
 ## Prometheus Scrapers v0.1.1
 
