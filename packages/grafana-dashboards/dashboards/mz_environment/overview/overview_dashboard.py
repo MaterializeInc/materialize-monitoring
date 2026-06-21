@@ -34,10 +34,13 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     def configure_variables(self) -> None:
         """Add variables to the dashboard."""
+        assert isinstance(self.context, MzBuildContext)
         self.add_variable(variables.environment_namespace())
         self.add_variable(variables.environment_id_variable())
         self.add_variable(variables.include_system_clusters_variable())
-        self.add_variable(variables.cluster_list_variable())
+        self.add_variable(
+            variables.cluster_list_variable(self.context.sql_metric_prefix)
+        )
         self.add_variable(variables.replica_list_variable())
 
     def build_summary_tab(self) -> dashboardv2_builders.Tab:

@@ -6,23 +6,13 @@ from typing import Final
 
 from grafana_foundation_sdk.cog import builder as cogbuilder
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
-from py_mzmon_lib.config import GLOBAL_DASHBOARD_CONFIG
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import METRICS_DATASOURCE_VAR_NAME, promql_query
 
-SQL_METRIC_PREFIX: Final[str] = GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix
-"""Prefix for all SQL-derived metrics, baked in at generation time.
-
-Resolved from `GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix` (`mz_` self-managed;
-a `v2_mz_` cloud variant is planned). GMP cannot dynamically detect metric or
-label names, so we bake the prefix into the rendered PromQL rather than using a
-`$sqlMetricPrefix` Grafana query variable that auto-detects at view time.
-"""
-
 _MZ_INFO_METRIC = "mz_compute_commands_total"
-# Info variables that can be used to discover environment/cluster/replica
-# context for other variables to filter on.
-_MZ_CLUSTER_INFO_METRIC = f"{SQL_METRIC_PREFIX}compute_cluster_status"
+# Info variable used to discover environment/cluster/replica context for other
+# variables to filter on. Genuine instrumentation (bare `mz_` in every env), so
+# it is never SQL-prefixed.
 
 
 class VariableNames:
@@ -155,11 +145,17 @@ def include_system_clusters_variable() -> dashboardv2_builders.SwitchVariable:
     )
 
 
-def cluster_list_variable() -> dashboardv2_builders.QueryVariable:
+def cluster_list_variable(sql_metric_prefix: str) -> dashboardv2_builders.QueryVariable:
     """A list of clusters we should filter on within an environment.
+
+    `sql_metric_prefix` comes from the build context (`mz_` / `v2_mz_`); this
+    query reads the SQL-derived `compute_cluster_status`, so it must be prefixed
+    the same way the panels are.
 
     XXX: Do we want to show name or id in this list?
     """
+    cluster_info_metric = f"{sql_metric_prefix}compute_cluster_status"
+    definition = f'query_result({cluster_info_metric}{{materialize_cloud_organization_name=~"$environmentIdList", compute_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
     return (
         dashboardv2_builders.QueryVariable(VariableNames.MZ_CLUSTER_LIST)
         .label("Cluster")
@@ -169,14 +165,8 @@ def cluster_list_variable() -> dashboardv2_builders.QueryVariable:
         .include_all(True)
         # Use natural for cluster names (u2 < u11)
         .sort(dashboardv2.VariableSort.NATURAL_ASC)
-        .definition(
-            f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_name=~"$environmentIdList", compute_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
-        )
-        .query(
-            promql_query(
-                f'query_result({_MZ_CLUSTER_INFO_METRIC}{{materialize_cloud_organization_name=~"$environmentIdList", compute_cluster_id=~"${VariableNames.MZ_INCLUDE_SYSTEM_CLUSTERS}" }})'
-            )
-        )
+        .definition(definition)
+        .query(promql_query(definition))
         .hide(dashboardv2.VariableHide.IN_CONTROLS_MENU)
         # it would be nice if we could show both name and id as text
         #   but we don't get format support

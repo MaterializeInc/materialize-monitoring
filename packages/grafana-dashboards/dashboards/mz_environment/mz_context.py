@@ -23,6 +23,9 @@ class MzBuildContext(BuildContext):
 
         This is `mz_` in almost every case, except `new-promsql-exporter`
         (which may go away in the future).
+
+        Everything else resolves the prefix through this property so a single
+        `cloud_hint` / config knob drives the whole board.
         """
         if GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix != "mz_":
             return GLOBAL_DASHBOARD_CONFIG.sql_metric_prefix
