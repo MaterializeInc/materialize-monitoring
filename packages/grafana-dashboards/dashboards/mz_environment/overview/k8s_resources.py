@@ -49,6 +49,7 @@ class KubeResourcesMixin:
 
         We show a stat for total cores available.
         """
+        assert isinstance(self, BaseMzContextTab)
         panel_id = f"{self.panel_id_prefix}-cpu-total"
         metric_filter = CONTAINER_FILTER
         if not include_monitoring:
@@ -84,7 +85,7 @@ class KubeResourcesMixin:
                 visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("cores")
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
             ),
         )
         return panel_id
@@ -96,6 +97,7 @@ class KubeResourcesMixin:
 
         FIXME: we don't have a swap totals available...
         """
+        assert isinstance(self, BaseMzContextTab)
         panel_id = f"{self.panel_id_prefix}-memory-total"
         metric_filter = CONTAINER_FILTER
         if not include_monitoring:
@@ -131,7 +133,7 @@ class KubeResourcesMixin:
                 visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("bytes")
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
             ),
         )
         return panel_id
@@ -302,7 +304,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
-                .no_value(KSM_MISSING)
+                .no_value(self.context.metric_unavailable_note(KSM_MISSING))
             ),
         )
         return panel_id
@@ -362,7 +364,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             .visualization(
                 timeseries.Visualization()
                 .unit("percentunit")
-                .no_value(CADVISOR_KSM_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_KSM_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
@@ -421,7 +423,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             .visualization(
                 timeseries.Visualization()
                 .unit("percentunit")
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
@@ -602,7 +604,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             .visualization(
                 timeseries.Visualization()
                 .unit("cps")
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
