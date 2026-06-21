@@ -18,13 +18,16 @@ from dashboards.mz_environment.mz_context import BaseMzContextTab
 from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixin
 
-COMPUTE_CLUSTER_STATUS = f"{variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
-
 
 class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
     """Summary tab on Overview Dashboard."""
 
     panel_id_prefix = "summary"
+
+    @property
+    def _compute_cluster_status(self) -> str:
+        """SQL-derived cluster-status metric, env-scoped, prefixed for this build."""
+        return f"{self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
 
     def _is_healthy_panel(self):
         """Get a panel showing environment status."""
@@ -34,9 +37,9 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                 textwrap.dedent(
                     f"""
                     count(
-                        {COMPUTE_CLUSTER_STATUS} == 1
+                        {self._compute_cluster_status} == 1
                     ) / count(
-                        {COMPUTE_CLUSTER_STATUS}
+                        {self._compute_cluster_status}
                     ) * 100
                     """
                 ),
@@ -77,7 +80,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     f"""
                     avg by (materialize_cloud_organization_namespace) (
                         avg_over_time(
-                            {COMPUTE_CLUSTER_STATUS}[$__range]
+                            {self._compute_cluster_status}[$__range]
                         ) * 100
                     )
                     """
@@ -92,7 +95,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
             .description(
                 "**Fraction of time the environment was healthy over "
                 "the dashboard's selected time range** — computed from "
-                f"`{COMPUTE_CLUSTER_STATUS}` averaged over "
+                f"`{self._compute_cluster_status}` averaged over "
                 "`$__range`. Effectively an SLO snapshot. Nominal: "
                 "100.0000% (note the four decimals — five-nines = "
                 "99.999%). Sustained dips correlate with cluster "
@@ -359,7 +362,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     textwrap.dedent(
                         f"""
                         group by (mz_version) (
-                            {COMPUTE_CLUSTER_STATUS}
+                            {self._compute_cluster_status}
                         )
                         """
                     ),

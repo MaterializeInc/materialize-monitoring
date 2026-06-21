@@ -22,7 +22,7 @@ from dashboards.mz_environment.mz_context import BaseMzContextTab
 CLUSTERS_THEME = palette.THEME_PALETTE[2]
 
 # Every query in this tab is keyed on the SQL-derived cluster-status metric:
-#   {variables.SQL_METRIC_PREFIX}compute_cluster_status
+#   {self.context.sql_metric_prefix}compute_cluster_status
 #   -> mz_compute_cluster_status (self-managed) / v2_mz_compute_cluster_status (cloud)
 # The prefix is baked in at generation time from config (see variables.py).
 
@@ -44,7 +44,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                     f"""
                     count(
                         group by (compute_cluster_id) (
-                            {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList"}}
+                            {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList"}}
                         )
                     )
                     """
@@ -55,7 +55,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                     f"""
                     count(
                         group by (compute_cluster_id) (
-                            {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_cluster_id=~"^s.*"}}
+                            {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_cluster_id=~"^s.*"}}
                         )
                     )
                     """
@@ -100,7 +100,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                     f"""
                     count(
                         group by (compute_cluster_id, compute_replica_id) (
-                            {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
+                            {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
                         )
                     )
                     """
@@ -111,7 +111,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                     f"""
                     count(
                         group by (compute_cluster_id, compute_replica_id) (
-                            {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList", compute_replica_name!="r1"}}
+                            {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList", compute_replica_name!="r1"}}
                         )
                     ) or vector(0)
                     """
@@ -151,7 +151,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                 textwrap.dedent(
                     f"""
                     count by (size) (
-                        {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
+                        {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
                     )
                     """
                 )
@@ -202,11 +202,11 @@ class ClusterObjectsTab(BaseMzContextTab):
                     f"""
                     sum by (materialize_cloud_availability_zone) (
                         count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (
-                            {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
+                            {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
                         )
                         or
                         count by (compute_cluster_id, compute_replica_id, materialize_cloud_availability_zone) (
-                            {variables.SQL_METRIC_PREFIX}compute_cluster_status{{}}
+                            {self.context.sql_metric_prefix}compute_cluster_status{{}}
                         ) * 0
                     )
                     """
@@ -285,7 +285,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                 promql_query(
                     textwrap.dedent(
                         f"""
-                        {variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
+                        {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
                         """
                     )
                 ).instant()

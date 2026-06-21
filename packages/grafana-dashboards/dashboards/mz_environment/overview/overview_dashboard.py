@@ -79,4 +79,5 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
 
 if __name__ == "__main__":
-    print(EnvironmentOverviewDashboard.render())  # noqa: T201
+    context = MzBuildContext()
+    print(EnvironmentOverviewDashboard.render(context=context))  # noqa: T201

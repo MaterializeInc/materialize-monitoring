@@ -60,7 +60,7 @@ ENV_SCOPED_NOTE = "Environment-scoped — not affected by the cluster/replica fi
 # metrics), so excluding job names by pattern would blank real panels.
 
 # SQL-derived metric used across this tab's count/type/catalog panels:
-#   {variables.SQL_METRIC_PREFIX}storage_objects
+#   {self.context.sql_metric_prefix}storage_objects
 #   -> mz_storage_objects (self-managed) / v2_mz_storage_objects (cloud)
 # The mz_source_*/mz_sink_* throughput/lag/error metrics below are genuine
 # instrumentation (same `mz_` name in both environments) and are NOT prefixed.
@@ -98,8 +98,8 @@ def _env_total_count_query(metric_name: str):
     )
 
 
-def _storage_object_count_query(object_kind: str):
-    """Count distinct source/sink objects from `{variables.SQL_METRIC_PREFIX}storage_objects`.
+def _storage_object_count_query(object_kind: str, prefix: str):
+    """Count distinct source/sink objects from the SQL-prefixed `storage_objects`.
 
     Metric: `mz_storage_objects` (self-managed) / `v2_mz_storage_objects` (cloud).
 
@@ -118,7 +118,7 @@ def _storage_object_count_query(object_kind: str):
                 f"""
                 count(
                     group by (id) (
-                        {variables.SQL_METRIC_PREFIX}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="{object_kind}"}}
+                        {prefix}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="{object_kind}"}}
                     )
                 ) or vector(0)
                 """
@@ -148,7 +148,7 @@ class StorageObjectsTab(BaseMzContextTab):
                 "below for type breakdown and per-source throughput. "
                 f"{ENV_SCOPED_NOTE}"
             )
-            .data(_storage_object_count_query("source"))
+            .data(_storage_object_count_query("source", self.context.sql_metric_prefix))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
@@ -169,7 +169,7 @@ class StorageObjectsTab(BaseMzContextTab):
                 "row below for per-sink throughput and lag. "
                 f"{ENV_SCOPED_NOTE}"
             )
-            .data(_storage_object_count_query("sink"))
+            .data(_storage_object_count_query("sink", self.context.sql_metric_prefix))
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
@@ -190,7 +190,9 @@ class StorageObjectsTab(BaseMzContextTab):
                 f"{ENV_SCOPED_NOTE}"
             )
             # mz_tables_count / v2_mz_tables_count
-            .data(_env_total_count_query(f"{variables.SQL_METRIC_PREFIX}tables_count"))
+            .data(
+                _env_total_count_query(f"{self.context.sql_metric_prefix}tables_count")
+            )
             .visualization(visualization.sparkline_stat(shade=STORAGE_THEME).min(0)),
         )
         return panel_id
@@ -211,7 +213,7 @@ class StorageObjectsTab(BaseMzContextTab):
                     f"""
                     count by (object_type) (
                         group by (id, object_type) (
-                            {variables.SQL_METRIC_PREFIX}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="source"}}
+                            {self.context.sql_metric_prefix}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="source"}}
                         )
                     ) > 0
                     """
@@ -276,7 +278,7 @@ class StorageObjectsTab(BaseMzContextTab):
         catalog_expr = textwrap.dedent(
             f"""
             group by (id, object_type, connection_type, envelope_type, cluster_id) (
-                {variables.SQL_METRIC_PREFIX}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="source"}}
+                {self.context.sql_metric_prefix}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="source"}}
             )
             """
         )
@@ -622,7 +624,7 @@ class StorageObjectsTab(BaseMzContextTab):
                     f"""
                     count by (object_type, envelope_type) (
                         group by (id, object_type, envelope_type) (
-                            {variables.SQL_METRIC_PREFIX}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="sink"}}
+                            {self.context.sql_metric_prefix}storage_objects{{{variables.ENVIRONMENT_FILTER}, type="sink"}}
                         )
                     ) > 0
                     """

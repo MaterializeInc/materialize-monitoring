@@ -83,7 +83,11 @@ def _get_context(dashboard_cls: type[MzDashboard], args: RenderArgs) -> BuildCon
     This may vary discriminate between dashboards in the future.
     """
     _ = dashboard_cls  # for future use
-    return MzBuildContext(api_hint=args.dashboard_api)
+    return MzBuildContext(
+        api_hint=args.dashboard_api,
+        cloud_hint=args.cloud_hint,
+        export_hint=args.export_hint,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
