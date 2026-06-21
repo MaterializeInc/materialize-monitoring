@@ -17,6 +17,7 @@ from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import palette, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 # Inlined cAdvisor container filter (was the $containerFilter ConstantVariable):
 # scope to the Materialize namespaces and drop the empty-name / pause series.
@@ -136,13 +137,10 @@ class KubeResourcesMixin:
         return panel_id
 
 
-class KubeResourcesTab(KubeResourcesMixin):
+class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
     """Kubernetes resources tab on Overview Dashboard."""
 
     panel_id_prefix = "k8s-res"
-
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
 
     def _ready_pods_panel(self):
         """Show a breakdown of Pods by readiness phase.

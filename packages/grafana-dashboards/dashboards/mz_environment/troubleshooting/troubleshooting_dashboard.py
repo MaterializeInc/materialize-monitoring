@@ -33,6 +33,4 @@ class LiveTroubleshootingDashboard(MzDashboard):
 
 
 if __name__ == "__main__":
-    from grafana_foundation_sdk.cog.encoder import JSONEncoder
-
-    print(JSONEncoder(indent=2).encode(LiveTroubleshootingDashboard()))  # noqa: T201
+    print(LiveTroubleshootingDashboard.render())  # noqa: T201

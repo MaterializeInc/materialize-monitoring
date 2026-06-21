@@ -25,6 +25,7 @@ from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import enrich, palette, threshold, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 NO_FILTER_MATCH = "No matches for the current filters"
 # Some metrics in this tab are pre-calculated by the promsql-exporter at the
@@ -134,11 +135,8 @@ def add_currently_hydrating_panel(
     return panel_id
 
 
-class ComputeObjectsTab:
+class ComputeObjectsTab(BaseMzContextTab):
     """Compute Objects tab on Overview Dashboard."""
-
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
 
     def _active_mzd_views_panel(self):
         """Active materialized views (env-scoped via mz_mzd_views_count)."""

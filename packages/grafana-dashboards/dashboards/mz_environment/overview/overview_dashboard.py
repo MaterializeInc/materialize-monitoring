@@ -6,6 +6,7 @@ from grafana_foundation_sdk.builders import dashboardv2beta1 as dashboardv2_buil
 from py_mzmon_lib.dashboard import MzDashboard
 
 from dashboards import variables
+from dashboards.mz_environment.mz_context import MzBuildContext
 
 from .cluster_objects import ClusterObjectsTab
 from .compute_objects import ComputeObjectsTab
@@ -65,6 +66,7 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     def build_layout(self):
         """Get the layout for the dashboard."""
+        assert isinstance(self.context, MzBuildContext)
         return (
             dashboardv2_builders.Tabs()
             .tab(self.build_summary_tab())

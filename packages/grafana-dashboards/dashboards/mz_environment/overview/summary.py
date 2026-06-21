@@ -9,11 +9,11 @@ from grafana_foundation_sdk.builders import gauge, stat
 from grafana_foundation_sdk.models import common
 from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
-from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import threshold, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixin
@@ -21,13 +21,10 @@ from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixi
 COMPUTE_CLUSTER_STATUS = f"{variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
 
 
-class OverviewSummary(KubeResourcesMixin):
+class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
     """Summary tab on Overview Dashboard."""
 
     panel_id_prefix = "summary"
-
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
 
     def _is_healthy_panel(self):
         """Get a panel showing environment status."""

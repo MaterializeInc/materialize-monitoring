@@ -9,9 +9,11 @@ import pathlib
 import sys
 
 import yaml
+from py_mzmon_lib.context import BuildContext, CloudHint, ExportHint
 from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.version import DashboardAPI
 
+from dashboards.mz_environment.mz_context import MzBuildContext
 from dashboards.mz_environment.overview.overview_dashboard import (
     EnvironmentOverviewDashboard,
 )
@@ -55,12 +57,33 @@ def get_parser() -> argparse.ArgumentParser:
         help="Grafana Dashboard API Version to target.",
     )
     parser.add_argument(
+        "--cloud-hint",
+        choices=CloudHint,
+        default=CloudHint.GENERIC,
+        help="Hint about the cloud environment to target.",
+    )
+    parser.add_argument(
+        "--export-hint",
+        choices=ExportHint,
+        default=ExportHint.GENERIC,
+        help="Hint about the intended export target for the dashboard.",
+    )
+    parser.add_argument(
         "dashboards",
         nargs="*",
         choices=AVAIL_DASHBOARDS.keys(),
         help="Specific dashboards to generate. If not provided, all dashboards will be generated.",
     )
     return parser
+
+
+def _get_context(dashboard_cls: type[MzDashboard], args: RenderArgs) -> BuildContext:
+    """Get a BuildContext from the provided arguments.
+
+    This may vary discriminate between dashboards in the future.
+    """
+    _ = dashboard_cls  # for future use
+    return MzBuildContext(api_hint=args.dashboard_api)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,8 +98,9 @@ def main(argv: list[str] | None = None) -> int:
     LOGGER.debug("Selected dashboards: %s", ", ".join(selected_dashboards))
     for dashboard_name in selected_dashboards:
         dashboard_cls = AVAIL_DASHBOARDS[dashboard_name]
+        context = _get_context(dashboard_cls, args)
         LOGGER.info("Rendering dashboard: %s", dashboard_name)
-        rendered_dashboard = dashboard_cls.render()
+        rendered_dashboard = dashboard_cls.render(context=context)
         output_path = output_dir / f"{dashboard_name}.{ext}"
         with open(output_path, "w") as handle:
             if args.format == "json":
