@@ -8,9 +8,18 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## Dashboards v0.11.0 (Unreleased)
+## Dashboards v0.12.0 (Unreleased)
 
 _Changes Pending_
+
+## Dashboards v0.11.0
+
+* Support optimizing for clouds; add GCP specific variation
+    * [materialize-monitoring#43](https://github.com/MaterializeInc/materialize-monitoring/pull/43)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
 
 ## Prometheus Scrapers v0.2.0 (Unreleased)
 
