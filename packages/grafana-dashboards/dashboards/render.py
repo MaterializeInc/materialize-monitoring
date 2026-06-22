@@ -28,7 +28,8 @@ LOGGER = logging.getLogger("dashboards.render")  # sometimes __main__
 class RenderArgs(argparse.Namespace):
     """Arguments for rendering dashboards."""
 
-    output: str
+    output: pathlib.Path
+    prefix: str
     format: str
     dashboard_api: DashboardAPI
     dashboards: list[str]
@@ -40,9 +41,15 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         "-o",
-        type=str,
+        type=pathlib.Path,
         default=".",
         help="Output directory for generated dashboards.",
+    )
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        default="",
+        help="An optional prefix to add to filenames of generated dashboards.",
     )
     parser.add_argument(
         "--format",
@@ -95,17 +102,16 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO)
     parser = get_parser()
     args: RenderArgs = parser.parse_args(argv, namespace=RenderArgs())
-    output_dir = pathlib.Path(args.output)
     selected_dashboards = args.dashboards or AVAIL_DASHBOARDS.keys()
     ext = args.format
-    LOGGER.info("Output directory: %s", output_dir)
+    LOGGER.info("Output directory: %s", args.output)
     LOGGER.debug("Selected dashboards: %s", ", ".join(selected_dashboards))
     for dashboard_name in selected_dashboards:
         dashboard_cls = AVAIL_DASHBOARDS[dashboard_name]
         context = _get_context(dashboard_cls, args)
         LOGGER.info("Rendering dashboard: %s", dashboard_name)
         rendered_dashboard = dashboard_cls.render(context=context)
-        output_path = output_dir / f"{dashboard_name}.{ext}"
+        output_path = args.output / f"{args.prefix}{dashboard_name}.{ext}"
         with open(output_path, "w") as handle:
             if args.format == "json":
                 handle.write(rendered_dashboard)

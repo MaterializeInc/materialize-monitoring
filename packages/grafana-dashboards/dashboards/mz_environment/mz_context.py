@@ -59,12 +59,7 @@ class MzBuildContext(BuildContext):
         running on GKE — it just doesn't export these series).
         """
         if self.cloud_hint == CloudHint.GCP:
-            return (
-                "No data on GKE — Google's managed cAdvisor and "
-                "kube-state-metrics omit container limit/spec and start-time "
-                "metrics. Deploy a self-managed kube-state-metrics + kubelet "
-                "scrape to populate this panel."
-            )
+            return "No data or potentially unavailable in GKE due to limited cAdvisor metrics."
         return default
 
 

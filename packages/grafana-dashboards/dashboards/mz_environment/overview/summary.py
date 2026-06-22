@@ -18,6 +18,8 @@ from dashboards.mz_environment.mz_context import BaseMzContextTab
 from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixin
 
+GIB_MULTIPLIER = 1024 * 1024 * 1024
+
 
 class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
     """Summary tab on Overview Dashboard."""
@@ -252,6 +254,8 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     .min(0)
                     .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
                     .no_value(CADVISOR_MISSING)
+                    # arbitrary 1.0c threshold if max isn't known
+                    .thresholds(threshold.load_thresholds(max_load=1.0))
                 )
             )
 
@@ -345,6 +349,14 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     .min(0)
                     .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
                     .no_value(CADVISOR_MISSING)
+                    # set arbitrary 10 / 100GIB thresholds
+                    .thresholds(
+                        threshold.get_high_threshold(
+                            min_value=10 * GIB_MULTIPLIER,
+                            max_value=100 * GIB_MULTIPLIER,
+                            step=10 * GIB_MULTIPLIER,
+                        )
+                    )
                 )
             )
 
