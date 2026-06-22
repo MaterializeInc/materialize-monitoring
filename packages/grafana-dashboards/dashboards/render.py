@@ -44,7 +44,7 @@ def get_parser() -> argparse.ArgumentParser:
         "--output",
         "-o",
         type=pathlib.Path,
-        default=pathlib.Path("."),
+        default=pathlib.Path(),
         help="Output directory for generated dashboards.",
     )
     parser.add_argument(
