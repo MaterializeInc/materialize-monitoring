@@ -12,6 +12,7 @@ from grafana_foundation_sdk.cog import builder as cogbuilder
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 from grafana_foundation_sdk.models.dashboard import Dashboard as DashboardV1
 
+from py_mzmon_lib.context import DEFAULT_BUILD_CONTEXT, BuildContext
 from py_mzmon_lib.version import DashboardAPI
 
 from .config import GLOBAL_DASHBOARD_CONFIG
@@ -47,6 +48,13 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
     UID: str
     """In v2, UIDs exist on the level above dashboards."""
 
+    context: BuildContext
+    """Context for building the dashboard.
+
+    This includes some local configuration (hints about the environment) that
+    may be used to change some conditions in the dashboard.
+    """
+
     dashboard_api: DashboardAPI
     """The Grafana Dashboard API version to target with this dashboard.
 
@@ -55,11 +63,10 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
     before rendering.
     """
 
-    def __init__(
-        self, *, dashboard_api: DashboardAPI = DashboardAPI.DASHBOARD_V2, **kwargs
-    ):
+    def __init__(self, *, context: BuildContext, **kwargs):
         """Initialize the MzDashboard."""
-        self.dashboard_api = dashboard_api
+        self.context = context
+        self.dashboard_api = context.api_hint
         if not kwargs.get("title"):
             kwargs["title"] = f"{GLOBAL_DASHBOARD_CONFIG.title_prefix} {self.TITLE}"
         if not kwargs.get("description"):
@@ -141,20 +148,18 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         """Add variables to the dashboard."""
 
     @classmethod
-    def render(
-        cls, *, dashboard_api: DashboardAPI = DashboardAPI.DASHBOARD_V2, **kwargs
-    ) -> str:
+    def render(cls, *, context: BuildContext = DEFAULT_BUILD_CONTEXT, **kwargs) -> str:
         """Render the dashboard with the given kwargs.
 
         This is the main entrypoint for our generator.
         """
-        dashboard = cls(dashboard_api=dashboard_api, **kwargs)
-        if dashboard_api == DashboardAPI.DASHBOARD_V1:
+        dashboard = cls(context=context, **kwargs)
+        if context.api_hint == DashboardAPI.DASHBOARD_V1:
             return JSONEncoder(indent=2).encode(dashboard.to_v1())
         return JSONEncoder(indent=2).encode(
             {
                 "kind": "Dashboard",
-                "apiVersion": dashboard_api,
+                "apiVersion": context.api_hint,
                 "metadata": {
                     "name": dashboard.uid,
                 },

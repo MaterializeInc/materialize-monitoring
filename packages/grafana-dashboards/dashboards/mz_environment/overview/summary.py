@@ -9,25 +9,27 @@ from grafana_foundation_sdk.builders import gauge, stat
 from grafana_foundation_sdk.models import common
 from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
-from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import threshold, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 from .compute_objects import add_currently_hydrating_panel
 from .k8s_resources import CADVISOR_MISSING, CONTAINER_FILTER, KubeResourcesMixin
 
-COMPUTE_CLUSTER_STATUS = f"{variables.SQL_METRIC_PREFIX}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
+GIB_MULTIPLIER = 1024 * 1024 * 1024
 
 
-class OverviewSummary(KubeResourcesMixin):
+class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
     """Summary tab on Overview Dashboard."""
 
     panel_id_prefix = "summary"
 
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
+    @property
+    def _compute_cluster_status(self) -> str:
+        """SQL-derived cluster-status metric, env-scoped, prefixed for this build."""
+        return f"{self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}}}"
 
     def _is_healthy_panel(self):
         """Get a panel showing environment status."""
@@ -37,9 +39,9 @@ class OverviewSummary(KubeResourcesMixin):
                 textwrap.dedent(
                     f"""
                     count(
-                        {COMPUTE_CLUSTER_STATUS} == 1
+                        {self._compute_cluster_status} == 1
                     ) / count(
-                        {COMPUTE_CLUSTER_STATUS}
+                        {self._compute_cluster_status}
                     ) * 100
                     """
                 ),
@@ -80,7 +82,7 @@ class OverviewSummary(KubeResourcesMixin):
                     f"""
                     avg by (materialize_cloud_organization_namespace) (
                         avg_over_time(
-                            {COMPUTE_CLUSTER_STATUS}[$__range]
+                            {self._compute_cluster_status}[$__range]
                         ) * 100
                     )
                     """
@@ -95,7 +97,7 @@ class OverviewSummary(KubeResourcesMixin):
             .description(
                 "**Fraction of time the environment was healthy over "
                 "the dashboard's selected time range** — computed from "
-                f"`{COMPUTE_CLUSTER_STATUS}` averaged over "
+                f"`{self._compute_cluster_status}` averaged over "
                 "`$__range`. Effectively an SLO snapshot. Nominal: "
                 "100.0000% (note the four decimals — five-nines = "
                 "99.999%). Sustained dips correlate with cluster "
@@ -164,106 +166,201 @@ class OverviewSummary(KubeResourcesMixin):
                 .text(common_builder.VizTextDisplayOptions().value_size(25))
                 # FIXME: only centers value
                 .justify_mode(common.BigValueJustifyMode.CENTER)
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
             ),
         )
         return panel_id
 
     def _cpu_usage_panel(self):
-        """Get a panel with a gauge showing current CPU usage."""
+        """Current CPU usage: %-of-limit gauge, or absolute cores when limits are absent.
+
+        GKE's managed cAdvisor/KSM don't expose `kube_pod_container_resource_limits`,
+        so there's no denominator for a percentage — we fall back to absolute
+        cores (see `MzBuildContext.has_container_resource_limits`).
+        """
         panel_id = "cpu-usage-current"
-        query = query_group(
-            promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (namespace, container) (
-                        rate(
-                            container_cpu_usage_seconds_total{{{CONTAINER_FILTER}}}[5m]
+        if self.context.has_container_resource_limits:
+            query = query_group(
+                promql_query(
+                    textwrap.dedent(
+                        f"""
+                        sum by (namespace, container) (
+                            rate(
+                                container_cpu_usage_seconds_total{{{CONTAINER_FILTER}}}[5m]
+                            )
+                        ) / sum by (namespace, container) (
+                            kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList"}}
                         )
-                    ) / sum by (namespace, container) (
-                        kube_pod_container_resource_limits{{resource="cpu", namespace=~"$mzNamespaceList"}}
+                        """
                     )
-                    """
+                )
+                .legend_format("{{container}}")
+                .instant()
+            )
+            panel = (
+                dashboardv2_builders.Panel()
+                .title("Current CPU Usage (5 min)")
+                .description(
+                    "**Current CPU usage as a fraction of each container's "
+                    "limit, averaged over the last 5 minutes.** "
+                    "Per-container gauge — shows the worst-loaded container "
+                    "types in the env. Nominal: well below 1.0; sustained "
+                    "near 1.0 means a container type is CPU-bound. For "
+                    "time-resolved per-pod view see _Kubernetes Workloads "
+                    "-> Pod CPU Usage_; for the Materialize workload "
+                    "causing it see _Compute Objects -> Dataflow Elapsed "
+                    "Rate_."
+                )
+                .data(query)
+                .visualization(
+                    gauge.Visualization()
+                    .unit("percentunit")
+                    .no_value(CADVISOR_MISSING)
+                    .thresholds(threshold.load_thresholds(max_load=1.0))
+                    .show_threshold_labels(False)  # HACK: options isn't set otherwise
                 )
             )
-            .legend_format("{{container}}")
-            .instant()
-        )
-
-        self.dashboard.add_panel(
-            panel_id,
-            dashboardv2_builders.Panel()
-            .title("Current CPU Usage (5 min)")
-            .description(
-                "**Current CPU usage as a fraction of each container's "
-                "limit, averaged over the last 5 minutes.** "
-                "Per-container gauge — shows the worst-loaded container "
-                "types in the env. Nominal: well below 1.0; sustained "
-                "near 1.0 means a container type is CPU-bound. For "
-                "time-resolved per-pod view see _Kubernetes Workloads "
-                "-> Pod CPU Usage_; for the Materialize workload "
-                "causing it see _Compute Objects -> Dataflow Elapsed "
-                "Rate_."
+        else:
+            query = query_group(
+                promql_query(
+                    textwrap.dedent(
+                        f"""
+                        sum by (namespace, container) (
+                            rate(
+                                container_cpu_usage_seconds_total{{{CONTAINER_FILTER}}}[5m]
+                            )
+                        )
+                        """
+                    )
+                ).legend_format("{{container}}")
             )
-            .data(query)
-            .visualization(
-                gauge.Visualization()
-                .unit("percentunit")
-                .no_value(CADVISOR_MISSING)
-                .thresholds(threshold.load_thresholds(max_load=1.0))
-                .show_threshold_labels(False)  # HACK: options isn't set otherwise
-            ),
-        )
+            panel = (
+                dashboardv2_builders.Panel()
+                .title("CPU Usage (5 min)")
+                .description(
+                    "**Current CPU usage per container type, in cores** "
+                    "(rate over 5 minutes). This deployment's metrics source "
+                    "doesn't expose CPU *limits*, so this is absolute usage "
+                    "rather than a percent-of-limit — read it against the "
+                    "replica sizes you've configured. For time-resolved "
+                    "per-pod view see _Kubernetes Workloads -> Pod CPU "
+                    "Usage_; for the Materialize workload driving it see "
+                    "_Compute Objects -> Dataflow Elapsed Rate_."
+                )
+                .data(query)
+                .visualization(
+                    visualization.sparkline_stat()
+                    .unit("cores")
+                    .min(0)
+                    .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
+                    .no_value(CADVISOR_MISSING)
+                    # arbitrary 1.0c threshold if max isn't known
+                    .thresholds(threshold.load_thresholds(max_load=1.0))
+                )
+            )
+
+        self.dashboard.add_panel(panel_id, panel)
         return panel_id
 
     def _memory_usage_panel(self):
-        """Get a panel with a gauge showing current memory usage."""
+        """Current memory usage: %-of-limit gauge, or absolute bytes when limits are absent.
+
+        GKE's managed cAdvisor/KSM don't expose `container_spec_memory_limit_bytes`,
+        so there's no denominator for a percentage — we fall back to absolute
+        working-set bytes (see `MzBuildContext.has_container_resource_limits`).
+        """
         panel_id = "memory-usage-current"
-        query = query_group(
-            promql_query(
-                textwrap.dedent(
-                    f"""
-                    sum by (namespace, container) (
-                        avg by (namespace, pod, container) (
+        if self.context.has_container_resource_limits:
+            query = query_group(
+                promql_query(
+                    textwrap.dedent(
+                        f"""
+                        sum by (namespace, container) (
+                            avg by (namespace, pod, container) (
+                                container_memory_working_set_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
+                            )
+                        ) / sum by (namespace, container) (
+                            avg by (namespace, pod, container) (
+                                container_spec_memory_limit_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
+                            )
+                        )
+                        """
+                    ),
+                )
+                .legend_format("{{container}}")
+                .instant()
+            )
+            panel = (
+                dashboardv2_builders.Panel()
+                .title("Current Memory Usage")
+                .description(
+                    "**Current memory usage as a fraction of each "
+                    "container's limit.** Per-container gauge — shows the "
+                    "worst-loaded container types. **Sustained near 1.0 "
+                    "is dangerous** — OOM-kill triggers a hydration cycle "
+                    "(in-memory state has to be rebuilt from persisted "
+                    "storage, taking minutes-to-hours depending on data "
+                    "size). For time-resolved view see _Kubernetes "
+                    "Workloads -> Pod Memory Usage_; the offending "
+                    "workload usually shows in _Compute Objects -> "
+                    "Arrangements_."
+                )
+                .data(query)
+                .visualization(
+                    gauge.Visualization()
+                    .unit("percentunit")
+                    .no_value(CADVISOR_MISSING)
+                    .thresholds(threshold.load_thresholds(max_load=1.0))
+                    .show_threshold_labels(False)  # HACK: options isn't set otherwise
+                )
+            )
+        else:
+            query = query_group(
+                promql_query(
+                    textwrap.dedent(
+                        f"""
+                        sum by (namespace, container) (
                             container_memory_working_set_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
                         )
-                    ) / sum by (namespace, container) (
-                        avg by (namespace, pod, container) (
-                            container_spec_memory_limit_bytes{{{CONTAINER_FILTER}, container!="new-promsql-exporter"}}
+                        """
+                    ),
+                ).legend_format("{{container}}")
+            )
+            panel = (
+                dashboardv2_builders.Panel()
+                .title("Memory Usage")
+                .description(
+                    "**Current memory (working set) per container type, in "
+                    "bytes.** This deployment's metrics source doesn't expose "
+                    "memory *limits*, so this is absolute usage rather than a "
+                    "percent-of-limit — read it against the replica memory "
+                    "you've configured. **Watch for sustained growth toward "
+                    "your replica size**: hitting the limit triggers an "
+                    "OOM-kill and a hydration cycle (rebuilding in-memory "
+                    "state from storage, minutes-to-hours). For time-resolved "
+                    "view see _Kubernetes Workloads -> Pod Memory Usage_; the "
+                    "offending workload usually shows in _Compute Objects -> "
+                    "Arrangements_."
+                )
+                .data(query)
+                .visualization(
+                    visualization.sparkline_stat()
+                    .unit("bytes")
+                    .min(0)
+                    .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
+                    .no_value(CADVISOR_MISSING)
+                    # set arbitrary 10 / 100GIB thresholds
+                    .thresholds(
+                        threshold.get_high_threshold(
+                            min_value=10 * GIB_MULTIPLIER,
+                            max_value=100 * GIB_MULTIPLIER,
+                            step=10 * GIB_MULTIPLIER,
                         )
                     )
-                    """
-                ),
+                )
             )
-            .legend_format("{{container}}")
-            .instant()
-        )
 
-        self.dashboard.add_panel(
-            panel_id,
-            dashboardv2_builders.Panel()
-            .title("Current Memory Usage")
-            .description(
-                "**Current memory usage as a fraction of each "
-                "container's limit.** Per-container gauge — shows the "
-                "worst-loaded container types. **Sustained near 1.0 "
-                "is dangerous** — OOM-kill triggers a hydration cycle "
-                "(in-memory state has to be rebuilt from persisted "
-                "storage, taking minutes-to-hours depending on data "
-                "size). For time-resolved view see _Kubernetes "
-                "Workloads -> Pod Memory Usage_; the offending "
-                "workload usually shows in _Compute Objects -> "
-                "Arrangements_."
-            )
-            .data(query)
-            .visualization(
-                gauge.Visualization()
-                .unit("percentunit")
-                .no_value(CADVISOR_MISSING)
-                .thresholds(threshold.load_thresholds(max_load=1.0))
-                .show_threshold_labels(False)  # HACK: options isn't set otherwise
-            ),
-        )
+        self.dashboard.add_panel(panel_id, panel)
         return panel_id
 
     def _currently_hydrating_panel(self):
@@ -362,7 +459,7 @@ class OverviewSummary(KubeResourcesMixin):
                     textwrap.dedent(
                         f"""
                         group by (mz_version) (
-                            {COMPUTE_CLUSTER_STATUS}
+                            {self._compute_cluster_status}
                         )
                         """
                     ),

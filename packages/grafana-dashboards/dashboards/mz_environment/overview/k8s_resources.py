@@ -17,6 +17,7 @@ from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import palette, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 # Inlined cAdvisor container filter (was the $containerFilter ConstantVariable):
 # scope to the Materialize namespaces and drop the empty-name / pause series.
@@ -48,6 +49,7 @@ class KubeResourcesMixin:
 
         We show a stat for total cores available.
         """
+        assert isinstance(self, BaseMzContextTab)
         panel_id = f"{self.panel_id_prefix}-cpu-total"
         metric_filter = CONTAINER_FILTER
         if not include_monitoring:
@@ -83,7 +85,7 @@ class KubeResourcesMixin:
                 visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("cores")
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
             ),
         )
         return panel_id
@@ -95,6 +97,7 @@ class KubeResourcesMixin:
 
         FIXME: we don't have a swap totals available...
         """
+        assert isinstance(self, BaseMzContextTab)
         panel_id = f"{self.panel_id_prefix}-memory-total"
         metric_filter = CONTAINER_FILTER
         if not include_monitoring:
@@ -130,19 +133,16 @@ class KubeResourcesMixin:
                 visualization.sparkline_stat(shade=K8S_THEME)
                 .unit("bytes")
                 .text_mode(common.BigValueTextMode.VALUE_AND_NAME)
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
             ),
         )
         return panel_id
 
 
-class KubeResourcesTab(KubeResourcesMixin):
+class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
     """Kubernetes resources tab on Overview Dashboard."""
 
     panel_id_prefix = "k8s-res"
-
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
 
     def _ready_pods_panel(self):
         """Show a breakdown of Pods by readiness phase.
@@ -304,7 +304,7 @@ class KubeResourcesTab(KubeResourcesMixin):
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
-                .no_value(KSM_MISSING)
+                .no_value(self.context.metric_unavailable_note(KSM_MISSING))
             ),
         )
         return panel_id
@@ -364,7 +364,7 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 timeseries.Visualization()
                 .unit("percentunit")
-                .no_value(CADVISOR_KSM_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_KSM_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
@@ -423,7 +423,7 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 timeseries.Visualization()
                 .unit("percentunit")
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )
@@ -604,7 +604,7 @@ class KubeResourcesTab(KubeResourcesMixin):
             .visualization(
                 timeseries.Visualization()
                 .unit("cps")
-                .no_value(CADVISOR_MISSING)
+                .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
         )

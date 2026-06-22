@@ -25,6 +25,7 @@ from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import enrich, palette, threshold, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 NO_FILTER_MATCH = "No matches for the current filters"
 # Some metrics in this tab are pre-calculated by the promsql-exporter at the
@@ -134,11 +135,8 @@ def add_currently_hydrating_panel(
     return panel_id
 
 
-class ComputeObjectsTab:
+class ComputeObjectsTab(BaseMzContextTab):
     """Compute Objects tab on Overview Dashboard."""
-
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
 
     def _active_mzd_views_panel(self):
         """Active materialized views (env-scoped via mz_mzd_views_count)."""
@@ -152,7 +150,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     f"""
-                    max({variables.SQL_METRIC_PREFIX}mzd_views_count{{{variables.ENVIRONMENT_FILTER}}})
+                    max({self.context.sql_metric_prefix}mzd_views_count{{{variables.ENVIRONMENT_FILTER}}})
                     """
                 )
             ).legend_format("materialized-views"),
@@ -195,7 +193,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     f"""
-                    max(sum by (instance) ({variables.SQL_METRIC_PREFIX}indexes_count{{{variables.ENVIRONMENT_FILTER}}})) or vector(0)
+                    max(sum by (instance) ({self.context.sql_metric_prefix}indexes_count{{{variables.ENVIRONMENT_FILTER}}})) or vector(0)
                     """
                 )
             ).legend_format("indexes"),
@@ -233,7 +231,7 @@ class ComputeObjectsTab:
             promql_query(
                 textwrap.dedent(
                     f"""
-                    max({variables.SQL_METRIC_PREFIX}views_count{{{variables.ENVIRONMENT_FILTER}}})
+                    max({self.context.sql_metric_prefix}views_count{{{variables.ENVIRONMENT_FILTER}}})
                     """
                 )
             ).legend_format("views"),
@@ -324,7 +322,7 @@ class ComputeObjectsTab:
                 textwrap.dedent(
                     f"""
                     sum by (relation_type) (
-                        {variables.SQL_METRIC_PREFIX}indexes_count{{{variables.ENVIRONMENT_FILTER}}}
+                        {self.context.sql_metric_prefix}indexes_count{{{variables.ENVIRONMENT_FILTER}}}
                     )
                     """
                 )
@@ -444,7 +442,7 @@ class ComputeObjectsTab:
         # collection_id -> object name; instance_id -> cluster_name; replica_id kept
         hydration_expr = textwrap.dedent(
             f"""
-            {variables.SQL_METRIC_PREFIX}compute_hydration_time_seconds{{
+            {self.context.sql_metric_prefix}compute_hydration_time_seconds{{
                 {variables.ENVIRONMENT_FILTER},
                 instance_id=~"$mzClusterList",
                 replica_id=~"$mzReplicaList",
@@ -964,7 +962,7 @@ class ComputeObjectsTab:
             sum by (instance_id) (
                 max without (job) (
                     rate(
-                        {variables.SQL_METRIC_PREFIX}dataflow_elapsed_seconds_total{{
+                        {self.context.sql_metric_prefix}dataflow_elapsed_seconds_total{{
                             {variables.ENVIRONMENT_FILTER},
                             instance_id=~"$mzClusterList",
                             replica_id=~"$mzReplicaList"
@@ -1072,11 +1070,11 @@ class ComputeObjectsTab:
         current value at the top.
         """
         # mz_arrangement_record_count / v2_mz_arrangement_record_count
-        # (f-string here, so the prefix var is brace-escaped: {variables.SQL_METRIC_PREFIX})
+        # (f-string here, so the prefix var is brace-escaped: {self.context.sql_metric_prefix})
         records_expr = textwrap.dedent(
             f"""
             max by (collection_id) (
-                {variables.SQL_METRIC_PREFIX}arrangement_record_count{{
+                {self.context.sql_metric_prefix}arrangement_record_count{{
                     {variables.ENVIRONMENT_FILTER},
                     instance_id=~"$mzClusterList",
                     replica_id=~"$mzReplicaList",

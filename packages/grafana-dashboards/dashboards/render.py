@@ -9,9 +9,11 @@ import pathlib
 import sys
 
 import yaml
+from py_mzmon_lib.context import BuildContext, CloudHint, ExportHint
 from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.version import DashboardAPI
 
+from dashboards.mz_environment.mz_context import MzBuildContext
 from dashboards.mz_environment.overview.overview_dashboard import (
     EnvironmentOverviewDashboard,
 )
@@ -26,9 +28,12 @@ LOGGER = logging.getLogger("dashboards.render")  # sometimes __main__
 class RenderArgs(argparse.Namespace):
     """Arguments for rendering dashboards."""
 
-    output: str
+    output: pathlib.Path
+    prefix: str
     format: str
     dashboard_api: DashboardAPI
+    cloud_hint: CloudHint
+    export_hint: ExportHint
     dashboards: list[str]
 
 
@@ -38,9 +43,15 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         "-o",
-        type=str,
-        default=".",
+        type=pathlib.Path,
+        default=pathlib.Path("."),
         help="Output directory for generated dashboards.",
+    )
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        default="",
+        help="An optional prefix to add to filenames of generated dashboards.",
     )
     parser.add_argument(
         "--format",
@@ -55,6 +66,18 @@ def get_parser() -> argparse.ArgumentParser:
         help="Grafana Dashboard API Version to target.",
     )
     parser.add_argument(
+        "--cloud-hint",
+        choices=CloudHint,
+        default=CloudHint.GENERIC,
+        help="Hint about the cloud environment to target.",
+    )
+    parser.add_argument(
+        "--export-hint",
+        choices=ExportHint,
+        default=ExportHint.GENERIC,
+        help="Hint about the intended export target for the dashboard.",
+    )
+    parser.add_argument(
         "dashboards",
         nargs="*",
         choices=AVAIL_DASHBOARDS.keys(),
@@ -63,21 +86,34 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _get_context(dashboard_cls: type[MzDashboard], args: RenderArgs) -> BuildContext:
+    """Get a BuildContext from the provided arguments.
+
+    This may discriminate between dashboards in the future.
+    """
+    _ = dashboard_cls  # for future use
+    return MzBuildContext(
+        api_hint=args.dashboard_api,
+        cloud_hint=args.cloud_hint,
+        export_hint=args.export_hint,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Render Grafana dashboards."""
     logging.basicConfig(level=logging.INFO)
     parser = get_parser()
     args: RenderArgs = parser.parse_args(argv, namespace=RenderArgs())
-    output_dir = pathlib.Path(args.output)
     selected_dashboards = args.dashboards or AVAIL_DASHBOARDS.keys()
     ext = args.format
-    LOGGER.info("Output directory: %s", output_dir)
+    LOGGER.info("Output directory: %s", args.output)
     LOGGER.debug("Selected dashboards: %s", ", ".join(selected_dashboards))
     for dashboard_name in selected_dashboards:
         dashboard_cls = AVAIL_DASHBOARDS[dashboard_name]
+        context = _get_context(dashboard_cls, args)
         LOGGER.info("Rendering dashboard: %s", dashboard_name)
-        rendered_dashboard = dashboard_cls.render()
-        output_path = output_dir / f"{dashboard_name}.{ext}"
+        rendered_dashboard = dashboard_cls.render(context=context)
+        output_path = args.output / f"{args.prefix}{dashboard_name}.{ext}"
         with open(output_path, "w") as handle:
             if args.format == "json":
                 handle.write(rendered_dashboard)

@@ -228,6 +228,7 @@ docs/assets/dashboards/grafana: $(SOURCES_grafana-dashboards)
 	mkdir -p "$@"
 	rm -f "$@/"*.json
 	$(PY_RUN) -m dashboards.render -o "$@" --format json
+	$(PY_RUN) -m dashboards.render -o "$@" --format json --cloud-hint gcp --prefix gcp-
 	touch "$@"
 
 # Generate docs

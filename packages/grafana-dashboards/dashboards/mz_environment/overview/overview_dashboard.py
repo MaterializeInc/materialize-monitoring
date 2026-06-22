@@ -6,6 +6,7 @@ from grafana_foundation_sdk.builders import dashboardv2beta1 as dashboardv2_buil
 from py_mzmon_lib.dashboard import MzDashboard
 
 from dashboards import variables
+from dashboards.mz_environment.mz_context import MzBuildContext
 
 from .cluster_objects import ClusterObjectsTab
 from .compute_objects import ComputeObjectsTab
@@ -33,10 +34,13 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     def configure_variables(self) -> None:
         """Add variables to the dashboard."""
+        assert isinstance(self.context, MzBuildContext)
         self.add_variable(variables.environment_namespace())
         self.add_variable(variables.environment_id_variable())
         self.add_variable(variables.include_system_clusters_variable())
-        self.add_variable(variables.cluster_list_variable())
+        self.add_variable(
+            variables.cluster_list_variable(self.context.sql_metric_prefix)
+        )
         self.add_variable(variables.replica_list_variable())
 
     def build_summary_tab(self) -> dashboardv2_builders.Tab:
@@ -65,6 +69,7 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     def build_layout(self):
         """Get the layout for the dashboard."""
+        assert isinstance(self.context, MzBuildContext)
         return (
             dashboardv2_builders.Tabs()
             .tab(self.build_summary_tab())
@@ -77,4 +82,5 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
 
 if __name__ == "__main__":
-    print(EnvironmentOverviewDashboard.render())  # noqa: T201
+    context = MzBuildContext()
+    print(EnvironmentOverviewDashboard.render(context=context))  # noqa: T201

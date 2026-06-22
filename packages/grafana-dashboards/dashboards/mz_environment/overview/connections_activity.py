@@ -19,11 +19,11 @@ from grafana_foundation_sdk.builders import table, timeseries
 from grafana_foundation_sdk.models import common, piechart
 from py_mzmon_lib import transform as transform_builders
 from py_mzmon_lib.builders_v2 import dashboardv2 as dashboardv2_builders
-from py_mzmon_lib.dashboard import MzDashboard
 from py_mzmon_lib.models_v2 import dashboardv2
 from py_mzmon_lib.query import promql_query, query_group
 
 from dashboards import enrich, palette, threshold, variables, visualization
+from dashboards.mz_environment.mz_context import BaseMzContextTab
 
 CONNECTIONS_THEME = palette.THEME_PALETTE[1]
 
@@ -67,11 +67,8 @@ _PEEK_LATENCY_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-class ConnectionsActivityTab:
+class ConnectionsActivityTab(BaseMzContextTab):
     """Connections / Activity tab on Overview Dashboard."""
-
-    def __init__(self, dashboard: MzDashboard) -> None:
-        self.dashboard = dashboard
 
     def _active_sessions_panel(self):
         """Sparkline stat: currently-open sessions by session_type.
