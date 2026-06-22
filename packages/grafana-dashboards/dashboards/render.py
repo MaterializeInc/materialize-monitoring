@@ -32,6 +32,8 @@ class RenderArgs(argparse.Namespace):
     prefix: str
     format: str
     dashboard_api: DashboardAPI
+    cloud_hint: CloudHint
+    export_hint: ExportHint
     dashboards: list[str]
 
 
@@ -42,7 +44,7 @@ def get_parser() -> argparse.ArgumentParser:
         "--output",
         "-o",
         type=pathlib.Path,
-        default=".",
+        default=pathlib.Path("."),
         help="Output directory for generated dashboards.",
     )
     parser.add_argument(
@@ -87,7 +89,7 @@ def get_parser() -> argparse.ArgumentParser:
 def _get_context(dashboard_cls: type[MzDashboard], args: RenderArgs) -> BuildContext:
     """Get a BuildContext from the provided arguments.
 
-    This may vary discriminate between dashboards in the future.
+    This may discriminate between dashboards in the future.
     """
     _ = dashboard_cls  # for future use
     return MzBuildContext(
