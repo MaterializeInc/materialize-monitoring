@@ -69,12 +69,14 @@ def get_parser() -> argparse.ArgumentParser:
         "--cloud-hint",
         choices=CloudHint,
         default=CloudHint.GENERIC,
+        type=CloudHint,
         help="Hint about the cloud environment to target.",
     )
     parser.add_argument(
         "--export-hint",
         choices=ExportHint,
         default=ExportHint.GENERIC,
+        type=ExportHint,
         help="Hint about the intended export target for the dashboard.",
     )
     parser.add_argument(
