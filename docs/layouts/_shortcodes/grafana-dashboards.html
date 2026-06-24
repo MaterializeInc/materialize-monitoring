@@ -25,7 +25,7 @@
     <tr>
       <th>Dashboard</th>
       <th>Description</th>
-      <th>Download</th>
+      <th>Annotations</th>
     </tr>
   </thead>
   <tbody>
@@ -41,9 +41,20 @@
         {{- $uid := $data.metadata.name }}
         {{- $downloadName := printf "%s-%s.json" $uid $contentHash }}
     <tr>
-      <td>{{ $spec.title }}</td>
+      <td>{{ $spec.title }}
+        <br />(<a href="{{ $href }}" download="{{ $downloadName }}"><code>{{ path.Base .Name }}</code></a>)
+      </td>
       <td>{{ $desc | markdownify }}</td>
-      <td><a href="{{ $href }}" download="{{ $downloadName }}"><code>{{ $uid }}</code></a></td>
+      <td>
+        {{- $annotations := $data.metadata.annotations | default dict }}
+        {{- if gt (len $annotations) 0 }}
+          {{- range $key, $value := $annotations }}
+            <strong>{{ index ( strings.Split $key "/" | last 1 ) 0 }}</strong>: {{ $value }}<br />
+          {{- end }}
+        {{- else }}
+          <em>No annotations</em>
+        {{- end }}
+      </td>
     </tr>
       {{- end }}
     {{- end }}

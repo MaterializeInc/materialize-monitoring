@@ -9,7 +9,9 @@ weight: 60
 
 The goal of `materialize-monitoring` is **first-class, opt-in observability for self-managed Materialize** — logs, metrics, events, and alerts — for customers who want a one-stop-shop, without forcing our stack on customers who already run their own.
 This page is the current source of truth for what is built, what is in flight, and what is planned next.
-It supersedes the original Linear project (internal), which captured an earlier architecture that has since diverged (see below).
+This is generally synced with the [internal Linear Project](https://linear.app/materializeinc/project/first-class-observability-infrastructure-in-self-managed-5e48691c74a8/overview).
+
+<!--
 
 ## How this maps to the original plan
 
@@ -23,18 +25,22 @@ Where docs, tickets, or comments disagree with the repo, the repo wins and this 
 | Datadog dashboards via a Datadog Rust SDK | Not pursued; OTLP-forward is the export path (see Pipelines) |
 | Four fixed profiles, incl. a `datadog-agent` profile | Profile set deliberately left open; no `datadog-agent` profile |
 
+-->
+
 ## Cadence and milestones
 
 Releases track a monthly cadence aligned to the **15th**.
 
-| Milestone | Date/Coverage | Deliverables |
-|---|---|---|
-| Milestone 1 (M1) | **June 15** (baseline) | `env-top` overview dashboard (Summary, Kubernetes, Cluster, Connections, Compute, Storage — including Hydration / Freshness / Sources / Sinks *summaries*); cloud ↔ self-managed convergence via `$sqlMetricPrefix`; typed Alloy **agent** pipeline; **ScrapeConfigs + ServiceMonitors** for metric collection (synced to charts and docs); Hugo docsite; pre-commit suite; Grafana dashboard v1/v2 API support |
-| Milestone 2 (M2) | **July 15 — required** | Native **OTLP exporter** support; **productionalized** stack (Thanos + Loki + Alloy); product observability documentation **fully replaced**; **Logs & Events** + **Networking** dashboards; Grafana 11 (dashboard v1) parity for publicly hosted dashboards (Grafana public dashboards gallery); Helm subchart bundling; `renovate` for dependency bumps |
-| Milestone 3 (M3) | **July 15 — stretch** | Day 2 drilldown dashboards: **Hydration**, **Freshness**, **Sources**, **Sinks** (⛓️ gated on upstream Tier 2 instrumentation) |
-| Milestone 4 (M4) | **August 15+** | Day 1 dashboards (Dependencies, Sizing); Day 2 ops dashboards (upgrades, resizing, changing sources/destinations, managing users); Tier 2 upstream metric instrumentation; Helm completeness tail; profile-set finalization; Terraform wrapper; v2 items (BYOC, trace correlation, Polar Signals, formal deprecation policy) |
+Milestones are named by maturity stage; the date is a soft target.
 
-Item tables below reference milestones by number (M1–M4); the dates live only in the table above.
+| Milestone | Target | Deliverables |
+|---|---|---|
+| **Foundation** (M1) | June 15 | `env-top` overview dashboard (Summary, Kubernetes, Cluster, Connections, Compute, Storage — including Hydration / Freshness / Sources / Sinks *summaries*); cloud ↔ self-managed convergence via `$sqlMetricPrefix`; typed Alloy **agent** pipeline; **ScrapeConfigs + ServiceMonitors** for metric collection (synced to charts and docs); Hugo docsite; pre-commit suite; per-component versioning/changelog/release automation; Grafana dashboard v1/v2 API support |
+| **Production** (M2) | July 15 (required) | Native **OTLP exporter** support; **productionalized** stack (Thanos + Loki + Alloy); product observability documentation **fully replaced**; **Logs & Events** + **Networking** + **Upgrades** (Day 2) dashboards; Grafana 11 (dashboard v1) parity for publicly hosted dashboards (Grafana public dashboards gallery); Helm subchart bundling; `renovate` for dependency bumps |
+| **Operational Depth** (M3) | July 31 (stretch) | Day 2 drilldown dashboards: **Hydration**, **Freshness**, **Sources**, **Sinks** (⛓️ gated on upstream Tier 2 instrumentation); Datadog dashboard set; Day 2 ops dashboards (resizing, changing sources/destinations, managing users) |
+| **Maturity** (M4) | August 31+ | Day 1 dashboards (Dependencies, Sizing); Tier 2 upstream metric instrumentation; Helm completeness tail; profile-set finalization; Terraform wrapper; v2 items (BYOC, trace correlation, Polar Signals, formal deprecation policy) |
+
+Item tables below reference milestones by their short tag (M1–M4); names and target dates live in the table above.
 
 ## Status legend
 
@@ -52,6 +58,7 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 |---|---|---|
 | `env-top` overview (6 tabs, incl. Hydration/Freshness/Sources/Sinks summaries) | M1 | ✅ |
 | Cloud ↔ self-managed convergence (`$sqlMetricPrefix`) | M1 | ✅ |
+| GCP / GKE / GMP dashboard + datasource variations | M2 | ✅ |
 | Improved Grafana 11 (dashboard v1) support for the public dashboards gallery | M2 | 🔨 |
 | Logs & Events (requires Loki + Alloy + logs) | M2 | ⬜ |
 | Networking | M2 | ⬜ |
@@ -59,11 +66,16 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | Freshness Drilldown | M3 | ⛓️ |
 | Sources Drilldown | M3 | ⛓️ |
 | Sinks Drilldown | M3 | ⛓️ |
+| Upgrades (Day 2 ops) | M2 | ⬜ |
+| Resizing (Day 2 ops) | M3 | ⬜ |
+| Changing sources (Day 2 ops) | M3 | ⬜ |
+| Changing external destinations (Day 2 ops) | M3 | ⬜ |
+| Managing users (Day 2 ops) | M3 | ⬜ |
 | Dependencies (Day 1: are Materialize + o11y requirements satisfied?) | M4 | ⬜ |
-| Sizing | M4 | ⬜ |
+| Sizing (Day 1) | M4 | ⬜ |
 
 We weight **Day 2 operations over Day 1**: upgrades, resizing, changing sources, changing external destinations, and managing users are the operations that matter most for a running deployment.
-Day 2 ops dashboards covering these land in the M4 window.
+Upgrades is pulled into M2; the rest are M3. Day 1 dashboards (Dependencies, Sizing) are M4.
 
 ### Pipelines (Alloy)
 
@@ -79,15 +91,15 @@ The agent pipeline is in place; the gateway pipeline and the OTLP export path ar
 
 ### Scraping (ScrapeConfigs & ServiceMonitors)
 
-Metric collection is configured through two surfaces: **ScrapeConfigs** (consumed manually, e.g. dropped into a Prometheus/Agent config) and **ServiceMonitors** (to be consumed by `prometheus-operator`, or by Alloy via `prometheus.operator.servicemonitor`).
-Both are needed ASAP — they were targeted for the M1 baseline — and must be synced into the charts and the docs.
+Metric collection is configured through two surfaces: **ScrapeConfigs** (consumed manually, e.g. dropped into a Prometheus/Agent config) and **ServiceMonitors / PodMonitors** (consumed by `prometheus-operator`, or by Alloy via `prometheus.operator.servicemonitor`; GCP uses `PodMonitoring`).
+These ship as the released **Prometheus Scrapers** component and are bundled into the chart.
 
 | Item | Milestone | Status |
 |---|---|---|
-| ScrapeConfigs (consumed manually) | M1 (ASAP) | ✅ |
-| ServiceMonitors (to be consumed by `prometheus-operator` or Alloy `prometheus.operator.servicemonitor`) | M1 (ASAP) | 🔨 |
-| Sync ScrapeConfigs + ServiceMonitors into the charts and docs | M1 (ASAP) | 🔨 |
-| Move ServiceMonitors to the `materialize-operator` Helm chart | M4 | ⬜ (long-term) |
+| ScrapeConfigs (consumed manually) | M1 | ✅ |
+| ServiceMonitors / PodMonitors (incl. GCP `PodMonitoring`) | M1 | ✅ |
+| Sync scrapers into the charts and docs | M1 | ✅ |
+| Move scrapers to the `materialize-operator` Helm chart | M4 | ⬜ (long-term) |
 
 Long term, ServiceMonitors belong in the `materialize-operator` Helm chart rather than here.
 This repo carries them now to fill the gap, with the intent to hand them off once the operator owns that surface.
@@ -99,9 +111,9 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 
 | Item | Milestone | Status |
 |---|---|---|
-| Subchart bundling: Loki, Thanos, Alertmanager, Grafana, kube-state-metrics | M2 | ⬜ |
+| Subchart bundling: Loki, Thanos, Alertmanager, Grafana (+ operator), kube-state-metrics, metrics-server | M2 | ✅ |
+| Generated chart README (values.yaml → README via `helm-docs`) | M2 | ✅ |
 | Distroless Alloy image + pre-install/pre-upgrade `alloy fmt` validation hook | M2 | ⬜ |
-| `helm-readme-sync` (values.yaml → generated README) | M2 | ⬜ |
 | Terraform wrapper module (pins a chart version, own cadence) | M4 | ⬜ |
 
 ### Rules & alerts
@@ -122,6 +134,8 @@ Profile finalization is an M4 activity.
 | Item | Milestone | Status |
 |---|---|---|
 | Pre-commit suite (ruff, pyright, shellcheck, yamllint, cargo fmt, helm-docs) | M1 | ✅ |
+| Per-component versioning + changelog + release automation (see [Versioning](versioning/) / [Releasing](releasing/)) | M2 | ✅ |
+| `auto-format` workflow (label-driven formatter fixups) | M2 | ✅ |
 | `renovate` for automated dependency bumps | M2 | ⬜ |
 | Synthetic-data end-to-end smoke test (metrics flow through the chart) | M4 | ⬜ |
 | kind / ArgoCD / FluxCD CI matrix | M4 | ⬜ (very low priority) |
@@ -134,9 +148,9 @@ The M2 target is a productionalized deployment for Cloud, an internal team, and 
 | Item | Milestone | Status |
 |---|---|---|
 | Productionalized for Cloud + internal + initial external adopters | M2 | 🔨 |
-| Product observability documentation fully replaced (rewrite the recommended path; migration guide off the legacy SQL-exporter surface) | M2 | ⬜ |
+| Product observability documentation fully replaced (rewrite the recommended path; migration guide off the legacy SQL-exporter surface) | M2 | 🔨 |
 | Internal monitoring migrated to consume this repo via `values.yaml` | M4 | ⬜ |
-| Fork source repo and archive the original | M4 | ⬜ |
+| Fork source repo and archive the original | M1 | ✅ |
 
 ## Metrics contract (upstream dependency)
 
@@ -148,38 +162,34 @@ The carry-over is **Tier 2**: roughly 39 signal families that today exist *only*
 To retire those sources, environmentd must emit these natively.
 High-leverage asks, in priority order:
 
-- **`mz_object_info`** (id → fully-qualified name → type) — the single highest-leverage item.
+- ✅ **`mz_object_info`** (id → fully-qualified name → type) — the single highest-leverage item; **delivered upstream**.
   It gives every other metric a stable `group_left` join target for names.
-- A family of **`_info` metrics** (`mz_cluster_info`, `mz_replica_info`, `mz_source_info`, `mz_sink_info`, …) carrying names and parent-id references.
-- Native **source/sink status** metrics (no genuine source exists today).
-- Native **hydration** and **frontier/freshness** signals.
-- **Label-family harmonization** (short vs long vs very-long forms).
+- ✅ A family of **`_info` metrics** (`mz_cluster_info`, `mz_replica_info`, `mz_source_info`, `mz_sink_info`, …) carrying names and parent-id references; **delivered upstream**.
+- ⬜ Native **source/sink status** metrics (no genuine source exists today).
+- ⬜ Native **hydration** and **frontier/freshness** signals.
+- ⬜ **Label-family harmonization** (short vs long vs very-long forms).
 
-The **Hydration / Freshness / Sources / Sinks drilldowns** above are ⛓️ gated on this work, which is why they are M3 (stretch) rather than M2 (required).
+The `_info` family is now available, so name enrichment is unblocked for every panel.
+The remaining drilldowns are still ⛓️ gated on the items above: **Sources / Sinks** await native status metrics, and **Hydration / Freshness** await the hydration and frontier signals — which is why they stay M3 (stretch) rather than M2 (required).
 
-## Release and changelog strategy
+## Versioning, changelog, and releases
 
-Mechanics live in [Releasing](releasing/); the strategy is:
+**Built.** Each artifact has its own SemVer stream — the Helm chart, the optional CRDs chart, dashboards, pipelines, scrapers, and the shared lib — declared in `packages/components.yaml`.
+Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); this replaces the earlier single-umbrella-chart framing.
 
-- **Release unit:** the umbrella Helm chart, on the monthly **15th** cadence.
-- **Versioning keyed to the contract.**
-  Chart SemVer reflects changes to the customer-facing surface — labels, metric names, profile semantics, alert names, dashboard JSON structure — not internal churn.
-  Subchart bumps flow through `Chart.lock` (renovate-assisted).
-- **Deprecation policy.**
-  Any breaking change to that surface gets **at least one minor-release deprecation cycle**.
-  The release process check requires a PR touching the customer-facing surface to either follow the policy or carry an explicit justification.
-  The label/metric contract is load-bearing for every customer dashboard built on top of it; the time to establish this discipline is before broad adoption, not after.
-- **Changelog.**
-  A `changelog.md` in keep-a-changelog style, with a called-out **"Customer-facing surface"** subsection per release so consumers can scan for contract-affecting changes at a glance.
-- **Downstream pinning.**
-  The Terraform wrapper pins a specific chart version with its own update cadence, so Terraform never tracks a moving chart target.
-  Helm-first; the wrapper is an M4 item.
+- **Per-component streams.** ✅
+  Merged PRs are attributed to components by path; `CHANGELOG.md` is the source of truth, with cumulative `Included <dep> @ vPREV..vNEW` dependency rollups.
+- **Automation.** ✅
+  `mz-monitoring-build propose-bumps` opens one `version-update/<component>` PR per changed component on each merge to main; `publish-release` tags `<component>/vX.Y.Z` and creates a GitHub Release (attaching each component's `artifacts`) when such a PR merges.
+- **Deprecation policy.** ⬜
+  Still to commit: at least one minor-release cycle for breaking changes to the label/metric contract, with a release-process check, and a called-out "customer-facing surface" changelog subsection.
+  The label/metric contract is the public API; this discipline should land before broad adoption.
+- **Downstream pinning.** ⬜
+  The Terraform wrapper (M4) pins specific chart versions with its own cadence, so Terraform never tracks a moving target.
 
 ## Follow-up documentation
 
-Tracked, not detailed here:
-
-- Flesh out [Releasing](releasing/) with the release mechanics.
-- Create `changelog.md`.
-- Write the contract `versioning.md` (deprecation policy, in customer-facing terms).
-- Refresh [Repo Layout](repo-layout/) as the layout evolves.
+- [Releasing](releasing/) and [Versioning](versioning/) are written, covering the release mechanics and the per-component model. ✅
+- `CHANGELOG.md` exists and is maintained by the release tooling. ✅
+- A **customer-facing** contract/deprecation-policy page (in customer terms, distinct from the internal `versioning.md`) is still to write. ⬜
+- [Repo Layout](repo-layout/) still needs a refresh as the layout settles. ⬜

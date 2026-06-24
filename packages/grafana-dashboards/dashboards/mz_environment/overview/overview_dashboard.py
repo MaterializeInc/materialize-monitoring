@@ -27,6 +27,15 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     UID = "env-top"
 
+    def get_annotations(self) -> dict[str, str]:
+        """Get annotations for the dashboard."""
+        assert isinstance(self.context, MzBuildContext)
+        annotations = super().get_annotations()
+        annotations["monitoring.materialize.cloud/sql-metric-prefix"] = (
+            self.context.sql_metric_prefix
+        )
+        return annotations
+
     def configure_datasources(self):
         """Add datasources to the dashboard."""
         self.add_variable(variables.metrics_datasource())

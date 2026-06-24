@@ -70,11 +70,7 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         if not kwargs.get("title"):
             kwargs["title"] = f"{GLOBAL_DASHBOARD_CONFIG.title_prefix} {self.TITLE}"
         if not kwargs.get("description"):
-            kwargs["description"] = (
-                inspect.cleandoc(self.__doc__ or "<Missing Description>")
-                if self.DESCRIPTION == "__doc__"
-                else self.DESCRIPTION
-            )
+            kwargs["description"] = self.get_description()
         if not kwargs.get("tags"):
             kwargs["tags"] = _unique_list(
                 GLOBAL_DASHBOARD_CONFIG.default_tags + getattr(self, "TAGS", [])
@@ -85,6 +81,15 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
         self.configure_datasources()
         self.configure_variables()
         self.layout = self.build_layout()
+
+    def get_description(self) -> str:
+        """Get the description for the dashboard."""
+        desc = (
+            inspect.cleandoc(self.__doc__ or "<Missing Description>")
+            if self.DESCRIPTION == "__doc__"
+            else self.DESCRIPTION
+        )
+        return desc
 
     def to_v1(self) -> DashboardV1:
         """Generate a V1 dashboard from this dashboard.
@@ -147,6 +152,13 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
     def configure_variables(self) -> None:
         """Add variables to the dashboard."""
 
+    def get_annotations(self) -> dict[str, str]:
+        """Get annotations for the dashboard."""
+        return {
+            "monitoring.materialize.cloud/target-cloud": self.context.cloud_hint,
+            "monitoring.materialize.cloud/target-export": self.context.export_hint,
+        }
+
     @classmethod
     def render(cls, *, context: BuildContext = DEFAULT_BUILD_CONTEXT, **kwargs) -> str:
         """Render the dashboard with the given kwargs.
@@ -162,6 +174,7 @@ class MzDashboard(dashboardv2.Dashboard, metaclass=abc.ABCMeta):
                 "apiVersion": context.api_hint,
                 "metadata": {
                     "name": dashboard.uid,
+                    "annotations": dashboard.get_annotations(),
                 },
                 "spec": dashboard,
             }

@@ -1,6 +1,10 @@
 apiVersion: dashboard.grafana.app/v2
 kind: Dashboard
 metadata:
+  annotations:
+    monitoring.materialize.cloud/sql-metric-prefix: mz_
+    monitoring.materialize.cloud/target-cloud: generic
+    monitoring.materialize.cloud/target-export: generic
   name: mz-mon-env-top
 spec:
   annotations: []
