@@ -15,7 +15,7 @@ somewhere.&lt;/p&gt;
 &lt;/div&gt;
 
 &lt;p&gt;This guide is for users who are using &lt;code&gt;materialize-terraform-self-managed&lt;/code&gt; to set up their Materialize cluster and want to use Terraform to set up their monitoring infrastructure as well.&lt;/p&gt;
-&lt;blockquote class="book-hint warning" &gt;
+&lt;blockquote class='book-hint warning'&gt;
 &lt;p&gt;materialize-monitoring is not available in &lt;code&gt;materialize-terraform-self-managed&lt;/code&gt; yet (As of May 2026), but it will be enabled by default in the future.&lt;/p&gt;</description></item><item><title>Helm</title><link>https://materializeinc.github.io/materialize-monitoring/getting-started/helm/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/getting-started/helm/</guid><description>&lt;h1 id="installing-via-helm"&gt;Installing via Helm&lt;a class="anchor" href="#installing-via-helm"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;div class="warning wip"&gt;

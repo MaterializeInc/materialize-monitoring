@@ -2,7 +2,12 @@
   "kind": "Dashboard",
   "apiVersion": "dashboard.grafana.app/v2",
   "metadata": {
-    "name": "mz-mon-env-top"
+    "name": "mz-mon-env-top",
+    "annotations": {
+      "monitoring.materialize.cloud/target-cloud": "gcp",
+      "monitoring.materialize.cloud/target-export": "generic",
+      "monitoring.materialize.cloud/sql-metric-prefix": "mz_"
+    }
   },
   "spec": {
     "annotations": [],
