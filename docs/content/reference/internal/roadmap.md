@@ -61,21 +61,28 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | GCP / GKE / GMP dashboard + datasource variations | M2 | ✅ |
 | Improved Grafana 11 (dashboard v1) support for the public dashboards gallery | M2 | 🔨 |
 | Logs & Events (requires Loki + Alloy + logs) | M2 | ⬜ |
-| Networking | M2 | ⬜ |
+| Upgrades (Day 2 ops) | M2 | ⛓️ |
+| Networking | M3 | ⬜ |
 | Hydration Drilldown | M3 | ⛓️ |
 | Freshness Drilldown | M3 | ⛓️ |
 | Sources Drilldown | M3 | ⛓️ |
 | Sinks Drilldown | M3 | ⛓️ |
-| Upgrades (Day 2 ops) | M2 | ⬜ |
 | Resizing (Day 2 ops) | M3 | ⬜ |
 | Changing sources (Day 2 ops) | M3 | ⬜ |
 | Changing external destinations (Day 2 ops) | M3 | ⬜ |
 | Managing users (Day 2 ops) | M3 | ⬜ |
+| Provide Google Cloud Monitoring dashboard set | M3 | ⬜ |
+| Provide Datadog dashboard set | M3 | ⬜ |
+| Provide Honeycomb dashboard set | M3 | ⬜ |
 | Dependencies (Day 1: are Materialize + o11y requirements satisfied?) | M4 | ⬜ |
 | Sizing (Day 1) | M4 | ⬜ |
+| Replace dashboard management with rust implementation | M4 | ⬜ |
 
 We weight **Day 2 operations over Day 1**: upgrades, resizing, changing sources, changing external destinations, and managing users are the operations that matter most for a running deployment.
 Upgrades is pulled into M2; the rest are M3. Day 1 dashboards (Dependencies, Sizing) are M4.
+
+Change operation dashboards focus on new objects being added or removed and
+initially populated (rather than steady state metrics) with some error detection.
 
 ### Pipelines (Alloy)
 
@@ -126,7 +133,6 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 ### Profiles
 
 The profile set is **deliberately not finalized** — it is a stub until the common deployment shapes settle.
-There is **no `datadog-agent` profile**; OTLP forwarding is the export path.
 Profile finalization is an M4 activity.
 
 ### Testing / CI & DevEx

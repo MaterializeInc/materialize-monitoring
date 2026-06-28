@@ -72,15 +72,26 @@ a[href]:visited {
 // External links
 .book-page a[href].external-link {
   &::after {
+    // \29C9
     content: " ⧉";
     font-size: 0.875em;
   }
 }
 
-// External links
+// External links (protected, e.g., Linear)
 .book-page a[href].internal-protected-link {
   &::after {
+    // WARNING: emoji (other locks look bad)
     content: " 🔒";
+    font-size: 0.875em;
+  }
+}
+
+// Github links
+.book-page a[href].github-source-link {
+  &::after {
+    // </> (except better typographically)
+    content: " \2039/\203A";
     font-size: 0.875em;
   }
 }

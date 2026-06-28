@@ -1,0 +1,30 @@
+{{/*
+  folder-toc: Show a list of pages under a directory.
+
+  Usage:
+    {{< folder-toc showParams="status" >}}
+*/}}
+{{- $showParams := .Get "showParams" | default "" -}}
+{{- $showParamsList := split $showParams "," -}}
+{{- $pages := .Page.Pages }}
+{{- if .Page.IsHome }}
+  {{- $pages = .Site.RegularPages }}
+{{- end }}
+
+<ul>
+  {{- range $pages }}
+    <li>
+      <a href="{{ .RelPermalink }}">{{ .Title }}</a>
+      {{- /* FIXME: when Params is present, but all are filtered out, we get an empty ul */}}
+      {{- if .Params }}
+      <ul>
+        {{- range $key, $value := .Params }}
+          {{- if in $showParamsList $key }}
+            <li><strong>{{ $key }}:</strong> {{ $value }}</li>
+          {{- end }}
+        {{- end }}
+      </ul>
+      {{- end }}
+    </li>
+  {{- end }}
+</ul>

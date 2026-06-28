@@ -1,0 +1,25 @@
+{{/*
+  param-table: Show a table of parameters for a page.
+
+  Usage:
+    {{< param-table ignoreParams="skipme" >}}
+*/}}
+{{- $ignoreParams := .Get "ignoreParams" | default "" -}}
+{{- $ignoreParamsList := split $ignoreParams "," -}}
+{{- $ignoreParamsList = append $ignoreParamsList ( slice "title" "weight" "draft" "iscjklanguage" "date" ) -}}
+{{- $params := .Page.Params }}
+{{- if .Page.IsHome }}
+  {{- $params = .Site.Params }}
+{{- end }}
+<table class="param-table">
+  <tbody>
+    {{- range $key, $value := $params }}
+      {{- if not ( in $ignoreParamsList $key ) }}
+        <tr>
+          <th>{{ $key }}</th>
+          <td>{{ $value }}</td>
+        </tr>
+      {{- end }}
+    {{- end }}
+  </tbody>
+</table>

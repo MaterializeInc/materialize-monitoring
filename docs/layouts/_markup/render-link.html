@@ -1,6 +1,7 @@
 <a href="{{ .Destination | safeURL }}"
   {{- with .Title }} title="{{ . }}"{{ end -}}
   {{- if or ( strings.Contains .Destination "https://linear.com" ) ( strings.Contains .Destination "https://linear.app" ) }} rel="external nofollow" class="internal-protected-link"
+  {{- else if strings.Contains .Destination "https://github.com/MaterializeInc" }} rel="external" class="github-source-link"
   {{- else if strings.Contains .Destination "://" }} rel="external" class="external-link"{{ end -}}
 >
   {{- with .Text }}{{ . }}{{ end -}}
