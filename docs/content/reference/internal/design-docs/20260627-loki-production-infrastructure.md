@@ -150,7 +150,7 @@ Fill in as each component is wrapped.
 
 ## Storage and credentials
 
-- **S3-compatible required in production.** "S3-capable" means anything exposing the S3 API that Loki already supports (AWS S3, MinIO, Ceph, R2, …), plus native **GCS** (priority 2) and **Azure Blob** (priority 3).
+- **S3-compatible required in production.** "S3-capable" means anything exposing the S3 API that Loki already supports (AWS S3, MinIO, Ceph, R2, …), plus native **GCS** and **Azure Blob**.
 - **Integration testing** uses monolithic + filesystem; Loki is a black box at that boundary, so no object store is required there.
 - **Single bucket, prefixed** by path: `/loki/chunks`, `/loki/ruler` (an `admin/` prefix only matters if we ever go enterprise). A single role scoped to the bucket is the simpler default; prefix-scoped IAM is available if least-privilege is needed.
 - **AWS account-namespaced buckets** are now GA and are the **recommended** bucket shape; they are standard S3 addressing to Loki's client, so no special handling.

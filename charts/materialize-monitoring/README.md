@@ -574,6 +574,105 @@ Alloy gateway instance. Cardinality reduction and backend-specific egress happen
 
 Bundled Loki backend for logs.
 
+Upstream reference:
+  * https://github.com/grafana-community/helm-charts/tree/main/charts/loki
+  * https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>loki<wbr>.namespaceOverride</td>
+      <td>string</td>
+      <td><code>"loki"</code></td>
+      <td>Install loki into this namespace.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.deploymentMode</td>
+      <td>string</td>
+      <td><code>"Distributed"</code></td>
+      <td>How loki is deployed. We prefer to run in Distributed/Microservices mode.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.networkPolicy<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Whether to enable a network policy for loki</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.loki<wbr>.use_thanos_objstore</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Use the thanos object store client</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.gateway<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Disable gateway by default. We recommend using alloy-gateway for loki writes. Use the query-frontend for loki reads.</td>
+    </tr>
+  </tbody>
+</table>
+
+##### Loki Microservice Configuration
+
+Configuration for each loki microservice.
+
+https://grafana.com/docs/loki/latest/get-started/components/
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td>loki<wbr>.distributor<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Enable for the distributor microservice. Distributor is required.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.distributor<wbr>.autoscaling</td>
+      <td>object</td>
+      <td><pre>
+{
+  "enabled": true
+}</pre>
+</td>
+      <td>Configuration for autoscaling of distributor</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.distributor<wbr>.service<wbr>.type</td>
+      <td>string</td>
+      <td><code>"LoadBalancer"</code></td>
+      <td>Service type for the distributor microservice.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.distributor<wbr>.podDisruptionBudget</td>
+      <td>object</td>
+      <td><pre>
+{
+  "enabled": true,
+  "minAvailable": 1
+}</pre>
+</td>
+      <td>Configuration for pod disruption budget for the distributor microservice.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.ingester<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>true</code></td>
+      <td>Enable for the ingester microservice. Ingester is required.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.ingester<wbr>.zoneAwareReplication<wbr>.enabled</td>
+      <td>bool</td>
+      <td><code>false</code></td>
+      <td>Enable zone-aware replication for the ingester microservice. This is not recommended (as it tends to be quite expensive in cloud environments)</td>
+    </tr>
+  </tbody>
+</table>
+
 #### Thanos
 
 Bundled Thanos backend for long-term metrics.

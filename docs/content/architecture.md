@@ -35,15 +35,17 @@ also provides many opionated configurations such as o11y pipelines, Grafana dash
 `alloy-gateway` is a [Grafana Alloy](https://grafana.com/docs/alloy/latest/introduction/) Gateway Deployment that is responsible for the main observability pipeline processing and forwarding.
 
 Logging responsibilities of `alloy-gateway` include:
-* A [`loki.source.api`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/) component receives logs from [`alloy-agent`](#alloy-agent-grafana-alloy-agent-daemonset) and processes them as logs.
+* Receiving logs on multiple endpoints, so that the [`alloy-agent`](#alloy-agent-grafana-alloy-agent-daemonset), an application, or even another `alloy-gateway` (a chained-gateway topology) can send to it:
+  * A [`loki.source.api`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/) component receives Loki push traffic on `alloy-gateway.$namespace:3100`.
+  * An [`otelcol.receiver.otlp`](https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.otlp/) component receives OTLP logs on `alloy-gateway.$namespace:4317` (gRPC) and `:4318` (HTTP).
 * A [`loki.source.kubernetes_events`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes_events/) component collects Kubernetes events and processes them as logs.
-* A [`loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) pipeline performs log processing
-* A [`loki.write`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/) component forwards logs to log storage (e.g., [Grafana Loki](#loki))
+* A [`loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) pipeline performs log processing — level normalization, [cardinality](../o11y-glossary/#observability-foundations) reduction, and structured-metadata extraction.
+* A [`loki.write`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/) component forwards logs to log storage (e.g., [Grafana Loki](#loki-grafana-loki)) — or, in a [remote-only topology](../logs-and-events/#alternative-topologies), to an external OTLP or Loki destination.
 
 Metrics responsibilities of `alloy-gateway` include:
 * [`prometheus.operator.servicemonitors`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.servicemonitors/) and [`prometheus.operator.podmonitors`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.podmonitors/) components read ServiceMonitors and PodMonitors in order to determine what targets to scrape for metrics and then scrapes those targets.
 * A [`prometheus.enrich`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.enrich/) pipeline performs metric processing and enrichment on scraped metrics.
-* A [`prometheus.remote_write`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/) component forwards metrics to metric storage (e.g., [Thanos](#thanos)).
+* A [`prometheus.remote_write`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/) component forwards metrics to metric storage (e.g., [Thanos](#thanos-thanos)).
 * An [`otelcol.exporter.otlp`](https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/) component supports forwarding to an external OTLP endpoint (e.g., Honeycomb, Datadog, New Relic, etc.) for metrics and logs.
 
 Alloy supports further customization to integrate with an existing
@@ -70,38 +72,17 @@ containers.
 
 ## `loki`: Grafana Loki
 
-[Grafana Loki](https://grafana.com/docs/loki/latest/) is a fully functional
-log aggregation system.
+[Grafana Loki](https://grafana.com/docs/loki/latest/) is a horizontally scalable log-aggregation system, included in `materialize-monitoring` as its default logging backend.
+It runs in **microservice / distributed** mode, where each component scales independently.
 
-Loki is included in `materialize-monitoring` as its default logging
-backend.
+For the full component breakdown — diagrams, the read/write paths, the hash ring, day-2 operations, and alternative topologies — see [Logs & Events > Logging Architecture](../logs-and-events/).
+At a glance:
 
-Refer to [Loki Architecture](https://grafana.com/docs/loki/latest/get-started/architecture/) for more details on the architecture of Loki.
+* **Write path** — `alloy-gateway` pushes processed logs to the **Loki Distributor**, which fans each stream across **Loki Ingesters** through a consistent hash ring (replication factor 3); ingesters flush chunks and the TSDB index to object storage.
+* **Read path** — Grafana issues LogQL to the **Loki Query Frontend**, which queues and splits work for **Loki Queriers** (assisted by the **Loki Query Scheduler** and **Loki Index Gateway**); queriers read recent data from ingesters and historical data from object storage.
+* **Backend / maintenance** — the **Loki Compactor** (singleton) compacts the index and enforces retention; the **Loki Ruler** evaluates LogQL alerting and recording rules, sending alerts to [Alertmanager](#alertmanager-prometheus-alertmanager) and recording-rule samples back through `alloy-gateway` to the long-term metric store ([Thanos](#thanos-thanos)).
 
-The Loki Write path includes:
-* A `loki-write` statefulset that receives logs
-  * The `Distributor` subcomponent receives logs and distributes them to the `Ingester` subcomponents.
-  * The `Ingester` subcomponent processes incoming logs and writes them to storage.
-    It can also serve recent logs for queries.
-
-The Loki Read path includes:
-* An optional `loki-query-frontend` deployment that runs the `Query Frontend`.
-  * The `Query Frontend` subcomponent receives queries and performs query splitting and fan-out to the `Querier` subcomponents.
-    It may consult the `Index Gateway` for query sharding.
-* A `loki-read` scalable deployment that receives queries via the Loki API and reads them from storage.
-  * The `Querier` subcomponent handles LogQL queries.
-    It talks to `Ingesters` for recent logs and to the storage layer for historical logs.
-* Additional cache components can be used for query performance (`chunks-cache`, `results-cache`).
-
-The other parts of the Loki Backend include:
-* A `loki-gateway` deployment serves metadata queries.
-  * The `Index Gateway` subcomponent maintains an index of log metadata
-* A `loki-backend` statefulset runs backend components.
-  * The `Compactor` subcomponent compacts log data in the storage layer to optimize for cost and performance.
-    It also handles retention and deletion of older logs.
-  * The `Ruler` subcomponent evaluates alerting and recording rules against incoming logs.
-
-Loki writes its data to object storage (e.g., S3, GCS, Azure Blob Storage, etc.) for long-term storage and scalability.
+Loki writes all durable data to object storage (S3-compatible, GCS, or Azure Blob).
 
 ## `thanos`: Thanos
 

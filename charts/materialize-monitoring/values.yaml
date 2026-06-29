@@ -244,9 +244,73 @@ alloy-gateway: {}
 
 # -- (h4) Bundled Loki backend for logs.
 # @notationType -- (sectionstart) Loki
-loki: {}
-# Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
-# enabled: true
+# @raw
+#
+# Upstream reference:
+#   * https://github.com/grafana-community/helm-charts/tree/main/charts/loki
+#   * https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml
+loki:
+  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
+  # enabled: true
+  # -- Install loki into this namespace.
+  namespaceOverride: loki
+  # -- How loki is deployed.
+  # We prefer to run in Distributed/Microservices mode.
+  deploymentMode: Distributed
+  networkPolicy:
+    # -- Whether to enable a network policy for loki
+    enabled: false
+    # YAGNI: flavor not in schema (but we probably don't need cilium anyways)
+    # flavor: kubernetes
+    metrics:
+      namespaceSelector: {}
+    ingress:
+      namespaceSelector: {}
+
+  loki:
+    # -- Use the thanos object store client
+    use_thanos_objstore: true
+    object_store:
+      type: s3
+
+  gateway:
+    # -- Disable gateway by default.
+    # We recommend using alloy-gateway for loki writes.
+    # Use the query-frontend for loki reads.
+    enabled: false
+
+  # -- (h5) Configuration for each loki microservice.
+  # @notationType -- (sectionstart) Loki Microservice Configuration
+  # @raw
+  #
+  # https://grafana.com/docs/loki/latest/get-started/components/
+  distributor:
+    # -- Enable for the distributor microservice.
+    # Distributor is required.
+    enabled: true
+
+    # -- Configuration for autoscaling of distributor
+    autoscaling:
+      enabled: true
+
+    service:
+      # -- Service type for the distributor microservice.
+      type: LoadBalancer
+
+    # -- Configuration for pod disruption budget for the distributor microservice.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+  ingester:
+    # -- Enable for the ingester microservice.
+    # Ingester is required.
+    enabled: true
+
+    zoneAwareReplication:
+      # -- Enable zone-aware replication for the ingester microservice.
+      # This is not recommended (as it tends to be quite expensive in cloud environments)
+      enabled: false
+
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos
