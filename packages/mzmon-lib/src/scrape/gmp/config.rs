@@ -92,10 +92,43 @@ pub struct ScrapeEndpoint {
     pub scheme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<String>,
+    /// Basic-auth credentials. GMP takes a literal `username` and reads the
+    /// password from a Kubernetes Secret (it has no inline-password option), so
+    /// the transpiler emits a placeholder username plus the source secret
+    /// reference for the password.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basic_auth: Option<BasicAuth>,
     /// GMP exposes only metric relabeling (singular `metricRelabeling`); it has
     /// no target-relabeling surface, so the operator's `relabelings` are dropped.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub metric_relabeling: Vec<RelabelConfig>,
+}
+
+/// GMP `BasicAuth`: a literal `username` and a password sourced from a Secret
+/// key. (GMP has no inline-password field, unlike classic Prometheus.)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BasicAuth {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<SecretSelector>,
+}
+
+/// GMP wraps a Secret-key reference under a `secret:` key (it can also read from
+/// a ConfigMap, which we do not emit).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SecretSelector {
+    pub secret: SecretKeyRef,
+}
+
+/// A GMP Secret-key reference: the Secret `name` plus the `key` within it.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretKeyRef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub key: String,
 }
 
 /// A value that serializes as either an integer or a string (k8s

@@ -72,6 +72,8 @@ pub struct ScrapeJob {
     pub scrape_interval: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scrape_timeout: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basic_auth: Option<BasicAuth>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kubernetes_sd_configs: Vec<KubernetesSdConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -99,6 +101,21 @@ pub struct Namespaces {
     pub own_namespace: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
+}
+
+/// Classic `basic_auth` block. Classic Prometheus cannot reference a Kubernetes
+/// Secret, so credentials are either inline (`username` / `password`) or read
+/// from a mounted file (`password_file`). The transpiler emits inline
+/// placeholders; see `docs/content/metrics/scraping.md` for the `password_file`
+/// alternative.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct BasicAuth {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

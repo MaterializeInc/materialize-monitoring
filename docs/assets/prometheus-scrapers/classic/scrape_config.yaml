@@ -119,6 +119,9 @@ scrape_configs:
     target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-compute
   metrics_path: /metrics/mz_compute
+  basic_auth:
+    username: materialize_monitor
+    password: REPLACE_WITH_PASSWORD
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:

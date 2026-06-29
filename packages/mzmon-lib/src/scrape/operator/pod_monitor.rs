@@ -13,7 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::common::{LabelSelector, NamespaceSelector, ObjectMeta, RelabelConfig};
+use super::common::{BasicAuth, LabelSelector, NamespaceSelector, ObjectMeta, RelabelConfig};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +68,14 @@ pub struct PodMetricsEndpoint {
     pub scrape_timeout: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub honor_labels: Option<bool>,
+    /// Basic-auth credentials for the scrape request. Operator form: both the
+    /// username and password reference keys in a Kubernetes Secret. The SQL
+    /// metrics endpoints (`/metrics/mz_*`) run the request as the authenticated
+    /// Materialize user, so this scopes which clusters' metrics are returned. The
+    /// classic output emits inline placeholders and GMP carries the password as a
+    /// secret reference (see `transpile`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basic_auth: Option<BasicAuth>,
     /// Operator-form relabelings, passed through to the job's `relabel_configs`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relabelings: Vec<RelabelConfig>,

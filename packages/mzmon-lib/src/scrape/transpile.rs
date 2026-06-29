@@ -24,12 +24,14 @@ use serde_json::Value;
 
 use crate::scrape::classic::config::RelabelConfig as ClassicRelabelConfig;
 use crate::scrape::classic::config::{
-    GlobalConfig, KubernetesSdConfig, Namespaces, ScrapeConfigDocument, ScrapeJob,
+    BasicAuth as ClassicBasicAuth, GlobalConfig, KubernetesSdConfig, Namespaces,
+    ScrapeConfigDocument, ScrapeJob,
 };
 use crate::scrape::error::{Error, Result};
 use crate::scrape::gmp::config as gmp;
 use crate::scrape::operator::common::{
-    NamespaceSelector, ObjectMeta, RelabelConfig as OperatorRelabelConfig,
+    BasicAuth as OperatorBasicAuth, NamespaceSelector, ObjectMeta,
+    RelabelConfig as OperatorRelabelConfig,
 };
 use crate::scrape::operator::pod_monitor::PodMonitor;
 use crate::scrape::operator::scrape_config::ScrapeConfigCrd;
@@ -113,6 +115,44 @@ impl Monitor {
 /// GMP requires a scrape `interval` on every endpoint; prometheus-operator
 /// leaves it optional (inheriting `global`). Fill this when the source omits it.
 const GMP_DEFAULT_INTERVAL: &str = "60s";
+
+/// Placeholder username emitted into the classic and GMP basic-auth blocks. The
+/// operator (PodMonitor) form carries the username in a Secret, but classic
+/// Prometheus and GMP take a literal username string, so we emit the suggested
+/// monitoring role name as a clearly-fillable placeholder. The role must be
+/// granted `USAGE` on every cluster — see `docs/content/metrics/scraping.md`.
+const BASIC_AUTH_PLACEHOLDER_USERNAME: &str = "materialize_monitor";
+
+/// Placeholder password emitted into the classic basic-auth block only. Classic
+/// Prometheus cannot reference a Kubernetes Secret inline; operator and GMP keep
+/// the password in a Secret. See the docs for the `password_file` alternative.
+const BASIC_AUTH_PLACEHOLDER_PASSWORD: &str = "REPLACE_WITH_PASSWORD";
+
+/// Map an operator `basicAuth` (Secret-key references) onto the classic
+/// `basic_auth` block. Classic cannot read a Kubernetes Secret, so we emit inline
+/// placeholders for the user to fill in (or swap for `password_file`).
+fn basic_auth_to_classic(_auth: &OperatorBasicAuth) -> ClassicBasicAuth {
+    ClassicBasicAuth {
+        username: Some(BASIC_AUTH_PLACEHOLDER_USERNAME.to_string()),
+        password: Some(BASIC_AUTH_PLACEHOLDER_PASSWORD.to_string()),
+        password_file: None,
+    }
+}
+
+/// Map an operator `basicAuth` onto the GMP `basicAuth` block: a placeholder
+/// `username` plus the source's password Secret reference (GMP has no inline
+/// password). The username Secret reference has no GMP equivalent and is dropped.
+fn basic_auth_to_gmp(auth: &OperatorBasicAuth) -> gmp::BasicAuth {
+    gmp::BasicAuth {
+        username: Some(BASIC_AUTH_PLACEHOLDER_USERNAME.to_string()),
+        password: auth.password.as_ref().map(|secret| gmp::SecretSelector {
+            secret: gmp::SecretKeyRef {
+                name: secret.name.clone(),
+                key: secret.key.clone(),
+            },
+        }),
+    }
+}
 
 /// PodMonitor → one GMP `PodMonitoring` (namespaced) or `ClusterPodMonitoring`
 /// (cluster-wide) **per endpoint** (GMP requires unique ports within a
@@ -221,6 +261,7 @@ fn pod_monitor_to_gmp(pod_monitor: &PodMonitor) -> Result<Vec<gmp::PodMonitoring
                         path: endpoint.path.clone(),
                         scheme: endpoint.scheme.clone(),
                         timeout: endpoint.scrape_timeout.clone(),
+                        basic_auth: endpoint.basic_auth.as_ref().map(basic_auth_to_gmp),
                         // operator `relabelings` (target relabeling) have no GMP
                         // equivalent and are dropped; only metric relabeling carries over.
                         metric_relabeling: endpoint.metric_relabelings.clone(),
@@ -459,6 +500,7 @@ fn transpile_pod_monitor(pod_monitor: &PodMonitor) -> Result<Vec<ScrapeJob>> {
             metrics_path: endpoint.path.clone(),
             scrape_interval: endpoint.interval.clone(),
             scrape_timeout: endpoint.scrape_timeout.clone(),
+            basic_auth: endpoint.basic_auth.as_ref().map(basic_auth_to_classic),
             kubernetes_sd_configs: vec![KubernetesSdConfig {
                 role: "pod".into(),
                 namespaces: sd_namespaces.clone(),
@@ -1151,5 +1193,91 @@ mod tests {
             target_labels.from_pod[0].to.as_deref(),
             Some("materialize_cloud_organization_name")
         );
+    }
+
+    const POD_MONITOR_WITH_BASIC_AUTH: &str = r#"
+        apiVersion: monitoring.coreos.com/v1
+        kind: PodMonitor
+        metadata:
+          name: mini
+        spec:
+          selector:
+            matchLabels:
+              app: foo
+          podMetricsEndpoints:
+            - port: metrics
+              basicAuth:
+                username:
+                  name: my-secret
+                  key: username
+                password:
+                  name: my-secret
+                  key: password
+        "#;
+
+    /// Operator `basicAuth` (Secret refs) → classic inline placeholders, since
+    /// classic Prometheus can't read a Kubernetes Secret. The Secret coordinates
+    /// are intentionally dropped; the user fills in the placeholders (or swaps to
+    /// `password_file`).
+    #[test]
+    fn basic_auth_becomes_classic_inline_placeholders() {
+        let monitor = Monitor::from_yaml_str(POD_MONITOR_WITH_BASIC_AUTH).unwrap();
+        let jobs = monitor.transpile().unwrap();
+        let auth = jobs[0].basic_auth.as_ref().expect("basic_auth populated");
+        assert_eq!(auth.username.as_deref(), Some("materialize_monitor"));
+        assert_eq!(auth.password.as_deref(), Some("REPLACE_WITH_PASSWORD"));
+        assert!(auth.password_file.is_none());
+    }
+
+    /// Operator `basicAuth` → GMP `basicAuth`: a placeholder username (GMP can't
+    /// source a username from a Secret) plus the source's password Secret
+    /// reference carried through verbatim.
+    #[test]
+    fn basic_auth_becomes_gmp_username_and_password_secret() {
+        let monitor = Monitor::from_yaml_str(POD_MONITOR_WITH_BASIC_AUTH).unwrap();
+        let resources = monitor.to_gmp().unwrap();
+        let auth = resources[0].spec.endpoints[0]
+            .basic_auth
+            .as_ref()
+            .expect("basicAuth populated");
+        assert_eq!(auth.username.as_deref(), Some("materialize_monitor"));
+        let password = auth.password.as_ref().expect("password secret populated");
+        assert_eq!(password.secret.name.as_deref(), Some("my-secret"));
+        assert_eq!(password.secret.key, "password");
+    }
+
+    /// In the real `podmonitor-sql.yaml`, only the `mz_compute` endpoint declares
+    /// `basicAuth`, so exactly that one job (classic) / resource (GMP) is
+    /// authenticated and the other three SQL subsystems are left untouched.
+    #[test]
+    fn sql_fixture_authenticates_only_mz_compute() {
+        let monitor = Monitor::from_yaml_str(fixture("podmonitor-sql")).unwrap();
+
+        let jobs = monitor.transpile().unwrap();
+        for job in &jobs {
+            if job.job_name.ends_with("/mz-compute") {
+                assert!(
+                    job.basic_auth.is_some(),
+                    "mz-compute job should carry basic_auth"
+                );
+            } else {
+                assert!(
+                    job.basic_auth.is_none(),
+                    "{} should not carry basic_auth",
+                    job.job_name
+                );
+            }
+        }
+
+        let resources = monitor.to_gmp().unwrap();
+        for r in &resources {
+            let name = r.metadata.name.as_deref().unwrap();
+            let authenticated = r.spec.endpoints[0].basic_auth.is_some();
+            if name == "materialize-sql-mz-compute" {
+                assert!(authenticated, "{name} should be authenticated");
+            } else {
+                assert!(!authenticated, "{name} should not be authenticated");
+            }
+        }
     }
 }

@@ -14,6 +14,12 @@ spec:
   - port: internal-http
     interval: 60s
     path: /metrics/mz_compute
+    basicAuth:
+      username: materialize_monitor
+      password:
+        secret:
+          name: materialize-sql-monitor
+          key: password
   targetLabels:
     fromPod:
     - from: materialize.cloud/organization-name
