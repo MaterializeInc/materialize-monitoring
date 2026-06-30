@@ -67,7 +67,6 @@ flowchart TB
   end
 
   store[("Object storage<br/>chunks + TSDB index")]
-  thanos[("Long-term metric store<br/>Thanos")]
   graf["Grafana"]
   am["Alertmanager"]
 
@@ -77,10 +76,8 @@ flowchart TB
   qr -->|"historical"| store
   idxgw --> store
   comp <--> store
-  ruler --> store
+  ruler --> idxgw
   ruler -->|"alerts"| am
-  ruler -->|"recording-rule samples<br/>remote_write"| gateway
-  gateway -->|"prometheus remote_write"| thanos
   graf -->|"LogQL"| qf
 ```
 

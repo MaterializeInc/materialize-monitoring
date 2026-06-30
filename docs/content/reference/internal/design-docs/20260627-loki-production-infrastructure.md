@@ -177,6 +177,65 @@ We already bundle Alloy in a gateway role, so writes flow agent → **alloy-gate
 The read path points Grafana's datasource at the **query-frontend** Service directly; a `LoadBalancer` Service default is sufficient otherwise.
 Reserve a separate gateway only if a single external hostname or auth termination is required, and prefer the cloud LB / Gateway API / Envoy over re-introducing nginx.
 
+## Sizing
+
+**Size by throughput and burst, not by bucket size.**
+Bucket size is a *derived* output — sustained throughput × retention — not a sizing input; our first instinct to key the tiers off bucket size was wrong.
+
+Different parts of Loki are sized off different points of the load envelope:
+
+- **Ingest path** (distributors, ingesters, WAL, ingestion limits) → the **5-minute burst**, with headroom to the regression ceiling.
+- **Storage / retention / bucket** → **sustained** throughput.
+- **Read path** (frontend, queriers, caches) → query load, independent of ingest.
+
+The three t-shirt sizes are defined by the ingest envelope:
+
+| Size | Sustained (peak-hour) | 5-min burst | Regression ceiling | Anchor |
+|---|---|---|---|---|
+| S | ~0.25 MiB/s | ~1 MiB/s | ~2 MiB/s | dev / staging-class |
+| M | ~0.75 MiB/s | ~3 MiB/s | ~8 MiB/s | mid |
+| L | ~2 MiB/s | ~6 MiB/s | ~17 MiB/s | measured — Materialize SaaS production |
+
+**L is anchored on measured production** (distributor-received bytes): peak ~6 GiB/hr (~1.7 MiB/s), a 5-minute burst of ~1.8 GiB (~6.1 MiB/s), and a pre-Alloy 5-minute burst of ~5 GiB (~17 MiB/s) that sets the regression ceiling.
+The 5-minute burst runs ~3.6× the peak-hour rate, so averages must never drive sizing — the burst does.
+The pre-Alloy regression ceiling is the figure to degrade gracefully against, and it quantifies why the Alloy reduction is load-bearing rather than an optimization.
+
+Two consequences for the topology:
+
+- **Per-tenant limits ≠ aggregate capacity.** `ingestion_rate_mb` and friends are per tenant (per environment); the aggregate burst is a fleet-capacity concern handled by distributor and ingester count, not by the per-tenant limit.
+- **Scale ingesters past 3 on memory, not bytes.** With `replication_factor` 3 and exactly 3 ingesters, every ingester holds every stream, so per-ingester memory tracks total stream cardinality. When that is the constraint — or to spread the regression burst and shrink blast radius — run N > RF so streams shard across the ring.
+
+Per-component resource starting points, the protective limit values, the measurement queries, and the full operator checklist (with the shared-responsibility model) live in [Operating > Production Best Practices](../../../../operating/production-best-practices/).
+
+## Tenancy
+
+**Decision: one logical Loki tenant per install; isolation is label-based within it, and the hard isolation boundary is the install (per region/stack).**
+
+This is driven by two things pulling the same direction:
+
+- The Grafana Loki datasource manages a **single tenant per datasource**, so an arbitrary/growing set of tenants does not map cleanly onto Grafana.
+- More fundamentally, our **composable view across many environments** is a requirement, and real `X-Scope-OrgID` multi-tenancy fights it — cross-tenant reads require enumerating tenants (`a|b|c`), which is fragile and expensive as the environment count grows.
+
+So one tenant + label segmentation (`environment_id`, `organization_name`, …) is not a workaround for the plugin; it is the shape that matches "see the whole fleet in one place."
+
+The per-environment controls people reach for multi-tenancy to get are available **per-label** within a single tenant, and we use them:
+
+- **Per-stream retention** keyed on `environment_id` (the tiered-retention plan).
+- **Per-label rate limits** (`by_label_name`) — already applied on `namespace` in the pipeline.
+- **Deletion** by label matcher (`environment_id="…"`) for per-environment/compliance deletes.
+
+Accepted caveats:
+
+- **Isolation is soft.** Any query against the tenant can see every environment's logs unless label-filtered. Acceptable for trusted internal SRE/operators; **not** sufficient for per-team need-to-know or customer-facing log access. If that becomes a requirement, the path is Grafana **LBAC** (Enterprise/Cloud) for a single-datasource model, or tenant-per-environment writes + multi-tenant reads.
+- **Cardinality concentrates.** One tenant aggregates every environment's streams into one index space, which brings the [sizing](#sizing) **N > RF** ingester-memory lever forward — watch per-ingester memory against total fleet stream count.
+- **The tenant ID is baked into the object-storage path.** Switching tenant models later relocates chunks/index — a migration, not a flag flip.
+
+Forward-compat: set **`auth_enabled: true` with one explicit named `X-Scope-OrgID`** (not the implicit `fake` single-tenant tenant), so a future split writes *new* tenants alongside rather than migrating existing data.
+
+This also **reinforces the no-live-reload decision**: with a single tenant the per-tenant override need largely disappears — overrides become per-stream retention (compactor config) and per-label limits, both static.
+
+**Flip trigger:** move to real multi-tenancy only when (a) hard isolation/compliance/per-team or customer-facing access is required, or (b) per-tenant limit/retention isolation is needed that labels cannot express.
+
 ## Profiles
 
 - Profiles live in `charts/materialize-monitoring/profiles/` as **composable values files** (e.g. `integration-test.values.yaml`, `aws-prod.values.yaml`), expanded via `helm-docs`.

@@ -592,14 +592,76 @@ Upstream reference:
     <tr>
       <td>loki<wbr>.networkPolicy<wbr>.enabled</td>
       <td>bool</td>
-      <td><code>false</code></td>
-      <td>Whether to enable a network policy for loki</td>
+      <td><code>true</code></td>
+      <td>Whether to enable a network policy for loki In production, this is recommended to be enabled.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.networkPolicy<wbr>.metrics</td>
+      <td>object</td>
+      <td><pre>
+{
+  "namespaceSelector": {}
+}</pre>
+</td>
+      <td>Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to alloy or prometheus).</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.networkPolicy<wbr>.ingress</td>
+      <td>object</td>
+      <td><pre>
+{
+  "namespaceSelector": {}
+}</pre>
+</td>
+      <td>Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to alloy and grafana).</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
+      <td>object</td>
+      <td><pre>
+{
+  "chunks": "",
+  "ruler": ""
+}</pre>
+</td>
+      <td>Bucket names for object storage. These are required to be populated.</td>
     </tr>
     <tr>
       <td>loki<wbr>.loki<wbr>.use_thanos_objstore</td>
       <td>bool</td>
       <td><code>true</code></td>
       <td>Use the thanos object store client</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.loki<wbr>.object_store</td>
+      <td>object</td>
+      <td><pre>
+{
+  "type": "s3"
+}</pre>
+</td>
+      <td>Object storage configuration. Modify as needed.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.loki<wbr>.schemaConfig</td>
+      <td>object</td>
+      <td><pre>
+{
+  "configs": [
+    {
+      "from": "2024-01-01",
+      "index": {
+        "period": "24h",
+        "prefix": "loki_index_"
+      },
+      "object_store": "s3",
+      "schema": "v13",
+      "store": "tsdb"
+    }
+  ]
+}</pre>
+</td>
+      <td>Schema configuration for the loki TSDB. This is append-only and MUST be copied into projects and mutated on upgrades (if v13 stops being in use).</td>
     </tr>
     <tr>
       <td>loki<wbr>.gateway<wbr>.enabled</td>
@@ -624,23 +686,39 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td>loki<wbr>.distributor<wbr>.enabled</td>
       <td>bool</td>
       <td><code>true</code></td>
-      <td>Enable for the distributor microservice. Distributor is required.</td>
+      <td>Enable for the distributor microservice. Distributor is required. The Distributor is the stateless front door for writes. It validates incoming streams against per-tenant limits, enforces rate limits, and normalizes labels, then splits the batch into individual streams and forwards each to the owning ingesters.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.distributor<wbr>.replicas</td>
+      <td>string</td>
+      <td><code>nil</code></td>
+      <td>Number of replicas for the distributor microservice. If autoscaling is enabled, this should be set to null.</td>
+    </tr>
+    <tr>
+      <td>loki<wbr>.distributor<wbr>.kind</td>
+      <td>string</td>
+      <td><code>"Deployment"</code></td>
+      <td>Type of workload for the distributor.</td>
     </tr>
     <tr>
       <td>loki<wbr>.distributor<wbr>.autoscaling</td>
       <td>object</td>
       <td><pre>
 {
-  "enabled": true
+  "enabled": true,
+  "maxReplicas": 4,
+  "minReplicas": 2,
+  "targetCPUUtilizationPercentage": 60,
+  "targetMemoryUtilizationPercentage": 75
 }</pre>
 </td>
-      <td>Configuration for autoscaling of distributor</td>
+      <td>Configuration for autoscaling of distributor For production, this is recommended to be enabled. We provide opinionated defaults.</td>
     </tr>
     <tr>
       <td>loki<wbr>.distributor<wbr>.service<wbr>.type</td>
       <td>string</td>
-      <td><code>"LoadBalancer"</code></td>
-      <td>Service type for the distributor microservice.</td>
+      <td><code>"ClusterIP"</code></td>
+      <td>Service type for the distributor microservice. Without a gateway, this is the exposed write component.</td>
     </tr>
     <tr>
       <td>loki<wbr>.distributor<wbr>.podDisruptionBudget</td>
@@ -657,7 +735,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td>loki<wbr>.ingester<wbr>.enabled</td>
       <td>bool</td>
       <td><code>true</code></td>
-      <td>Enable for the ingester microservice. Ingester is required.</td>
+      <td>Enable for the ingester microservice. Ingester is required. The Ingester is the stateful heart of the write path, and it also serves the most recent reads. It buffers incoming entries into per-stream in-memory chunks, compresses them, and periodically flushes those chunks and their index to object storage.</td>
     </tr>
     <tr>
       <td>loki<wbr>.ingester<wbr>.zoneAwareReplication<wbr>.enabled</td>

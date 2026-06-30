@@ -72,3 +72,24 @@ app.kubernetes.io/version: {{ $.Chart.AppVersion | quote }}
   {{- end }}
 app.kubernetes.io/managed-by: {{ $.Release.Service }}
 {{- end }}
+
+
+{{/*
+Validation entrypoint
+*/}}
+{{- define "mzmon.validate" -}}
+  {{- $errors := list -}}
+  {{- $warnings := list -}}
+
+  {{- $res := include "mzmon.loki.validate" $ | fromYaml -}}
+  {{- $errors = concat $errors $res.errors -}}
+  {{- $warnings = concat $warnings $res.warnings -}}
+
+  {{- range $warnings -}}
+    {{- printf "# WARNING: %s\n" . -}}
+  {{- end }}
+
+  {{- if $errors -}}
+    {{- printf "Validation failed:\n%s" ( join "\n" $errors ) | fail -}}
+  {{- end }}
+{{- end }}

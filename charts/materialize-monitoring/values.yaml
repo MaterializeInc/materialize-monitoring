@@ -259,19 +259,45 @@ loki:
   deploymentMode: Distributed
   networkPolicy:
     # -- Whether to enable a network policy for loki
-    enabled: false
+    # In production, this is recommended to be enabled.
+    enabled: true
     # YAGNI: flavor not in schema (but we probably don't need cilium anyways)
     # flavor: kubernetes
+    # -- Selector for incoming traffic to metric endpoints.
+    # This must be configured manually (usually set to alloy or prometheus).
     metrics:
       namespaceSelector: {}
+    # -- Selector for incoming traffic to the read/write endpoints.
+    # This must be configured manually (usually set to alloy and grafana).
     ingress:
       namespaceSelector: {}
 
   loki:
+    storage:
+      # -- Bucket names for object storage.
+      # These are required to be populated.
+      bucketNames:
+        chunks: "<REPLACE-ME>"
+        ruler: "<REPLACE-ME>"
     # -- Use the thanos object store client
     use_thanos_objstore: true
+    # -- Object storage configuration.
+    # Modify as needed.
     object_store:
       type: s3
+
+    # -- Schema configuration for the loki TSDB.
+    # This is append-only and MUST be copied into projects and mutated on upgrades
+    # (if v13 stops being in use).
+    schemaConfig:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
 
   gateway:
     # -- Disable gateway by default.
@@ -287,23 +313,47 @@ loki:
   distributor:
     # -- Enable for the distributor microservice.
     # Distributor is required.
+    # The Distributor is the stateless front door for writes.
+    # It validates incoming streams against per-tenant limits, enforces rate limits,
+    # and normalizes labels, then splits the batch into individual streams and forwards
+    # each to the owning ingesters.
     enabled: true
 
+    # -- Number of replicas for the distributor microservice.
+    # If autoscaling is enabled, this should be set to null.
+    replicas: null
+
+    # -- Type of workload for the distributor.
+    kind: Deployment
+
     # -- Configuration for autoscaling of distributor
+    # For production, this is recommended to be enabled.
+    # We provide opinionated defaults.
     autoscaling:
       enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 60
+      targetMemoryUtilizationPercentage: 75
 
     service:
       # -- Service type for the distributor microservice.
-      type: LoadBalancer
+      # Without a gateway, this is the exposed write component.
+      type: ClusterIP
 
     # -- Configuration for pod disruption budget for the distributor microservice.
     podDisruptionBudget:
       enabled: true
       minAvailable: 1
+
   ingester:
     # -- Enable for the ingester microservice.
     # Ingester is required.
+    # The Ingester is the stateful heart of the write path, and it also
+    # serves the most recent reads.
+    # It buffers incoming entries into per-stream in-memory chunks,
+    # compresses them, and periodically flushes those chunks and their
+    # index to object storage.
     enabled: true
 
     zoneAwareReplication:
