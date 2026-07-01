@@ -92,10 +92,20 @@ pub struct ScrapeEndpoint {
     pub scheme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basic_auth: Option<BasicAuth>,
     /// GMP exposes only metric relabeling (singular `metricRelabeling`); it has
     /// no target-relabeling surface, so the operator's `relabelings` are dropped.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub metric_relabeling: Vec<RelabelConfig>,
+}
+
+/// GMP `BasicAuth`: a literal `username`.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BasicAuth {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
 }
 
 /// A value that serializes as either an integer or a string (k8s

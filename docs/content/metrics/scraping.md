@@ -39,6 +39,20 @@ EndpointSlices instead of looking at Pods directly.
 If you are not using default `materialize-monitoring` setup, you can use the following
 scrape configuration files as a starting point for your own Prometheus setup.
 
+### Authenticating the SQL metrics endpoint
+
+The `materialize-sql` scrapers collect SQL-derived metrics from the environmentd `/metrics/mz_compute`, `/metrics/mz_frontier`, `/metrics/mz_storage`, and `/metrics/mz_usage` endpoints. Scrape it as the built-in `mz_support` role.
+
+The **Classic** and **Google Cloud Managed Prometheus** configs carry `username: mz_support` inline, so they need no extra setup.
+Prometheus Operator `basicAuth` can only reference a Kubernetes Secret — it has no inline username field — so the `materialize-sql` `PodMonitor` reads the username from a Secret named `materialize-sql-monitor`.
+Create it in the namespace the scrapers run in (for example, `materialize`):
+
+```bash
+kubectl create secret generic materialize-sql-monitor \
+  --namespace materialize \
+  --from-literal=username=mz_support
+```
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see
