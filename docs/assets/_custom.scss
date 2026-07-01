@@ -231,6 +231,18 @@ main.container {
     padding: rem(0.5);
     font-size: rem(1.2);
     overflow-x: auto;
+    max-width: 15rem;
+  }
+
+  td.helm-value-key {
+    font-family: monospace;
+    font-size: rem(1.5);
+    overflow-x: auto;
+    max-width: 15rem;
+  }
+
+  td.helm-value-desc {
+    font-size: rem(1.5);
   }
 }
 

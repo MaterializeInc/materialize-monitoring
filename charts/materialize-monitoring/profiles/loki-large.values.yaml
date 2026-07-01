@@ -1,0 +1,93 @@
+# Loki profile: large (L)
+#
+# Overlay on top of the chart defaults (which target a medium install).
+# Compose after the base values, e.g. `-f profiles/loki-large.values.yaml`.
+#
+# Envelope this profile is sized for (see Operating > Production Best Practices):
+#   sustained ~2 MiB/s · 5-min burst ~6 MiB/s · regression ceiling ~17 MiB/s
+# Typical fit: production SaaS / fleet, anchored on measured production.
+#
+# This file defines ONLY the deltas from the medium defaults — larger
+# resources, WAL, caches, limits, retention, autoscaling ceilings, and more
+# ingesters. Ingesters run N > replication_factor so streams shard across the
+# ring (spreading the burst and shrinking per-ingester memory / blast radius).
+loki:
+  loki:
+    limits_config:
+      # -- Longer retention to match a larger storage budget (~60d).
+      retention_period: 1440h
+      # -- Higher per-tenant caps so a busy environment plus a reduction
+      # regression throttles gracefully rather than hard-dropping.
+      ingestion_rate_mb: 16
+      ingestion_burst_size_mb: 32
+      max_global_streams_per_user: 25000
+
+  distributor:
+    autoscaling:
+      # -- Must absorb the aggregate burst; stateless and cheap to scale.
+      maxReplicas: 6
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+  ingester:
+    # -- Run more than replication_factor (3) so streams shard across the ring,
+    # spreading the burst and keeping per-ingester memory bounded.
+    # Ingesters are ephemeral (see base values); no WAL PVC to size here.
+    replicas: 6
+    resources:
+      requests:
+        cpu: 1
+        memory: 4Gi
+
+  querier:
+    autoscaling:
+      maxReplicas: 8
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+
+  queryFrontend:
+    autoscaling:
+      maxReplicas: 4
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  queryScheduler:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  compactor:
+    persistence:
+      # -- Larger working copy of the index.
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+
+  indexGateway:
+    persistence:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  ruler:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  # -- Larger caches to keep object-storage round-trips and query latency down.
+  chunksCache:
+    allocatedMemory: 4096
+  resultsCache:
+    allocatedMemory: 2048

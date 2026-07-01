@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: loki size profiles
+release:
+  name: t
+  namespace: test-monitoring
+# Enablement + required inputs shared by every case. Profiles are layered on
+# top per-test via `values:`.
+set:
+  tags.bundled-backends: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy
+  loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
+tests:
+  - it: medium (base defaults) runs 3 ephemeral ingesters spread hard across zones
+    template: ../charts/loki/templates/ingester/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+      # Ephemeral: no PVC is created for the ingester.
+      - notExists:
+          path: spec.volumeClaimTemplates
+      # Hard zone spread is the first constraint.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: topology.kubernetes.io/zone
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: DoNotSchedule
+      # Host spread is soft.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[1].topologyKey
+          value: kubernetes.io/hostname
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[1].whenUnsatisfiable
+          value: ScheduleAnyway
+
+  - it: small profile keeps ingesters ephemeral
+    values:
+      - ../profiles/loki-small.values.yaml
+    template: ../charts/loki/templates/ingester/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  - it: large profile scales ingesters past replication_factor (6), still ephemeral
+    values:
+      - ../profiles/loki-large.values.yaml
+    template: ../charts/loki/templates/ingester/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 6
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  - it: test profile runs single-binary, so no distributed ingester is rendered
+    values:
+      - ../profiles/loki-test.values.yaml
+    template: ../charts/loki/templates/ingester/statefulset.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: every size profile passes our loki validators
+    template: validate.yaml
+    values:
+      - ../profiles/loki-large.values.yaml
+    asserts:
+      - notFailedTemplate: {}

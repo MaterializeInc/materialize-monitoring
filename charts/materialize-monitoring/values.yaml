@@ -257,6 +257,17 @@ loki:
   # -- How loki is deployed.
   # We prefer to run in Distributed/Microservices mode.
   deploymentMode: Distributed
+
+  # Zero the Simple Scalable targets in Distributed mode.
+  # The upstream chart defaults read/write/backend to 3 replicas; running them
+  # alongside the distributed targets is rejected by Loki's own validation.
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
   networkPolicy:
     # -- Whether to enable a network policy for loki
     # In production, this is recommended to be enabled.
@@ -299,6 +310,39 @@ loki:
             prefix: loki_index_
             period: 24h
 
+    # -- Cluster-wide replication factor.
+    # Three is our HA floor and the reason at least three ingesters are required.
+    # (This matches the upstream default; surfaced here because it is load-bearing.)
+    commonConfig:
+      replication_factor: 3
+
+    # -- Per-tenant limits, sized for a medium install.
+    # These are protective caps (per environment), not the expected volume —
+    # see Operating > Production Best Practices for the throughput envelope.
+    limits_config:
+      # -- Default retention before the compactor deletes logs.
+      # Upstream defaults to infinite retention; we set a real bound.
+      retention_period: 744h
+      # -- Per-tenant ingestion rate / burst, in MB. Per environment, not the fleet aggregate.
+      ingestion_rate_mb: 8
+      ingestion_burst_size_mb: 16
+      # -- Active-stream ceiling per tenant; a cardinality guard.
+      max_global_streams_per_user: 10000
+      # -- Reject writes too far in the past.
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      # -- Enable the log-volume endpoints Grafana's logs drilldown relies on.
+      volume_enabled: true
+
+    # -- Compactor *configuration* (distinct from the compactor deployment below).
+    # Retention is enforced by the compactor and is OFF in upstream defaults.
+    compactor:
+      retention_enabled: true
+      # -- Where delete requests are stored; matches the object-store backend.
+      delete_request_store: s3
+      # -- Grace period before retention/deletes actually remove data.
+      retention_delete_delay: 2h
+
   gateway:
     # -- Disable gateway by default.
     # We recommend using alloy-gateway for loki writes.
@@ -311,7 +355,7 @@ loki:
   #
   # https://grafana.com/docs/loki/latest/get-started/components/
   distributor:
-    # -- Enable for the distributor microservice.
+    # -- Enable the distributor microservice.
     # Distributor is required.
     # The Distributor is the stateless front door for writes.
     # It validates incoming streams against per-tenant limits, enforces rate limits,
@@ -346,8 +390,14 @@ loki:
       enabled: true
       minAvailable: 1
 
+    # -- Resource requests (medium install). Tune per profile.
+    resources:
+      requests:
+        cpu: 150m
+        memory: 256Mi
+
   ingester:
-    # -- Enable for the ingester microservice.
+    # -- Enable the ingester microservice.
     # Ingester is required.
     # The Ingester is the stateful heart of the write path, and it also
     # serves the most recent reads.
@@ -356,11 +406,258 @@ loki:
     # index to object storage.
     enabled: true
 
-    zoneAwareReplication:
-      # -- Enable zone-aware replication for the ingester microservice.
-      # This is not recommended (as it tends to be quite expensive in cloud environments)
+    # -- Number of ingester replicas.
+    # Three is the floor for replication_factor 3. Scale UP on memory /
+    # stream-cardinality (so streams shard across the ring), not on bytes —
+    # with replicas == replication_factor every ingester holds every stream.
+    replicas: 3
+
+    # -- Ingesters are stateful.
+    kind: StatefulSet
+
+    persistence:
+      # -- Run ingesters ephemerally: no PVC, node-local emptyDir for the WAL
+      # and not-yet-flushed chunks. Durability comes from replication_factor 3,
+      # not from disk — a rescheduled ingester starts fresh and the ring
+      # backfills from its peers. This avoids EBS zonal pinning and the slow
+      # volume detach/attach that PVCs incur during node replacement.
       enabled: false
 
+    # -- Termination grace period for ingesters.
+    # flush-on-shutdown is best-effort; if the node force-kills sooner, the
+    # other replicas still flush their copies, so do not depend on a long grace
+    # period for durability. Kept modest to survive enterprise force-kill windows.
+    terminationGracePeriodSeconds: 60
+
+    # -- Pod affinity for ingesters.
+    # Nulled to drop the chart's default *hard* per-host anti-affinity (setting
+    # it to `{}` is a no-op — the subchart default survives the merge), so host
+    # spread can be soft (see topologySpreadConstraints); zone spread stays hard.
+    affinity: null
+
+    # -- Topology spread for ingesters: hard across zones, soft across hosts.
+    # A pod that cannot satisfy the hard zone rule goes Pending, which is the
+    # signal Karpenter (or the cluster-autoscaler) uses to add a node in the
+    # deficient zone — soft rules cannot summon capacity that way. Host spread
+    # is soft so pods still schedule when nodes are momentarily scarce.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        # minDomains must equal the number of zones your node pool can launch in.
+        # Setting it above the available zone count leaves pods Pending forever.
+        minDomains: 2
+        # Count only same-revision pods so a rolling update does not deadlock the
+        # skew math; Honor node taints so only usable nodes count (e.g. nodes
+        # still carrying a startup taint are excluded until it is removed).
+        matchLabelKeys:
+          - controller-revision-hash
+        nodeTaintsPolicy: Honor
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: ingester
+            app.kubernetes.io/name: '{{ include "loki.name" . }}'
+            app.kubernetes.io/instance: '{{ .Release.Name }}'
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        matchLabelKeys:
+          - controller-revision-hash
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: ingester
+            app.kubernetes.io/name: '{{ include "loki.name" . }}'
+            app.kubernetes.io/instance: '{{ .Release.Name }}'
+
+    zoneAwareReplication:
+      # -- Enable zone-aware replication for the ingester microservice.
+      # Not needed at our size: topologySpreadConstraints give the AZ spread
+      # without the complexity.
+      enabled: false
+
+    # -- PDB for the ingester.
+    # Protect ingest quorum across rollouts and node drains.
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+
+    # -- Resource requests (medium install).
+    # The memory *limit* is intentionally left unset: an OOM-kill drops
+    # in-memory / WAL-buffered logs, so we alert on usage rather than cap hard.
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  querier:
+    # -- Enable the querier microservice.
+    # Querier is required. It executes LogQL, reading recent data from
+    # ingesters and historical data from object storage.
+    enabled: true
+
+    # -- Replicas are managed by autoscaling; leave null.
+    replicas: null
+    kind: Deployment
+
+    # -- Autoscale the stateless read workers with query load.
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 60
+      targetMemoryUtilizationPercentage: 75
+
+    # -- PDB for querier.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    # -- Resource requests.
+    # This assumes a medium install by default.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  queryFrontend:
+    # -- Enable the query-frontend microservice.
+    # Query-frontend is required. It queues and splits queries and caches results.
+    enabled: true
+
+    # -- Static replicas for query-frontend when autoscaling is not enabled.
+    replicas: null
+    # -- Kind of workload for query-frontend.
+    # Deployments are recommended for stateless components.
+    kind: Deployment
+
+    # -- Configure autoscaling for query-frontend.
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 60
+      targetMemoryUtilizationPercentage: 75
+
+    # -- PDB for query-frontend.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    # -- Resource requests for query-frontend.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  queryScheduler:
+    # -- Enable the query-scheduler microservice.
+    # Recommended for scaled deployments: it decouples the read queue from the
+    # query-frontend so the two scale independently. Two replicas for availability.
+    enabled: true
+    replicas: 2
+
+    # -- PDB for query-scheduler.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    # -- Resources for the query-scheduler microservice.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  compactor:
+    # -- Enable the compactor.
+    # Compactor is required and MUST be a singleton: it compacts the index and
+    # enforces retention against shared object storage.
+    enabled: true
+    # -- Compactor replicas.
+    # This MUST be one, since it runs as a singleton.
+    replicas: 1
+    # -- Kind of workload for the compactor.
+    # This must be a statefulset.
+    kind: StatefulSet
+
+    persistence:
+      # -- Run the compactor ephemerally (no PVC, node-local emptyDir).
+      # Its local dir is just a working copy of the object-store index, and
+      # compaction is idempotent and off the critical path — losing it only
+      # restarts the current cycle. Ephemeral also lets the singleton float
+      # freely between zones instead of being pinned by a PVC. Our production
+      # index is ~30MB, so re-downloading each cycle is negligible.
+      enabled: false
+
+    # -- Resources for the compactor.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  indexGateway:
+    # -- Enable the index-gateway.
+    # Index-gateway is required: it serves index lookups so queriers do not each
+    # download the whole index from object storage.
+    enabled: true
+    replicas: 2
+
+    # -- Run the index-gateway ephemerally (no PVC, node-local emptyDir).
+    # The local index is a read-through cache of object storage, not
+    # authoritative — a fresh pod just re-downloads what it queries. This keeps
+    # the read path off EBS zonal pinning; the only cost is a little cold-start
+    # warmup and a burst of index reads after a reschedule.
+    persistence:
+      enabled: false
+
+    # -- PDB for index-gateway.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    # -- Resources for the index-gateway.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+
+  ruler:
+    # -- Enable the ruler.
+    # The ruler evaluates LogQL alerting and recording rules. Recording-rule
+    # samples are remote-written back through alloy-gateway to the metric store.
+    enabled: true
+    replicas: 2
+
+    persistence:
+      # -- Keep a PVC for the ruler (unlike the other components, which are
+      # ephemeral). Rule definitions come from object storage, but the ruler's
+      # remote-write WAL buffers recording-rule samples when the metric store is
+      # unreachable — genuinely useful durability in the run-up to an incident,
+      # exactly when you don't want to drop derived signals.
+      enabled: true
+      size: 5Gi
+
+    # -- PDB for the ruler.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    # -- Resources for the ruler.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # -- (h5) Chunk cache (memcached). Default allocation is sized for very large
+  # installs; we shrink it to match our volumes. The results cache keeps its
+  # upstream default.
+  chunksCache:
+    allocatedMemory: 2048
+
+  # -- (h5) End-to-end write→read canary for meta-monitoring.
+  # On by default upstream; surfaced here because self-monitoring the log store
+  # is a first-class requirement for us.
+  lokiCanary:
+    enabled: true
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos

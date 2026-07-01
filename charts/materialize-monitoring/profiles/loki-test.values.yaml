@@ -1,0 +1,81 @@
+# Loki profile: test (integration / CI)
+#
+# Overlay on top of the chart defaults. Compose after the base values, e.g.
+# `-f profiles/loki-test.values.yaml`.
+#
+# Loki is a black-box interface to us, so integration tests run it in the
+# simplest hermetic shape: single binary + local filesystem, no object store,
+# no caches, replication_factor 1. This profile is NOT for production.
+#
+# The microservice settings from the base values are inert here because
+# deploymentMode is SingleBinary; our validator will emit a (non-fatal)
+# deploymentMode warning, which is expected for this profile.
+loki:
+  # -- Single-process Loki for hermetic tests.
+  deploymentMode: SingleBinary
+
+  # -- No network policy in test clusters.
+  networkPolicy:
+    enabled: false
+
+  loki:
+    commonConfig:
+      # -- No replication in a single-process test.
+      replication_factor: 1
+    storage:
+      # -- Local filesystem instead of object storage.
+      type: filesystem
+      # -- Bucket names are unused by the filesystem backend, but our validator
+      # requires non-placeholder values, so set throwaway names.
+      bucketNames:
+        chunks: loki-chunks
+        ruler: loki-ruler
+    # -- The thanos object-store client is not used with the filesystem backend.
+    use_thanos_objstore: false
+    # -- Schema must reference the filesystem object store in test.
+    schemaConfig:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+
+  # -- Run exactly one Loki pod.
+  singleBinary:
+    replicas: 1
+
+  # -- The chart's built-in Helm test requires the Loki Canary; we run our own
+  # e2e instead, so disable both.
+  test:
+    enabled: false
+
+  # -- Zero the distributed microservices. In SingleBinary mode Loki's own
+  # validation rejects running monolithic and distributed targets together;
+  # the base values enable these for the default Distributed mode.
+  ingester:
+    replicas: 0
+  queryScheduler:
+    replicas: 0
+  compactor:
+    replicas: 0
+  indexGateway:
+    replicas: 0
+  ruler:
+    replicas: 0
+
+  # -- No memcached in test; the single binary serves directly.
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+
+  # -- No canary in test (avoids extra workload and log noise).
+  lokiCanary:
+    enabled: false
+
+  # -- Use the filesystem backend, not the bundled MinIO.
+  minio:
+    enabled: false

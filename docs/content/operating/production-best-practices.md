@@ -75,7 +75,7 @@ Starting points — `replicas × (cpu request / memory request)`; tune from real
 | Component | S | M | L |
 |---|---|---|---|
 | Distributor (stateless) | 2 × (100m / 128Mi) | 2 × (150m / 256Mi) | 3 × (500m / 512Mi) |
-| **Ingester** (RF 3) | 3 × (250m / 512Mi), WAL 4Gi | 3 × (500m / 1Gi), WAL 8Gi | 3–6 × (1–2 / 4–8Gi), WAL 32Gi |
+| **Ingester** (RF 3, ephemeral) | 3 × (250m / 512Mi) | 3 × (500m / 1Gi) | 3–6 × (1–2 / 4–8Gi) |
 | Querier (stateless) | 2 × (100m / 256Mi) | 2 × (250m / 512Mi) | 3 × (1 / 1–2Gi) |
 | Query-frontend | 2 × (100m / 128Mi) | 2 × (100m / 256Mi) | 2 × (250m / 512Mi) |
 | Query-scheduler | omit | omit | optional 2 × (100m / 256Mi) |
@@ -88,7 +88,8 @@ Starting points — `replicas × (cpu request / memory request)`; tune from real
 
 - Ingesters = **3 minimum** at every size (the `replication_factor` 3 floor), and the **compactor is always a singleton**.
 - **Scale ingesters past 3 on memory/cardinality, not bytes** — with N = RF every ingester holds every stream; run N > RF to shard streams and spread the burst.
-- **Do not set a tight memory limit on ingesters** — an OOM-kill drops WAL-buffered logs. Use generous limits (or none) and alert on usage.
+- **Ingesters are ephemeral** (node-local `emptyDir`, no PVC) — durability is `replication_factor` 3, not disk. This makes ingesters freely reschedulable and sidesteps EBS zonal pinning / slow volume reattach on node replacement.
+- **Do not set a tight memory limit on ingesters** — an OOM-kill drops in-memory/WAL-buffered logs. Use generous limits (or none) and alert on usage.
 
 ### Protective limits
 
@@ -119,17 +120,20 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 ### 3. Replication, ring & placement
 
 - [ ] `[chart]` `replication_factor: 3`; ring backend = memberlist (no Consul/etcd).
-- [ ] `[chart]`/`[operator]` Zone-aware replication + `topologySpreadConstraints` so the 3 ingester replicas land in 3 zones/nodes.
+- [ ] `[chart]` Ingester `topologySpreadConstraints`: **hard across zones** (`DoNotSchedule`) so an un-spread pod goes Pending and Karpenter provisions the missing zone; **soft across hosts** (`ScheduleAnyway`), with the default hard per-host anti-affinity removed (`affinity: null`).
+- [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3; set `minDomains` to the zone count your node pool can launch in. With 2 zones, know an AZ loss can break write quorum until the ring recovers.
+- [ ] `[operator]` If you bring nodes up **tainted** until DaemonSets are healthy, keep `nodeTaintsPolicy: Honor` on the spread (tainted nodes stay out of the skew math) and model it as a Karpenter `startupTaint` so it doesn't over-provision. Taints only gate placement — they don't otherwise affect scheduling.
 - [ ] `[chart]` PodDisruptionBudget on ingesters (`maxUnavailable: 1`).
 - [ ] `[operator]` `priorityClassName` so ingesters/compactor are not evicted under node pressure.
 
 ### 4. Ingester durability & rollouts
 
-- [ ] `[chart]` WAL enabled on its own PVC (4Gi S / 8Gi M / 32Gi L); `wal.replay_memory_ceiling` set to the memory request.
-- [ ] `[chart]` `flush_on_shutdown: true` and `terminationGracePeriodSeconds` long enough to flush (300–600s).
-- [ ] `[chart]` StatefulSet rolls ingesters **one at a time** (`maxUnavailable: 1`).
-- [ ] `[consumer]` A dynamic-provisioning **StorageClass** exists (CSI driver installed) — not safe to assume on bare clusters.
-- [ ] `[operator]` Add ingesters (N > RF) when per-ingester memory/stream-count climbs or to spread the regression burst.
+- [ ] `[chart]` **Ingesters are ephemeral** — node-local `emptyDir`, no PVC. Durability is `replication_factor` 3, so a killed/rescheduled ingester's un-flushed data is recovered from its peers.
+- [ ] `[chart]` **Index-gateway and compactor are also ephemeral** — their local disk is a read-through cache / idempotent working copy of the object-store index, so they reschedule freely across zones (the compactor singleton in particular is never PVC-pinned to one AZ).
+- [ ] `[chart]` `flush_on_shutdown: true` (best-effort) with a **modest** `terminationGracePeriodSeconds` (~60s). Do **not** rely on a long grace period — enterprise force-kill windows (120/300s) are harmless because replication covers a truncated flush.
+- [ ] `[chart]` StatefulSet rolls ingesters **one at a time** (`maxUnavailable: 1`); a burst rollout needs `zoneAwareReplication` (zone-at-a-time) or the alpha `MaxUnavailableStatefulSet` gate — neither is in play, and PDBs govern *drains*, not rollout speed.
+- [ ] `[operator]` Add ingesters (N > RF) when per-ingester memory/stream-count climbs or to spread the regression burst — streams shard across the ring only when N > RF.
+- [ ] `[consumer]` A dynamic-provisioning **StorageClass** still needs to exist for the **one PVC-backed component, the ruler** (it keeps a PVC for its remote-write WAL) — CSI driver installed, not safe to assume on bare clusters.
 
 ### 5. Limits & cardinality
 
