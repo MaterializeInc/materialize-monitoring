@@ -35,7 +35,19 @@ spec:
           key: username
     - port: internal-http
       path: /metrics/mz_frontier
+      basicAuth:
+        username:
+          name: materialize-sql-monitor
+          key: username
     - port: internal-http
       path: /metrics/mz_storage
+      basicAuth:
+        username:
+          name: materialize-sql-monitor
+          key: username
     - port: internal-http
       path: /metrics/mz_usage
+      basicAuth:
+        username:
+          name: materialize-sql-monitor
+          key: username

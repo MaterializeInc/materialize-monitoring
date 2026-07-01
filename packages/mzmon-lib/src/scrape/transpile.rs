@@ -1219,38 +1219,29 @@ mod tests {
         assert_eq!(auth.username.as_deref(), Some("mz_support"));
     }
 
-    /// In the real `podmonitor-sql.yaml`, only the `mz_compute` endpoint declares
-    /// `basicAuth`, so exactly that one job (classic) / resource (GMP) is
-    /// authenticated and the other three SQL subsystems are left untouched.
+    /// In the real `podmonitor-sql.yaml`, every SQL endpoint declares `basicAuth`,
+    /// so every job (classic) and resource (GMP) is authenticated as `mz_support`.
     #[test]
-    fn sql_fixture_authenticates_only_mz_compute() {
+    fn sql_fixture_authenticates_every_endpoint() {
         let monitor = Monitor::from_yaml_str(fixture("podmonitor-sql")).unwrap();
 
         let jobs = monitor.transpile().unwrap();
         for job in &jobs {
-            if job.job_name.ends_with("/mz-compute") {
-                assert!(
-                    job.basic_auth.is_some(),
-                    "mz-compute job should carry basic_auth"
-                );
-            } else {
-                assert!(
-                    job.basic_auth.is_none(),
-                    "{} should not carry basic_auth",
-                    job.job_name
-                );
-            }
+            let auth = job
+                .basic_auth
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} should carry basic_auth", job.job_name));
+            assert_eq!(auth.username.as_deref(), Some("mz_support"));
         }
 
         let resources = monitor.to_gmp().unwrap();
         for r in &resources {
             let name = r.metadata.name.as_deref().unwrap();
-            let authenticated = r.spec.endpoints[0].basic_auth.is_some();
-            if name == "materialize-sql-mz-compute" {
-                assert!(authenticated, "{name} should be authenticated");
-            } else {
-                assert!(!authenticated, "{name} should not be authenticated");
-            }
+            let auth = r.spec.endpoints[0]
+                .basic_auth
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name} should be authenticated"));
+            assert_eq!(auth.username.as_deref(), Some("mz_support"));
         }
     }
 }
