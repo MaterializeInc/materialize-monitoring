@@ -29,21 +29,25 @@ spec:
   podMetricsEndpoints:
     - port: internal-http
       path: /metrics/mz_compute
-      # The mz_compute SQL metrics are evaluated as the Materialize user the
-      # scrape authenticates as, and that user only sees clusters it has USAGE on.
-      # Scrape as the built-in `mz_support` role, which sees every cluster, so the
-      # metrics cover all clusters. The internal-http port does not check the
-      # password, so only the username is sent. PodMonitor basicAuth accepts only
-      # Secret references (no inline values), so the username comes from the
-      # `materialize-sql-monitor` Secret, which the materialize-monitoring chart
-      # ships with `username: mz_support`.
       basicAuth:
         username:
           name: materialize-sql-monitor
           key: username
     - port: internal-http
       path: /metrics/mz_frontier
+      basicAuth:
+        username:
+          name: materialize-sql-monitor
+          key: username
     - port: internal-http
       path: /metrics/mz_storage
+      basicAuth:
+        username:
+          name: materialize-sql-monitor
+          key: username
     - port: internal-http
       path: /metrics/mz_usage
+      basicAuth:
+        username:
+          name: materialize-sql-monitor
+          key: username

@@ -159,6 +159,8 @@ scrape_configs:
     target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-frontier
   metrics_path: /metrics/mz_frontier
+  basic_auth:
+    username: mz_support
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
@@ -197,6 +199,8 @@ scrape_configs:
     target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-storage
   metrics_path: /metrics/mz_storage
+  basic_auth:
+    username: mz_support
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
@@ -235,6 +239,8 @@ scrape_configs:
     target_label: cluster_environmentd_materialize_cloud_replica_id
 - job_name: podMonitor/materialize-sql/mz-usage
   metrics_path: /metrics/mz_usage
+  basic_auth:
+    username: mz_support
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
