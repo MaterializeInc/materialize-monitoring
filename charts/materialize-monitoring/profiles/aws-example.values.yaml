@@ -1,0 +1,26 @@
+# Example AWS/EKS overlay that should be customized with other profiles
+
+loki:
+  loki:
+    storage:
+      bucketNames:
+        chunks: "<REPLACE-ME>"
+        ruler: "<REPLACE-ME>"
+      object_store:
+        type: s3
+
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "<REPLACE-ME>"
+
+  compactor:
+    delete_request_store: s3
+
+  networkPolicy:
+    # -- Outgoing traffic from loki to AWS S3 (and STS).
+    # This can be stricter if you use a VPCEndpoint.
+    externalStorage:
+      ports:
+        - 443
+      cidrs:
+        - "0.0.0.0/0"

@@ -218,6 +218,16 @@ charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts
 materialize-monitoring-chart: charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz
 .PHONY: materialize-monitoring-chart
 
+HELM_UNITTEST_ARGS ?=
+
+helm-tests:
+	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring
+.PHONY: helm-tests
+
+helm-update-snapshots:
+	$(MAKE) helm-tests HELM_UNITTEST_ARGS="--update-snapshot"
+.PHONY: helm-update-snapshots
+
 ### HUGO DOCS ###
 
 serve-docs:

@@ -99,6 +99,10 @@ subchart's own `values.yaml` defaults**. A few non-obvious consequences:
   `affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution: null`.
   Always confirm with `helm template … --show-only <path>` — this is easy to
   get wrong and silently ineffective.
+  Prefer nulling the **nested list** over nulling a whole **map**: `affinity: null`
+  works but makes `helm unittest` log a repeated `cannot overwrite table with non
+  table` warning, whereas nulling the list is quiet (it leaves a harmless empty
+  parent, e.g. `podAntiAffinity: {}`).
 - **Subcharts ship their own validation templates** (`templates/validate.yaml`
   and friends) that run against the merged values at render time and can
   `fail` your entire render. Read them before assuming a mode "just works."

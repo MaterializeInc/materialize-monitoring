@@ -11,6 +11,10 @@
 # resources, WAL, caches, limits, retention, autoscaling ceilings, and more
 # ingesters. Ingesters run N > replication_factor so streams shard across the
 # ring (spreading the burst and shrinking per-ingester memory / blast radius).
+
+tags:
+  loki: true
+
 loki:
   loki:
     limits_config:

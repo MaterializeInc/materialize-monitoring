@@ -1,6 +1,17 @@
 {{- /* Loki helpers and validators. */}}
 
 {{- /*
+Get loki namespace.
+
+Usage:
+  {{- include "mzmon.loki.namespace" $ }}
+*/}}
+{{- define "mzmon.loki.namespace" -}}
+  {{- $ns := $.Values.loki.namespaceOverride | default $.Release.Namespace -}}
+  {{- printf "%s" $ns -}}
+{{- end }}
+
+{{- /*
 Check if loki is enabled.
 
 This returns a truthy string if enabled and a falsy string (empty) if not.
@@ -23,6 +34,20 @@ Usage:
 {{- end }}
 
 {{- /*
+Get loki replication factor.
+
+Usage:
+  {{- include "mzmon.loki.replicationFactor" $ }}
+*/}}
+{{- define "mzmon.loki.replicationFactor" }}
+  {{- $values := $.Values.loki | required "loki is missing from values." }}
+  {{- /* The Loki app config lives under the subchart's own `loki:` key, so the
+         path from the umbrella is loki.loki.commonConfig.replication_factor. */}}
+  {{- $rf := dig "loki" "commonConfig" "replication_factor" 3 $values }}
+  {{- printf "%d" ( int $rf ) -}}
+{{- end }}
+
+{{- /*
 Entrypoint for loki validation checks.
 
 Usage:
@@ -42,6 +67,10 @@ Usage:
     {{- $warnings = concat $warnings $res.warnings | default list }}
 
     {{- $res := include "mzmon.loki.validate.storage" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- $res := include "mzmon.loki.validate.ingesterRollout" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
   {{- end }}
@@ -178,6 +207,13 @@ Usage:
   {{- if $svcValues.enabled }}
     {{- if not $svcValues.podDisruptionBudget.enabled }}
       {{- $warnings = append $warnings ( printf "loki.%s microservice PDB is recommended for production." $svc ) }}
+    {{- else }}
+      {{- /* Only one of minAvailable / maxUnavailable can be used */}}
+      {{- $minAvailable := $svcValues.podDisruptionBudget.minAvailable }}
+      {{- $maxUnavailable := $svcValues.podDisruptionBudget.maxUnavailable }}
+      {{- if and ( not ( typeIs "<nil>" $minAvailable ) ) ( not ( typeIs "<nil>" $maxUnavailable ) ) }}
+        {{- $errors = append $errors ( printf "loki.%s microservice PDB should specify either minAvailable or maxUnavailable, but not both." $svc ) }}
+      {{- end }}
     {{- end }}
   {{- end }}
 
@@ -214,6 +250,50 @@ Validate loki storage configuration.
 
 Note that loki.loki.storage is the correct path.
 */}}
+
+{{- /*
+Warn if the ingester can lose more than one replica at once.
+
+With replication_factor >= 2, taking more than one ingester down simultaneously
+— whether by a rolling update (updateStrategy.rollingUpdate.maxUnavailable) or a
+voluntary eviction (podDisruptionBudget.maxUnavailable) — can break write quorum.
+Rolls should stay one-at-a-time; use zoneAwareReplication for a quorum-safe
+zone-at-a-time burst instead.
+
+Usage:
+  {{- include "mzmon.loki.validate.ingesterRollout" $ }}
+*/}}
+{{- define "mzmon.loki.validate.ingesterRollout" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- if ( include "mzmon.loki.enabled" $ ) }}
+    {{- /* replicationFactor emits a plain integer string — int it directly; fromYaml would choke on a scalar. */}}
+    {{- $rf := include "mzmon.loki.replicationFactor" $ | int }}
+    {{- if and ( eq $.Values.loki.deploymentMode "Distributed" ) ( gt ( int $rf ) 1 ) }}
+      {{- $ing := $.Values.loki.ingester | required "loki.ingester is expected to be present." }}
+      {{- $fields := dict
+          "updateStrategy.rollingUpdate.maxUnavailable" ( dig "updateStrategy" "rollingUpdate" "maxUnavailable" nil $ing )
+          "podDisruptionBudget.maxUnavailable" ( dig "podDisruptionBudget" "maxUnavailable" nil $ing ) }}
+      {{- range $path, $v := $fields }}
+        {{- $exceeds := false }}
+        {{- if kindIs "invalid" $v }}
+        {{- else if kindIs "string" $v }}
+          {{- /* a percentage can resolve to more than one pod; flag it for review */}}
+          {{- if hasSuffix "%" $v }}
+            {{- if ne $v "0%" }}{{- $exceeds = true }}{{- end }}
+          {{- else if gt ( int $v ) 1 }}{{- $exceeds = true }}{{- end }}
+        {{- else if gt ( int $v ) 1 }}{{- $exceeds = true }}{{- end }}
+        {{- if $exceeds }}
+          {{- $warnings = append $warnings ( printf "loki.ingester.%s is %v: with replication_factor %v, taking more than one ingester down at once (rollout or eviction) can break write quorum. Keep it at 1 — use zoneAwareReplication for a quorum-safe zone-at-a-time burst." $path $v $rf ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
 {{- define "mzmon.loki.validate.storage" }}
   {{- $values := $.Values.loki | required "loki is missing from values." }}
   {{- $errors := list }}

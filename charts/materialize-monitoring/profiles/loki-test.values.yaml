@@ -10,6 +10,10 @@
 # The microservice settings from the base values are inert here because
 # deploymentMode is SingleBinary; our validator will emit a (non-fatal)
 # deploymentMode warning, which is expected for this profile.
+
+tags:
+  loki: true
+
 loki:
   # -- Single-process Loki for hermetic tests.
   deploymentMode: SingleBinary

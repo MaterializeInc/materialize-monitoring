@@ -282,6 +282,14 @@ loki:
     # This must be configured manually (usually set to alloy and grafana).
     ingress:
       namespaceSelector: {}
+    # -- Outgoing traffic from loki to the object store.
+    # This is usually unrestricted, even in many production settings.
+    # Adjust if you have a VPCEndpoint in front of S3/STS or are using a non-standard port.
+    externalStorage:
+      ports:
+        - 443
+      cidrs:
+        - "0.0.0.0/0"
 
   loki:
     storage:
@@ -322,10 +330,10 @@ loki:
     limits_config:
       # -- Default retention before the compactor deletes logs.
       # Upstream defaults to infinite retention; we set a real bound.
-      retention_period: 744h
+      retention_period: 30d
       # -- Per-tenant ingestion rate / burst, in MB. Per environment, not the fleet aggregate.
-      ingestion_rate_mb: 8
-      ingestion_burst_size_mb: 16
+      ingestion_rate_mb: 10
+      ingestion_burst_size_mb: 20
       # -- Active-stream ceiling per tenant; a cardinality guard.
       max_global_streams_per_user: 10000
       # -- Reject writes too far in the past.
@@ -341,7 +349,7 @@ loki:
       # -- Where delete requests are stored; matches the object-store backend.
       delete_request_store: s3
       # -- Grace period before retention/deletes actually remove data.
-      retention_delete_delay: 2h
+      retention_delete_delay: 8h
 
   gateway:
     # -- Disable gateway by default.
@@ -430,10 +438,15 @@ loki:
     terminationGracePeriodSeconds: 60
 
     # -- Pod affinity for ingesters.
-    # Nulled to drop the chart's default *hard* per-host anti-affinity (setting
-    # it to `{}` is a no-op — the subchart default survives the merge), so host
-    # spread can be soft (see topologySpreadConstraints); zone spread stays hard.
-    affinity: null
+    # Drop the chart's default *hard* per-host anti-affinity so host spread can
+    # be soft (see topologySpreadConstraints); zone spread stays hard. We null
+    # the nested list rather than the whole `affinity` map: `affinity: {}` is a
+    # no-op against the subchart default, and `affinity: null` clears it but
+    # makes helm-unittest log a noisy "cannot overwrite table" warning — nulling
+    # the list avoids both.
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution: null
 
     # -- Topology spread for ingesters: hard across zones, soft across hosts.
     # A pod that cannot satisfy the hard zone rule goes Pending, which is the
@@ -477,6 +490,7 @@ loki:
 
     # -- PDB for the ingester.
     # Protect ingest quorum across rollouts and node drains.
+    # Do not set maxUnavailable >= 2 to avoid potential quorum loss.
     podDisruptionBudget:
       enabled: true
       maxUnavailable: 1
@@ -556,6 +570,9 @@ loki:
     enabled: true
     replicas: 2
 
+    # HACK: this deprecated value gets merged into querySchedulerr.podDisruptionBudget
+    # which is invalid (can't have both minAvailable and maxUnavailable).
+    maxUnavailable: null
     # -- PDB for query-scheduler.
     podDisruptionBudget:
       enabled: true

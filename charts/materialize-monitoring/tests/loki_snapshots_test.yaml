@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# Medium (base) workloads + services, plus the non-workload resources.
+# Small and large workloads/services live in their own suites
+# (loki_snapshots_{small,large}_test.yaml) to keep each .snap file manageable.
+suite: loki snapshots (medium + shared resources)
+# NOTE: no `chart:` stub here — we deliberately do NOT override appVersion, so
+# the loki subchart renders its real appVersion (it appears in image tags).
+release:
+  name: t
+  namespace: loki
+set:
+  tags.bundled-backends: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy
+  loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
+tests:
+  # ---- Medium (base) workloads + services ---------------------------------
+  - it: medium (base) workloads
+    templates:
+      - ../charts/loki/templates/distributor/workload.yaml
+      - ../charts/loki/templates/ingester/statefulset.yaml
+      - ../charts/loki/templates/querier/deployment.yaml
+      - ../charts/loki/templates/query-frontend/deployment.yaml
+      - ../charts/loki/templates/query-scheduler/deployment.yaml
+      - ../charts/loki/templates/index-gateway/statefulset.yaml
+      - ../charts/loki/templates/compactor/workload.yaml
+      - ../charts/loki/templates/ruler/statefulset.yaml
+      - ../charts/loki/templates/chunks-cache/statefulset.yaml
+      - ../charts/loki/templates/results-cache/statefulset.yaml
+      - ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  - it: medium (base) services
+    templates:
+      - ../charts/loki/templates/distributor/service.yaml
+      - ../charts/loki/templates/ingester/service.yaml
+      - ../charts/loki/templates/querier/service.yaml
+      - ../charts/loki/templates/query-frontend/service.yaml
+      - ../charts/loki/templates/query-scheduler/service.yaml
+      - ../charts/loki/templates/index-gateway/service.yaml
+      - ../charts/loki/templates/compactor/service.yaml
+      - ../charts/loki/templates/ruler/service.yaml
+      - ../charts/loki/templates/chunks-cache/service.yaml
+      - ../charts/loki/templates/results-cache/service.yaml
+      - ../charts/loki/templates/loki-canary/service.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  # ---- Ingester-only: pdb, hpa, serviceaccount ----------------------------
+  - it: ingester pdb
+    template: ../charts/loki/templates/ingester/pdb.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  - it: ingester has no HPA (ingesters are not autoscaled)
+    template: ../charts/loki/templates/ingester/hpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: ingester serviceaccount
+    template: ../charts/loki/templates/ingester/serviceaccount.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  # ---- Release-level resources --------------------------------------------
+  - it: networkpolicy
+    template: ../charts/loki/templates/networkpolicy.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  - it: memberlist service
+    template: ../charts/loki/templates/service-memberlist.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  - it: role and rolebinding
+    templates:
+      - ../charts/loki/templates/role.yaml
+      - ../charts/loki/templates/rolebinding.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  - it: loki config configmap
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchSnapshot: {}

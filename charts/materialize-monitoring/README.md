@@ -621,6 +621,21 @@ Upstream reference:
       <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to alloy and grafana).</td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.externalStorage</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "cidrs": [
+    "0.0.0.0/0"
+  ],
+  "ports": [
+    443
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">Outgoing traffic from loki to the object store. This is usually unrestricted, even in many production settings. Adjust if you have a VPCEndpoint in front of S3/STS or are using a non-standard port.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -683,12 +698,12 @@ Upstream reference:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "ingestion_burst_size_mb": 16,
-  "ingestion_rate_mb": 8,
+  "ingestion_burst_size_mb": 20,
+  "ingestion_rate_mb": 10,
   "max_global_streams_per_user": 10000,
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
-  "retention_period": "744h",
+  "retention_period": "30d",
   "volume_enabled": true
 }</pre>
 </td>
@@ -697,13 +712,13 @@ Upstream reference:
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.retention_period</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"744h"</code></td>
+      <td class="helm-value-default"><code>"30d"</code></td>
       <td class="helm-value-desc">Default retention before the compactor deletes logs. Upstream defaults to infinite retention; we set a real bound.</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.ingestion_rate_mb</td>
       <td class="helm-value-type">int</td>
-      <td class="helm-value-default"><code>8</code></td>
+      <td class="helm-value-default"><code>10</code></td>
       <td class="helm-value-desc">Per-tenant ingestion rate / burst, in MB. Per environment, not the fleet aggregate.</td>
     </tr>
     <tr>
@@ -730,7 +745,7 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {
   "delete_request_store": "s3",
-  "retention_delete_delay": "2h",
+  "retention_delete_delay": "8h",
   "retention_enabled": true
 }</pre>
 </td>
@@ -745,7 +760,7 @@ Upstream reference:
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.compactor<wbr>.retention_delete_delay</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"2h"</code></td>
+      <td class="helm-value-default"><code>"8h"</code></td>
       <td class="helm-value-desc">Grace period before retention/deletes actually remove data.</td>
     </tr>
     <tr>
@@ -861,9 +876,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.affinity</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Pod affinity for ingesters. Nulled to drop the chart's default *hard* per-host anti-affinity (setting it to `{}` is a no-op — the subchart default survives the merge), so host spread can be soft (see topologySpreadConstraints); zone spread stays hard.</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "podAntiAffinity": {
+    "requiredDuringSchedulingIgnoredDuringExecution": null
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod affinity for ingesters. Drop the chart's default *hard* per-host anti-affinity so host spread can be soft (see topologySpreadConstraints); zone spread stays hard. We null the nested list rather than the whole `affinity` map: `affinity: {}` is a no-op against the subchart default, and `affinity: null` clears it but makes helm-unittest log a noisy "cannot overwrite table" warning — nulling the list avoids both.</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.topologySpreadConstraints</td>
@@ -921,7 +942,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "maxUnavailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for the ingester. Protect ingest quorum across rollouts and node drains.</td>
+      <td class="helm-value-desc">PDB for the ingester. Protect ingest quorum across rollouts and node drains. Do not set maxUnavailable >= 2 to avoid potential quorum loss.</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.resources</td>
