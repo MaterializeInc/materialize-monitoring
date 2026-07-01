@@ -103,19 +103,13 @@ pub struct Namespaces {
     pub names: Vec<String>,
 }
 
-/// Classic `basic_auth` block. Classic Prometheus cannot reference a Kubernetes
-/// Secret, so credentials are either inline (`username` / `password`) or read
-/// from a mounted file (`password_file`). The transpiler emits inline
-/// placeholders; see `docs/content/metrics/scraping.md` for the `password_file`
-/// alternative.
+/// Classic `basic_auth` block. We only ever scrape as `mz_support` with no
+/// password (the internal-http port doesn't check it), so the transpiler emits an
+/// inline `username` and nothing else.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct BasicAuth {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub password: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub password_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

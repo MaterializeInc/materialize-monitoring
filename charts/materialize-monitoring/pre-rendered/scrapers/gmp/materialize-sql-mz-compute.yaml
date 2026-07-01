@@ -15,11 +15,7 @@ spec:
     interval: 60s
     path: /metrics/mz_compute
     basicAuth:
-      username: materialize_monitor
-      password:
-        secret:
-          name: materialize-sql-monitor
-          key: password
+      username: mz_support
   targetLabels:
     fromPod:
     - from: materialize.cloud/organization-name

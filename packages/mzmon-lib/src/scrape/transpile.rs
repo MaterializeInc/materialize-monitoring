@@ -116,41 +116,19 @@ impl Monitor {
 /// leaves it optional (inheriting `global`). Fill this when the source omits it.
 const GMP_DEFAULT_INTERVAL: &str = "60s";
 
-/// Placeholder username emitted into the classic and GMP basic-auth blocks. The
-/// operator (PodMonitor) form carries the username in a Secret, but classic
-/// Prometheus and GMP take a literal username string, so we emit the suggested
-/// monitoring role name as a clearly-fillable placeholder. The role must be
-/// granted `USAGE` on every cluster — see `docs/content/metrics/scraping.md`.
-const BASIC_AUTH_PLACEHOLDER_USERNAME: &str = "materialize_monitor";
+const BASIC_AUTH_USERNAME: &str = "mz_support";
 
-/// Placeholder password emitted into the classic basic-auth block only. Classic
-/// Prometheus cannot reference a Kubernetes Secret inline; operator and GMP keep
-/// the password in a Secret. See the docs for the `password_file` alternative.
-const BASIC_AUTH_PLACEHOLDER_PASSWORD: &str = "REPLACE_WITH_PASSWORD";
-
-/// Map an operator `basicAuth` (Secret-key references) onto the classic
-/// `basic_auth` block. Classic cannot read a Kubernetes Secret, so we emit inline
-/// placeholders for the user to fill in (or swap for `password_file`).
+/// Map an operator `basicAuth` onto the classic `basic_auth` block
 fn basic_auth_to_classic(_auth: &OperatorBasicAuth) -> ClassicBasicAuth {
     ClassicBasicAuth {
-        username: Some(BASIC_AUTH_PLACEHOLDER_USERNAME.to_string()),
-        password: Some(BASIC_AUTH_PLACEHOLDER_PASSWORD.to_string()),
-        password_file: None,
+        username: Some(BASIC_AUTH_USERNAME.to_string()),
     }
 }
 
-/// Map an operator `basicAuth` onto the GMP `basicAuth` block: a placeholder
-/// `username` plus the source's password Secret reference (GMP has no inline
-/// password). The username Secret reference has no GMP equivalent and is dropped.
-fn basic_auth_to_gmp(auth: &OperatorBasicAuth) -> gmp::BasicAuth {
+/// Map an operator `basicAuth` onto the GMP `basicAuth` block
+fn basic_auth_to_gmp(_auth: &OperatorBasicAuth) -> gmp::BasicAuth {
     gmp::BasicAuth {
-        username: Some(BASIC_AUTH_PLACEHOLDER_USERNAME.to_string()),
-        password: auth.password.as_ref().map(|secret| gmp::SecretSelector {
-            secret: gmp::SecretKeyRef {
-                name: secret.name.clone(),
-                key: secret.key.clone(),
-            },
-        }),
+        username: Some(BASIC_AUTH_USERNAME.to_string()),
     }
 }
 
@@ -1215,35 +1193,30 @@ mod tests {
                   key: password
         "#;
 
-    /// Operator `basicAuth` (Secret refs) → classic inline placeholders, since
-    /// classic Prometheus can't read a Kubernetes Secret. The Secret coordinates
-    /// are intentionally dropped; the user fills in the placeholders (or swaps to
-    /// `password_file`).
+    /// Operator `basicAuth` (Secret refs) → classic inline `mz_support` username
+    /// with no password. Classic Prometheus can't read a Kubernetes Secret, so the
+    /// Secret coordinates are dropped; the internal-http port doesn't check the
+    /// password, so none is emitted.
     #[test]
-    fn basic_auth_becomes_classic_inline_placeholders() {
+    fn basic_auth_becomes_classic_inline_username() {
         let monitor = Monitor::from_yaml_str(POD_MONITOR_WITH_BASIC_AUTH).unwrap();
         let jobs = monitor.transpile().unwrap();
         let auth = jobs[0].basic_auth.as_ref().expect("basic_auth populated");
-        assert_eq!(auth.username.as_deref(), Some("materialize_monitor"));
-        assert_eq!(auth.password.as_deref(), Some("REPLACE_WITH_PASSWORD"));
-        assert!(auth.password_file.is_none());
+        assert_eq!(auth.username.as_deref(), Some("mz_support"));
     }
 
-    /// Operator `basicAuth` → GMP `basicAuth`: a placeholder username (GMP can't
-    /// source a username from a Secret) plus the source's password Secret
-    /// reference carried through verbatim.
+    /// Operator `basicAuth` → GMP `basicAuth`: an inline `mz_support` username and
+    /// no password (the internal-http port doesn't check it). The source's Secret
+    /// references have no GMP equivalent and are dropped.
     #[test]
-    fn basic_auth_becomes_gmp_username_and_password_secret() {
+    fn basic_auth_becomes_gmp_inline_username() {
         let monitor = Monitor::from_yaml_str(POD_MONITOR_WITH_BASIC_AUTH).unwrap();
         let resources = monitor.to_gmp().unwrap();
         let auth = resources[0].spec.endpoints[0]
             .basic_auth
             .as_ref()
             .expect("basicAuth populated");
-        assert_eq!(auth.username.as_deref(), Some("materialize_monitor"));
-        let password = auth.password.as_ref().expect("password secret populated");
-        assert_eq!(password.secret.name.as_deref(), Some("my-secret"));
-        assert_eq!(password.secret.key, "password");
+        assert_eq!(auth.username.as_deref(), Some("mz_support"));
     }
 
     /// In the real `podmonitor-sql.yaml`, only the `mz_compute` endpoint declares

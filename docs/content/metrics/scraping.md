@@ -41,65 +41,17 @@ scrape configuration files as a starting point for your own Prometheus setup.
 
 ### Authenticating the SQL metrics endpoint
 
-The `materialize-sql` scrapers collect SQL-derived metrics from the environmentd `/metrics/mz_compute`, `/metrics/mz_frontier`, `/metrics/mz_storage`, and `/metrics/mz_usage` endpoints.
-The `/metrics/mz_compute` endpoint evaluates its metrics as the Materialize user the scrape request authenticates as.
-That user only sees the clusters it has `USAGE` on, so the metrics only cover those clusters.
-To collect compute metrics for every cluster, authenticate as a dedicated monitoring role that has been granted `USAGE` on all of them.
+The `materialize-sql` scrapers collect SQL-derived metrics from the environmentd `/metrics/mz_compute`, `/metrics/mz_frontier`, `/metrics/mz_storage`, and `/metrics/mz_usage` endpoints. Scrape it as the built-in `mz_support` role.
 
-> [!INFO]
->   Only the `mz_compute` endpoint requires credentials today.
->   The `mz_frontier`, `mz_storage`, and `mz_usage` endpoints are scraped without authentication.
-
-#### 1. Create a monitoring role with `USAGE` on every cluster
-
-Connect to Materialize as a user that can manage roles and grant the monitoring role `USAGE` on each cluster:
-
-```sql
-CREATE ROLE materialize_monitor;
-
-GRANT USAGE ON CLUSTER quickstart TO materialize_monitor;
--- Repeat for every cluster you want compute metrics for.
-```
-
-Re-run the `GRANT USAGE ON CLUSTER ... TO materialize_monitor` statement whenever you add a cluster.
-Otherwise that cluster's compute metrics will be missing from the scrape.
-
-> [!INFO]
->   **Alternative: scrape as a superuser.**
->   A superuser bypasses per-object privilege checks, so it sees every cluster — including clusters added later — without any `GRANT USAGE` statements.
->   Either way, the scrape config is identical — only the credentials in the Secret change.
-
-The role authenticates over the SQL protocol, so it also needs login credentials (for example, `CREATE ROLE materialize_monitor WITH PASSWORD '<password>'`).
-
-#### 2. Store the credentials in a Kubernetes Secret
-
-The `materialize-sql` PodMonitor (Prometheus Operator) and the `materialize-sql-mz-compute` PodMonitoring (GMP) reference a Secret named `materialize-sql-monitor` for these credentials.
+The **Classic** and **Google Cloud Managed Prometheus** configs carry `username: mz_support` inline, so they need no extra setup.
+Prometheus Operator `basicAuth` can only reference a Kubernetes Secret — it has no inline username field — so the `materialize-sql` `PodMonitor` reads the username from a Secret named `materialize-sql-monitor`.
 Create it in the namespace the scrapers run in (for example, `materialize`):
 
 ```bash
 kubectl create secret generic materialize-sql-monitor \
   --namespace materialize \
-  --from-literal=username=materialize_monitor \
-  --from-literal=password='<password>'
+  --from-literal=username=mz_support
 ```
-
-#### 3. Reference the credentials from the scrape config
-
-Each format supplies the credentials differently:
-
-- **Prometheus Operator** — `basicAuth` references the `materialize-sql-monitor` Secret for both the username and password.
-  No edit is needed beyond creating the Secret in the same namespace as the PodMonitor.
-- **Google Cloud Managed Prometheus** — `basicAuth` reads the password from the same Secret and takes the username inline.
-  Replace the placeholder `materialize_monitor` username if you named the role differently.
-- **Classic Prometheus** — classic Prometheus cannot read a Kubernetes Secret, so the example uses inline placeholders.
-  Replace `REPLACE_WITH_PASSWORD` with the role's password.
-  To avoid committing the password, mount it as a file and use `password_file` instead:
-
-  ```yaml
-  basic_auth:
-    username: materialize_monitor
-    password_file: /etc/prometheus/secrets/materialize-sql-monitor/password
-  ```
 
 ### Which Prometheus Distribution Am I Using?
 

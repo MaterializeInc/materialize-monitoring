@@ -120,8 +120,7 @@ scrape_configs:
 - job_name: podMonitor/materialize-sql/mz-compute
   metrics_path: /metrics/mz_compute
   basic_auth:
-    username: materialize_monitor
-    password: REPLACE_WITH_PASSWORD
+    username: mz_support
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
