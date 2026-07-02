@@ -51,7 +51,103 @@ metrics surface.&lt;/p&gt;
 &lt;p&gt;Kubernetes: &lt;code&gt;&amp;gt;=1.27.0-0&lt;/code&gt;&lt;/p&gt;
 &lt;h3 id="storage-requirements"&gt;Storage Requirements&lt;a class="anchor" href="#storage-requirements"&gt;#&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;Using Thanos or Loki (in the default bundled-stack profile) requires
-object storage (such as an AWS S3 bucket) for long-term storage.&lt;/p&gt;</description></item><item><title>Metrics</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/pipelines/metrics/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/pipelines/metrics/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Production Best Practices</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/production-best-practices/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/production-best-practices/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Prometheus Remote Write</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/metrics/collecting/prometheus-remote-write/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/metrics/collecting/prometheus-remote-write/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Repo Layout</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/repo-layout/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/repo-layout/</guid><description>&lt;p&gt;This page is a convenience cache of where things live in the repo.
+object storage (such as an AWS S3 bucket) for long-term storage.&lt;/p&gt;</description></item><item><title>Metrics</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/pipelines/metrics/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/pipelines/metrics/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Production Best Practices</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/production-best-practices/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/production-best-practices/</guid><description>&lt;h1 id="production-best-practices"&gt;Production Best Practices&lt;a class="anchor" href="#production-best-practices"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;This is the production checklist for the bundled &lt;strong&gt;logging backend (Loki)&lt;/strong&gt; and the Alloy pipeline that feeds it.
+Sizing is &lt;strong&gt;throughput-driven&lt;/strong&gt;, and every item is tagged with who owns it under the &lt;a href="#shared-responsibility-model"&gt;shared responsibility model&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;For the architecture these items configure, see &lt;a href="../../logs-and-events/"&gt;Logs &amp;amp; Events&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id="shared-responsibility-model"&gt;Shared responsibility model&lt;a class="anchor" href="#shared-responsibility-model"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Four parties share responsibility for a production deployment.
+Checklist items below are tagged with the &lt;strong&gt;primary&lt;/strong&gt; owner.&lt;/p&gt;
+&lt;table&gt;
+ &lt;thead&gt;
+ &lt;tr&gt;
+ &lt;th&gt;Tag&lt;/th&gt;
+ &lt;th&gt;Party&lt;/th&gt;
+ &lt;th&gt;Owns&lt;/th&gt;
+ &lt;/tr&gt;
+ &lt;/thead&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;[upstream]&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;Upstream service&lt;/strong&gt; (Loki, Alloy, Grafana)&lt;/td&gt;
+ &lt;td&gt;component behavior: the ring, WAL, compaction, query engine, defaults&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;[chart]&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;&lt;code&gt;materialize-monitoring&lt;/code&gt; chart&lt;/strong&gt;&lt;/td&gt;
+ &lt;td&gt;topology and wiring, opinionated defaults, config rendering, validation initContainers, shipped dashboards/alerts, the profiles&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;[consumer]&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;Chart consumer&lt;/strong&gt; (Terraform / Pulumi / ArgoCD / FluxCD)&lt;/td&gt;
+ &lt;td&gt;cloud resources (bucket, IAM/IRSA, StorageClass, DNS), secret provisioning, version pinning, selecting the profile&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;[operator]&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;Human operator&lt;/strong&gt; (end-user)&lt;/td&gt;
+ &lt;td&gt;size selection, retention budget, tenant policy, incident response, day-2 procedures, capacity watch&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;table&gt;
+ &lt;thead&gt;
+ &lt;tr&gt;
+ &lt;th&gt;Area&lt;/th&gt;
+ &lt;th&gt;Upstream&lt;/th&gt;
+ &lt;th&gt;Chart&lt;/th&gt;
+ &lt;th&gt;Consumer&lt;/th&gt;
+ &lt;th&gt;Operator&lt;/th&gt;
+ &lt;/tr&gt;
+ &lt;/thead&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;td&gt;Component logic (ring, WAL, compaction, query)&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;owns&lt;/strong&gt;&lt;/td&gt;
+ &lt;td&gt;configures&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;Topology, defaults, validation, dashboards/alerts&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;owns&lt;/strong&gt;&lt;/td&gt;
+ &lt;td&gt;selects profile&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;Cloud resources: bucket, IAM/IRSA, StorageClass&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;td&gt;consumes by name&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;owns&lt;/strong&gt;&lt;/td&gt;
+ &lt;td&gt;approves&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;Secrets provisioning&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;td&gt;consumes by name&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;provides&lt;/strong&gt;&lt;/td&gt;
+ &lt;td&gt;rotates&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;Size, retention budget, tenant policy&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;td&gt;offers profiles&lt;/td&gt;
+ &lt;td&gt;sets values&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;decides&lt;/strong&gt;&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;Incident response, upgrades, DR, capacity&lt;/td&gt;
+ &lt;td&gt;—&lt;/td&gt;
+ &lt;td&gt;tooling + alerts&lt;/td&gt;
+ &lt;td&gt;applies changes&lt;/td&gt;
+ &lt;td&gt;&lt;strong&gt;owns&lt;/strong&gt;&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="sizing-the-logging-backend"&gt;Sizing the logging backend&lt;a class="anchor" href="#sizing-the-logging-backend"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;Size by throughput and burst, not by stored-bucket size.&lt;/strong&gt;
+Bucket size is a &lt;em&gt;derived&lt;/em&gt; output (sustained throughput × retention), not an input.
+Different parts of Loki are sized off different points of the load envelope:&lt;/p&gt;</description></item><item><title>Prometheus Remote Write</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/metrics/collecting/prometheus-remote-write/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/metrics/collecting/prometheus-remote-write/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Repo Layout</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/repo-layout/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/repo-layout/</guid><description>&lt;p&gt;This page is a convenience cache of where things live in the repo.
 The repository is under active development, so this layout goes stale easily.
 If it disagrees with what is actually in the tree, trust the repo and update this page.&lt;/p&gt;
 &lt;p&gt;The repo is a polyglot monorepo: a Rust workspace, a &lt;code&gt;uv&lt;/code&gt;-managed Python workspace, and a Go-tooled Hugo docsite all share the root.&lt;/p&gt;
@@ -256,7 +352,11 @@ This is how log-based conditions — a spike in &lt;code&gt;ERROR&lt;/code&gt; l
 &lt;p&gt;For broader code-quality tooling (&lt;code&gt;ruff&lt;/code&gt;, &lt;code&gt;pyright&lt;/code&gt;, configured linter rules), see &lt;a href="https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/internal/dashboard/generating/#code-quality"&gt;Generating and Pushing Dashboards &amp;gt; Code quality&lt;/a&gt;.&lt;/p&gt;
 &lt;blockquote class='book-hint '&gt;
 &lt;p&gt;&lt;strong&gt;TODO:&lt;/strong&gt; This page is a stub. Expand with conventions for snapshot testing of dashboard JSON, fixture patterns, and integration testing against a live Grafana when those land.&lt;/p&gt;
-&lt;/blockquote&gt;</description></item><item><title>Upgrading materialize-monitoring</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/upgrading/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/upgrading/</guid><description>&lt;h1 id="upgrading-materialize-monitoring"&gt;Upgrading materialize-monitoring&lt;a class="anchor" href="#upgrading-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;</description></item><item><title>Custom Resource Definitions (CRDs)</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/crds/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/crds/</guid><description>&lt;h1 id="custom-resource-definitions-crds"&gt;Custom Resource Definitions (CRDs)&lt;a class="anchor" href="#custom-resource-definitions-crds"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;/blockquote&gt;</description></item><item><title>Upgrading materialize-monitoring</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/upgrading/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/operating/upgrading/</guid><description>&lt;h1 id="upgrading-materialize-monitoring"&gt;Upgrading materialize-monitoring&lt;a class="anchor" href="#upgrading-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;h2 id="ingester-rollouts-duration-and-deploy-timeouts"&gt;Ingester rollouts: duration and deploy timeouts&lt;a class="anchor" href="#ingester-rollouts-duration-and-deploy-timeouts"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Any change to the ingester pod spec — image, resources, or scaling the replica count — rolls the ingester StatefulSet.
+That roll is &lt;strong&gt;ordered and readiness-gated&lt;/strong&gt;: pods cycle &lt;strong&gt;one at a time&lt;/strong&gt;, and the next is not touched until the previous re-joins the ring and reports Ready.
+This is deliberate — with &lt;code&gt;replication_factor: 3&lt;/code&gt;, one-at-a-time keeps at most one of three replicas down, preserving write quorum throughout the roll.&lt;/p&gt;</description></item><item><title>Custom Resource Definitions (CRDs)</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/crds/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-prod-loki/reference/crds/</guid><description>&lt;h1 id="custom-resource-definitions-crds"&gt;Custom Resource Definitions (CRDs)&lt;a class="anchor" href="#custom-resource-definitions-crds"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;Kubernetes Custom Resource Definitions (CRDs) are a powerful way to extend the Kubernetes API with custom resources that can be managed using standard Kubernetes tools.
 &lt;code&gt;materialize-monitoring&lt;/code&gt; relies on several CRDs to function properly, and this section provides an overview of these CRDs and how to install them.&lt;/p&gt;
 &lt;h2 id="servicemonitor-monitoringcoreoscomv1"&gt;ServiceMonitor (monitoring.coreos.com/v1)&lt;a class="anchor" href="#servicemonitor-monitoringcoreoscomv1"&gt;#&lt;/a&gt;&lt;/h2&gt;
