@@ -18,7 +18,7 @@ dependencies = [
     "grafana-dashboards",
     # WARNING: package managers may see "later" versions that are actually earlier releases
     # due to some epoch issues with grafana-foundation-sdk.
-    "grafana-foundation-sdk==0.0.12",
+    "grafana-foundation-sdk==0.0.18",
     "pydantic>=2.13.3",
     "pyyaml>=6.0.3",
 ]
