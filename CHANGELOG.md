@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Prometheus Scrapers v0.3.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
 _Changes Pending_
@@ -25,9 +29,23 @@ _Changes Pending_
 
 * Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
 
-## Prometheus Scrapers v0.2.0 (Unreleased)
+## Prometheus Scrapers v0.2.0
 
-_Changes Pending_
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Add annotations to distinguish dashboards; roadmapping
+        * [materialize-monitoring#45](https://github.com/MaterializeInc/materialize-monitoring/pull/45)
+    * Release Dashboards v0.11.0
+        * [materialize-monitoring#44](https://github.com/MaterializeInc/materialize-monitoring/pull/44)
+    * Support optimizing for clouds; add GCP specific variation
+        * [materialize-monitoring#43](https://github.com/MaterializeInc/materialize-monitoring/pull/43)
+    * Release Dashboards v0.10.0
+        * [materialize-monitoring#36](https://github.com/MaterializeInc/materialize-monitoring/pull/36)
+    * Update PR description on bump updates
+        * [materialize-monitoring#42](https://github.com/MaterializeInc/materialize-monitoring/pull/42)
+    * Improvements to better support GCP/GKE/GMP Dashboards/Datasources
+        * [materialize-monitoring#40](https://github.com/MaterializeInc/materialize-monitoring/pull/40)
 
 ## materialize-monitoring Optional CRDs v0.3.0 (Unreleased)
 
