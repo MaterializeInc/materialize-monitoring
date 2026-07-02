@@ -6,7 +6,9 @@
     "annotations": {
       "monitoring.materialize.cloud/target-cloud": "generic",
       "monitoring.materialize.cloud/target-export": "generic",
-      "monitoring.materialize.cloud/sql-metric-prefix": "mz_"
+      "monitoring.materialize.cloud/sql-metric-prefix": "mz_",
+      "monitoring.materialize.cloud/min-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/rec-mz-version": "v26.29.0"
     }
   },
   "spec": {

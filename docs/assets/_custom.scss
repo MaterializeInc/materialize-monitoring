@@ -72,15 +72,26 @@ a[href]:visited {
 // External links
 .book-page a[href].external-link {
   &::after {
+    // \29C9
     content: " ⧉";
     font-size: 0.875em;
   }
 }
 
-// External links
+// External links (protected, e.g., Linear)
 .book-page a[href].internal-protected-link {
   &::after {
+    // WARNING: emoji (other locks look bad)
     content: " 🔒";
+    font-size: 0.875em;
+  }
+}
+
+// Github links
+.book-page a[href].github-source-link {
+  &::after {
+    // </> (except better typographically)
+    content: " \2039/\203A";
     font-size: 0.875em;
   }
 }
@@ -220,6 +231,18 @@ main.container {
     padding: rem(0.5);
     font-size: rem(1.2);
     overflow-x: auto;
+    max-width: 15rem;
+  }
+
+  td.helm-value-key {
+    font-family: monospace;
+    font-size: rem(1.5);
+    overflow-x: auto;
+    max-width: 15rem;
+  }
+
+  td.helm-value-desc {
+    font-size: rem(1.5);
   }
 }
 
@@ -297,7 +320,7 @@ main.container {
   }
 }
 
-.info {
+.info, .note {
   border: 1px solid rgba(63, 169, 224, 0.2);
 
   &::after {

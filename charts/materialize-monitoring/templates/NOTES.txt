@@ -1,0 +1,10 @@
+You have successfully installed the Materialize Monitoring chart.
+
+{{- if ( include "mzmon.loki.enabled" $ ) }}
+
+Loki is installed and configured to receive logs.
+  Loki namespace: {{ include "mzmon.loki.namespace" $ }}
+  Replication factor: {{ include "mzmon.loki.replicationFactor" $ }}
+{{- end }}
+
+{{- include "mzmon.validate.format" $ | nindent 0 }}

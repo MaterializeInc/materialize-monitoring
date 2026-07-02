@@ -1,0 +1,88 @@
+# Loki profile: small (S)
+#
+# Overlay on top of the chart defaults (which target a medium install).
+# Compose after the base values, e.g. `-f profiles/loki-small.values.yaml`.
+#
+# Envelope this profile is sized for (see Operating > Production Best Practices):
+#   sustained ~0.25 MiB/s · 5-min burst ~1 MiB/s · regression ceiling ~2 MiB/s
+# Typical fit: dev / staging-class installs.
+#
+# This file defines ONLY the deltas from the medium defaults — smaller
+# resources, WAL, caches, limits, retention, and autoscaling ceilings. The
+# topology stays production-shaped (replication_factor 3, >=3 ingesters) so
+# HA behavior and PodDisruptionBudgets remain valid; small just runs leaner.
+
+tags:
+  loki: true
+
+loki:
+  loki:
+    limits_config:
+      # -- Shorter default retention for a small/dev footprint.
+      retention_period: 168h
+      # -- Lower per-tenant ingestion caps.
+      ingestion_rate_mb: 4
+      ingestion_burst_size_mb: 8
+      max_global_streams_per_user: 5000
+
+  distributor:
+    autoscaling:
+      # -- Lower the autoscaling ceiling; floor stays at 2 for availability.
+      maxReplicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  ingester:
+    # Ingesters are ephemeral (see base values); no WAL PVC to size here.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  querier:
+    autoscaling:
+      maxReplicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  queryFrontend:
+    autoscaling:
+      maxReplicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  queryScheduler:
+    # -- A dedicated scheduler is unnecessary at this scale; the query-frontend's
+    # built-in queue is sufficient. (The validator will warn — expected for small.)
+    enabled: false
+
+    podDisruptionBudget:
+      enabled: false
+
+  compactor:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  indexGateway:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  ruler:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # -- Shrink the chunk cache further for small volumes.
+  chunksCache:
+    allocatedMemory: 1024

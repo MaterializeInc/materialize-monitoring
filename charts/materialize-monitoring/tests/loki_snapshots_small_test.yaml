@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# Small-profile workloads + services. Split into its own suite so the .snap
+# file stays small; medium + non-workload resources live in loki_snapshots_test.yaml.
+suite: loki snapshots (small)
+# NOTE: no `chart:` stub — keep the loki subchart's real appVersion in image tags.
+release:
+  name: t
+  namespace: loki
+set:
+  tags.bundled-backends: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy
+  loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
+values:
+  - ../profiles/loki-small.values.yaml
+tests:
+  - it: small workloads
+    templates:
+      - ../charts/loki/templates/distributor/workload.yaml
+      - ../charts/loki/templates/ingester/statefulset.yaml
+      - ../charts/loki/templates/querier/deployment.yaml
+      - ../charts/loki/templates/query-frontend/deployment.yaml
+      - ../charts/loki/templates/query-scheduler/deployment.yaml
+      - ../charts/loki/templates/index-gateway/statefulset.yaml
+      - ../charts/loki/templates/compactor/workload.yaml
+      - ../charts/loki/templates/ruler/statefulset.yaml
+      - ../charts/loki/templates/chunks-cache/statefulset.yaml
+      - ../charts/loki/templates/results-cache/statefulset.yaml
+      - ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - matchSnapshot: {}
+
+  - it: small services
+    templates:
+      - ../charts/loki/templates/distributor/service.yaml
+      - ../charts/loki/templates/ingester/service.yaml
+      - ../charts/loki/templates/querier/service.yaml
+      - ../charts/loki/templates/query-frontend/service.yaml
+      - ../charts/loki/templates/query-scheduler/service.yaml
+      - ../charts/loki/templates/index-gateway/service.yaml
+      - ../charts/loki/templates/compactor/service.yaml
+      - ../charts/loki/templates/ruler/service.yaml
+      - ../charts/loki/templates/chunks-cache/service.yaml
+      - ../charts/loki/templates/results-cache/service.yaml
+      - ../charts/loki/templates/loki-canary/service.yaml
+    asserts:
+      - matchSnapshot: {}

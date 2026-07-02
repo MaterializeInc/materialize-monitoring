@@ -116,6 +116,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
         {{- printf "\n#### %s\n\n" $section.SectionName }}
       {{- else if eq $section.SectionLevel 3 }}
         {{- printf "\n### %s\n\n" $section.SectionName }}
+      {{- else if eq $section.SectionLevel 5 }}
+        {{- printf "\n##### %s\n\n" $section.SectionName }}
       {{- else }}
         {{- printf "%s has %s" $section.SectionName $section.SectionLevel | fail }}
       {{- end }}
@@ -127,10 +129,10 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
         {{- printf "    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>\n" }}
         {{- printf "  </thead>\n  <tbody>" }}
         {{- range $section.SectionItems }}    <tr>
-      <td>{{ template "chart.valueKeyColumnRenderHtml" . }}</td>
-      <td>{{ template "chart.valueTypeColumnRenderHtml" . }}</td>
-      <td>{{ template "chart.valueDefaultColumnRenderHtml" . }}</td>
-      <td>{{ template "chart.valueDescriptionColumnRenderHtml" . }}</td>
+      <td class="helm-value-key">{{ template "chart.valueKeyColumnRenderHtml" . }}</td>
+      <td class="helm-value-type">{{ template "chart.valueTypeColumnRenderHtml" . }}</td>
+      <td class="helm-value-default">{{ template "chart.valueDefaultColumnRenderHtml" . }}</td>
+      <td class="helm-value-desc">{{ template "chart.valueDescriptionColumnRenderHtml" . }}</td>
     </tr>
           {{- printf "\n" }}
         {{- end }}
@@ -169,7 +171,7 @@ YAGNI: support non-html?
             "SectionName" $currentSection
             "SectionItems" ( list )
             "SectionDescription" ( default .AutoDescription .Description )
-            "SectionLevel" ( ternary 4 3 ( eq "h4" .Type ) )
+            "SectionLevel" ( ternary 4 ( ternary 5 3 ( eq "h5" .Type ) ) ( eq "h4" .Type ) )
           ) }}
           {{- $sectionOrder = append $sectionOrder $currentSection }}
         {{- end }}

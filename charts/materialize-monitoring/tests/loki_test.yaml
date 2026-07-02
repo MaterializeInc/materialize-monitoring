@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: loki subchart and validators
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  tags.bundled-backends: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+tests:
+  - it: should have loki enabled with circuit-breaker
+    set:
+      tags.bundled-backends: false
+      loki.enabled: true
+    template: ../charts/loki/templates/serviceaccount.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: mzmon-loki
+            namespace: loki
+  - it: should have loki enabled with bundled-backends tags
+    set:
+      tags.bundled-backends: true
+    template: ../charts/loki/templates/serviceaccount.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: mzmon-loki
+            namespace: loki
+  - it: should have loki enabled with loki tags
+    set:
+      tags.bundled-backends: false
+      tags.loki: true
+    template: ../charts/loki/templates/serviceaccount.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: mzmon-loki
+            namespace: loki
+  # This test case doesn't work since it relies on the template to exist
+  # - it: should not loki enabled with circuit-breaker off
+  #   set:
+  #     loki.enabled: false
+  #   template: ../charts/loki/templates/serviceaccount.yaml
+  #   asserts:
+  #     - hasDocuments:
+  #         count: 0
+  - it: should fail if buckets are not defined
+    set:
+      loki.loki.storage.bucketNames.chunks: "<REPLACE-ME>"
+      loki.loki.storage.bucketNames.ruler: "<REPLACE-ME>"
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.loki.storage.bucketNames.chunks is required"
+      - failedTemplate:
+          errorPattern: "loki.loki.storage.bucketNames.ruler is required"
+
+  - it: fails in downstream chart when buckets are not defined
+    set:
+      loki.loki.storage.bucketNames.chunks: ""
+    template: ../charts/loki/templates/ruler/statefulset.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "Please define loki.storage.bucketNames.chunks"
+
+  # Warnings surface in NOTES.txt (and validate.yaml comments); assert on the
+  # raw NOTES.txt output. The `replication_factor 3` in the pattern also proves
+  # mzmon.loki.replicationFactor reads the real RF (loki.loki.commonConfig).
+  - it: warns when an ingester rolling-update maxUnavailable exceeds 1
+    set:
+      loki.ingester.updateStrategy.rollingUpdate.maxUnavailable: 2
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'ingester\.updateStrategy\.rollingUpdate\.maxUnavailable is 2: with replication_factor 3'
+
+  - it: warns when the ingester PDB maxUnavailable exceeds 1
+    set:
+      loki.ingester.podDisruptionBudget.maxUnavailable: 2
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'ingester\.podDisruptionBudget\.maxUnavailable is 2:.*write quorum'
+
+  - it: does not warn about ingester maxUnavailable at the defaults
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'maxUnavailable is [0-9]'
+        not: true

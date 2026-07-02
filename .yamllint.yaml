@@ -29,6 +29,7 @@ ignore: |
   charts/*/pre-rendered/
   charts/*/templates/
   *.kyaml
+  *.yaml.snap
 
 rules:
   # Prefer to not use anchors, as they are only intended for power users

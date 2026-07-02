@@ -103,7 +103,7 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring Helm Chart v0.2.1 (Unreleased)
+## materialize-monitoring Helm Chart v0.3.0 (Unreleased)
 
 _Changes Pending_
 

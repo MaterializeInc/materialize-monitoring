@@ -27,6 +27,9 @@ class EnvironmentOverviewDashboard(MzDashboard):
 
     UID = "env-top"
 
+    MIN_MZ_VERSION = "v26.24.0"  # added app.kubernetes.io/name label to environmentd
+    REC_MZ_VERSION = "v26.29.0"  # introduced _info metrics (soft requirement)
+
     def get_annotations(self) -> dict[str, str]:
         """Get annotations for the dashboard."""
         assert isinstance(self.context, MzBuildContext)
@@ -34,6 +37,8 @@ class EnvironmentOverviewDashboard(MzDashboard):
         annotations["monitoring.materialize.cloud/sql-metric-prefix"] = (
             self.context.sql_metric_prefix
         )
+        annotations["monitoring.materialize.cloud/min-mz-version"] = self.MIN_MZ_VERSION
+        annotations["monitoring.materialize.cloud/rec-mz-version"] = self.REC_MZ_VERSION
         return annotations
 
     def configure_datasources(self):

@@ -72,3 +72,62 @@ app.kubernetes.io/version: {{ $.Chart.AppVersion | quote }}
   {{- end }}
 app.kubernetes.io/managed-by: {{ $.Release.Service }}
 {{- end }}
+
+{{- /*
+Validation collection.
+
+This is called twice:
+  1. in NOTES.txt to be displayed
+  2. inside validate.yaml to be templated/actually fail
+
+Usage:
+  {{- $res := include "mzmon.validate.collect" $ | fromYaml }}
+*/}}
+{{- define "mzmon.validate.collect" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- $res := include "mzmon.loki.validate" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validation entrypoint inside NOTES.txt.
+
+Usage:
+  {{- include "mzmon.validate.format" $ | nindent 0 }}
+*/}}
+{{- define "mzmon.validate.format" }}
+  {{- $res := include "mzmon.validate.collect" $ | fromYaml }}
+
+  {{- range $res.warnings }}
+    {{- printf "**WARNING**: %s\n" . }}
+  {{- end }}
+
+  {{- range $res.errors -}}
+    {{- printf "**ERROR**: %s\n" . }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+validation.yaml template writer.
+
+This will emit a failure if any validation errors are actually found.
+
+WARNINGS are written to output (as yaml comments).
+*/}}
+{{- define "mzmon.validate" }}
+  {{- $res := include "mzmon.validate.collect" $ | fromYaml }}
+
+  {{- range $res.warnings }}
+    {{- printf "# WARNING: %s\n" . }}
+  {{- end }}
+
+  {{- if $res.errors }}
+    {{- printf "Validation failed:\n%s" ( join "\n" $res.errors ) | fail }}
+  {{- end }}
+{{- end }}
