@@ -8,13 +8,24 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.13.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
 _Changes Pending_
 
-## Dashboards v0.12.0 (Unreleased)
+## Dashboards v0.12.0
 
-_Changes Pending_
+* Implement Loki with Production Configuration
+    * [materialize-monitoring#48](https://github.com/MaterializeInc/materialize-monitoring/pull/48)
+* Add annotations to distinguish dashboards; roadmapping
+    * [materialize-monitoring#45](https://github.com/MaterializeInc/materialize-monitoring/pull/45)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
 
 ## Dashboards v0.11.0
 
