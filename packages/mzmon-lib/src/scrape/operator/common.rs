@@ -65,6 +65,33 @@ pub struct NamespaceSelector {
     pub match_names: Vec<String>,
 }
 
+/// Subset of `v1.SecretKeySelector` — references a single key within a
+/// Kubernetes Secret. In the operator `basicAuth` form, BOTH the username and the
+/// password are selected this way (the PodMonitor CRD has no inline-credential
+/// option); the GMP and classic outputs reshape this per their own auth models.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretKeySelector {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optional: Option<bool>,
+}
+
+/// `monitoring.coreos.com/v1` BasicAuth — the operator *input* form. Both fields
+/// select a key from a Kubernetes Secret (see [`SecretKeySelector`]).
+///
+/// See: <https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.BasicAuth>
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BasicAuth {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<SecretKeySelector>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<SecretKeySelector>,
+}
+
 /// `monitoring.coreos.com/v1` RelabelConfig — the operator *input* form (note
 /// the `camelCase` field names, distinct from the classic snake_case output in
 /// `scrape::config::RelabelConfig`).
