@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
 _Changes Pending_
@@ -103,9 +107,41 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Pipelines v0.4.0 (Unreleased)
+## Pipelines v0.4.0
 
-_Changes Pending_
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.6.0..v0.7.0
+    * Add annotations to distinguish dashboards; roadmapping
+        * [materialize-monitoring#45](https://github.com/MaterializeInc/materialize-monitoring/pull/45)
+    * Release Dashboards v0.11.0
+        * [materialize-monitoring#44](https://github.com/MaterializeInc/materialize-monitoring/pull/44)
+    * Support optimizing for clouds; add GCP specific variation
+        * [materialize-monitoring#43](https://github.com/MaterializeInc/materialize-monitoring/pull/43)
+    * Release Dashboards v0.10.0
+        * [materialize-monitoring#36](https://github.com/MaterializeInc/materialize-monitoring/pull/36)
+    * Update PR description on bump updates
+        * [materialize-monitoring#42](https://github.com/MaterializeInc/materialize-monitoring/pull/42)
+    * Improvements to better support GCP/GKE/GMP Dashboards/Datasources
+        * [materialize-monitoring#40](https://github.com/MaterializeInc/materialize-monitoring/pull/40)
+    * Attach explicit pod labels to scrapers in GCP
+        * [materialize-monitoring#39](https://github.com/MaterializeInc/materialize-monitoring/pull/39)
+    * Generate PodMonitoring resources for GCP
+        * [materialize-monitoring#38](https://github.com/MaterializeInc/materialize-monitoring/pull/38)
+    * Upgrade to rust 1.96
+        * [materialize-monitoring#37](https://github.com/MaterializeInc/materialize-monitoring/pull/37)
+    * Expose classic scrapeconfigs
+        * [materialize-monitoring#34](https://github.com/MaterializeInc/materialize-monitoring/pull/34)
+    * Release Dashboards v0.9.0
+        * [materialize-monitoring#30](https://github.com/MaterializeInc/materialize-monitoring/pull/30)
+    * Only upload artifacts while in a draft state
+        * [materialize-monitoring#29](https://github.com/MaterializeInc/materialize-monitoring/pull/29)
+    * Release Dashboards v0.8.0
+        * [materialize-monitoring#18](https://github.com/MaterializeInc/materialize-monitoring/pull/18)
+    * Release mzmon-lib (shared library) v0.6.0
+        * [materialize-monitoring#20](https://github.com/MaterializeInc/materialize-monitoring/pull/20)
+    * Include artifacts when creating github releases
+        * [materialize-monitoring#26](https://github.com/MaterializeInc/materialize-monitoring/pull/26)
 
 ## materialize-monitoring Helm Chart v0.3.0
 
