@@ -19,7 +19,7 @@ jobs:
     name: editorconfig
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install editorconfig-checker
         run: |
           curl -sSL \
@@ -33,7 +33,7 @@ jobs:
     name: python (ruff + pyright)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           python-version: "3.12"
@@ -53,7 +53,7 @@ jobs:
     name: rust (fmt + clippy)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -71,7 +71,7 @@ jobs:
     name: shell (shellcheck + shfmt)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # shellcheck is preinstalled on ubuntu-24.04 runners.
       - name: Install shfmt
         run: |
@@ -110,7 +110,7 @@ jobs:
     name: yaml (yamllint)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v8.2.0
       - name: Install yamllint
         # Pinned to match the pre-commit hook rev for predictability.
@@ -133,7 +133,7 @@ jobs:
     name: helm (lint + helm-docs freshness)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # LFS-tracked subchart tarballs under charts/*/charts/*.tgz are
           # needed for `helm lint` to resolve declared dependencies and for
