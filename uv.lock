@@ -71,11 +71,11 @@ requires-dist = [
 
 [[package]]
 name = "grafana-foundation-sdk"
-version = "0.0.12"
+version = "1769699998!10.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/09/19/a2732d6cf409ceb700931c9236d12e6b4d047887bae9360727601dfae2f3/grafana_foundation_sdk-0.0.12.tar.gz", hash = "sha256:e3a3ddf274f602a949b152b304eb301e8027cfb7ea79ffa791b537197b1fec21", size = 596955, upload-time = "2026-03-04T12:55:38.971Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/16/ce146db5395857ddc19f71f7b7b6bbe76689f5085467ddc93cbd638ef6f3/grafana_foundation_sdk-1769699998!10.1.0.tar.gz", hash = "sha256:8ecfb7dc8b66fc5cbdbf7ea48dc19169aed03e698ba490f1001bc501a194c5c7", size = 410531, upload-time = "2026-01-29T15:39:41.171Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0f/50/bd979872b9dfb064d00cdf6ca2a3c5cdcec0921465606a5f1cbee77a391e/grafana_foundation_sdk-0.0.12-py3-none-any.whl", hash = "sha256:6aca2d177aea5128e6ad9d07336d58ffe9f7f97027cac2e5fa9d2e05335be318", size = 422198, upload-time = "2026-03-04T12:55:35.5Z" },
+    { url = "https://files.pythonhosted.org/packages/17/3b/49dd4a2137dd193b7c77a034f077c370119ecee9cb45fd0b819023d19bad/grafana_foundation_sdk-1769699998!10.1.0-py3-none-any.whl", hash = "sha256:d131ffe49057fb669ba31ce7e28a303c96b3aecf4332b20de33cfa55110d498c", size = 318469, upload-time = "2026-01-29T15:39:40.08Z" },
 ]
 
 [[package]]
@@ -119,7 +119,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "grafana-dashboards", editable = "packages/grafana-dashboards" },
-    { name = "grafana-foundation-sdk", specifier = "==0.0.12" },
+    { name = "grafana-foundation-sdk", specifier = "==1769699998!10.1.0" },
     { name = "py-mzmon-lib", editable = "packages/py-mzmon-lib" },
     { name = "pydantic", specifier = ">=2.13.3" },
     { name = "pyyaml", specifier = ">=6.0.3" },
