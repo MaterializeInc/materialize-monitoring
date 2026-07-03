@@ -35,7 +35,7 @@ jobs:
           extended: true
 
       - name: Cache Hugo module downloads
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/hugo_cache
           key: ${{ runner.os }}-hugo-mod-${{ hashFiles('docs/go.sum') }}
