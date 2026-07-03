@@ -93,7 +93,15 @@ components:
     artifacts:
       - charts/materialize-monitoring/pre-rendered/scrapers/
 
-  # TODO: container-images:
+  # Docker images
+  container-images:
+    changelog: true
+    title: "Container Images"
+    version_paths: []
+    content_paths:
+      - packages/alloy/
+    dependencies:
+      - repo-common
 
   mzmon-lib:
     changelog: true
