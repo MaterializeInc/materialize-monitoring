@@ -1,6 +1,63 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "schedule:automergeDaily",
+    "customManagers:helmChartYamlAppVersions",
+    "customManagers:makefileVersions",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests",
+    "mergeConfidence:all-badges"
+  ],
+  "labels": ["dependencies", "auto-format"],
+  "rebaseWhen": "automerging",
+  "reviewersFromCodeOwners": true,
+  "postUpdateOptions": [
+    "gomodTidy",
+    "helmUpdateSubChartArchives"
+  ],
+  "minimumReleaseAge": "6 days",
+  "abandonmentThreshold": "1 year",
+  "vulnerabilityAlerts": {
+    "groupName": "Vulnerability Alerts",
+    "addLabels": ["security"],
+    "automerge": true,
+    "assignees": ["team:security", "@Alphadelta14"]
+  },
+  "major": {
+    "addLabels": ["major"],
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchDepTypes": ["!devDependencies"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
+    },
+    {
+      "groupName": "Dev Dependencies (non-major)",
+      "matchDepTypes": ["devDependencies"],
+      "matchCurrentVersion": "!/^0/",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": false
+    },
+    {
+      "groupName": "Go (Docs) Dependencies",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Dockerfile versions",
+      "managerFilePatterns": ["/.*Dockerfile$/", "/.*Containerfile$/"],
+      "matchStrings": [
+        "#\\s?renovate: datasource=(?<datasource>.*) packageName=(?<packageName>\\S*)(?: registryUrl=(?<registryUrl>\\S*))?( versioning=(?<versioning>.*?))?\\n.*(_TAG|_VERSION)\\s*\\??=?\\s*\"?(?<currentValue>.*)\"?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    }
   ]
 }
