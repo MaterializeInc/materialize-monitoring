@@ -19,7 +19,6 @@
   "minimumReleaseAge": "6 days",
   "abandonmentThreshold": "1 year",
   "vulnerabilityAlerts": {
-    "groupName": "Vulnerability Alerts",
     "addLabels": ["security"],
     "automerge": true,
     "assignees": ["team:security", "@Alphadelta14"]
