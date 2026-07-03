@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Local Materialize instance for testing
   materialize:
-    image: materialize/materialized:latest
+    image: materialize/materialized:latest@sha256:f751a45fa28d27a40158e1504922a79d83d61315e3cb6519d96ce363d1e4a5f7
     container_name: materialize
     ports:
       - "6875:6875"
@@ -21,7 +21,7 @@ services:
 
   # SQL Exporter - Collects metrics from Materialize
   sql_exporter:
-    image: ghcr.io/justwatchcom/sql_exporter:latest
+    image: ghcr.io/justwatchcom/sql_exporter:latest@sha256:b34a9f584391a0593f69b6a94a39767134167bd9c5fde07e3a3262d43d7d81c9
     container_name: sql_exporter
     ports:
       - "9399:9237"
@@ -43,7 +43,7 @@ services:
 
   # Prometheus - Time-series database for Grafana
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:latest@sha256:c6b27ea434f8389bfe233fbc7be381cf50587c286e871bc842008f5a1b1908a7
     container_name: prometheus
     ports:
       - "9090:9090"
@@ -68,7 +68,7 @@ services:
 
   # Grafana - Dashboard visualization
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:latest@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63
     container_name: grafana
     ports:
       - "3001:3000"
@@ -91,7 +91,7 @@ services:
 
   # Datadog Agent - Collects metrics via OpenMetrics for Datadog
   datadog-agent:
-    image: gcr.io/datadoghq/agent:latest
+    image: gcr.io/datadoghq/agent:latest@sha256:14371987f2d7153861c8db7b4b9a6743dd573e5ea9deb5ef5b2e6c7890190c73
     container_name: datadog-agent
     ports:
       - "8125:8125/udp"  # DogStatsD

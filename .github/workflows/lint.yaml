@@ -19,7 +19,7 @@ jobs:
     name: editorconfig
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install editorconfig-checker
         run: |
           curl -sSL \
@@ -33,8 +33,8 @@ jobs:
     name: python (ruff + pyright)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -53,11 +53,11 @@ jobs:
     name: rust (fmt + clippy)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       # rustfmt picks up rustfmt.toml if present (none today; defaults apply).
       - name: cargo fmt (check mode)
         run: cargo fmt --all -- --check
@@ -71,7 +71,7 @@ jobs:
     name: shell (shellcheck + shfmt)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       # shellcheck is preinstalled on ubuntu-24.04 runners.
       - name: Install shfmt
         run: |
@@ -110,8 +110,8 @@ jobs:
     name: yaml (yamllint)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Install yamllint
         # Pinned to match the pre-commit hook rev for predictability.
         run: uv tool install yamllint==1.37.1
@@ -133,16 +133,16 @@ jobs:
     name: helm (lint + helm-docs freshness)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           # LFS-tracked subchart tarballs under charts/*/charts/*.tgz are
           # needed for `helm lint` to resolve declared dependencies and for
           # helm-docs to render any subchart-aware sections.
           lfs: true
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "1.26"
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
       - name: helm lint
         run: |
           helm lint charts/materialize-monitoring
