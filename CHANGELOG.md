@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.8.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
 _Changes Pending_
@@ -107,9 +111,46 @@ _Changes Pending_
     * Only upload artifacts while in a draft state
         * [materialize-monitoring#29](https://github.com/MaterializeInc/materialize-monitoring/pull/29)
 
-## mzmon-lib (shared library) v0.7.0 (Unreleased)
+## mzmon-lib (shared library) v0.7.0
 
-_Changes Pending_
+* Update dependency pydantic-settings to v2.14.2 [SECURITY]
+    * [materialize-monitoring#64](https://github.com/MaterializeInc/materialize-monitoring/pull/64)
+* Update python Docker tag to v3.14
+    * [materialize-monitoring#59](https://github.com/MaterializeInc/materialize-monitoring/pull/59)
+* Update Rust crate jsonschema to v0.46.9
+    * [materialize-monitoring#56](https://github.com/MaterializeInc/materialize-monitoring/pull/56)
+* Update Rust crate anyhow to v1.0.103
+    * [materialize-monitoring#55](https://github.com/MaterializeInc/materialize-monitoring/pull/55)
+* Update Rust crate itertools to 0.15.0
+    * [materialize-monitoring#60](https://github.com/MaterializeInc/materialize-monitoring/pull/60)
+* MaterializeInc/jun/add-auth-to-compute-sql-endpoint
+    * [materialize-monitoring#47](https://github.com/MaterializeInc/materialize-monitoring/pull/47)
+* Add annotations to distinguish dashboards; roadmapping
+    * [materialize-monitoring#45](https://github.com/MaterializeInc/materialize-monitoring/pull/45)
+* Release Dashboards v0.11.0
+    * [materialize-monitoring#44](https://github.com/MaterializeInc/materialize-monitoring/pull/44)
+* Support optimizing for clouds; add GCP specific variation
+    * [materialize-monitoring#43](https://github.com/MaterializeInc/materialize-monitoring/pull/43)
+* Release Dashboards v0.10.0
+    * [materialize-monitoring#36](https://github.com/MaterializeInc/materialize-monitoring/pull/36)
+* Update PR description on bump updates
+    * [materialize-monitoring#42](https://github.com/MaterializeInc/materialize-monitoring/pull/42)
+* Improvements to better support GCP/GKE/GMP Dashboards/Datasources
+    * [materialize-monitoring#40](https://github.com/MaterializeInc/materialize-monitoring/pull/40)
+* Attach explicit pod labels to scrapers in GCP
+    * [materialize-monitoring#39](https://github.com/MaterializeInc/materialize-monitoring/pull/39)
+* Generate PodMonitoring resources for GCP
+    * [materialize-monitoring#38](https://github.com/MaterializeInc/materialize-monitoring/pull/38)
+* Upgrade to rust 1.96
+    * [materialize-monitoring#37](https://github.com/MaterializeInc/materialize-monitoring/pull/37)
+* Expose classic scrapeconfigs
+    * [materialize-monitoring#34](https://github.com/MaterializeInc/materialize-monitoring/pull/34)
+* Release Dashboards v0.9.0
+    * [materialize-monitoring#30](https://github.com/MaterializeInc/materialize-monitoring/pull/30)
+* Only upload artifacts while in a draft state
+    * [materialize-monitoring#29](https://github.com/MaterializeInc/materialize-monitoring/pull/29)
+* Release Dashboards v0.8.0
+    * [materialize-monitoring#18](https://github.com/MaterializeInc/materialize-monitoring/pull/18)
 
 ## Pipelines v0.4.0 (Unreleased)
 
