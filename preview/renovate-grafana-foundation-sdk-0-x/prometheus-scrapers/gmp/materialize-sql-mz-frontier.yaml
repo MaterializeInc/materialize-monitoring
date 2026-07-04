@@ -14,6 +14,8 @@ spec:
   - port: internal-http
     interval: 60s
     path: /metrics/mz_frontier
+    basicAuth:
+      username: mz_support
   targetLabels:
     fromPod:
     - from: materialize.cloud/organization-name

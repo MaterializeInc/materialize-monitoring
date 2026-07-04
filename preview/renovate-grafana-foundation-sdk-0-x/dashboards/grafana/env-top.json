@@ -232,7 +232,6 @@
                       "spec": {
                         "expr": "\ntime()\n- topk(1,\n    container_start_time_seconds{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container!=\"new-promsql-exporter\"}\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{pod}}",
                         "query": "\ntime()\n- topk(1,\n    container_start_time_seconds{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container!=\"new-promsql-exporter\"}\n)\n",
                         "qryType": 1
@@ -422,7 +421,6 @@
                       "spec": {
                         "expr": "\nmax(\n    max_over_time(\n        (\n            mz_dataflow_wallclock_lag_seconds{\n                materialize_cloud_organization_name=~\"$environmentIdList\", instance_id!=\"\", quantile=\"1\"\n            } < 1e9\n        )[$__range:1m]\n    )\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "max lag",
                         "query": "\nmax(\n    max_over_time(\n        (\n            mz_dataflow_wallclock_lag_seconds{\n                materialize_cloud_organization_name=~\"$environmentIdList\", instance_id!=\"\", quantile=\"1\"\n            } < 1e9\n        )[$__range:1m]\n    )\n)\n",
                         "qryType": 1
@@ -539,7 +537,6 @@
                       "spec": {
                         "expr": "\nsum by (namespace, container) (\n    rate(\n        container_cpu_usage_seconds_total{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\"}[5m]\n    )\n) / sum by (namespace, container) (\n    kube_pod_container_resource_limits{resource=\"cpu\", namespace=~\"$mzNamespaceList\"}\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{container}}",
                         "query": "\nsum by (namespace, container) (\n    rate(\n        container_cpu_usage_seconds_total{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\"}[5m]\n    )\n) / sum by (namespace, container) (\n    kube_pod_container_resource_limits{resource=\"cpu\", namespace=~\"$mzNamespaceList\"}\n)\n",
                         "qryType": 1
@@ -654,7 +651,6 @@
                       "spec": {
                         "expr": "\nsum by (namespace, container) (\n    avg by (namespace, pod, container) (\n        container_memory_working_set_bytes{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container!=\"new-promsql-exporter\"}\n    )\n) / sum by (namespace, container) (\n    avg by (namespace, pod, container) (\n        container_spec_memory_limit_bytes{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container!=\"new-promsql-exporter\"}\n    )\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{container}}",
                         "query": "\nsum by (namespace, container) (\n    avg by (namespace, pod, container) (\n        container_memory_working_set_bytes{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container!=\"new-promsql-exporter\"}\n    )\n) / sum by (namespace, container) (\n    avg by (namespace, pod, container) (\n        container_spec_memory_limit_bytes{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container!=\"new-promsql-exporter\"}\n    )\n)\n",
                         "qryType": 1
@@ -769,7 +765,6 @@
                       "spec": {
                         "expr": "\ngroup by (mz_version) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{mz_version}}",
                         "query": "\ngroup by (mz_version) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "qryType": 1
@@ -786,24 +781,22 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "labelsToFields",
                   "spec": {
-                    "id": "labelsToFields",
                     "options": {}
-                  },
-                  "group": "labelsToFields"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "extractFields",
                   "spec": {
-                    "id": "extractFields",
                     "options": {
                       "format": "regexp",
                       "regExp": "/.+\\((?<commit>[a-fA-F0-9]+)\\)/",
                       "source": "mz_version",
                       "replace": false
                     }
-                  },
-                  "group": "extractFields"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -1148,7 +1141,6 @@
                       "spec": {
                         "expr": "\nmax by (phase, namespace) (\n    sum by (phase, namespace, instance) (\n        kube_pod_status_phase{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{phase}}",
                         "query": "\nmax by (phase, namespace) (\n    sum by (phase, namespace, instance) (\n        kube_pod_status_phase{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "qryType": 1
@@ -1203,7 +1195,8 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: kube-state-metrics is required"
+                  "noValue": "No metrics: kube-state-metrics is required",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1232,7 +1225,6 @@
                       "spec": {
                         "expr": "\nmax by (namespace) (\n    sum by (namespace, instance) (\n        kube_statefulset_status_replicas_ready{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "Ready",
                         "query": "\nmax by (namespace) (\n    sum by (namespace, instance) (\n        kube_statefulset_status_replicas_ready{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "qryType": 1
@@ -1287,7 +1279,8 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: kube-state-metrics is required"
+                  "noValue": "No metrics: kube-state-metrics is required",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1316,7 +1309,6 @@
                       "spec": {
                         "expr": "\nmax by (namespace) (\n    sum by (namespace, instance) (\n        kube_deployment_status_replicas_ready{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "Ready",
                         "query": "\nmax by (namespace) (\n    sum by (namespace, instance) (\n        kube_deployment_status_replicas_ready{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "qryType": 1
@@ -1339,7 +1331,6 @@
                       "spec": {
                         "expr": "\nmax by (namespace) (\n    sum by (namespace, instance) (\n        kube_deployment_status_replicas_unavailable{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "Unavailable",
                         "query": "\nmax by (namespace) (\n    sum by (namespace, instance) (\n        kube_deployment_status_replicas_unavailable{namespace=~\"$mzNamespaceList\"}\n    )\n)\n",
                         "qryType": 1
@@ -1394,7 +1385,8 @@
                     "mode": "shades",
                     "fixedColor": "#0077BB"
                   },
-                  "noValue": "No metrics: kube-state-metrics is required"
+                  "noValue": "No metrics: kube-state-metrics is required",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1484,7 +1476,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "percentunit",
-                  "noValue": "No metrics: cadvisor and kube-state-metrics are required"
+                  "noValue": "No metrics: cadvisor and kube-state-metrics are required",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1574,7 +1567,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "percentunit",
-                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1664,7 +1658,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "Bps",
-                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1754,7 +1749,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "Bps",
-                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -1886,7 +1882,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "cps",
-                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -2018,7 +2015,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "pps",
-                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)"
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -2259,7 +2257,6 @@
                       "spec": {
                         "expr": "\nsum by (statement_type) (\n    increase(mz_query_total{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range])\n) > 0\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{statement_type}}",
                         "query": "\nsum by (statement_type) (\n    increase(mz_query_total{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range])\n) > 0\n",
                         "qryType": 1
@@ -2310,7 +2307,8 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -2379,7 +2377,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "cps",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -2630,7 +2629,6 @@
                       "spec": {
                         "expr": "\nsum by (application_name, status) (\n    increase(mz_adapter_commands{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range])\n)\n",
                         "instant": true,
-                        "range": false,
                         "query": "\nsum by (application_name, status) (\n    increase(mz_adapter_commands{materialize_cloud_organization_name=~\"$environmentIdList\"}[$__range])\n)\n",
                         "qryType": 1
                       },
@@ -2646,42 +2644,39 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "labelsToFields",
                   "spec": {
-                    "id": "labelsToFields",
                     "options": {
                       "keepLabels": [
                         "application_name",
                         "status"
                       ]
                     }
-                  },
-                  "group": "labelsToFields"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "merge",
                   "spec": {
-                    "id": "merge",
                     "options": {}
-                  },
-                  "group": "merge"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "groupingToMatrix",
                   "spec": {
-                    "id": "groupingToMatrix",
                     "options": {
                       "rowField": "application_name",
                       "columnField": "status",
                       "valueField": "Value",
                       "emptyValue": "zero"
                     }
-                  },
-                  "group": "groupingToMatrix"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "organize",
                   "spec": {
-                    "id": "organize",
                     "options": {
                       "renameByName": {
                         "application_name\\status": "Application",
@@ -2694,13 +2689,12 @@
                         "error": 2
                       }
                     }
-                  },
-                  "group": "organize"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "sortBy",
                   "spec": {
-                    "id": "sortBy",
                     "options": {
                       "fields": {},
                       "sort": [
@@ -2710,8 +2704,7 @@
                         }
                       ]
                     }
-                  },
-                  "group": "sortBy"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -2995,7 +2988,6 @@
                       "spec": {
                         "expr": "\ncount by (size) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{size}}",
                         "query": "\ncount by (size) (\n    mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n)\n",
                         "qryType": 1
@@ -3050,7 +3042,8 @@
                     "mode": "shades",
                     "fixedColor": "#009988"
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -3079,7 +3072,6 @@
                       "spec": {
                         "expr": "\nmz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
                         "instant": true,
-                        "range": false,
                         "query": "\nmz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$mzClusterList\", compute_replica_id=~\"$mzReplicaList\"}\n",
                         "qryType": 1
                       },
@@ -3095,8 +3087,8 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "labelsToFields",
                   "spec": {
-                    "id": "labelsToFields",
                     "options": {
                       "keepLabels": [
                         "compute_cluster_name",
@@ -3110,21 +3102,19 @@
                         "topology_kubernetes_io_zone"
                       ]
                     }
-                  },
-                  "group": "labelsToFields"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "merge",
                   "spec": {
-                    "id": "merge",
                     "options": {}
-                  },
-                  "group": "merge"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "organize",
                   "spec": {
-                    "id": "organize",
                     "options": {
                       "excludeByName": {
                         "Time": true,
@@ -3143,13 +3133,12 @@
                         "topology_kubernetes_io_zone": 8
                       }
                     }
-                  },
-                  "group": "organize"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "sortBy",
                   "spec": {
-                    "id": "sortBy",
                     "options": {
                       "fields": {},
                       "sort": [
@@ -3158,8 +3147,7 @@
                         }
                       ]
                     }
-                  },
-                  "group": "sortBy"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -3427,7 +3415,6 @@
                       "spec": {
                         "expr": "\nsum by (session_type) (\n    mz_active_subscribes{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{session_type}}",
                         "query": "\nsum by (session_type) (\n    mz_active_subscribes{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "qryType": 1
@@ -3482,7 +3469,8 @@
                     "mode": "shades",
                     "fixedColor": "#EE7733"
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -3511,7 +3499,6 @@
                       "spec": {
                         "expr": "\nsum by (relation_type) (\n    mz_indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{relation_type}}",
                         "query": "\nsum by (relation_type) (\n    mz_indexes_count{materialize_cloud_organization_name=~\"$environmentIdList\"}\n)\n",
                         "qryType": 1
@@ -3566,7 +3553,8 @@
                     "mode": "shades",
                     "fixedColor": "#EE7733"
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -3671,7 +3659,6 @@
                       "spec": {
                         "expr": "topk(15,\n(\n(\n(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\n* on (instance_id) group_left(cluster_name)\nmax by (instance_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\nunless on (instance_id) (\ngroup by (instance_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"instance_id\", \"(.*)\"\n)\n)",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{cluster_name}} / {{name}}",
                         "query": "topk(15,\n(\n(\n(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\n* on (instance_id) group_left(cluster_name)\nmax by (instance_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmax by (instance_id, collection_id) (\n    mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentIdList\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        replica_id=~\"$mzReplicaList\",\n        quantile=\"1\"\n    } < 1e9\n)\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\nunless on (instance_id) (\ngroup by (instance_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"instance_id\", \"(.*)\"\n)\n)",
                         "qryType": 1
@@ -3872,7 +3859,8 @@
                 "defaults": {
                   "unit": "short",
                   "min": 0,
-                  "noValue": "Hydration Queue is empty"
+                  "noValue": "Hydration Queue is empty",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -3901,7 +3889,6 @@
                       "spec": {
                         "expr": "topk(15,\n(\n(\n(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\n* on (instance_id) group_left(cluster_name)\nmax by (instance_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\nunless on (instance_id) (\ngroup by (instance_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"instance_id\", \"(.*)\"\n)\n)",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{cluster_name}} / r{{replica_id}} / {{name}}",
                         "query": "topk(15,\n(\n(\n(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\n* on (instance_id) group_left(cluster_name)\nmax by (instance_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\n* on (collection_id) group_left(name)\nmax by (collection_id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\nmz_compute_hydration_time_seconds{\n    materialize_cloud_organization_name=~\"$environmentIdList\",\n    instance_id=~\"$mzClusterList\",\n    replica_id=~\"$mzReplicaList\",\n    hydrated=\"1\"\n}\n\n)\nunless on (collection_id) (\ngroup by (collection_id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"collection_id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"collection_id\", \"(.*)\"\n)\n)\nunless on (instance_id) (\ngroup by (instance_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"instance_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"instance_id\", \"(.*)\"\n)\n)",
                         "qryType": 1
@@ -4083,7 +4070,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "short",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -4152,7 +4140,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "short",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -4294,7 +4283,8 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "none"
+                  "unit": "none",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -4362,7 +4352,8 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "percentunit"
+                  "unit": "percentunit",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -4406,8 +4397,8 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "reduce",
                   "spec": {
-                    "id": "reduce",
                     "options": {
                       "reducers": [
                         "min",
@@ -4416,25 +4407,23 @@
                       ],
                       "mode": "seriesToRows"
                     }
-                  },
-                  "group": "reduce"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "organize",
                   "spec": {
-                    "id": "organize",
                     "options": {
                       "renameByName": {
                         "Field": "Collection"
                       }
                     }
-                  },
-                  "group": "organize"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "sortBy",
                   "spec": {
-                    "id": "sortBy",
                     "options": {
                       "fields": {},
                       "sort": [
@@ -4444,8 +4433,7 @@
                         }
                       ]
                     }
-                  },
-                  "group": "sortBy"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -4519,8 +4507,8 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "reduce",
                   "spec": {
-                    "id": "reduce",
                     "options": {
                       "reducers": [
                         "min",
@@ -4529,25 +4517,23 @@
                       ],
                       "mode": "seriesToRows"
                     }
-                  },
-                  "group": "reduce"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "organize",
                   "spec": {
-                    "id": "organize",
                     "options": {
                       "renameByName": {
                         "Field": "Collection"
                       }
                     }
-                  },
-                  "group": "organize"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "sortBy",
                   "spec": {
-                    "id": "sortBy",
                     "options": {
                       "fields": {},
                       "sort": [
@@ -4557,8 +4543,7 @@
                         }
                       ]
                     }
-                  },
-                  "group": "sortBy"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -4632,8 +4617,8 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "reduce",
                   "spec": {
-                    "id": "reduce",
                     "options": {
                       "reducers": [
                         "min",
@@ -4642,25 +4627,23 @@
                       ],
                       "mode": "seriesToRows"
                     }
-                  },
-                  "group": "reduce"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "organize",
                   "spec": {
-                    "id": "organize",
                     "options": {
                       "renameByName": {
                         "Field": "Collection ID"
                       }
                     }
-                  },
-                  "group": "organize"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "sortBy",
                   "spec": {
-                    "id": "sortBy",
                     "options": {
                       "fields": {},
                       "sort": [
@@ -4670,8 +4653,7 @@
                         }
                       ]
                     }
-                  },
-                  "group": "sortBy"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -4940,7 +4922,6 @@
                       "spec": {
                         "expr": "\ncount by (object_type) (\n    group by (id, object_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) > 0\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{object_type}}",
                         "query": "\ncount by (object_type) (\n    group by (id, object_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n    )\n) > 0\n",
                         "qryType": 1
@@ -4995,7 +4976,8 @@
                     "mode": "shades",
                     "fixedColor": "#CCBB44"
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -5024,7 +5006,6 @@
                       "spec": {
                         "expr": "(\n(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nmax by (id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\nunless on (id) (\ngroup by (id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"id\", \"(.*)\"\n)",
                         "instant": true,
-                        "range": false,
                         "query": "(\n(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\n* on (id) group_left(name)\nmax by (id, name) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n\ngroup by (id, object_type, connection_type, envelope_type, cluster_id) (\n    mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"source\"}\n)\n\n)\nunless on (id) (\ngroup by (id) (\nlabel_replace(mz_object_info{materialize_cloud_organization_name=~\"$environmentIdList\"}, \"id\", \"$1\", \"global_id\", \"(.*)\")\n)\n),\n\"name\", \"$1\", \"id\", \"(.*)\"\n)",
                         "qryType": 1
                       },
@@ -5040,8 +5021,8 @@
               "transformations": [
                 {
                   "kind": "Transformation",
+                  "group": "labelsToFields",
                   "spec": {
-                    "id": "labelsToFields",
                     "options": {
                       "keepLabels": [
                         "name",
@@ -5052,21 +5033,19 @@
                         "cluster_id"
                       ]
                     }
-                  },
-                  "group": "labelsToFields"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "merge",
                   "spec": {
-                    "id": "merge",
                     "options": {}
-                  },
-                  "group": "merge"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "organize",
                   "spec": {
-                    "id": "organize",
                     "options": {
                       "excludeByName": {
                         "Time": true,
@@ -5089,13 +5068,12 @@
                         "cluster_id": 5
                       }
                     }
-                  },
-                  "group": "organize"
+                  }
                 },
                 {
                   "kind": "Transformation",
+                  "group": "sortBy",
                   "spec": {
-                    "id": "sortBy",
                     "options": {
                       "fields": {},
                       "sort": [
@@ -5104,8 +5082,7 @@
                         }
                       ]
                     }
-                  },
-                  "group": "sortBy"
+                  }
                 }
               ],
               "queryOptions": {}
@@ -5278,7 +5255,8 @@
                 "defaults": {
                   "unit": "cps",
                   "min": 0,
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -5394,7 +5372,8 @@
                       }
                     ]
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -5423,7 +5402,6 @@
                       "spec": {
                         "expr": "\ncount by (object_type, envelope_type) (\n    group by (id, object_type, envelope_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) > 0\n",
                         "instant": true,
-                        "range": false,
                         "legendFormat": "{{object_type}} / {{envelope_type}}",
                         "query": "\ncount by (object_type, envelope_type) (\n    group by (id, object_type, envelope_type) (\n        mz_storage_objects{materialize_cloud_organization_name=~\"$environmentIdList\", type=\"sink\"}\n    )\n) > 0\n",
                         "qryType": 1
@@ -5478,7 +5456,8 @@
                     "mode": "shades",
                     "fixedColor": "#CCBB44"
                   },
-                  "noValue": "No matches for the current filters"
+                  "noValue": "No matches for the current filters",
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -5621,7 +5600,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "bytes",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -5852,7 +5832,8 @@
                         "color": "#A50026"
                       }
                     ]
-                  }
+                  },
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -5963,7 +5944,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "cps",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -6057,7 +6039,8 @@
                         "color": "#A50026"
                       }
                     ]
-                  }
+                  },
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -6126,7 +6109,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "short",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -6216,7 +6200,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "cps",
-                  "min": 0
+                  "min": 0,
+                  "custom": {}
                 },
                 "overrides": []
               }
@@ -7395,7 +7380,8 @@
           "skipUrlSync": false,
           "allowCustomValue": true,
           "label": "Advanced Metric Filter",
-          "description": "Adhoc filters to apply to all metrics queries"
+          "description": "Adhoc filters to apply to all metrics queries",
+          "enableGroupBy": false
         },
         "datasource": {
           "name": "$metricsDatasource"
@@ -7433,6 +7419,7 @@
           "allowCustomValue": true,
           "label": "Materialize Namespace",
           "description": "The current materialize namespace where environments live",
+          "regexApplyTo": "value",
           "definition": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentIdList\" }, materialize_cloud_organization_namespace)"
         }
       },
@@ -7468,6 +7455,7 @@
           "allowCustomValue": true,
           "label": "Environment",
           "description": "The current environment to view",
+          "regexApplyTo": "value",
           "definition": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)",
           "allValue": ".*"
         }
@@ -7517,6 +7505,7 @@
           "allowCustomValue": true,
           "label": "Cluster",
           "description": "The cluster within the current environment to filter to",
+          "regexApplyTo": "value",
           "definition": "query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~\"$environmentIdList\", compute_cluster_id=~\"$includeSystemClusters\" })"
         }
       },
@@ -7552,6 +7541,7 @@
           "allowCustomValue": true,
           "label": "Replica",
           "description": "The replica within the current cluster to filter to",
+          "regexApplyTo": "value",
           "definition": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentIdList\", instance_id=~\"$mzClusterList\"}, replica_id)",
           "allValue": ".*"
         }
