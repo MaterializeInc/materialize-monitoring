@@ -235,7 +235,7 @@ def metric_adhoc_variable() -> dashboardv2_builders.AdhocVariable:
         .label("Advanced Metric Filter")
         .description("Adhoc filters to apply to all metrics queries")
         .datasource(
-            dashboardv2_builders.Dashboardv2beta1AdhocVariableKindDatasource().name(
+            dashboardv2_builders.Dashboardv2AdhocVariableKindDatasource().name(
                 f"${VariableNames.METRIC_DS}"
             )
         )

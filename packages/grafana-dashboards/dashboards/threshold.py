@@ -68,7 +68,7 @@ def health_mapping(
     """
     value_mappings = [
         dashboardv2.RangeMap(
-            dashboardv2.Dashboardv2beta1RangeMapOptions(
+            dashboardv2.Dashboardv2RangeMapOptions(
                 from_val=min_healthy,
                 to=_ALMOST_INFINITY,
                 result=dashboardv2.ValueMappingResult(
@@ -79,7 +79,7 @@ def health_mapping(
             ),
         ),
         dashboardv2.RangeMap(
-            dashboardv2.Dashboardv2beta1RangeMapOptions(
+            dashboardv2.Dashboardv2RangeMapOptions(
                 from_val=min_degraded,
                 to=min_healthy,
                 result=dashboardv2.ValueMappingResult(
@@ -90,7 +90,7 @@ def health_mapping(
             ),
         ),
         dashboardv2.RangeMap(
-            dashboardv2.Dashboardv2beta1RangeMapOptions(
+            dashboardv2.Dashboardv2RangeMapOptions(
                 from_val=-_ALMOST_INFINITY,
                 to=min_degraded,
                 result=dashboardv2.ValueMappingResult(
@@ -101,7 +101,7 @@ def health_mapping(
             ),
         ),
         dashboardv2.SpecialValueMap(
-            dashboardv2.Dashboardv2beta1SpecialValueMapOptions(
+            dashboardv2.Dashboardv2SpecialValueMapOptions(
                 match=dashboardv2.SpecialValueMatch.NULL_AND_NA_N,
                 result=dashboardv2.ValueMappingResult(
                     text="Missing Data",

@@ -14,13 +14,13 @@ METRICS_DATASOURCE_VAR_NAME: typing.Final[str] = "metricsDatasource"
 
 def promql_query(
     expr: str, *, datasource: str = METRICS_DATASOURCE_VAR_NAME
-) -> prometheus_builder.Query:
+) -> prometheus_builder.QueryV2:
     """Helper to create a prometheus query builder."""
     return (
         QueryBuilder()
         .expr(expr)
         .datasource(
-            dashboardv2_builders.Dashboardv2beta1DataQueryKindDatasource().name(
+            dashboardv2_builders.Dashboardv2DataQueryKindDatasource().name(
                 # e.g., "${metricsDatasource}"
                 f"${{{datasource}}}"
             )

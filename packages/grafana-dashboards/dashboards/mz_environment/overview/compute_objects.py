@@ -275,7 +275,7 @@ class ComputeObjectsTab(BaseMzContextTab):
                 )
             )
             .legend_format("{{session_type}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -293,7 +293,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .color_scheme(
@@ -328,7 +328,7 @@ class ComputeObjectsTab(BaseMzContextTab):
                 )
             )
             .legend_format("{{relation_type}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -346,7 +346,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .color_scheme(
@@ -407,7 +407,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("short")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -456,7 +456,7 @@ class ComputeObjectsTab(BaseMzContextTab):
         query = query_group(
             promql_query(f"topk(15,\n{enriched_hydration}\n)")
             .legend_format("{{cluster_name}} / r{{replica_id}} / {{name}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -479,7 +479,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                barchart_builder.Visualization()
+                barchart_builder.VisualizationV2()
                 .orientation(common.VizOrientation.HORIZONTAL)
                 .unit("s")
                 .scale_distribution(
@@ -561,7 +561,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("none")
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
@@ -620,7 +620,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("percentunit")
                 .legend(visualization.TS_LEGEND_BUILDER)
             ),
@@ -698,7 +698,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("s")
                 .min(0)
                 .scale_distribution(
@@ -745,7 +745,7 @@ class ComputeObjectsTab(BaseMzContextTab):
         query = query_group(
             promql_query(f"topk(15,\n{enriched_lag}\n)")
             .legend_format("{{cluster_name}} / {{name}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -765,7 +765,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                barchart_builder.Visualization()
+                barchart_builder.VisualizationV2()
                 .orientation(common.VizOrientation.HORIZONTAL)
                 .unit("s")
                 .scale_distribution(
@@ -872,7 +872,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("short")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -925,7 +925,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("short")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -996,7 +996,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("none")
                 .scale_distribution(
                     common_builder.ScaleDistributionConfig()
@@ -1130,7 +1130,7 @@ class ComputeObjectsTab(BaseMzContextTab):
             .description(description)
             .data(query)
             .visualization(
-                table.Visualization()
+                table.VisualizationV2()
                 .show_header(True)
                 .filterable(True)
                 .unit("short")

@@ -2,25 +2,11 @@
 
 from __future__ import annotations
 
-import typing
+from grafana_foundation_sdk.builders import (
+    dashboardv2,
+)
 
-if typing.TYPE_CHECKING:
-    from grafana_foundation_sdk.builders import dashboardv2beta1 as dashboardv2
-
-    HAS_V2_STABLE = False
-else:
-    try:
-        # 0.0.13 (not released as of April 2026)
-        from grafana_foundation_sdk.builders import (
-            dashboardv2,  # pyright: ignore[reportMissingImports]
-        )
-
-        HAS_V2_STABLE = True
-    except ImportError:
-        # 0.0.12
-        from grafana_foundation_sdk.builders import dashboardv2beta1 as dashboardv2
-
-        HAS_V2_STABLE = False
+HAS_V2_STABLE = True
 
 __all__ = [
     "HAS_V2_STABLE",

@@ -220,7 +220,7 @@ class StorageObjectsTab(BaseMzContextTab):
                 )
             )
             .legend_format("{{object_type}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -236,7 +236,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .display_labels(
@@ -284,7 +284,7 @@ class StorageObjectsTab(BaseMzContextTab):
         )
         query = (
             query_group(
-                promql_query(enrich.with_object_name(catalog_expr, "id")).instant()
+                promql_query(enrich.with_object_name(catalog_expr, "id")).instant(True)
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
@@ -353,7 +353,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                table.Visualization()
+                table.VisualizationV2()
                 .show_header(True)
                 .filterable(True)
                 .no_value(visualization.NO_FILTER_MATCH)
@@ -417,7 +417,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("Bps")
                 .scale_distribution(
                     common_builder.ScaleDistributionConfig()
@@ -488,7 +488,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -576,7 +576,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("short")
                 .min(0)
                 .thresholds(threshold.error_thresholds(max_errors=1))
@@ -631,7 +631,7 @@ class StorageObjectsTab(BaseMzContextTab):
                 )
             )
             .legend_format("{{object_type}} / {{envelope_type}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -649,7 +649,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .display_labels(
@@ -703,7 +703,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("Bps")
                 .scale_distribution(
                     common_builder.ScaleDistributionConfig()
@@ -761,7 +761,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("bytes")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -831,7 +831,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("s")
                 .scale_distribution(
                     common_builder.ScaleDistributionConfig()
@@ -896,7 +896,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .min(0)
                 .thresholds(threshold.error_thresholds(max_errors=10))
@@ -971,7 +971,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -1035,7 +1035,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .min(0)
                 .thresholds(threshold.error_thresholds(max_errors=10))
@@ -1081,7 +1081,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("short")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -1140,7 +1140,7 @@ class StorageObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)

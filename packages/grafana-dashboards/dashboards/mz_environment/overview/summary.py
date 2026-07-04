@@ -140,7 +140,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                 )
             )
             .legend_format("{{pod}}")
-            .instant()
+            .instant(True)
         )
 
         self.dashboard.add_panel(
@@ -195,7 +195,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     )
                 )
                 .legend_format("{{container}}")
-                .instant()
+                .instant(True)
             )
             panel = (
                 dashboardv2_builders.Panel()
@@ -213,7 +213,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                 )
                 .data(query)
                 .visualization(
-                    gauge.Visualization()
+                    gauge.VisualizationV2()
                     .unit("percentunit")
                     .no_value(CADVISOR_MISSING)
                     .thresholds(threshold.load_thresholds(max_load=1.0))
@@ -288,7 +288,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     ),
                 )
                 .legend_format("{{container}}")
-                .instant()
+                .instant(True)
             )
             panel = (
                 dashboardv2_builders.Panel()
@@ -307,7 +307,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                 )
                 .data(query)
                 .visualization(
-                    gauge.Visualization()
+                    gauge.VisualizationV2()
                     .unit("percentunit")
                     .no_value(CADVISOR_MISSING)
                     .thresholds(threshold.load_thresholds(max_load=1.0))
@@ -401,7 +401,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                 )
             )
             .legend_format("max lag")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -465,18 +465,16 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
                     ),
                 )
                 .legend_format("{{mz_version}}")
-                .instant()
+                .instant(True)
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("labelsToFields")
-                .id("labelsToFields")
                 .options({})
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("extractFields")
-                .id("extractFields")
                 .options(
                     {
                         "format": "regexp",
@@ -503,7 +501,7 @@ class OverviewSummary(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                stat.Visualization()
+                stat.VisualizationV2()
                 .color_mode(common.BigValueColorMode.NONE)
                 .text_mode(common.BigValueTextMode.VALUE)
                 .graph_mode(common.BigValueGraphMode.NONE)

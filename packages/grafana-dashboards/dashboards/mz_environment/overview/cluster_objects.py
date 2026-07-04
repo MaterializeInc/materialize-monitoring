@@ -157,7 +157,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                 )
             )
             .legend_format("{{size}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -173,7 +173,7 @@ class ClusterObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .display_labels(
                     [piechart.PieChartLabels.NAME, piechart.PieChartLabels.VALUE]
                 )
@@ -288,7 +288,7 @@ class ClusterObjectsTab(BaseMzContextTab):
                         {self.context.sql_metric_prefix}compute_cluster_status{{{variables.ENVIRONMENT_FILTER}, compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}}
                         """
                     )
-                ).instant()
+                ).instant(True)
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
@@ -370,7 +370,7 @@ class ClusterObjectsTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                table.Visualization()
+                table.VisualizationV2()
                 # at least one option is required to be set to avoid schema error
                 .show_header(True)
                 .filterable(True)
