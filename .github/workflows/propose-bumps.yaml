@@ -32,4 +32,4 @@ jobs:
       - name: propose version-update PRs
         run: cargo run -p mz-monitoring-build -- propose-bumps --draft --automerge
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MATERIALIZE_BOT_TOKEN }}
