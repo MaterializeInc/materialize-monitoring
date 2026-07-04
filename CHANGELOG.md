@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.2.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.8.0 (Unreleased)
 
 _Changes Pending_
@@ -37,9 +41,12 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Container Images v0.1.1 (Unreleased)
+## Container Images v0.1.1
 
-_Changes Pending_
+* Update debian Docker tag to trixie-20260623
+    * [materialize-monitoring#73](https://github.com/MaterializeInc/materialize-monitoring/pull/73)
+* Create distroless images for alloy
+    * [materialize-monitoring#72](https://github.com/MaterializeInc/materialize-monitoring/pull/72)
 
 ## Container Images v0.1.0
 
