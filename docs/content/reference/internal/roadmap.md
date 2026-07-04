@@ -120,7 +120,8 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 |---|---|---|
 | Subchart bundling: Loki, Thanos, Alertmanager, Grafana (+ operator), kube-state-metrics, metrics-server | M2 | ✅ |
 | Generated chart README (values.yaml → README via `helm-docs`) | M2 | ✅ |
-| Distroless Alloy image + pre-install/pre-upgrade `alloy fmt` validation hook | M2 | ⬜ |
+| Distroless Alloy image (FIPS boringcrypto, multi-arch, non-root, GHCR-published) | M2 | ✅ |
+| Pre-install/pre-upgrade `alloy fmt` validation hook | M2 | ⬜ |
 | Terraform wrapper module (pins a chart version, own cadence) | M4 | ⬜ |
 
 ### Rules & alerts

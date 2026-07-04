@@ -6,17 +6,17 @@
 # This can be used as a drop-in replacement for the upstream alloy image
 
 ## Supporting libraries
-FROM debian:trixie AS deb-support
+FROM debian:trixie@sha256:d07d1b51c39f51188e60be9b64e6bf769fa94e187f092bc32b91305cfa34ba5a AS deb-support
 
 # Standard alloy uid/username
 ARG UID="473"
 ARG USERNAME="alloy"
 
-# renovate: datasource=github-releases depName=grafana/alloy
+# renovate: datasource=github-releases packageName=grafana/alloy
 ARG ALLOY_VERSION=v1.17.0
 
 # Seed with distroless user/group files
-COPY --from=gcr.io/distroless/base-debian13 /etc/passwd /etc/group /etc/
+COPY --from=gcr.io/distroless/base-debian13@sha256:57c1e4c72feb5925c4763ae4f6bd2013ad3854f57eff5b60dd9acb1ce0abc66e /etc/passwd /etc/group /etc/
 
 # Create alloy user in container, but do not set it as default
 RUN groupadd --gid "$UID" "$USERNAME" \
@@ -47,16 +47,18 @@ RUN mkdir -p /tmp/alloy \
     && install -m 0755 /tmp/alloy/alloy-boringcrypto-${TARGETOS}-${TARGETARCH} /usr/local/bin/alloy \
     && rm /tmp/alloy.zip
 
-RUN alloy --version
+# Sanity-check the binary runs and assert it is the FIPS (boringcrypto) build,
+# so a bad release asset or the non-FIPS variant fails the build loudly.
+RUN alloy --version | grep boringcrypto
 
 ## Final build image
-FROM gcr.io/distroless/base-debian13
+FROM gcr.io/distroless/base-debian13@sha256:57c1e4c72feb5925c4763ae4f6bd2013ad3854f57eff5b60dd9acb1ce0abc66e
 
 ARG TARGETARCH
 ARG LINUX_TAG1=${TARGETARCH/arm64/aarch64}
 ARG LINUX_TAG=${LINUX_TAG1/amd64/x86_64}-linux-gnu
 
-# renovate: datasource=github-releases depName=grafana/alloy
+# renovate: datasource=github-releases packageName=grafana/alloy
 ARG ALLOY_VERSION=v1.17.0
 # Standard alloy uid/username
 ARG UID="473"
