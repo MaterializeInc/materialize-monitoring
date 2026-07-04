@@ -176,7 +176,7 @@ ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile
 # Extra suffix if there are multiple images at the same version (revert back to mz1 on upgrade)
 ALLOY_SUFFIX ?= mz1
 
-alloy-image.iid: $(wildcard packages/alloy/* packages/alloy/patches/*)
+alloy-image.iid: $(wildcard packages/alloy/*)
 	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
 	docker run --platform linux/amd64 --rm $$(cat "$@") --version
 	docker run --platform linux/arm64 --rm $$(cat "$@") --version
