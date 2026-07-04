@@ -223,7 +223,7 @@ class ConnectionsActivityTab(BaseMzContextTab):
                 )
             )
             .legend_format("{{statement_type}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -244,7 +244,7 @@ class ConnectionsActivityTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .display_labels(
@@ -291,7 +291,7 @@ class ConnectionsActivityTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .min(0)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -347,7 +347,7 @@ class ConnectionsActivityTab(BaseMzContextTab):
             .description(_PEEK_LATENCY_DESCRIPTIONS[percentile_label])
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("s")
                 .scale_distribution(
                     common_builder.ScaleDistributionConfig()
@@ -419,18 +419,16 @@ class ConnectionsActivityTab(BaseMzContextTab):
                         )
                         """
                     )
-                ).instant(),
+                ).instant(True),
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("labelsToFields")
-                .id("labelsToFields")
                 .options({"keepLabels": ["application_name", "status"]})
             )
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("merge")
-                .id("merge")
                 .options({})
             )
             .transformation(
@@ -440,7 +438,6 @@ class ConnectionsActivityTab(BaseMzContextTab):
                 # literally `<rowField>\<columnField>`.
                 transform_builders.CompatTransformationBuilder()
                 .group("groupingToMatrix")
-                .id("groupingToMatrix")
                 .options(
                     {
                         "rowField": "application_name",
@@ -453,7 +450,6 @@ class ConnectionsActivityTab(BaseMzContextTab):
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("organize")
-                .id("organize")
                 .options(
                     {
                         "renameByName": {
@@ -473,7 +469,6 @@ class ConnectionsActivityTab(BaseMzContextTab):
             .transformation(
                 transform_builders.CompatTransformationBuilder()
                 .group("sortBy")
-                .id("sortBy")
                 .options(
                     {
                         "fields": {},
@@ -504,7 +499,7 @@ class ConnectionsActivityTab(BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                table.Visualization()
+                table.VisualizationV2()
                 .show_header(True)
                 .filterable(True)
                 .unit("short")

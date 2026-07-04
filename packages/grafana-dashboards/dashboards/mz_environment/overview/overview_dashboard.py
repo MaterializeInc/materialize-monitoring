@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from grafana_foundation_sdk.builders import dashboardv2beta1 as dashboardv2_builders
+from grafana_foundation_sdk.builders import dashboardv2 as dashboardv2_builders
 from py_mzmon_lib.dashboard import MzDashboard
 
 from dashboards import variables

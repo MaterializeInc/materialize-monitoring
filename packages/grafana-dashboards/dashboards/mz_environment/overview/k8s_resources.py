@@ -163,7 +163,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
                 )
             )
             .legend_format("{{phase}}")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -181,7 +181,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .color_scheme(
@@ -213,7 +213,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
                 )
             )
             .legend_format("Ready")
-            .instant(),
+            .instant(True),
             # TODO: statefulset unready
         )
 
@@ -232,7 +232,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .color_scheme(
@@ -264,7 +264,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
                 )
             )
             .legend_format("Ready")
-            .instant(),
+            .instant(True),
             promql_query(
                 textwrap.dedent(
                     """
@@ -277,7 +277,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
                 )
             )
             .legend_format("Unavailable")
-            .instant(),
+            .instant(True),
         )
 
         self.dashboard.add_panel(
@@ -293,7 +293,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                piechart_builder.Visualization()
+                piechart_builder.VisualizationV2()
                 .pie_type(piechart.PieChartType.DONUT)
                 .legend(visualization.PIE_LEGEND_BUILDER)
                 .color_scheme(
@@ -362,7 +362,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("percentunit")
                 .no_value(self.context.metric_unavailable_note(CADVISOR_KSM_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -421,7 +421,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("percentunit")
                 .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -474,7 +474,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("Bps")
                 .no_value(CADVISOR_MISSING)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -524,7 +524,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("Bps")
                 .no_value(CADVISOR_MISSING)
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -602,7 +602,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("cps")
                 .no_value(self.context.metric_unavailable_note(CADVISOR_MISSING))
                 .legend(visualization.TS_LEGEND_BUILDER)
@@ -682,7 +682,7 @@ class KubeResourcesTab(KubeResourcesMixin, BaseMzContextTab):
             )
             .data(query)
             .visualization(
-                timeseries.Visualization()
+                timeseries.VisualizationV2()
                 .unit("pps")
                 .no_value(CADVISOR_MISSING)
                 .legend(visualization.TS_LEGEND_BUILDER)

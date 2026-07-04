@@ -58,7 +58,7 @@ class CompatPrometheusDataQuery(prometheus.Dataquery):
         return super().from_json(data)
 
 
-class CompatPrometheusQueryBuilder(prometheus_builder.Query):
+class CompatPrometheusQueryBuilder(prometheus_builder.QueryV2):
     """Fixed compatibility wrapper around prometheus dataqueries."""
 
     def __init__(self) -> None:

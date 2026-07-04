@@ -31,7 +31,7 @@ TS_LEGEND_BUILDER = (
 )
 
 
-def sparkline_stat(*, shade: str | None = None) -> stat.Visualization:
+def sparkline_stat(*, shade: str | None = None) -> stat.VisualizationV2:
     """Generate a stat visualization with a sparkline.
 
     Tabs should pick a theme background color (from e.g., palette.THEME_PALETTE)
@@ -40,7 +40,7 @@ def sparkline_stat(*, shade: str | None = None) -> stat.Visualization:
     Further overrides can be applied afterwards.
     """
     viz = (
-        stat.Visualization()
+        stat.VisualizationV2()
         .color_mode(common.BigValueColorMode.NONE)
         .text_mode(common.BigValueTextMode.VALUE)
         .graph_mode(common.BigValueGraphMode.AREA)
