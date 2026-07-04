@@ -13,7 +13,7 @@ ARG UID="473"
 ARG USERNAME="alloy"
 
 # renovate: datasource=github-releases packageName=grafana/alloy
-ARG ALLOY_VERSION=v1.17.0
+ARG ALLOY_VERSION=v1.17.1
 
 # Seed with distroless user/group files
 COPY --from=gcr.io/distroless/base-debian13@sha256:57c1e4c72feb5925c4763ae4f6bd2013ad3854f57eff5b60dd9acb1ce0abc66e /etc/passwd /etc/group /etc/
@@ -59,7 +59,7 @@ ARG LINUX_TAG1=${TARGETARCH/arm64/aarch64}
 ARG LINUX_TAG=${LINUX_TAG1/amd64/x86_64}-linux-gnu
 
 # renovate: datasource=github-releases packageName=grafana/alloy
-ARG ALLOY_VERSION=v1.17.0
+ARG ALLOY_VERSION=v1.17.1
 # Standard alloy uid/username
 ARG UID="473"
 ARG USERNAME="alloy"
