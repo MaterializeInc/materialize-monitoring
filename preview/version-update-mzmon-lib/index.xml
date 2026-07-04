@@ -313,22 +313,9 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="mzmon-lib-shared-library-v090-unreleased"&gt;mzmon-lib (shared library) v0.9.0 (Unreleased)&lt;a class="anchor" href="#mzmon-lib-shared-library-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="container-images-v020-unreleased"&gt;Container Images v0.2.0 (Unreleased)&lt;a class="anchor" href="#container-images-v020-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="prometheus-scrapers-v030-unreleased"&gt;Prometheus Scrapers v0.3.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="mzmon-lib-shared-library-v080"&gt;mzmon-lib (shared library) v0.8.0&lt;a class="anchor" href="#mzmon-lib-shared-library-v080"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;Update dependency grafana-foundation-sdk to v0.0.18
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/51" rel="external" class="github-source-link"&gt;materialize-monitoring#51&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Update Rust crate reqwest to 0.13
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/61" rel="external" class="github-source-link"&gt;materialize-monitoring#61&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v040-unreleased"&gt;materialize-monitoring Helm Chart v0.4.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="container-images-v020-unreleased"&gt;Container Images v0.2.0 (Unreleased)&lt;a class="anchor" href="#container-images-v020-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-mzmon-lib/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Thu, 27 Jun 2024 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-mzmon-lib/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
