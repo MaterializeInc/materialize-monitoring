@@ -1,0 +1,26 @@
+// Sample config for Alloy.
+//
+// For a full configuration reference, see https://grafana.com/docs/alloy
+logging {
+	level = "info"
+}
+
+prometheus.exporter.self "meta_metrics" { }
+
+prometheus.scrape "scrape_metrics" {
+	targets         = prometheus.exporter.self.meta_metrics.targets
+	forward_to      = [prometheus.relabel.filter_metrics.receiver]
+	scrape_interval = "10s"
+}
+
+prometheus.relabel "filter_metrics" {
+	rule {
+		action        = "drop"
+		source_labels = ["env"]
+		regex         = "dev"
+	}
+
+	forward_to = [prometheus.echo.debug.receiver]
+}
+
+prometheus.echo "debug" { }

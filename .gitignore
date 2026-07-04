@@ -29,6 +29,9 @@ values.*.local.yaml
 # Helm secrets / decrypted values
 secrets.dec.*
 
+# ---- Docker ----
+*.iid
+
 # ---- Jsonnet ----
 # jsonnet-bundler vendored libs (comment when we start vendoring)
 vendor/

@@ -9,13 +9,39 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 concurrency:
   group: publish-release-${{ github.event.pull_request.head.ref }}
   cancel-in-progress: false
 
 jobs:
+  # Publish container images before cutting the release. Runs for every
+  # version-update merge so `publish-release` can depend on it, but only the
+  # container-images component actually builds/pushes — for other components
+  # this is a no-op that simply succeeds. A failed image push blocks the release.
+  publish-images:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'version-update/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - name: build and push alloy image
+        if: github.event.pull_request.head.ref == 'version-update/container-images'
+        uses: ./.github/actions/build-alloy-image
+        with:
+          push: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   publish-release:
+    needs: publish-images
     if: >
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'version-update/')

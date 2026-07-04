@@ -47,6 +47,10 @@ HAS_BREW := $(shell command -v brew 2> /dev/null)
 binaries: $(addprefix target/debug/,$(ALL_BINARIES))
 .PHONY: binaries
 
+# Build all docker images
+docker-images: alloy-image
+.PHONY: docker-images
+
 # Build all Helm charts
 charts: materialize-monitoring-chart
 .PHONY: charts
@@ -162,6 +166,23 @@ docs/assets/prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scra
 crd-schemas:
 	bin/extract-crd-schemas.sh
 .PHONY: crd-schemas
+
+### CONTAINER IMAGES ###
+
+CONTAINER_REGISTRY ?= ghcr.io/materializeinc
+
+# Upstream alloy version is used for the tag
+ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile | head -n1 | cut -d= -f2)
+# Extra suffix if there are multiple images at the same version (revert back to mz1 on upgrade)
+ALLOY_SUFFIX ?= mz1
+
+alloy-image.iid: $(wildcard packages/alloy/*)
+	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
+	docker run --platform linux/amd64 --rm $$(cat "$@") --version
+	docker run --platform linux/arm64 --rm $$(cat "$@") --version
+
+alloy-image: alloy-image.iid
+.PHONY: alloy-image
 
 ### HELM CHARTS ###
 

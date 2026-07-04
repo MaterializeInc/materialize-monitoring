@@ -1,0 +1,38 @@
+name: publish-images-pr
+
+# Build and push a throwaway dev image for pull requests that touch the alloy
+# image, so the change can be pulled and tested before release. Tagged
+# <version>-dev.0--pr.g<short-sha> to sort below any real release suffix.
+on:
+  pull_request:
+    paths:
+      - packages/alloy/**
+      - .github/actions/build-alloy-image/**
+      - .github/workflows/publish-images-pr.yaml
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-images-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  alloy-dev:
+    # Fork PRs can't push to GHCR (no package write, no secrets) — skip them.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Compute dev suffix
+        id: suffix
+        run: echo "value=dev.0--pr.g$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/build-alloy-image
+        with:
+          push: "true"
+          image-suffix: ${{ steps.suffix.outputs.value }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
