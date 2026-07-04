@@ -313,9 +313,9 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v050-unreleased"&gt;materialize-monitoring Helm Chart v0.5.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v050-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="container-images-v020-unreleased"&gt;Container Images v0.2.0 (Unreleased)&lt;a class="anchor" href="#container-images-v020-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="prometheus-scrapers-v030-unreleased"&gt;Prometheus Scrapers v0.3.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="mzmon-lib-shared-library-v080-unreleased"&gt;mzmon-lib (shared library) v0.8.0 (Unreleased)&lt;a class="anchor" href="#mzmon-lib-shared-library-v080-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="container-images-v020-unreleased"&gt;Container Images v0.2.0 (Unreleased)&lt;a class="anchor" href="#container-images-v020-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Thu, 27 Jun 2024 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
