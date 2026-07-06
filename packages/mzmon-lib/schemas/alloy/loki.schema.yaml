@@ -471,6 +471,11 @@ $defs:
           Field to apply the expression to.
           Defaults to the raw log line.
         type: string
+      labels_from_groups:
+        description: |
+          When true, named capture groups are promoted directly to indexed labels
+          instead of only being added to the extracted-field map.
+        type: boolean
     required: [expression]
     additionalProperties: false
 

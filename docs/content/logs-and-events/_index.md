@@ -101,6 +101,7 @@ Because it is a DaemonSet, collection scales with the number of nodes, and no ap
 The **`alloy-gateway`** is a Grafana Alloy Deployment that does the central log processing and forwarding.
 It receives logs from the agents (and optionally other sources — see [Ingestion interfaces](#ingestion)), collects Kubernetes events, normalizes log levels, moves high-cardinality fields into [structured metadata](#storage), enforces drop and rate-limit policies, and then writes the result to Loki.
 It is the single place where the [cardinality](../o11y-glossary/#observability-foundations) and label-family decisions are made, which is what keeps the log store stable and cheap.
+Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (`GATEWAY_LOKI_DEST`) are configurable — see [Collecting > Tuning collection](collecting/#tuning-collection).
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
@@ -242,7 +243,7 @@ The gateway accepts logs on two endpoints, so sources beyond the agent can feed 
 
 | Protocol | Endpoint | Used by |
 |---|---|---|
-| Loki push API | `alloy-gateway.$namespace:3100` (`/loki/api/v1/push`) | the `alloy-agent`; any Loki-push client |
+| Loki push API | `alloy-gateway.$namespace:3100` (`/loki/api/v1/push`; port via `ALLOY_LOKI_PORT`) | the `alloy-agent`; any Loki-push client |
 | OTLP | `alloy-gateway.$namespace:4317` (gRPC), `:4318` (HTTP) | OpenTelemetry-instrumented applications; OTLP forwarders |
 
 Anything sent to these endpoints goes through the same normalization, cardinality-reduction, and structured-metadata processing as node logs, so log shape stays consistent regardless of source.

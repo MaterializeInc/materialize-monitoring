@@ -64,9 +64,15 @@ a[href]:visited {
 // ...but keep sidebar/TOC navigation links neutral; "visited" semantics
 // don't apply to chrome. (Site-header nav handles its own visited state
 // below, where the active-class cascade also lives.)
+.book-menu a[href],
 .book-menu a[href]:visited,
 .book-toc a[href]:visited {
+  color: var(--color-link);
+}
+
+.book-menu a[role="button"] {
   color: inherit;
+  font-weight: 500;
 }
 
 // External links
@@ -205,7 +211,7 @@ main.container {
 .book-menu-content > nav > ul > li > label > a[href]:visited,
 .book-menu-content > nav > ul > li > a[href],
 .book-menu-content > nav > ul > li > a[href]:visited {
-  color: var(--mz-highlight);
+  color: var(--color-link);
   font-weight: 500;
 }
 

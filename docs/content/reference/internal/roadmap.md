@@ -87,13 +87,13 @@ initially populated (rather than steady state metrics) with some error detection
 ### Pipelines (Alloy)
 
 Alloy carries both metrics and logs.
-The agent pipeline is in place; the gateway pipeline and the OTLP export path are the near-term work.
+The agent and gateway pipelines are in place; the OTLP export path is the near-term work.
 
 | Item | Milestone | Status |
 |---|---|---|
 | Typed Alloy **agent** pipeline | M1 | ✅ |
 | Native **OTLP exporter** (forwarding workflows evaluated for Honeycomb, Datadog, Google Cloud Observability) | M2 | ⬜ |
-| Gateway pipeline (port the real processor from the Python reference) | M2 | 🔨 |
+| Gateway pipeline (ported from the staging-gateway reference; log processing + loki.source.api / OTLP-log ingress) | M2 | ✅ |
 | Loki (logs) + Thanos (metrics) wiring | M2 | ⬜ |
 
 ### Scraping (ScrapeConfigs & ServiceMonitors)

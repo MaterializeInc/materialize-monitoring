@@ -17,8 +17,8 @@ Agent note: this page documents pipeline *conventions and shape*, not the full p
 The pipelines are authored as code (see [Authoring](../authoring/)) and rendered to `config.alloy` by `mz-monitoring-build gen-pipelines`:
 
 - `packages/alloy-pipelines/agent.yaml` — the agent pipeline (adopted).
-- `packages/alloy-pipelines/gateway.yaml` — the gateway pipeline (in-flight; currently a stub).
-- `packages/ref-alloy-pipelines/*.alloy` — the rendered reference pipelines from Cloud, used as the porting target. Not adopted and not checked in as the source of truth; treat the `.alloy` files as a behavioral reference only.
+- `packages/alloy-pipelines/gateway.yaml` — the gateway pipeline (adopted).
+- `packages/ref-alloy-pipelines/*.alloy` — the rendered reference pipelines from Cloud, used as the porting target. Not adopted and not checked in as the source of truth; treat the `.alloy` files as a behavioral reference only. The gateway was ported from `staging-gateway.alloy` (the fresher successor to `processor.alloy`).
 - `packages/mzmon-lib/schemas/alloy/` — the JSONSchema the YAML validates against.
 
 ## Agent pipeline
@@ -38,9 +38,11 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 
 ### Receivers
 
-- `loki.source.api` on port **3100** — Loki push traffic from agents (and any other Loki-push client, including a chained upstream gateway).
-- `otelcol.receiver.otlp` on ports **4317** (gRPC) and **4318** (HTTP) — OTLP logs from instrumented applications or forwarders.
+- `loki.source.api` on port **3100** (configurable via `ALLOY_LOKI_PORT`) — Loki push traffic from agents (and any other Loki-push client, including a chained upstream gateway).
+- `otelcol.receiver.otlp` on ports **4317** (gRPC) and **4318** (HTTP) — OTLP logs from instrumented applications or forwarders, bridged into the loki pipeline via `otelcol.exporter.loki`.
 - `loki.source.kubernetes_events` — Kubernetes events, processed as log lines.
+
+These ingress components and the `loki.write` sink are not typed in the schema yet, so they are authored via the `raw:` escape (see [Authoring](../authoring/)); the `loki.process` stages themselves are fully typed.
 
 ### Processing conventions
 
@@ -57,8 +59,10 @@ These are the conventions a contributor must preserve when editing the gateway `
 
 ### Destinations
 
-- **Logs → Loki.** `loki.write` to the bundled Loki distributor (or, in the [remote-only topology](../../../../logs-and-events/#alternative-topologies), to an external OTLP/Loki destination).
-- **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)).
+- **Logs → Loki.** `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
+- **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
+
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL).
 
 ## Attribution and adoption status
 
@@ -68,7 +72,7 @@ Per-component history is captured in the repo `CHANGELOG.md` and the [Releasing]
 Current status (see the [Roadmap](../../roadmap/)):
 
 - **Agent pipeline** — adopted in `packages/alloy-pipelines/agent.yaml`.
-- **Gateway pipeline** — in-flight (M2). `packages/alloy-pipelines/gateway.yaml` is a stub; the behavior described above is the porting target from `packages/ref-alloy-pipelines/processor.alloy`. Confirm endpoints and stage details against the gateway PR when it lands.
+- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml`, ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `input_processor` block renders line-for-line against the reference. Still deferred: typing the ingress/sink components (currently `raw:`), `loki.write` auth, and the recording-rule remote-write leg.
 
 ## See more
 
