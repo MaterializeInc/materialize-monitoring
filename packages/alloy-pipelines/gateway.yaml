@@ -1,15 +1,739 @@
 # yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
 # Alloy gateway pipeline definitions.
-# These are processed by mz-monitoring-build gen-pipelines to produce an gateway.alloy config.
+# These are processed by mz-monitoring-build gen-pipelines to produce a gateway.alloy config.
 
 description: |
   This file defines the pipelines that run on alloy-gateway.
   alloy-gateway is responsible for receiving data from alloy-agent
   and processing it before forwarding it to an appropriate destination.
 
+  The main pipeline (loki.process.input_processor) is ported from the reference
+  staging-gateway.alloy: it normalizes log level, timestamps, and per-service
+  structured fields, applies rate limits, and settles on a stable label set
+  before forwarding to the destination sink and a local sampled debug tap.
+
+  Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
+  3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
+  otelcol.exporter.loki bridge) all feed loki.process.input_processor. These
+  ingress components are not typed yet, so they use `raw:` escapes.
+
+  loki.write.destination's endpoint is configurable via GATEWAY_LOKI_DEST
+  (falling back to an in-cluster default). Auth (basic_auth) is deferred.
+
+  Many mz-system services share an identical json/template/structured_metadata
+  shape. That shape is defined once via YAML anchors (&mz_svc_*) on the
+  global-api-server block below and aliased (*mz_svc_*) everywhere it recurs;
+  anchors are expanded at parse time, so the rendered .alloy is fully explicit.
+  global-api-server additionally parses prehook/frontegg webhook metadata.
+
+  NOTE: the reference defaults the `cluster` fallback to a staging-specific
+  environment name; we keep the generic `example_cluster` here since this chart
+  is deployed across environments (see CLAUDE.md "keep examples generic").
+
+logging:
+  level: info
+  format: logfmt
+
 blocks:
-  # - loki.echo:
-  #     label: "echo"
+  # --- ingress: receive entries from alloy-agent ------------------------------
+
+  # Loki push API. Fans out to the sampled debug tap and the main processor.
+  # listen_port is configurable via ALLOY_LOKI_PORT (default 3100). The
+  # encoding.from_json wrapper coerces the sys.env string to a number (alloy has
+  # no to_int); treat that coercion as provisional (see agent.yaml stage.limit).
   - raw:
-      component: "loki.echo"
-      label: "echo"
+      component: loki.source.api
+      label: gateway
+      attributes:
+        forward_to:
+          - ref: loki.process.sample_debug.receiver
+          - ref: loki.process.input_processor.receiver
+      blocks:
+        - component: http
+          attributes:
+            listen_port:
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: ALLOY_LOKI_PORT
+                    - "3100"
+
+  # Kubernetes events source, feeding the main processor.
+  - raw:
+      component: loki.source.kubernetes_events
+      label: k8s_events
+      attributes:
+        forward_to:
+          - ref: loki.process.input_processor.receiver
+
+  # OTLP receiver for logs, bridged into the loki pipeline via the exporter below.
+  - raw:
+      component: otelcol.receiver.otlp
+      label: gateway
+      blocks:
+        - component: grpc
+        - component: output
+          attributes:
+            logs:
+              - ref: otelcol.exporter.loki.bridge.input
+
+  # Bridge: turns OTLP logs into loki entries and feeds the main processor.
+  - raw:
+      component: otelcol.exporter.loki
+      label: bridge
+      attributes:
+        forward_to:
+          - ref: loki.process.input_processor.receiver
+
+  # --- main processing pipeline (ported from staging-gateway.alloy) -----------
+
+  - loki.process:
+      label: input_processor
+      forward_to:
+        - "loki.write.destination.receiver"
+        - "loki.process.sample_debug.receiver"
+      blocks:
+        # --- global drops and rate limit ------------------------------------
+        - stage.drop:
+            drop_counter_reason: "backlog > 2hr"
+            older_than: "2h"
+        - stage.drop:
+            drop_counter_reason: "too large"
+            longer_than: "1MB"
+        - stage.limit:
+            rate: 25000
+            burst: 100000
+            drop: true
+            by_label_name: namespace
+
+        # --- stash the original line as structured metadata -----------------
+        - stage.regex:
+            expression: '(?P<orig_entry>.*)'
+        - stage.structured_metadata:
+            values:
+              orig_entry: ""
+        - stage.label_drop:
+            values: ["instance"]
+
+        # --- level/cluster defaults -----------------------------------------
+        - stage.template:
+            source: level
+            template: '{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}'
+        - stage.template:
+            source: cluster
+            template: '{{ if .Value }}{{ .Value }}{{ else }}example_cluster{{ end }}'
+
+        # --- kubernetes events ----------------------------------------------
+        - stage.match:
+            selector: '{job="loki.source.kubernetes_events"}'
+            blocks:
+              - stage.logfmt:
+                  mapping:
+                    msg: msg
+                    reason: reason
+                    level: type
+                    count: count
+                    node: reportinginstance
+                    name: name
+                    kind: kind
+                    reportingcontroller: reportingcontroller
+              - stage.template:
+                  source: namespace
+                  template: '{{ if .Value }}{{ .Value }}{{ else }}kube-system{{ end }}'
+              - stage.structured_metadata:
+                  values:
+                    reason: ""
+                    name: ""
+                    kind: ""
+                    count: ""
+                    node: ""
+                    reportingcontroller: ""
+
+        # --- alloy ----------------------------------------------------------
+        - stage.match:
+            selector: '{app="alloy"}'
+            blocks:
+              - stage.logfmt:
+                  mapping:
+                    alloy_component: component_id
+                    level: level
+                    ts: ts
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339Nano
+              - stage.drop:
+                  drop_counter_reason: "alloy loki.echo"
+                  source: alloy_component
+                  expression: 'loki\.echo\..*'
+
+        # --- klog-formatted components --------------------------------------
+        - stage.match:
+            selector: '{container=~"(csi-driver|csi-provisioner|csi-resizer|snapshot-controller)"}'
+            blocks:
+              - stage.regex:
+                  expression: '^(?P<level>[IWEF])(?P<localts>\d{4}\s+[0-9:.]+)\s+(?P<thread>\d+)\s+(?P<source>\S+)\]\s+(?P<msg>.+)'
+        - stage.match:
+            selector: '{app="kube-state-metrics"}'
+            blocks:
+              - stage.regex:
+                  expression: '^(?P<level>[IWEF])(?P<localts>\d{4}\s+[0-9:.]+)\s+(?P<thread>\d+)\s+(?P<source>\S+)\]\s+(?P<msg>.+)'
+
+        # --- openebs --------------------------------------------------------
+        - stage.match:
+            selector: '{namespace="openebs"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: openebs
+                    component: openebs
+
+        # --- karpenter ------------------------------------------------------
+        - stage.match:
+            selector: '{app="karpenter"}'
+            blocks:
+              - stage.json:
+                  expressions:
+                    msg: message
+
+        # --- loki (non-pingap) ----------------------------------------------
+        - stage.match:
+            selector: '{app="loki", container!="pingap"}'
+            blocks:
+              - stage.logfmt:
+                  mapping:
+                    msg: msg
+                    level: level
+                    ts: ts
+                    org_id: org_id
+                    query: ""
+                    latency: ""
+                    length: ""
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339Nano
+              - stage.structured_metadata:
+                  values:
+                    query: ""
+                    latency: ""
+                    length: ""
+                    tenant: org_id
+
+        # --- loki (pingap) --------------------------------------------------
+        - stage.match:
+            selector: '{app="loki", container="pingap"}'
+            blocks:
+              - stage.regex:
+                  expression: '(?P<ts>\S+)\s+(?P<level>\w+)\s+(?P<msg>.*)'
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339Nano
+
+        # --- cilium ---------------------------------------------------------
+        - stage.match:
+            selector: '{namespace="kube-system", container="certgen"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: cilium-certgen
+                    component: cilium-certgen
+        - stage.match:
+            selector: '{app=~"cilium-(agent|operator|certgen)"}'
+            blocks:
+              - stage.logfmt:
+                  mapping:
+                    msg: msg
+                    ts: time
+                    module: module
+                    level: level
+                    subsystem: subsys
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339Nano
+        - stage.match:
+            selector: '{app="cilium-drop-logger"}'
+            blocks:
+              - stage.json:
+                  expressions:
+                    ts: time
+                    verdict: flow.verdict
+                    flow: flow
+                    drop_reason_desc: flow.drop_reason_desc
+                    msg: flow.Summary
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339Nano
+              - stage.template:
+                  source: level
+                  template: '{{ if eq .Value "UNKNOWN" }}{{ if eq .verdict "DROPPED" }}WARN{{ else }}INFO{{ end }}{{ else }}{{ .Value }}{{ end }}'
+              - stage.structured_metadata:
+                  values:
+                    verdict: ""
+                    drop_reason_desc: ""
+                    flow: ""
+
+        # --- aws load balancer controller -----------------------------------
+        - stage.match:
+            selector: '{app="aws-load-balancer-controller"}'
+            blocks:
+              - stage.json:
+                  expressions:
+                    ts: ts
+                    msg: msg
+                    level: level
+                    name: name
+                    logger: logger
+                    error: error
+                    target_namespace: namespace
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339
+              - stage.structured_metadata:
+                  values:
+                    name: ""
+                    logger: ""
+                    error: ""
+                    target_namespace: ""
+
+        # --- metrics-proxy --------------------------------------------------
+        - stage.match:
+            selector: '{container="metrics-proxy"}'
+            blocks:
+              - stage.json:
+                  expressions:
+                    msg: fields.message
+                    level: level
+                    ts: timestamp
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339Nano
+
+        # --- node-exporter --------------------------------------------------
+        - stage.match:
+            selector: '{app="node-exporter"}'
+            blocks:
+              - stage.logfmt:
+                  mapping:
+                    msg: msg
+                    ts: time
+                    level: level
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339
+
+        # --- prometheus-adapter (klog) --------------------------------------
+        - stage.match:
+            selector: '{app="prometheus-adapter"}'
+            blocks:
+              - stage.regex:
+                  expression: '^(?P<level>[IWEF])(?P<localts>\d{4}\s+[0-9:.]+)\s+(?P<thread>\d+)\s+(?P<source>\S+)\]\s+(?P<msg>.+)'
+
+        # --- mz-system services (shared json/template/metadata shape) -------
+        # Anchors defined here, aliased by every service that shares the shape.
+        # global-api-server additionally parses prehook/frontegg webhook fields.
+        - stage.match:
+            selector: '{app="global-api-server"}'
+            blocks:
+              - stage.json: &mz_svc_json
+                  expressions:
+                    target: ""
+                    level: ""
+                    ts: timestamp
+                    fields_message: fields.message
+                    fields_msg: fields.msg
+                    fields_error: fields.error
+                    fields_err: fields.err
+                    method: 'span."request.method"'
+                    path: 'span."request.uri"'
+                    request_headers: 'span."request.headers"'
+                    status_code: 'span."response.status_code"'
+                    response_headers: 'span."response.headers"'
+                    metadata: span.metadata
+                    source: fields.source
+                    controller: fields.controller
+                    resource_name: fields.resource_name
+                    trace_id: trace_id
+                    span_id: span_id
+              - stage.template: &mz_svc_err_tmpl
+                  source: error
+                  template: '{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}'
+              - stage.template: &mz_svc_msg_tmpl
+                  source: msg
+                  template: '{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}'
+              - stage.json: &mz_svc_reqhdr_json
+                  source: request_headers
+                  expressions:
+                    request_header_host: host
+              - stage.json: &mz_svc_resphdr_json
+                  source: response_headers
+                  expressions:
+                    response_header_content_type: '"content-type"'
+              - stage.timestamp: &mz_svc_ts
+                  source: ts
+                  format: RFC3339Nano
+              - stage.structured_metadata: &mz_svc_sm
+                  values:
+                    target: ""
+                    trace_id: ""
+                    span_id: ""
+                    method: ""
+                    path: ""
+                    status_code: ""
+                    source: ""
+                    controller: ""
+                    resource_name: ""
+                    error: ""
+                    request_header_host: ""
+                    response_header_content_type: ""
+              # global-api-server only: prehook + frontegg webhook metadata.
+              - stage.json:
+                  source: metadata
+                  expressions:
+                    prehook_success: ""
+                    prehook_result: ""
+                    frontegg_webhook_event: ""
+                    frontegg_webhook_error: ""
+                    frontegg_webhook_user: ""
+                    frontegg_webhook_tenant: ""
+                    frontegg_webhook_tenant_metadata: ""
+              - stage.structured_metadata:
+                  values:
+                    prehook_success: ""
+                    prehook_result: ""
+                    frontegg_webhook_event: ""
+                    frontegg_webhook_error: ""
+                    frontegg_webhook_user: ""
+                    frontegg_webhook_tenant: ""
+              - stage.json:
+                  source: frontegg_webhook_tenant_metadata
+                  expressions:
+                    frontegg_webhook_tenant_blocked: blocked
+                    frontegg_webhook_tenant_creation_reason: creationReason
+                    frontegg_webhook_tenant_trial_expires_at: trialExpiresAt
+              - stage.structured_metadata:
+                  values:
+                    frontegg_webhook_tenant_blocked: ""
+                    frontegg_webhook_tenant_creation_reason: ""
+                    frontegg_webhook_tenant_trial_expires_at: ""
+        - stage.match:
+            selector: '{namespace="mz-system", app=~"internal-api-server|region-api|region-controller|admission-webhook|daemonset-taint-remover|scheduler|eip-operator|mzcloud-context-pod-annotator|environment-controller|materialize-operator"}'
+            blocks:
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+        - stage.match:
+            selector: '{container="region-controller"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: region-controller
+                    component: region-controller
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+        - stage.match:
+            selector: '{container="admission-webhook"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: admission-webhook
+                    component: admission-webhook
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+
+        # --- mz-scheduler (klog) --------------------------------------------
+        - stage.match:
+            selector: '{app="mz-scheduler"}'
+            blocks:
+              - stage.regex:
+                  expression: '^(?P<level>[IWEF])(?P<localts>\d{4}\s+[0-9:.]+)\s+(?P<thread>\d+)\s+(?P<source>\S+)\]\s+(?P<msg>.+)'
+
+        # --- more mz-system services ----------------------------------------
+        - stage.match:
+            selector: '{namespace="mz-system", container="eip-operator"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: eip-operator
+                    component: eip-operator
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+        - stage.match:
+            selector: '{namespace="mz-system", container="mzcloud-context-pod-annotator"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: mzcloud-context-pod-annotator
+                    component: mzcloud-context-pod-annotator
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+        - stage.match:
+            selector: '{container="environment-controller"}'
+            blocks:
+              - stage.static_labels:
+                  values:
+                    app: environment-controller
+                    component: environment-controller
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+
+        # --- external-dns ---------------------------------------------------
+        - stage.match:
+            selector: '{app="external-dns"}'
+            blocks:
+              - stage.logfmt:
+                  mapping:
+                    msg: msg
+                    ts: time
+                    level: level
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339
+
+        # --- tbot -----------------------------------------------------------
+        - stage.match:
+            selector: '{app="tbot"}'
+            blocks:
+              - stage.json:
+                  expressions:
+                    msg: message
+                    level: level
+                    ts: timestamp
+              - stage.timestamp:
+                  source: ts
+                  format: RFC3339
+
+        # --- per-environment namespaces -------------------------------------
+        - stage.match:
+            selector: '{namespace=~"environment-.*"}'
+            blocks:
+              - stage.regex:
+                  source: namespace
+                  expression: '^(?P<environment_name>environment-(?P<environment_id>.+)-\d)$'
+              - stage.structured_metadata:
+                  values:
+                    environment_name: ""
+                    organization_name: ""
+                    organization_id: environment_id
+              - stage.labels:
+                  values:
+                    environment_id: environment_id
+              - stage.match:
+                  selector: '{container="environmentd"}'
+                  blocks:
+                    - stage.static_labels:
+                        values:
+                          app: environmentd
+                          component: environmentd
+                    - stage.json: *mz_svc_json
+                    - stage.template: *mz_svc_err_tmpl
+                    - stage.template: *mz_svc_msg_tmpl
+                    - stage.json: *mz_svc_reqhdr_json
+                    - stage.json: *mz_svc_resphdr_json
+                    - stage.timestamp: *mz_svc_ts
+                    - stage.structured_metadata: *mz_svc_sm
+              - stage.match:
+                  selector: '{container="clusterd"}'
+                  blocks:
+                    - stage.static_labels:
+                        values:
+                          app: clusterd
+                          component: clusterd
+                    - stage.json: *mz_svc_json
+                    - stage.template: *mz_svc_err_tmpl
+                    - stage.template: *mz_svc_msg_tmpl
+                    - stage.json: *mz_svc_reqhdr_json
+                    - stage.json: *mz_svc_resphdr_json
+                    - stage.timestamp: *mz_svc_ts
+                    - stage.structured_metadata: *mz_svc_sm
+              - stage.match:
+                  selector: '{container="new-promsql-exporter"}'
+                  blocks:
+                    - stage.static_labels:
+                        values:
+                          app: mz-promsql-exporter
+                          component: mz-promsql-exporter
+                    - stage.json: *mz_svc_json
+                    - stage.template: *mz_svc_err_tmpl
+                    - stage.template: *mz_svc_msg_tmpl
+                    - stage.json: *mz_svc_reqhdr_json
+                    - stage.json: *mz_svc_resphdr_json
+                    - stage.timestamp: *mz_svc_ts
+                    - stage.structured_metadata: *mz_svc_sm
+
+        # --- balancer -------------------------------------------------------
+        - stage.match:
+            selector: '{app="balancer"}'
+            blocks:
+              - stage.json: *mz_svc_json
+              - stage.template: *mz_svc_err_tmpl
+              - stage.template: *mz_svc_msg_tmpl
+              - stage.json: *mz_svc_reqhdr_json
+              - stage.json: *mz_svc_resphdr_json
+              - stage.timestamp: *mz_svc_ts
+              - stage.structured_metadata: *mz_svc_sm
+
+        # --- promote level to a label ---------------------------------------
+        - stage.labels:
+            values:
+              level: level
+
+        # --- heuristic level extraction for still-unknown entries -----------
+        - stage.match:
+            selector: '{level="UNKNOWN"}'
+            blocks:
+              - stage.regex:
+                  expression: '(?i)"?(?:level|severity)"?\s*[:=]\s*"?(?P<level>(?:info|warn|warning|err|error|debug|crit|critical|fatal))"?'
+                  labels_from_groups: true
+              - stage.template:
+                  source: levelheuristic
+                  template: '{{ if eq .level "UNKNOWN" }}failed{{ else }}success{{ end }}'
+              - stage.structured_metadata:
+                  values:
+                    levelheuristic: ""
+
+        # --- normalize level values -----------------------------------------
+        - stage.replace:
+            source: level
+            expression: '(?i)^(fatal|critical|crit|f)$'
+            replace: CRITICAL
+        - stage.replace:
+            source: level
+            expression: '(?i)^(error|err|e)$'
+            replace: ERROR
+        - stage.replace:
+            source: level
+            expression: '(?i)^(warn|warning|w)$'
+            replace: WARN
+        - stage.replace:
+            source: level
+            expression: '(?i)^(info|normal|notice|i)$'
+            replace: INFO
+        - stage.replace:
+            source: level
+            expression: '(?i)^(debug|dbg|v|vv)$'
+            replace: DEBUG
+        - stage.replace:
+            source: level
+            expression: '(?i)^(trace|verbose|vvv+)$'
+            replace: TRACE
+        - stage.labels:
+            values:
+              level: level
+
+        # --- per-level rate limits ------------------------------------------
+        - stage.match:
+            selector: '{level="INFO"}'
+            blocks:
+              - stage.limit:
+                  rate: 1000
+                  burst: 20000
+                  drop: false
+        - stage.match:
+            selector: '{level!~"(CRITICAL|ERROR|WARN|INFO)"}'
+            blocks:
+              - stage.limit:
+                  rate: 1000
+                  burst: 5000
+                  drop: true
+                  by_label_name: namespace
+        - stage.limit:
+            rate: 10000
+            burst: 100000
+            drop: false
+
+        # --- final label/metadata shaping -----------------------------------
+        - stage.drop:
+            drop_counter_reason: "processed time > 2hr old"
+            older_than: "2h"
+        - stage.structured_metadata_drop:
+            values: ["orig_entry"]
+        - stage.structured_metadata:
+            values:
+              pod: ""
+              node: ""
+              pod_id: ""
+              container_id: ""
+              region: ""
+              zone: ""
+              nodepool: ""
+              node_workload: ""
+              instance_type: ""
+              container: ""
+              service_name: ""
+              organization_name: ""
+              cluster: ""
+              stream: ""
+              pod_ready: ""
+              msg: ""
+        - stage.labels:
+            values:
+              k8s_namespace: namespace
+              k8s_app: app
+              k8s_container: container
+              k8s_pod: pod
+              namespace: namespace
+              app: app
+              container: container
+
+  # --- local sampled debug tap ------------------------------------------------
+
+  # Echo a ~1% sample of non-alloy entries locally for debugging.
+  - loki.process:
+      label: sample_debug
+      forward_to: ["loki.echo.stub.receiver"]
+      blocks:
+        - stage.drop:
+            source: app
+            value: alloy
+            drop_counter_reason: "skip self"
+        - stage.sampling:
+            rate: 0.01
+            drop_counter_reason: sample_debug
+
+  - loki.echo:
+      label: stub
+
+  # --- forwarding sink --------------------------------------------------------
+
+  # Forwards processed entries to the log store. The endpoint is configurable via
+  # GATEWAY_LOKI_DEST; auth (basic_auth) is deferred.
+  - raw:
+      component: loki.write
+      label: destination
+      blocks:
+        - component: endpoint
+          attributes:
+            url:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_LOKI_DEST
+                - "http://loki-gateway.loki.svc:3100/loki/api/v1/push"

@@ -1,5 +1,1513 @@
 // This file defines the pipelines that run on alloy-gateway.
 // alloy-gateway is responsible for receiving data from alloy-agent
 // and processing it before forwarding it to an appropriate destination.
+//
+// The main pipeline (loki.process.input_processor) is ported from the reference
+// staging-gateway.alloy: it normalizes log level, timestamps, and per-service
+// structured fields, applies rate limits, and settles on a stable label set
+// before forwarding to the destination sink and a local sampled debug tap.
+//
+// Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
+// 3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
+// otelcol.exporter.loki bridge) all feed loki.process.input_processor. These
+// ingress components are not typed yet, so they use `raw:` escapes.
+//
+// loki.write.destination's endpoint is configurable via GATEWAY_LOKI_DEST
+// (falling back to an in-cluster default). Auth (basic_auth) is deferred.
+//
+// Many mz-system services share an identical json/template/structured_metadata
+// shape. That shape is defined once via YAML anchors (&mz_svc_*) on the
+// global-api-server block below and aliased (*mz_svc_*) everywhere it recurs;
+// anchors are expanded at parse time, so the rendered .alloy is fully explicit.
+// global-api-server additionally parses prehook/frontegg webhook metadata.
+//
+// NOTE: the reference defaults the `cluster` fallback to a staging-specific
+// environment name; we keep the generic `example_cluster` here since this chart
+// is deployed across environments (see CLAUDE.md "keep examples generic").
 
-loki.echo "echo" { }
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+loki.source.api "gateway" {
+	forward_to = [
+		loki.process.sample_debug.receiver,
+		loki.process.input_processor.receiver,
+	]
+
+	http {
+		listen_port = encoding.from_json(coalesce(sys.env("ALLOY_LOKI_PORT"), "3100"))
+	}
+}
+
+loki.source.kubernetes_events "k8s_events" {
+	forward_to = [
+		loki.process.input_processor.receiver,
+	]
+}
+
+otelcol.receiver.otlp "gateway" {
+	grpc { }
+
+	output {
+		logs = [
+			otelcol.exporter.loki.bridge.input,
+		]
+	}
+}
+
+otelcol.exporter.loki "bridge" {
+	forward_to = [
+		loki.process.input_processor.receiver,
+	]
+}
+
+loki.process "input_processor" {
+	forward_to = [
+		loki.write.destination.receiver,
+		loki.process.sample_debug.receiver,
+	]
+
+	stage.drop {
+		older_than          = "2h"
+		drop_counter_reason = "backlog > 2hr"
+	}
+
+	stage.drop {
+		longer_than         = "1MB"
+		drop_counter_reason = "too large"
+	}
+
+	stage.limit {
+		rate          = 25000
+		burst         = 100000
+		drop          = true
+		by_label_name = "namespace"
+	}
+
+	stage.regex {
+		expression = "(?P<orig_entry>.*)"
+	}
+
+	stage.structured_metadata {
+		values = {
+			orig_entry = "",
+		}
+	}
+
+	stage.label_drop {
+		values = [
+			"instance",
+		]
+	}
+
+	stage.template {
+		source   = "level"
+		template = "{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}"
+	}
+
+	stage.template {
+		source   = "cluster"
+		template = "{{ if .Value }}{{ .Value }}{{ else }}example_cluster{{ end }}"
+	}
+
+	stage.match {
+		selector = "{job=\"loki.source.kubernetes_events\"}"
+
+		stage.logfmt {
+			mapping = {
+				msg                 = "msg",
+				reason              = "reason",
+				level               = "type",
+				count               = "count",
+				node                = "reportinginstance",
+				name                = "name",
+				kind                = "kind",
+				reportingcontroller = "reportingcontroller",
+			}
+		}
+
+		stage.template {
+			source   = "namespace"
+			template = "{{ if .Value }}{{ .Value }}{{ else }}kube-system{{ end }}"
+		}
+
+		stage.structured_metadata {
+			values = {
+				reason              = "",
+				name                = "",
+				kind                = "",
+				count               = "",
+				node                = "",
+				reportingcontroller = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"alloy\"}"
+
+		stage.logfmt {
+			mapping = {
+				alloy_component = "component_id",
+				level           = "level",
+				ts              = "ts",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.drop {
+			source              = "alloy_component"
+			expression          = "loki\\.echo\\..*"
+			drop_counter_reason = "alloy loki.echo"
+		}
+	}
+
+	stage.match {
+		selector = "{container=~\"(csi-driver|csi-provisioner|csi-resizer|snapshot-controller)\"}"
+
+		stage.regex {
+			expression = "^(?P<level>[IWEF])(?P<localts>\\d{4}\\s+[0-9:.]+)\\s+(?P<thread>\\d+)\\s+(?P<source>\\S+)\\]\\s+(?P<msg>.+)"
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"kube-state-metrics\"}"
+
+		stage.regex {
+			expression = "^(?P<level>[IWEF])(?P<localts>\\d{4}\\s+[0-9:.]+)\\s+(?P<thread>\\d+)\\s+(?P<source>\\S+)\\]\\s+(?P<msg>.+)"
+		}
+	}
+
+	stage.match {
+		selector = "{namespace=\"openebs\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "openebs",
+				component = "openebs",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"karpenter\"}"
+
+		stage.json {
+			expressions = {
+				msg = "message",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"loki\", container!=\"pingap\"}"
+
+		stage.logfmt {
+			mapping = {
+				msg     = "msg",
+				level   = "level",
+				ts      = "ts",
+				org_id  = "org_id",
+				query   = "",
+				latency = "",
+				length  = "",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				query   = "",
+				latency = "",
+				length  = "",
+				tenant  = "org_id",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"loki\", container=\"pingap\"}"
+
+		stage.regex {
+			expression = "(?P<ts>\\S+)\\s+(?P<level>\\w+)\\s+(?P<msg>.*)"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+	}
+
+	stage.match {
+		selector = "{namespace=\"kube-system\", container=\"certgen\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "cilium-certgen",
+				component = "cilium-certgen",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=~\"cilium-(agent|operator|certgen)\"}"
+
+		stage.logfmt {
+			mapping = {
+				msg       = "msg",
+				ts        = "time",
+				module    = "module",
+				level     = "level",
+				subsystem = "subsys",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"cilium-drop-logger\"}"
+
+		stage.json {
+			expressions = {
+				ts               = "time",
+				verdict          = "flow.verdict",
+				flow             = "flow",
+				drop_reason_desc = "flow.drop_reason_desc",
+				msg              = "flow.Summary",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.template {
+			source   = "level"
+			template = "{{ if eq .Value \"UNKNOWN\" }}{{ if eq .verdict \"DROPPED\" }}WARN{{ else }}INFO{{ end }}{{ else }}{{ .Value }}{{ end }}"
+		}
+
+		stage.structured_metadata {
+			values = {
+				verdict          = "",
+				drop_reason_desc = "",
+				flow             = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"aws-load-balancer-controller\"}"
+
+		stage.json {
+			expressions = {
+				ts               = "ts",
+				msg              = "msg",
+				level            = "level",
+				name             = "name",
+				logger           = "logger",
+				error            = "error",
+				target_namespace = "namespace",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339"
+		}
+
+		stage.structured_metadata {
+			values = {
+				name             = "",
+				logger           = "",
+				error            = "",
+				target_namespace = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{container=\"metrics-proxy\"}"
+
+		stage.json {
+			expressions = {
+				msg   = "fields.message",
+				level = "level",
+				ts    = "timestamp",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"node-exporter\"}"
+
+		stage.logfmt {
+			mapping = {
+				msg   = "msg",
+				ts    = "time",
+				level = "level",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339"
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"prometheus-adapter\"}"
+
+		stage.regex {
+			expression = "^(?P<level>[IWEF])(?P<localts>\\d{4}\\s+[0-9:.]+)\\s+(?P<thread>\\d+)\\s+(?P<source>\\S+)\\]\\s+(?P<msg>.+)"
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"global-api-server\"}"
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				prehook_success                  = "",
+				prehook_result                   = "",
+				frontegg_webhook_event           = "",
+				frontegg_webhook_error           = "",
+				frontegg_webhook_user            = "",
+				frontegg_webhook_tenant          = "",
+				frontegg_webhook_tenant_metadata = "",
+			}
+			source = "metadata"
+		}
+
+		stage.structured_metadata {
+			values = {
+				prehook_success         = "",
+				prehook_result          = "",
+				frontegg_webhook_event  = "",
+				frontegg_webhook_error  = "",
+				frontegg_webhook_user   = "",
+				frontegg_webhook_tenant = "",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				frontegg_webhook_tenant_blocked          = "blocked",
+				frontegg_webhook_tenant_creation_reason  = "creationReason",
+				frontegg_webhook_tenant_trial_expires_at = "trialExpiresAt",
+			}
+			source = "frontegg_webhook_tenant_metadata"
+		}
+
+		stage.structured_metadata {
+			values = {
+				frontegg_webhook_tenant_blocked          = "",
+				frontegg_webhook_tenant_creation_reason  = "",
+				frontegg_webhook_tenant_trial_expires_at = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{namespace=\"mz-system\", app=~\"internal-api-server|region-api|region-controller|admission-webhook|daemonset-taint-remover|scheduler|eip-operator|mzcloud-context-pod-annotator|environment-controller|materialize-operator\"}"
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{container=\"region-controller\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "region-controller",
+				component = "region-controller",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{container=\"admission-webhook\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "admission-webhook",
+				component = "admission-webhook",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"mz-scheduler\"}"
+
+		stage.regex {
+			expression = "^(?P<level>[IWEF])(?P<localts>\\d{4}\\s+[0-9:.]+)\\s+(?P<thread>\\d+)\\s+(?P<source>\\S+)\\]\\s+(?P<msg>.+)"
+		}
+	}
+
+	stage.match {
+		selector = "{namespace=\"mz-system\", container=\"eip-operator\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "eip-operator",
+				component = "eip-operator",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{namespace=\"mz-system\", container=\"mzcloud-context-pod-annotator\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "mzcloud-context-pod-annotator",
+				component = "mzcloud-context-pod-annotator",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{container=\"environment-controller\"}"
+
+		stage.static_labels {
+			values = {
+				app       = "environment-controller",
+				component = "environment-controller",
+			}
+		}
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"external-dns\"}"
+
+		stage.logfmt {
+			mapping = {
+				msg   = "msg",
+				ts    = "time",
+				level = "level",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339"
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"tbot\"}"
+
+		stage.json {
+			expressions = {
+				msg   = "message",
+				level = "level",
+				ts    = "timestamp",
+			}
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339"
+		}
+	}
+
+	stage.match {
+		selector = "{namespace=~\"environment-.*\"}"
+
+		stage.regex {
+			expression = "^(?P<environment_name>environment-(?P<environment_id>.+)-\\d)$"
+			source     = "namespace"
+		}
+
+		stage.structured_metadata {
+			values = {
+				environment_name  = "",
+				organization_name = "",
+				organization_id   = "environment_id",
+			}
+		}
+
+		stage.labels {
+			values = {
+				environment_id = "environment_id",
+			}
+		}
+
+		stage.match {
+			selector = "{container=\"environmentd\"}"
+
+			stage.static_labels {
+				values = {
+					app       = "environmentd",
+					component = "environmentd",
+				}
+			}
+
+			stage.json {
+				expressions = {
+					target           = "",
+					level            = "",
+					ts               = "timestamp",
+					fields_message   = "fields.message",
+					fields_msg       = "fields.msg",
+					fields_error     = "fields.error",
+					fields_err       = "fields.err",
+					method           = "span.\"request.method\"",
+					path             = "span.\"request.uri\"",
+					request_headers  = "span.\"request.headers\"",
+					status_code      = "span.\"response.status_code\"",
+					response_headers = "span.\"response.headers\"",
+					metadata         = "span.metadata",
+					source           = "fields.source",
+					controller       = "fields.controller",
+					resource_name    = "fields.resource_name",
+					trace_id         = "trace_id",
+					span_id          = "span_id",
+				}
+			}
+
+			stage.template {
+				source   = "error"
+				template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+			}
+
+			stage.template {
+				source   = "msg"
+				template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+			}
+
+			stage.json {
+				expressions = {
+					request_header_host = "host",
+				}
+				source = "request_headers"
+			}
+
+			stage.json {
+				expressions = {
+					response_header_content_type = "\"content-type\"",
+				}
+				source = "response_headers"
+			}
+
+			stage.timestamp {
+				source = "ts"
+				format = "RFC3339Nano"
+			}
+
+			stage.structured_metadata {
+				values = {
+					target                       = "",
+					trace_id                     = "",
+					span_id                      = "",
+					method                       = "",
+					path                         = "",
+					status_code                  = "",
+					source                       = "",
+					controller                   = "",
+					resource_name                = "",
+					error                        = "",
+					request_header_host          = "",
+					response_header_content_type = "",
+				}
+			}
+		}
+
+		stage.match {
+			selector = "{container=\"clusterd\"}"
+
+			stage.static_labels {
+				values = {
+					app       = "clusterd",
+					component = "clusterd",
+				}
+			}
+
+			stage.json {
+				expressions = {
+					target           = "",
+					level            = "",
+					ts               = "timestamp",
+					fields_message   = "fields.message",
+					fields_msg       = "fields.msg",
+					fields_error     = "fields.error",
+					fields_err       = "fields.err",
+					method           = "span.\"request.method\"",
+					path             = "span.\"request.uri\"",
+					request_headers  = "span.\"request.headers\"",
+					status_code      = "span.\"response.status_code\"",
+					response_headers = "span.\"response.headers\"",
+					metadata         = "span.metadata",
+					source           = "fields.source",
+					controller       = "fields.controller",
+					resource_name    = "fields.resource_name",
+					trace_id         = "trace_id",
+					span_id          = "span_id",
+				}
+			}
+
+			stage.template {
+				source   = "error"
+				template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+			}
+
+			stage.template {
+				source   = "msg"
+				template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+			}
+
+			stage.json {
+				expressions = {
+					request_header_host = "host",
+				}
+				source = "request_headers"
+			}
+
+			stage.json {
+				expressions = {
+					response_header_content_type = "\"content-type\"",
+				}
+				source = "response_headers"
+			}
+
+			stage.timestamp {
+				source = "ts"
+				format = "RFC3339Nano"
+			}
+
+			stage.structured_metadata {
+				values = {
+					target                       = "",
+					trace_id                     = "",
+					span_id                      = "",
+					method                       = "",
+					path                         = "",
+					status_code                  = "",
+					source                       = "",
+					controller                   = "",
+					resource_name                = "",
+					error                        = "",
+					request_header_host          = "",
+					response_header_content_type = "",
+				}
+			}
+		}
+
+		stage.match {
+			selector = "{container=\"new-promsql-exporter\"}"
+
+			stage.static_labels {
+				values = {
+					app       = "mz-promsql-exporter",
+					component = "mz-promsql-exporter",
+				}
+			}
+
+			stage.json {
+				expressions = {
+					target           = "",
+					level            = "",
+					ts               = "timestamp",
+					fields_message   = "fields.message",
+					fields_msg       = "fields.msg",
+					fields_error     = "fields.error",
+					fields_err       = "fields.err",
+					method           = "span.\"request.method\"",
+					path             = "span.\"request.uri\"",
+					request_headers  = "span.\"request.headers\"",
+					status_code      = "span.\"response.status_code\"",
+					response_headers = "span.\"response.headers\"",
+					metadata         = "span.metadata",
+					source           = "fields.source",
+					controller       = "fields.controller",
+					resource_name    = "fields.resource_name",
+					trace_id         = "trace_id",
+					span_id          = "span_id",
+				}
+			}
+
+			stage.template {
+				source   = "error"
+				template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+			}
+
+			stage.template {
+				source   = "msg"
+				template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+			}
+
+			stage.json {
+				expressions = {
+					request_header_host = "host",
+				}
+				source = "request_headers"
+			}
+
+			stage.json {
+				expressions = {
+					response_header_content_type = "\"content-type\"",
+				}
+				source = "response_headers"
+			}
+
+			stage.timestamp {
+				source = "ts"
+				format = "RFC3339Nano"
+			}
+
+			stage.structured_metadata {
+				values = {
+					target                       = "",
+					trace_id                     = "",
+					span_id                      = "",
+					method                       = "",
+					path                         = "",
+					status_code                  = "",
+					source                       = "",
+					controller                   = "",
+					resource_name                = "",
+					error                        = "",
+					request_header_host          = "",
+					response_header_content_type = "",
+				}
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{app=\"balancer\"}"
+
+		stage.json {
+			expressions = {
+				target           = "",
+				level            = "",
+				ts               = "timestamp",
+				fields_message   = "fields.message",
+				fields_msg       = "fields.msg",
+				fields_error     = "fields.error",
+				fields_err       = "fields.err",
+				method           = "span.\"request.method\"",
+				path             = "span.\"request.uri\"",
+				request_headers  = "span.\"request.headers\"",
+				status_code      = "span.\"response.status_code\"",
+				response_headers = "span.\"response.headers\"",
+				metadata         = "span.metadata",
+				source           = "fields.source",
+				controller       = "fields.controller",
+				resource_name    = "fields.resource_name",
+				trace_id         = "trace_id",
+				span_id          = "span_id",
+			}
+		}
+
+		stage.template {
+			source   = "error"
+			template = "{{ if .fields_error }}{{ .fields_error }}{{ else if .fields_err }}{{ .fields_err }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .fields_message }}{{ .fields_message }}{{ else if .fields_msg }}{{ .fields_msg }}{{ else }}{{ .error }}{{ end }}"
+		}
+
+		stage.json {
+			expressions = {
+				request_header_host = "host",
+			}
+			source = "request_headers"
+		}
+
+		stage.json {
+			expressions = {
+				response_header_content_type = "\"content-type\"",
+			}
+			source = "response_headers"
+		}
+
+		stage.timestamp {
+			source = "ts"
+			format = "RFC3339Nano"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target                       = "",
+				trace_id                     = "",
+				span_id                      = "",
+				method                       = "",
+				path                         = "",
+				status_code                  = "",
+				source                       = "",
+				controller                   = "",
+				resource_name                = "",
+				error                        = "",
+				request_header_host          = "",
+				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.labels {
+		values = {
+			level = "level",
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"}"
+
+		stage.regex {
+			expression         = "(?i)\"?(?:level|severity)\"?\\s*[:=]\\s*\"?(?P<level>(?:info|warn|warning|err|error|debug|crit|critical|fatal))\"?"
+			labels_from_groups = true
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "{{ if eq .level \"UNKNOWN\" }}failed{{ else }}success{{ end }}"
+		}
+
+		stage.structured_metadata {
+			values = {
+				levelheuristic = "",
+			}
+		}
+	}
+
+	stage.replace {
+		expression = "(?i)^(fatal|critical|crit|f)$"
+		source     = "level"
+		replace    = "CRITICAL"
+	}
+
+	stage.replace {
+		expression = "(?i)^(error|err|e)$"
+		source     = "level"
+		replace    = "ERROR"
+	}
+
+	stage.replace {
+		expression = "(?i)^(warn|warning|w)$"
+		source     = "level"
+		replace    = "WARN"
+	}
+
+	stage.replace {
+		expression = "(?i)^(info|normal|notice|i)$"
+		source     = "level"
+		replace    = "INFO"
+	}
+
+	stage.replace {
+		expression = "(?i)^(debug|dbg|v|vv)$"
+		source     = "level"
+		replace    = "DEBUG"
+	}
+
+	stage.replace {
+		expression = "(?i)^(trace|verbose|vvv+)$"
+		source     = "level"
+		replace    = "TRACE"
+	}
+
+	stage.labels {
+		values = {
+			level = "level",
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"INFO\"}"
+
+		stage.limit {
+			rate  = 1000
+			burst = 20000
+			drop  = false
+		}
+	}
+
+	stage.match {
+		selector = "{level!~\"(CRITICAL|ERROR|WARN|INFO)\"}"
+
+		stage.limit {
+			rate          = 1000
+			burst         = 5000
+			drop          = true
+			by_label_name = "namespace"
+		}
+	}
+
+	stage.limit {
+		rate  = 10000
+		burst = 100000
+		drop  = false
+	}
+
+	stage.drop {
+		older_than          = "2h"
+		drop_counter_reason = "processed time > 2hr old"
+	}
+
+	stage.structured_metadata_drop {
+		values = [
+			"orig_entry",
+		]
+	}
+
+	stage.structured_metadata {
+		values = {
+			pod               = "",
+			node              = "",
+			pod_id            = "",
+			container_id      = "",
+			region            = "",
+			zone              = "",
+			nodepool          = "",
+			node_workload     = "",
+			instance_type     = "",
+			container         = "",
+			service_name      = "",
+			organization_name = "",
+			cluster           = "",
+			stream            = "",
+			pod_ready         = "",
+			msg               = "",
+		}
+	}
+
+	stage.labels {
+		values = {
+			k8s_namespace = "namespace",
+			k8s_app       = "app",
+			k8s_container = "container",
+			k8s_pod       = "pod",
+			namespace     = "namespace",
+			app           = "app",
+			container     = "container",
+		}
+	}
+}
+
+loki.process "sample_debug" {
+	forward_to = [
+		loki.echo.stub.receiver,
+	]
+
+	stage.drop {
+		source              = "app"
+		value               = "alloy"
+		drop_counter_reason = "skip self"
+	}
+
+	stage.sampling {
+		rate                = 0.01
+		drop_counter_reason = "sample_debug"
+	}
+}
+
+loki.echo "stub" { }
+
+loki.write "destination" {
+	endpoint {
+		url = coalesce(sys.env("GATEWAY_LOKI_DEST"), "http://loki-gateway.loki.svc:3100/loki/api/v1/push")
+	}
+}

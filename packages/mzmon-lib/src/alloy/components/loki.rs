@@ -441,6 +441,8 @@ pub struct StageRegexBlock {
     pub expression: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels_from_groups: Option<bool>,
 }
 
 impl ToBlock for StageRegexBlock {
@@ -452,6 +454,9 @@ impl ToBlock for StageRegexBlock {
         );
         if let Some(s) = &self.source {
             attributes.insert("source".into(), AttributeValue::String(s.clone()));
+        }
+        if let Some(b) = self.labels_from_groups {
+            attributes.insert("labels_from_groups".into(), AttributeValue::Bool(b));
         }
         Ok(Block {
             component: "stage.regex".into(),
@@ -1131,6 +1136,37 @@ mod tests {
                 "\t]\n",
                 "\n",
                 "\tstage.cri { }\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_regex_promotes_labels_from_groups() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.regex:
+                        expression: '(?P<level>[A-Z]+)'
+                        labels_from_groups: true
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.regex {\n",
+                "\t\texpression         = \"(?P<level>[A-Z]+)\"\n",
+                "\t\tlabels_from_groups = true\n",
+                "\t}\n",
                 "}\n",
             ),
         );
