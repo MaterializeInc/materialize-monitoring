@@ -68,11 +68,13 @@ blocks:
           - ref: loki.process.input_processor.receiver
 
   # OTLP receiver for logs, bridged into the loki pipeline via the exporter below.
+  # grpc defaults to :4317, http to :4318.
   - raw:
       component: otelcol.receiver.otlp
       label: gateway
       blocks:
         - component: grpc
+        - component: http
         - component: output
           attributes:
             logs:

@@ -50,6 +50,8 @@ loki.source.kubernetes_events "k8s_events" {
 otelcol.receiver.otlp "gateway" {
 	grpc { }
 
+	http { }
+
 	output {
 		logs = [
 			otelcol.exporter.loki.bridge.input,

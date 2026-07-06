@@ -8,7 +8,7 @@ weight: 10
 Production guidance for the `materialize-monitoring` stack, organized by backend.
 Every checklist item is tagged with its **primary owner** under the [shared responsibility model](#shared-responsibility-model), and is checked (`[x]`) when the chart already ships it as a default — unchecked items are the deployment-time actions (or still-to-build chart work) that remain.
 
-Today this covers the bundled **logging backend (Loki)**; metrics (Thanos), Grafana, and Alertmanager sections will follow the same shape.
+Today this covers the **collection tier (Alloy)** and the bundled **logging backend (Loki)**; metrics (Thanos), Grafana, and Alertmanager sections will follow the same shape.
 
 ## Shared responsibility model
 
@@ -30,6 +30,45 @@ Checklist items are tagged with the **primary** owner.
 | Secrets provisioning | — | consumes by name | **provides** | rotates |
 | Size, retention budget, tenant policy | — | offers profiles | sets values | **decides** |
 | Incident response, upgrades, DR, capacity | — | tooling + alerts | applies changes | **owns** |
+
+## Collection (Alloy)
+
+The Alloy tier collects and processes telemetry before it reaches a backend.
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
+
+### Configuration & change management
+
+- [x] `[chart]` Pipelines are **authored as code** (`packages/alloy-pipelines/*.yaml`) and rendered to `.alloy`; the rendered output is committed and CI asserts it matches a fresh render, so config drift is caught at review time.
+- [x] `[chart]` `alloy validate` runs on every rendered pipeline in the build.
+- [ ] `[chart]` Pre-install/pre-upgrade `alloy fmt`/validate hook so a bad config fails the release rather than a running pod (tracked on the [Roadmap](../../reference/internal/roadmap/)).
+- [ ] `[operator]` Change pipeline behavior (stages, label families, endpoints) through the YAML sources, never by hand-editing rendered `.alloy` in a running deployment — edits there are lost on the next render and untracked.
+
+### Cardinality & rate control (the lever)
+
+- [x] `[chart]` The gateway promotes only a small, stable label set (`level`, `app`, `container`, `namespace` + their `k8s_`-prefixed forms, `environment_id`) and routes everything else identifying to **structured metadata**. Adding a Loki label multiplies [stream cardinality](../../o11y-glossary/#observability-foundations) — default to structured metadata.
+- [x] `[chart]` Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through; oversized and stale lines are dropped (`longer_than`, `older_than`).
+- [x] `[chart]` The agent applies a **per-node** pod-log rate cap (`AGENT_POD_LOG_RATE_LIMIT` / `AGENT_POD_LOG_BURST`) so one noisy node can't starve the pipeline.
+- [ ] `[operator]` Understand the backpressure semantics before tuning: `stage.limit` with `drop = false` **queues** (backpressures the sender), `drop = true` **sheds** load. The final safety limit sheds; per-node and per-level limits are the tuning surface.
+
+### Gateway availability & delivery
+
+- [ ] `[operator]` Run the gateway with **≥2 replicas** behind its Service — it holds in-memory buffers, so a single replica is a delivery gap during restarts and node churn.
+- [ ] `[operator]` Confirm `loki.write` durability settings (WAL + ret/backoff) survive gateway restarts to your RPO; the write endpoint is set with `GATEWAY_LOKI_DEST` and the ingress port with `ALLOY_LOKI_PORT`.
+- [ ] `[consumer]` If sending OTLP, target `:4317` (gRPC) or `:4318` (HTTP); if chaining gateways, point the upstream writer at the downstream `:3100`. See [Collecting](../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
+- [ ] `[operator]` `loki.write` auth to a secured/remote destination (`basic_auth`/headers) is **not yet wired** — provide it before shipping to a destination that requires it.
+
+### Agent placement & durability
+
+- [ ] `[operator]` Tolerate node taints so the DaemonSet actually lands on every node you want logs from (tainted/spot/system pools included) — a missing toleration is a silent per-node blind spot.
+- [ ] `[operator]` Persist the agent's file **positions** and journal cursor (hostPath) so a restart resumes where it left off instead of re-tailing (duplicate lines) or skipping (gaps).
+- [ ] `[operator]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
+
+### Security & meta-monitoring
+
+- [x] `[chart]` Distroless Alloy image: FIPS boringcrypto, multi-arch, non-root, GHCR-published.
+- [ ] `[chart]` ServiceMonitor/PodMonitor (or GCP `PodMonitoring`) for both Alloy roles — scrape Alloy's own component metrics (received/sent bytes, dropped lines, write failures).
+- [ ] `[operator]` Alert on gateway write failures and drop counters (`drop_counter_reason`) so shedding or a broken destination is visible rather than silent data loss.
 
 ## Logging (Loki)
 
@@ -144,7 +183,7 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 
 - [ ] `[operator]` Set per-tenant `ingestion_rate_mb` / `ingestion_burst_size_mb` / `max_global_streams_per_user` from the table; remember these are per environment.
 - [x] `[chart]` `reject_old_samples: true` + `reject_old_samples_max_age` set.
-- [ ] `[chart]` The Alloy gateway keeps the label set small and routes high-cardinality fields to structured metadata — the dominant cost/stability lever. *(Gateway pipeline in flight.)*
+- [x] `[chart]` The Alloy gateway keeps the label set small and routes high-cardinality fields to structured metadata — the dominant cost/stability lever. See [Collection (Alloy)](#collection-alloy).
 - [ ] `[operator]` Alert on `loki_discarded_samples_total` so a limit hit is visible.
 
 #### 6. Retention & compaction
