@@ -1,0 +1,29 @@
+// Default egress tail for the alloy-gateway pipeline, split out from gateway.yaml
+// so the write destination can be swapped at chart-assembly time without editing
+// the committed processing pipeline.
+//
+// gateway.yaml's loki.process.input_processor forwards to
+// loki.process.egress.receiver — a type-neutral passthrough seam. This file
+// provides that seam plus a default loki.write destination. A deployment may
+// render its own version of this tail (for example, pointing egress at an
+// otelcol.receiver.loki.<label>.receiver instead of loki.write) as long as it
+// keeps the `loki.process "egress"` label as the contract the main pipeline
+// references.
+//
+// This stub is not a standalone config: it is rendered and validated jointly
+// with gateway.alloy (as alloy loads a config directory) — see `make pipelines`.
+//
+// loki.write.destination's endpoint is configurable via GATEWAY_LOKI_DEST
+// (falling back to an in-cluster default). Auth (basic_auth) is deferred.
+
+loki.process "egress" {
+	forward_to = [
+		loki.write.destination.receiver,
+	]
+}
+
+loki.write "destination" {
+	endpoint {
+		url = coalesce(sys.env("GATEWAY_LOKI_DEST"), "http://loki-gateway.loki.svc:3100/loki/api/v1/push")
+	}
+}

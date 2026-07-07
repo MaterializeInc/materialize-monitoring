@@ -18,7 +18,7 @@ SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
 SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway agent
+ALLOY_TARGETS = gateway gateway-dest-stub agent
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -123,14 +123,26 @@ charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana
 
 ALLOY_TARGET = $(patsubst %.alloy,%,$(notdir $@))
 
-# TODO: invoke
+# Render each target. Validation happens in the aggregate target below, because
+# gateway.alloy is not a standalone config (it references loki.process.egress,
+# supplied by gateway-dest-stub.alloy) and must be validated joined with it.
 charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
 	mkdir -p "$(@D)"
 	target/debug/mz-monitoring-build gen-pipelines --output-dir "$(@D)" --target "$(ALLOY_TARGET)"
-	alloy validate "$@"
 
 charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materialize-monitoring/pre-rendered/pipelines/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
+	$(MAKE) alloy-pipelines-validate
 	touch "$@"
+
+# Validate rendered pipelines. agent is currently a self-contained config; the
+# gateway is not — gateway.alloy forwards to loki.process.egress, defined in the
+# destination stub — so validate the two together the way alloy loads a config
+# directory.
+PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
+alloy-pipelines-validate:
+	alloy validate "$(PIPELINES_DIR)/agent.alloy"
+	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
+.PHONY: alloy-pipelines-validate
 
 ### SCRAPER SYNC ###
 
