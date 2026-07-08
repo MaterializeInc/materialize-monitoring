@@ -1,0 +1,15 @@
+{
+  "name": "materialize-monitoring Documentation",
+  "short_name": "materialize-monitoring Documentation",
+  "start_url": "/materialize-monitoring/preview/renovate-materialize-materialized-latest/",
+  "scope": "/materialize-monitoring/preview/renovate-materialize-materialized-latest/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/materialize-monitoring/preview/renovate-materialize-materialized-latest/favicon.svg",
+      "sizes": "512x512"
+    }
+  ]
+}
