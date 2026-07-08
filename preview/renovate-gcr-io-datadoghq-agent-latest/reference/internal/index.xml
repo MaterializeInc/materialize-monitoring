@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Internal Development on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/</link><description>Recent content in Internal Development on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Mon, 01 Jan 0001 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/index.xml" rel="self" type="application/rss+xml"/><item><title>Repo Layout</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/repo-layout/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/repo-layout/</guid><description>&lt;p&gt;This page is a convenience cache of where things live in the repo.
+The repository is under active development, so this layout goes stale easily.
+If it disagrees with what is actually in the tree, trust the repo and update this page.&lt;/p&gt;
+&lt;p&gt;The repo is a polyglot monorepo: a Rust workspace, a &lt;code&gt;uv&lt;/code&gt;-managed Python workspace, and a Go-tooled Hugo docsite all share the root.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;materialize-monitoring/&lt;/code&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Cargo.toml&lt;/code&gt; / &lt;code&gt;Cargo.lock&lt;/code&gt;: top-level Rust workspace (members under &lt;code&gt;packages/&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;pyproject.toml&lt;/code&gt; / &lt;code&gt;uv.lock&lt;/code&gt; / &lt;code&gt;.python-version&lt;/code&gt;: Python workspace, managed by &lt;code&gt;uv&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;go.mod&lt;/code&gt; / &lt;code&gt;go.sum&lt;/code&gt;: Go module that pins &lt;code&gt;hugo&lt;/code&gt; and &lt;code&gt;helm-docs&lt;/code&gt; via tool directives&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Makefile&lt;/code&gt;: top-level entrypoint (&lt;code&gt;make all&lt;/code&gt;, &lt;code&gt;charts&lt;/code&gt;, &lt;code&gt;dashboards&lt;/code&gt;, &lt;code&gt;helm-docs&lt;/code&gt;, &lt;code&gt;serve-docs&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.pre-commit-config.yaml&lt;/code&gt;: contributor-experience hooks (see &lt;a href="../"&gt;Internal Development&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;bin/&lt;/code&gt;: bash dev/CI entrypoints (flat; no subdirectories)
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;check-lfs.sh&lt;/code&gt;: verify/repair Git LFS state&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dashboard-sync.sh&lt;/code&gt;: regenerate and sync dashboards&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;grafonnet-render&lt;/code&gt;: grafonnet rendering helper&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-build&lt;/code&gt; / &lt;code&gt;mz-monitoring-check&lt;/code&gt;: thin wrappers over the Rust binaries&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;packages/&lt;/code&gt;: hand-authored, contributor-facing inputs
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;grafana-dashboards/&lt;/code&gt;: Grafana dashboards-as-code (Python + &lt;code&gt;grafana-foundation-sdk&lt;/code&gt;); sources under &lt;code&gt;dashboards/&lt;/code&gt; (e.g. &lt;code&gt;mz_environment/&lt;/code&gt;, &lt;code&gt;render.py&lt;/code&gt;, &lt;code&gt;palette.py&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;py-mzmon-lib/&lt;/code&gt;: Python helper library imported by the dashboard packages; not consumed by customers&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;alloy-pipelines/&lt;/code&gt;: Alloy pipeline YAML inputs (&lt;code&gt;agent.yaml&lt;/code&gt;, &lt;code&gt;gateway.yaml&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ref-alloy-pipelines/&lt;/code&gt;: Python reference pipelines being ported into the typed Rust path (&lt;code&gt;agent_config.py&lt;/code&gt;, &lt;code&gt;gateway_config.py&lt;/code&gt;, &lt;code&gt;processor.alloy&lt;/code&gt;, &lt;code&gt;alloy/&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mzmon-lib/&lt;/code&gt;: Rust library — typed Alloy model plus embedded JSONSchemas under &lt;code&gt;schemas/alloy/&lt;/code&gt;; not consumed by customers&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-build/&lt;/code&gt;: Rust CLI for artifact generation (&lt;code&gt;gen_pipelines.rs&lt;/code&gt;, &lt;code&gt;main.rs&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-check/&lt;/code&gt;: Rust schema/consistency checks&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;charts/&lt;/code&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;materialize-monitoring/&lt;/code&gt;: umbrella chart
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Chart.yaml&lt;/code&gt; / &lt;code&gt;Chart.lock&lt;/code&gt;: chart metadata; lock pins subchart versions&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;values.yaml&lt;/code&gt; / &lt;code&gt;README.md&lt;/code&gt; / &lt;code&gt;README.md.gotmpl&lt;/code&gt;: profile-driven defaults; README generated from the template via &lt;code&gt;helm-docs&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;charts/&lt;/code&gt;: vendored subchart tarballs (LFS) — &lt;code&gt;alloy&lt;/code&gt;, &lt;code&gt;loki&lt;/code&gt;, &lt;code&gt;thanos&lt;/code&gt;, &lt;code&gt;alertmanager&lt;/code&gt;, &lt;code&gt;grafana&lt;/code&gt;, &lt;code&gt;grafana-operator&lt;/code&gt;, &lt;code&gt;kube-state-metrics&lt;/code&gt;, &lt;code&gt;metrics-server&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;pre-rendered/&lt;/code&gt;: generated artifacts loaded via &lt;code&gt;{{ .Files.Get }}&lt;/code&gt;; never hand-edited
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;dashboards/&lt;/code&gt;: &lt;code&gt;grafana/&lt;/code&gt; and &lt;code&gt;datadog/&lt;/code&gt; JSON&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;pipelines/&lt;/code&gt;: rendered Alloy (&lt;code&gt;agent.alloy&lt;/code&gt;, &lt;code&gt;gateway.alloy&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;rules/&lt;/code&gt;: &lt;code&gt;prometheus/&lt;/code&gt;, &lt;code&gt;loki/&lt;/code&gt;, &lt;code&gt;thanos/&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;templates/&lt;/code&gt;: provided resources — &lt;code&gt;alerts/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;scrapers/&lt;/code&gt;, plus &lt;code&gt;grafana-grafana.yaml&lt;/code&gt; and &lt;code&gt;_helpers.tpl&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;examples/&lt;/code&gt;: example values overlays (e.g. existing-grafana, IRSA/S3)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;profiles/&lt;/code&gt;: profile value sets (still being defined)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;materialize-monitoring-crds/&lt;/code&gt;: CRDs chart (&lt;code&gt;Chart.yaml&lt;/code&gt;, &lt;code&gt;values.yaml&lt;/code&gt;, &lt;code&gt;README.md&lt;/code&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;docs/&lt;/code&gt;: Hugo docsite (the source of this page)
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;hugo.toml&lt;/code&gt;: site config&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;content/&lt;/code&gt;: authored Markdown
+&lt;ul&gt;
+&lt;li&gt;top-level sections: &lt;code&gt;getting-started/&lt;/code&gt;, &lt;code&gt;metrics/&lt;/code&gt; (incl. &lt;code&gt;collecting/&lt;/code&gt;), &lt;code&gt;logs-and-events/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt; (incl. &lt;code&gt;grafana/&lt;/code&gt;), &lt;code&gt;alerting/&lt;/code&gt;, &lt;code&gt;operating/&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;reference/&lt;/code&gt;: &lt;code&gt;helm/&lt;/code&gt;, &lt;code&gt;stable-metrics/&lt;/code&gt;, and &lt;code&gt;internal/&lt;/code&gt; (this section — &lt;code&gt;dashboard/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;design-docs/&lt;/code&gt;, plus &lt;code&gt;repo-layout.md&lt;/code&gt;, &lt;code&gt;roadmap.md&lt;/code&gt;, &lt;code&gt;releasing.md&lt;/code&gt;, &lt;code&gt;skills.md&lt;/code&gt;, &lt;code&gt;helm.md&lt;/code&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;layouts/&lt;/code&gt;, &lt;code&gt;static/&lt;/code&gt;, &lt;code&gt;assets/&lt;/code&gt;, &lt;code&gt;data/&lt;/code&gt;, &lt;code&gt;i18n/&lt;/code&gt;, &lt;code&gt;archetypes/&lt;/code&gt;, &lt;code&gt;themes/&lt;/code&gt;: Hugo machinery&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;public/&lt;/code&gt;, &lt;code&gt;resources/&lt;/code&gt;: generated output (not checked in)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;legacy/&lt;/code&gt;: preserved field-engineering assets — &lt;code&gt;sql_exporter/&lt;/code&gt;, &lt;code&gt;prometheus/&lt;/code&gt;, &lt;code&gt;grafana/&lt;/code&gt;, &lt;code&gt;datadog/&lt;/code&gt;, &lt;code&gt;tests/&lt;/code&gt;, &lt;code&gt;docker-compose.yml&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tools/&lt;/code&gt;: ancillary ecosystems kept out of &lt;code&gt;bin/&lt;/code&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;chartlib/&lt;/code&gt;: helm-docs templates&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;grafonnet/&lt;/code&gt;: grafonnet/jsonnet vendoring (&lt;code&gt;jsonnetfile.json&lt;/code&gt; + lock)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;shlib/&lt;/code&gt;: shared bash helpers&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.claude/skills/&lt;/code&gt;: authoring conventions consumed by both contributors and AI agents&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.github/&lt;/code&gt;: GitHub Actions workflows&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Skills</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/skills/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/skills/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Helm</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/helm/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/helm/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Roadmap</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/roadmap/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/roadmap/</guid><description>&lt;!-- This roadmap is public. Do not include customer-specific or sensitive information --&gt;
+&lt;h1 id="roadmap"&gt;Roadmap&lt;a class="anchor" href="#roadmap"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;The goal of &lt;code&gt;materialize-monitoring&lt;/code&gt; is &lt;strong&gt;first-class, opt-in observability for self-managed Materialize&lt;/strong&gt; — logs, metrics, events, and alerts — for customers who want a one-stop-shop, without forcing our stack on customers who already run their own.
+This page is the current source of truth for what is built, what is in flight, and what is planned next.
+This is generally synced with the &lt;a href="https://linear.app/materializeinc/project/first-class-observability-infrastructure-in-self-managed-5e48691c74a8/overview" rel="external nofollow" class="internal-protected-link"&gt;internal Linear Project&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Releasing</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/releasing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/releasing/</guid><description>&lt;h1 id="releasing"&gt;Releasing&lt;a class="anchor" href="#releasing"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;Each artifact releases on its own version stream (see &lt;a href="versioning/"&gt;Versioning&lt;/a&gt;).&lt;/p&gt;
+&lt;!-- The state machine below is the intended design; the tooling to drive it is
+not built yet. Today `mz-monitoring-build changelog --write` populates and
+hoists unreleased sections directly — that write path will be reworked to drive
+version-update PRs as described here. Until then, do not run `--write` against
+the placeholder-style CHANGELOG.md on main; it would clobber the placeholders. --&gt;
+&lt;h2 id="changes-pending-placeholders"&gt;Changes-pending placeholders&lt;a class="anchor" href="#changes-pending-placeholders"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;The top of &lt;code&gt;CHANGELOG.md&lt;/code&gt; holds one &lt;strong&gt;unreleased placeholder per component that has changes&lt;/strong&gt;, with the body &lt;code&gt;_Changes Pending_&lt;/code&gt;.
+Placeholders are not populated on &lt;code&gt;main&lt;/code&gt; — population happens in a version-update PR (below).
+A component with no changes since its last release has no placeholder, so the unreleased placeholders are not necessarily the very top entries and rarely-changed components are not churned every cycle.&lt;/p&gt;</description></item><item><title>Versioning</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-datadoghq-agent-latest/reference/internal/versioning/</guid><description>&lt;h1 id="versioning-in-materialize-monitoring"&gt;Versioning in materialize-monitoring&lt;a class="anchor" href="#versioning-in-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;All artifacts of this repo have separate versioning streams.
+They generally follow semantic versioning (SemVer).&lt;/p&gt;
+&lt;h2 id="components"&gt;Components&lt;a class="anchor" href="#components"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Components are defined in &lt;code&gt;packages/components.yaml&lt;/code&gt;.
+Each component declares:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;changelog&lt;/code&gt; — whether the component maintains its own changelog stream.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;title&lt;/code&gt; — the human-readable name used in &lt;code&gt;CHANGELOG.md&lt;/code&gt; headings.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;version_paths&lt;/code&gt; — files whose version field is rewritten when the component is bumped (the &lt;em&gt;write targets&lt;/em&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;content_paths&lt;/code&gt; — the paths whose changes are attributed to this component (the &lt;em&gt;attribution inputs&lt;/em&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;content_exclude&lt;/code&gt; — paths to subtract from &lt;code&gt;content_paths&lt;/code&gt;, typically generated outputs that belong to a dependency.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dependencies&lt;/code&gt; — other components whose bumps cascade into this one.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;artifacts&lt;/code&gt; — glob patterns (repo-root-relative) for files attached as GitHub Release assets when the component is published; resolved file names must be unique.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Each changed file is attributed to the component with the longest matching &lt;code&gt;content_paths&lt;/code&gt; entry, after dropping any component that excludes it.
+Generated outputs route to their source: the chart excludes its &lt;code&gt;pre-rendered/&lt;/code&gt; tree, and &lt;code&gt;pre-rendered/dashboards&lt;/code&gt; and &lt;code&gt;pre-rendered/pipelines&lt;/code&gt; are claimed by the &lt;code&gt;dashboards&lt;/code&gt; and &lt;code&gt;pipelines&lt;/code&gt; components, so a dashboard change appears under Dashboards (and rolls up into the chart via cascade) rather than as a first-class chart change.&lt;/p&gt;</description></item></channel></rss>
