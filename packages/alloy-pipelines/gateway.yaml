@@ -10,15 +10,19 @@ description: |
   The main pipeline (loki.process.input_processor) is ported from the reference
   staging-gateway.alloy: it normalizes log level, timestamps, and per-service
   structured fields, applies rate limits, and settles on a stable label set
-  before forwarding to the destination sink and a local sampled debug tap.
+  before forwarding to a type-neutral egress seam and a local sampled debug tap.
 
   Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
   3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
   otelcol.exporter.loki bridge) all feed loki.process.input_processor. These
   ingress components are not typed yet, so they use `raw:` escapes.
 
-  loki.write.destination's endpoint is configurable via GATEWAY_LOKI_DEST
-  (falling back to an in-cluster default). Auth (basic_auth) is deferred.
+  Egress is split out into gateway-dest-stub.yaml. input_processor forwards to
+  loki.process.egress.receiver (a passthrough seam defined in that stub), which
+  lets the write destination be swapped at chart-assembly time — including the
+  component *type* (loki.write vs an otelcol bridge) — without editing this
+  file. gateway.alloy therefore references a component it does not define and is
+  validated jointly with the stub (see `make pipelines`).
 
   Many mz-system services share an identical json/template/structured_metadata
   shape. That shape is defined once via YAML anchors (&mz_svc_*) on the
@@ -93,7 +97,8 @@ blocks:
   - loki.process:
       label: input_processor
       forward_to:
-        - "loki.write.destination.receiver"
+        # egress seam lives in gateway-dest-stub.yaml (swappable destination)
+        - "loki.process.egress.receiver"
         - "loki.process.sample_debug.receiver"
       blocks:
         # --- global drops and rate limit ------------------------------------
@@ -724,18 +729,7 @@ blocks:
   - loki.echo:
       label: stub
 
-  # --- forwarding sink --------------------------------------------------------
-
-  # Forwards processed entries to the log store. The endpoint is configurable via
-  # GATEWAY_LOKI_DEST; auth (basic_auth) is deferred.
-  - raw:
-      component: loki.write
-      label: destination
-      blocks:
-        - component: endpoint
-          attributes:
-            url:
-              function: coalesce
-              arguments:
-                - env: GATEWAY_LOKI_DEST
-                - "http://loki-gateway.loki.svc:3100/loki/api/v1/push"
+  # --- egress ----------------------------------------------------------------
+  # The egress seam and write destination live in gateway-dest-stub.yaml so the
+  # destination can be swapped without touching this pipeline. input_processor
+  # forwards to loki.process.egress.receiver, defined there.
