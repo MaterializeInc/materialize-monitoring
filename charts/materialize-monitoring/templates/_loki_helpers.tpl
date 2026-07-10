@@ -7,7 +7,7 @@ Usage:
   {{- include "mzmon.loki.namespace" $ }}
 */}}
 {{- define "mzmon.loki.namespace" -}}
-  {{- $ns := $.Values.loki.namespaceOverride | default $.Release.Namespace -}}
+  {{- $ns := $.Values.loki.namespaceOverride | default ( include "mzmon.namespace" $ ) -}}
   {{- printf "%s" $ns -}}
 {{- end }}
 
@@ -27,7 +27,7 @@ Usage:
   {{- if hasKey $values "enabled" }}
     {{- ternary "true" "" $values.enabled }}
   {{- else }}
-    {{- if ( or ( index $tags "bundled-backends" ) $tags.loki ) }}
+    {{- if ( or $tags.default ( index $tags "bundled-backends" ) $tags.loki ) }}
       {{- "true" }}
     {{- end }}
   {{- end }}

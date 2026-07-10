@@ -1,0 +1,56 @@
+{{- $fullname := include "mzmon.fullname" . }}
+{{- $agentValues := index .Values "alloy-agent" | required "alloy-agent values are required" }}
+{{- $pipelineValues := .Values.pipeline }}
+{{- $defaultAnnotations := dict
+  "helm.sh/hook" "pre-install,pre-upgrade"
+  "helm.sh/hook-weight" "0"
+  "helm.sh/hook-delete-policy" "before-hook-creation"
+}}
+{{- if and ( include "mzmon.alloyAgent.enabled" $ ) $pipelineValues.preValidateJob.enabled }}
+kind: Job
+apiVersion: batch/v1
+metadata:
+  name: {{ $fullname }}-validate-agent
+  namespace: {{ include "mzmon.alloyAgent.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-agent
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+    {{- if $pipelineValues.preValidateJob.annotations }}
+      {{- toYaml $pipelineValues.preValidateJob.annotations | nindent 4 }}
+    {{- else }}
+      {{- toYaml $defaultAnnotations | nindent 4 }}
+    {{- end }}
+spec:
+  backoffLimit: {{ $pipelineValues.preValidateJob.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "mzmon.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: alloy-agent
+    spec:
+      serviceAccountName: {{ include "mzmon.alloyAgent.serviceAccountName" $ }}
+      restartPolicy: Never
+      containers:
+        - name: validate-agent
+          image: {{ include "mzmon.alloyAgent.image" $ | quote }}
+          imagePullPolicy: {{ $agentValues.image.pullPolicy }}
+          command:
+            - alloy
+            - validate
+            - /etc/alloy/{{ include "mzmon.alloyAgent.configMap.key" $ }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+              readOnly: true
+        - name: always-reject
+          image: {{ include "mzmon.alloyAgent.image" $ | quote }}
+          imagePullPolicy: {{ $agentValues.image.pullPolicy }}
+          command:
+            - /bin/false
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-validate-agent
+{{- end }}

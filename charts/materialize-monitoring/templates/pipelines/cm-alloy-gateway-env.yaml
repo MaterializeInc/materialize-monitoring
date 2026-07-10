@@ -1,0 +1,42 @@
+{{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
+{{- $fullname := printf "%s-%s" ( include "mzmon.fullname" $ ) "alloy-gateway-env" }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "mzmon.alloyGateway.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-gateway
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
+  {{- if $lokiDest.enabled }}
+  GATEWAY_LOKI_DEST: {{ tpl $lokiDest.url $ | quote }}
+    {{- if eq $lokiDest.authType "none" }}
+    {{- else if eq $lokiDest.authType "basicAuth" }}
+      {{- if $lokiDest.basicAuth.username }}
+  {{ $lokiDest.basicAuth.usernameEnv }}: {{ tpl $lokiDest.basicAuth.username $ | quote }}
+      {{- end }}
+      {{- if $lokiDest.basicAuth.password }}
+  {{ $lokiDest.basicAuth.passwordEnv }}: {{ tpl $lokiDest.basicAuth.password $ | quote }}
+      {{- end }}
+    {{- else if eq $lokiDest.authType "bearer" }}
+      {{- if $lokiDest.bearer.token }}
+  {{ $lokiDest.bearer.tokenEnv }}: {{ tpl $lokiDest.bearer.token $ | quote }}
+      {{- end }}
+    {{- else }}
+      {{- printf "Unsupported .Values.pipeline.logging.gateway.destination.loki.authType (%s)" $lokiDest.authType | fail }}
+    {{- end }}
+    {{- if $lokiDest.tls.enabled }}
+      {{- fail "TLS is not supported for the alloy-gateway loki destination yet" }}
+    {{- end }}
+  {{- end }}
+  {{- /* </lokiDest> */}}
+  {{- $otlpDest := .Values.pipeline.logging.gateway.destination.otlp }}
+  {{- if $otlpDest.enabled }}
+    {{- fail "OTLP is not supported for the alloy-gateway destination yet" }}
+  {{- end }}
+  {{- /* </otlpDest> */}}
+{{- end }}

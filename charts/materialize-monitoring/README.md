@@ -93,19 +93,19 @@ Configuration for the main chart
       <td class="helm-value-key">nameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Standard Helm name override.</td>
+      <td class="helm-value-desc">Standard Helm name override. Note that in umbrella charts, fullname may be shorted. See fullnameOverride.</td>
     </tr>
     <tr>
       <td class="helm-value-key">fullnameOverride</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Standard Helm fullname override.</td>
+      <td class="helm-value-default"><code>"mzmon"</code></td>
+      <td class="helm-value-desc">Standard Helm fullname override. Note that in umbrella charts, this may be shortened to avoid long prefixes. (and have more stable names in resources)</td>
     </tr>
     <tr>
-      <td class="helm-value-key">profile</td>
+      <td class="helm-value-key">namespaceOverride</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"bundled-stack"</code></td>
-      <td class="helm-value-desc">Deployment profile that drives subchart enablement and pipeline defaults.</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Namespace override for default workloads.</td>
     </tr>
   </tbody>
 </table>
@@ -149,15 +149,21 @@ the profile preset values files under `examples/`.
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">tags<wbr>.pipeline</td>
+      <td class="helm-value-key">tags<wbr>.default</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable all recommended defaults. You can `--set tags.default=false` to disable all services and explicitly enable others.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">tags<wbr>.pipeline</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Enable both Alloy releases (agent + gateway).</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.bundled-backends</td>
       <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Enable Loki, Thanos, Grafana, and Alertmanager as a group.</td>
     </tr>
     <tr>
@@ -291,32 +297,217 @@ Pipeline configuration is expressed in values, rendered into ConfigMaps under
 `templates/pipelines/`, and consumed by the Alloy agent and gateway
 release instances.
 
-#### Cardinality reduction configuration
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run a hook/dependency to validate rendered configs before rolling them out</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "helm.sh/hook": "pre-install,pre-upgrade",
+  "helm.sh/hook-delete-policy": "before-hook-creation"
+}</pre>
+</td>
+      <td class="helm-value-desc">Job specific annotations This should be used to control when the job is executed. The default is as a helm hook, but setting any other annotation overrides this.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.backoffLimit</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Number of times to retry the job before failing the release.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.env</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Environment variables to set in agent and gateway pods. These support tpl rendering. Since these are injected into an envFrom, any env entries take precedence.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.env<wbr>.CLUSTER_NAME</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"default"</code></td>
+      <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.</td>
+    </tr>
+  </tbody>
+</table>
 
-Configuration for cardinality reduction in Alloy gateway
+#### Log configuration
+
+Configuration for log behavior
 
 <table class="helm-values">
   <thead>
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">pipeline<wbr>.cardinalityReduction<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether the gateway applies cardinality-reduction relabeling before egress.</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "burst": 20000,
+  "rateLimit": 5000
+}</pre>
+</td>
+      <td class="helm-value-desc">Alloy agent (daemonset) tunables.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.cardinalityReduction<wbr>.demoteLabels</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable writing to a loki destination. By default, we use the in-cluster loki</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://loki-gateway.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-desc">Loki push endpoint URL.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.retries</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "pod",
-  "node",
-  "zone",
-  "region"
-]</pre>
+{
+  "maxBackoffPeriod": "5m",
+  "maxBackoffRetries": 10,
+  "minBackoffPeriod": "1s",
+  "retryOnHttp429": true
+}</pre>
 </td>
-      <td class="helm-value-desc">Labels demoted from metric labels to structured metadata (Loki) or dropped (Datadog/Prometheus remote-write). Default mirrors the Cloud team's policy.</td>
+      <td class="helm-value-desc">Retry configuration.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.authType</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"none"</code></td>
+      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.basicAuth</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "password": "",
+  "passwordEnv": "LOKI_DEST_PASSWORD",
+  "username": "",
+  "usernameEnv": "LOKI_DEST_USERNAME"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.bearer</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "token": "",
+  "tokenEnv": "LOKI_DEST_BEARER_TOKEN"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.oauth2</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "clientId": "",
+  "clientIdEnv": "LOKI_DEST_OAUTH2_CLIENT_ID",
+  "clientSecret": "",
+  "clientSecretEnv": "LOKI_DEST_OAUTH2_CLIENT_SECRET",
+  "scopes": [],
+  "tokenUrl": "",
+  "tokenUrlEnv": "LOKI_DEST_OAUTH2_TOKEN_URL"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Whether to enable TLS for the loki destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the loki destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"TLS13"</code></td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grpc"</code></td>
+      <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">OTLP push endpoint URL.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.logTenancy<wbr>.staticTenant</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"loki"</code></td>
+      <td class="helm-value-desc">Default tenant to write logs to. This is used when tenantMap values is set to `static`.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.logTenancy<wbr>.tenantMap</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "audit": "static",
+  "environment": "static",
+  "infra": "static"
+}</pre>
+</td>
+      <td class="helm-value-desc">Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).</td>
     </tr>
   </tbody>
 </table>
@@ -565,6 +756,10 @@ Configuration for bundled subcharts
 #### Alloy Agent
 
 Alloy collector instance running close to scrape targets. Pre-egress shaping happens here.
+
+Upstream reference:
+  * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
+  * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
 
 #### Alloy Gateway
 
