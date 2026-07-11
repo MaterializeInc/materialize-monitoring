@@ -109,7 +109,7 @@ Configurable knobs in `agent.yaml`: `cluster`/`node` labels via `sys.env(...)` (
 
 **Top-level discovery.* components**: `discovery.kubernetes`, `discovery.relabel`.
 
-**`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes).
+**`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes), `stage.tenant` (`label`/`source`/`value`, each `Expressable<String>`).
 
 **`discovery.kubernetes` sub-blocks**: `selectors` (incl. `field`/`label` as `Expressable<String>`), `attach_metadata` (`node` + `namespace`). Other sub-blocks (e.g. `namespaces`) use `raw:`.
 

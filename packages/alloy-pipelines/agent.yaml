@@ -235,4 +235,8 @@ blocks:
       blocks:
         - component: endpoint
           attributes:
-            url: "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push"
+            url:
+              function: coalesce
+              arguments:
+                - env: AGENT_LOKI_DEST
+                - "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push"

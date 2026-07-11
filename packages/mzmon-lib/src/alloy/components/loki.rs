@@ -269,6 +269,8 @@ pub enum StageBlock {
     Sampling(StageSamplingBlock),
     #[serde(rename = "stage.cri")]
     Cri(StageCriBlock),
+    #[serde(rename = "stage.tenant")]
+    Tenant(StageTenantBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -289,6 +291,7 @@ impl_to_block_dispatch!(StageBlock {
     StructuredMetadataDrop,
     Sampling,
     Cri,
+    Tenant,
     Raw
 });
 
@@ -810,6 +813,48 @@ impl ToBlock for StageCriBlock {
     }
 }
 
+// ----- stage.tenant -----
+
+/// `stage.tenant` — sets the tenant ID (Loki `X-Scope-OrgID`) for entries.
+///
+/// Set exactly one of `label`, `source`, or `value` (alloy enforces this at
+/// load). Each is `Expressable<String>` so the tenant can be selected
+/// dynamically, e.g. `label = coalesce(sys.env("…"), "<default label>")`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageTenantBlock {
+    /// Name of an existing label whose value is used as the tenant ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Expressable<String>>,
+    /// Name of an extracted-map field whose value is used as the tenant ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Expressable<String>>,
+    /// Static string used as the tenant ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Expressable<String>>,
+}
+
+impl ToBlock for StageTenantBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.label {
+            attributes.insert("label".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.source {
+            attributes.insert("source".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.value {
+            attributes.insert("value".into(), v.to_attribute_value()?);
+        }
+        Ok(Block {
+            component: "stage.tenant".into(),
+            label: None,
+            attributes,
+            ..Default::default()
+        })
+    }
+}
+
 // ============================================================
 // tests
 // ============================================================
@@ -1141,6 +1186,45 @@ mod tests {
                 "\t]\n",
                 "\n",
                 "\tstage.cri { }\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_tenant_accepts_literal_and_expression_label() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.tenant:
+                        label: __tenant_static
+                    - stage.tenant:
+                        label:
+                          function: coalesce
+                          arguments:
+                            - env: GATEWAY_TENANT_LABEL
+                            - "default_label"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.tenant {\n",
+                "\t\tlabel = \"__tenant_static\"\n",
+                "\t}\n",
+                "\n",
+                "\tstage.tenant {\n",
+                "\t\tlabel = coalesce(sys.env(\"GATEWAY_TENANT_LABEL\"), \"default_label\")\n",
+                "\t}\n",
                 "}\n",
             ),
         );
