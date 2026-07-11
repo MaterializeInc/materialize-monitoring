@@ -1,0 +1,18 @@
+{{- $fullname := include "mzmon.fullname" . }}
+{{- $gatewayValues := index .Values "alloy-gateway" | required "alloy-gateway values are required" }}
+{{- $pipelineValues := .Values.pipeline }}
+{{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $fullname }}-alloy-gateway
+  namespace: {{ include "mzmon.alloyGateway.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-gateway
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  {{ include "mzmon.alloyGateway.configMap.key" $ }}: |-
+    {{- include "mzmon.alloyGateway.pipeline" $ | nindent 4 }}
+{{- end }}

@@ -32,6 +32,8 @@ spec:
     spec:
       serviceAccountName: {{ include "mzmon.alloyGateway.serviceAccountName" $ }}
       restartPolicy: Never
+      securityContext:
+        {{- toYaml $pipelineValues.preValidateJob.podSecurityContext | nindent 8 }}
       containers:
         - name: validate-gateway
           image: {{ include "mzmon.alloyGateway.image" $ | quote }}
@@ -40,15 +42,12 @@ spec:
             - alloy
             - validate
             - /etc/alloy/{{ include "mzmon.alloyGateway.configMap.key" $ }}
+          securityContext:
+            {{- toYaml $pipelineValues.preValidateJob.containerSecurityContext | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/alloy
               readOnly: true
-        - name: always-reject
-          image: {{ include "mzmon.alloyGateway.image" $ | quote }}
-          imagePullPolicy: {{ $gatewayValues.image.pullPolicy }}
-          command:
-            - /bin/false
       volumes:
         - name: config
           configMap:

@@ -233,11 +233,11 @@ Usage:
     {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
   {{- end }}
 loki.process "egress" {
-	forward_to = [
+	  forward_to = [
   {{- range $logForward }}
-    {{ . }},
+      {{ . }},
   {{- end }}
-  ]
+    ]
 }
 {{- end }}
 
@@ -250,25 +250,26 @@ Usage:
 {{- define "mzmon.alloyGateway.pipeline.loki.dest" }}
   {{- $gatewayLogValues := $.Values.pipeline.logging.gateway }}
 loki.write "destination" {
-  endpoint {
-    url = sys.env("GATEWAY_LOKI_DEST")
-    max_backoff_period = {{ $gatewayLogValues.destination.loki.retries.maxBackoffPeriod | quote }}
-    max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
-    min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
-    retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
-  }
+    endpoint {
+      url = sys.env("GATEWAY_LOKI_DEST")
+      max_backoff_period = {{ $gatewayLogValues.destination.loki.retries.maxBackoffPeriod | quote }}
+      max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
+      min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
+      retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
+    }
   {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
   {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
 
-  basic_auth {
-    username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
-    password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
-  }
+    basic_auth {
+      username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
+      password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+    }
   {{- else if eq $gatewayLogValues.destination.loki.authType "bearer" }}
-  authorization {
-    type = "Bearer"
-    credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
-  }
+
+    authorization {
+      type = "Bearer"
+      credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+    }
   {{- else }}
     {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
   {{- end }}

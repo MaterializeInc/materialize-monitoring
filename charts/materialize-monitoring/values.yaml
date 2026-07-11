@@ -126,6 +126,25 @@ pipeline:
     annotations: {}
     # -- Number of times to retry the job before failing the release.
     backoffLimit: 1
+
+    # -- Security context for the pre-validate job pod.
+    # This is the hardened recommendation with the alloy user.
+    podSecurityContext:
+      runAsUser: 473
+      runAsGroup: 473
+      fsGroup: 473
+
+    # -- Security context for the pre-validate job container.
+    # This is the hardened recommendation with the alloy user.
+    containerSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 473
+      runAsGroup: 473
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
   # -- Environment variables to set in agent and gateway pods.
   # These support tpl rendering.
   # Since these are injected into an envFrom, any env entries take precedence.
@@ -343,9 +362,104 @@ _subchartSection: stub
 # Upstream reference:
 #   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
 #   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
-alloy-agent: {}
-# Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
-# enabled: true
+alloy-agent:
+  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
+  # enabled: true
+  namespaceOverride: null
+  # -- Control for the PodLogs crd.
+  crds:
+    create: false
+
+  global:
+    # -- Security context for the alloy agent pods.
+    podSecurityContext:
+      runAsUser: 473
+      runAsGroup: 473
+      fsGroup: 473
+
+  alloy:
+    configMap:
+      create: false
+
+      name: mzmon-alloy-agent
+      key: config.alloy
+
+    clustering:
+      enabled: false
+
+    # -- Stability level of alloy components.
+    stabilityLevel: generally-available
+
+    enableReporting: false
+
+    storagePath: /tmp/alloy
+
+    # -- Extra environment variables to pass to the alloy agent pod.
+    extraEnv: []
+    # -- Environment variable configmaps/secrets to pass to the alloy agent pod.
+    envFrom:
+      - configMapRef:
+          name: mzmon-alloy-agent-env
+      - secretRef:
+          name: mzmon-alloy-agent-env
+          optional: true
+
+    # -- Volume mounts to expose to alloy agent.
+    mounts:
+      varlog: true
+
+      extra:
+        - name: tmp
+          mountPath: /tmp
+
+    # -- Security context for the alloy agent containers.
+    # The agent MUST run as root in order to be able to read container logs.
+    securityContext:
+      runAsNonRoot: false
+      runAsUser: 0
+      runAsGroup: 473
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+        # Unfortunately, DAC_READ_SEARCH is not sufficient to avoid root privileges
+        # add: [DAC_READ_SEARCH]
+
+    # -- Resources for the alloy agent containers.
+    # TODO
+    resources: {}
+
+  image:
+    registry: ghcr.io
+    repository: materializeinc/mzmon-alloy
+    tag: v1.17.0-mz1
+    pullPolicy: IfNotPresent
+
+  configReloader:
+    enabled: false
+
+  controller:
+    type: daemonset
+
+    extraLabels: {}
+    # -- Extra annotations to apply to the alloy agent pod.
+    # If you are using pulumi, be sure to add
+    # `config.kubernetes.io/depends-on: job/mzmon-validate-agent`
+    extraAnnotations: {}
+
+    hostNetwork: false
+    hostPid: false
+
+    nodeSelector: {}
+    tolerations: []
+
+    priorityClassName: ""
+
+    volumes:
+      extra:
+        - name: tmp
+          emptyDir: {}
 
 # -- (h4) Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.
 # @notationType -- (sectionstart) Alloy Gateway

@@ -1,0 +1,17 @@
+{{- if ( include "mzmon.alloyAgent.enabled" $ ) }}
+{{- $fullname := printf "%s-%s" ( include "mzmon.fullname" $ ) "alloy-agent-env" }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "mzmon.alloyAgent.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-agent
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  AGENT_POD_LOG_RATE_LIMIT: {{ .Values.pipeline.logging.agent.rateLimit | quote }}
+  AGENT_POD_LOG_BURST: {{ .Values.pipeline.logging.agent.burst | quote }}
+  {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
+{{- end }}

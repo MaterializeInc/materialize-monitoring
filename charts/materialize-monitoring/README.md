@@ -325,6 +325,37 @@ release instances.
       <td class="helm-value-desc">Number of times to retry the job before failing the release.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "fsGroup": 473,
+  "runAsGroup": 473,
+  "runAsUser": 473
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the pre-validate job pod. This is the hardened recommendation with the alloy user.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true,
+  "runAsGroup": 473,
+  "runAsNonRoot": true,
+  "runAsUser": 473
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the pre-validate job container. This is the hardened recommendation with the alloy user.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.env</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -760,6 +791,120 @@ Alloy collector instance running close to scrape targets. Pre-egress shaping hap
 Upstream reference:
   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.crds</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "create": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Control for the PodLogs crd.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.global<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "fsGroup": 473,
+  "runAsGroup": 473,
+  "runAsUser": 473
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the alloy agent pods.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.stabilityLevel</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"generally-available"</code></td>
+      <td class="helm-value-desc">Stability level of alloy components.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy agent pod.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.envFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMapRef": {
+      "name": "mzmon-alloy-agent-env"
+    }
+  },
+  {
+    "secretRef": {
+      "name": "mzmon-alloy-agent-env",
+      "optional": true
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment variable configmaps/secrets to pass to the alloy agent pod.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.mounts</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "extra": [
+    {
+      "mountPath": "/tmp",
+      "name": "tmp"
+    }
+  ],
+  "varlog": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Volume mounts to expose to alloy agent.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.securityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true,
+  "runAsGroup": 473,
+  "runAsNonRoot": false,
+  "runAsUser": 0
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Resources for the alloy agent containers. TODO</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.extraAnnotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-agent`</td>
+    </tr>
+  </tbody>
+</table>
 
 #### Alloy Gateway
 

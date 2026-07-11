@@ -1,0 +1,18 @@
+{{- $fullname := include "mzmon.fullname" . }}
+{{- $agentValues := index .Values "alloy-agent" | required "alloy-agent values are required" }}
+{{- $pipelineValues := .Values.pipeline }}
+{{- if ( include "mzmon.alloyAgent.enabled" $ ) }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $fullname }}-alloy-agent
+  namespace: {{ include "mzmon.alloyAgent.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-agent
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  {{ include "mzmon.alloyAgent.configMap.key" $ }}: |-
+    {{- include "mzmon.alloyAgent.pipeline" $ | nindent 4 }}
+{{- end }}
