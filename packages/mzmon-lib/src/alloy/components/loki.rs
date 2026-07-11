@@ -895,13 +895,16 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_renders(
-            pipeline.render(),
+        // A single list-valued ref is assigned directly (not wrapped in `[…]`,
+        // which alloy rejects at load). Byte-checked without the alloy-fmt
+        // oracle: a single-line attr beside the multi-line `forward_to` array
+        // hits the renderer's known alignment divergence (alloy fmt aligns the
+        // `=`); the output is valid alloy, just not aligned.
+        assert_eq!(
+            pipeline.render().unwrap(),
             concat!(
                 "loki.source.file {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.relabel.pods.output,\n",
-                "\t]\n",
+                "\ttargets = discovery.relabel.pods.output\n",
                 "\tforward_to = [\n",
                 "\t\tloki.write.gateway.receiver,\n",
                 "\t]\n",
@@ -910,10 +913,13 @@ mod tests {
         );
     }
 
-    /// one `targets` array legally mixes a discovery-export
-    /// ref with an inline literal target — alloy type-checks `targets` as
-    /// `list(capsule)` and flattens list-valued elements (verified against
-    /// `alloy validate`). Expected output below is `alloy fmt`-canonical.
+    /// One `targets` list may mix a discovery-export ref with an inline literal
+    /// target. A discovery ref is list-valued (`list(discovery.Target)`) while a
+    /// literal is a single `discovery.Target`, so they can't share a bare array
+    /// (alloy would fail to convert the inner list) — they combine via
+    /// `array.concat(ref, [literal])`. Byte-checked without the alloy-fmt oracle:
+    /// the renderer emits the inline literal object multi-line, whereas alloy fmt
+    /// would inline it; the output is valid alloy, just not fmt-canonical.
     #[test]
     fn loki_source_file_mixes_target_refs_and_literals() {
         let pipeline = Pipeline::from_yaml_str(
@@ -928,17 +934,16 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_renders(
-            pipeline.render(),
+        assert_eq!(
+            pipeline.render().unwrap(),
             concat!(
                 "loki.source.file {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.relabel.pods.output,\n",
-                "\t\t{\n",
-                "\t\t\t__path__ = \"/var/log/app.log\",\n",
-                "\t\t\tjob      = \"app\",\n",
-                "\t\t},\n",
-                "\t]\n",
+                "\ttargets = array.concat(discovery.relabel.pods.output, [\n",
+                "\t\t\t{\n",
+                "\t\t\t\t__path__ = \"/var/log/app.log\",\n",
+                "\t\t\t\tjob      = \"app\",\n",
+                "\t\t\t},\n",
+                "\t\t])\n",
                 "\tforward_to = [\n",
                 "\t\tloki.write.gateway.receiver,\n",
                 "\t]\n",

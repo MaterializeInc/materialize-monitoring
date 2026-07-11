@@ -56,23 +56,17 @@ impl RelabelRules {
 
 /// One element of a `targets` list.
 ///
-/// Upstream documents targets as `list(map(string))` — a list of maps with
-/// string values. At validate time alloy implements target elements as
-/// capsules (`alloy validate` errors say `expected capsule`) and *flattens*
-/// list-valued elements — behavior we rely on but which is not documented
-/// upstream (verified against `alloy validate`; pinned by the round-trip
-/// tests). A single array may therefore legally mix references to
-/// `discovery.*` exports with inline literal targets:
+/// A `discovery.*` export (e.g. `discovery.kubernetes.pods.targets`) is itself a
+/// `list(discovery.Target)`; an inline literal target is a single
+/// `discovery.Target` (a string map). alloy does NOT flatten a list literal, so
+/// `targets = [discovery.kubernetes.pods.targets]` fails at load with
+/// `conversion from '[]discovery.Target' is not supported` — even though `alloy
+/// validate` accepts it (only a real config load catches it). [`target_list`]
+/// therefore combines list-valued refs with `array.concat(...)` rather than
+/// wrapping them in a bare array.
 ///
 /// Some targets have required keys (like `__path__` for file targets),
 /// so those are represented only in the schema and not the rust type.
-///
-/// ```text
-/// targets = [
-///     discovery.relabel.pods.output,
-///     {__path__ = "/var/log/app.log", job = "app"},
-/// ]
-/// ```
 ///
 /// In YAML, a plain string element is a ref and a map element is a literal
 /// target. There is no ambiguity: literal targets are always maps, never strings.
@@ -118,9 +112,54 @@ pub fn logs_receiver_list(receivers: &[LogsReceiver]) -> AttributeValue {
     AttributeValue::Array(receivers.iter().map(AttributeValue::from).collect())
 }
 
-/// Wrap a `targets` list as an `AttributeValue::Array` of ref/literal entries.
+/// Render a `targets` value.
+///
+/// `discovery.*` refs export `list(discovery.Target)`; literal maps are a single
+/// `discovery.Target`. A bare `[ref]` would be `list(list(Target))`, which alloy
+/// rejects at load, so list-valued refs are combined with `array.concat`:
+///   - one ref, no literals  → the ref directly (`targets = discovery.x.targets`)
+///   - only literals         → an array literal (`targets = [{…}, {…}]`)
+///   - multiple refs / mixed → `array.concat(ref, ref, [{…}])`
+///
+/// Order within `targets` is not semantically significant, so refs are grouped
+/// ahead of literals rather than preserving interleaved document order.
 pub fn target_list(targets: &[TargetEntry]) -> AttributeValue {
-    AttributeValue::Array(targets.iter().map(AttributeValue::from).collect())
+    let refs: Vec<AttributeValue> = targets
+        .iter()
+        .filter_map(|t| match t {
+            TargetEntry::Ref(r) => Some(AttributeValue::Expression(Expression::name_to_ref(r))),
+            TargetEntry::Literal(_) => None,
+        })
+        .collect();
+    let literals: Vec<AttributeValue> = targets
+        .iter()
+        .filter_map(|t| match t {
+            TargetEntry::Literal(m) => Some(string_map(m)),
+            TargetEntry::Ref(_) => None,
+        })
+        .collect();
+
+    // Only literal targets (or none): a plain array literal is the correct
+    // `list(Target)`.
+    if refs.is_empty() {
+        return AttributeValue::Array(literals);
+    }
+    // A single list-valued ref: assign it directly — it already is a
+    // `list(Target)`, and wrapping it in `[…]` would break at load.
+    if refs.len() == 1 && literals.is_empty() {
+        return refs.into_iter().next().expect("refs.len() == 1");
+    }
+    // Otherwise concat each list-valued ref, plus one array-literal arg holding
+    // any inline literal targets.
+    let mut arguments = refs;
+    if !literals.is_empty() {
+        arguments.push(AttributeValue::Array(literals));
+    }
+    AttributeValue::Expression(Expression {
+        function: Some("array.concat".into()),
+        arguments,
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
@@ -250,7 +289,37 @@ mod tests {
     }
 
     #[test]
-    fn target_list_mixes_refs_and_literals() {
+    fn target_list_single_ref_is_unwrapped() {
+        // A lone list-valued ref must be assigned directly — NOT wrapped in an
+        // array, which alloy rejects at load ('[]discovery.Target' conversion).
+        let v = target_list(&[TargetEntry::Ref("discovery.relabel.pods.output".into())]);
+        match v {
+            AttributeValue::Expression(e) => {
+                assert_eq!(e.ref_name.as_deref(), Some("discovery.relabel.pods.output"));
+                assert!(e.function.is_none());
+            }
+            other => panic!("expected a bare ref Expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn target_list_literals_only_is_an_array() {
+        let mut m = IndexMap::new();
+        m.insert("__path__".to_string(), "/var/log/app.log".to_string());
+        let v = target_list(&[TargetEntry::Literal(m)]);
+        match v {
+            AttributeValue::Array(items) => {
+                assert_eq!(items.len(), 1);
+                assert!(matches!(&items[0], AttributeValue::Object(_)));
+            }
+            other => panic!("expected Array, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn target_list_mixes_refs_and_literals_via_concat() {
+        // A ref (list-valued) mixed with a literal (single Target) can't be a
+        // bare array; it combines via `array.concat(ref, [literal])`.
         let mut m = IndexMap::new();
         m.insert("__path__".to_string(), "/var/log/app.log".to_string());
         let v = target_list(&[
@@ -258,12 +327,19 @@ mod tests {
             TargetEntry::Literal(m),
         ]);
         match v {
-            AttributeValue::Array(items) => {
-                assert_eq!(items.len(), 2);
-                assert!(matches!(&items[0], AttributeValue::Expression(_)));
-                assert!(matches!(&items[1], AttributeValue::Object(_)));
+            AttributeValue::Expression(e) => {
+                assert_eq!(e.function.as_deref(), Some("array.concat"));
+                assert_eq!(e.arguments.len(), 2);
+                assert!(matches!(&e.arguments[0], AttributeValue::Expression(_)));
+                match &e.arguments[1] {
+                    AttributeValue::Array(lits) => {
+                        assert_eq!(lits.len(), 1);
+                        assert!(matches!(&lits[0], AttributeValue::Object(_)));
+                    }
+                    other => panic!("expected literal array arg, got {other:?}"),
+                }
             }
-            other => panic!("expected Array, got {other:?}"),
+            other => panic!("expected array.concat Expression, got {other:?}"),
         }
     }
 }

@@ -66,9 +66,7 @@ discovery.kubernetes "local_pods" {
 }
 
 discovery.relabel "local_pods" {
-	targets = [
-		discovery.kubernetes.local_pods.targets,
-	]
+	targets = discovery.kubernetes.local_pods.targets
 
 	rule {
 		action = "replace"
