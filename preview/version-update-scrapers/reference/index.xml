@@ -33,6 +33,11 @@ reference/internal/releasing.md.
 &lt;ul&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.7.0..v0.8.0
 &lt;ul&gt;
+&lt;li&gt;Enable alloy pipelines in materialize-monitoring
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/89" rel="external" class="github-source-link"&gt;materialize-monitoring#89&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;Implement Gateway Pipeline for Logs
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/79" rel="external" class="github-source-link"&gt;materialize-monitoring#79&lt;/a&gt;&lt;/li&gt;
