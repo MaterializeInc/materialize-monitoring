@@ -86,8 +86,6 @@ tags:
   kube-state-metrics: false
   # -- Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
   metrics-server: false
-  # -- Per-chart override: enable just the Prometheus Operator CRDs. OR'd with `tags.crds`.
-  prometheus-operator-crds: false
 
 # -- Materialize-specific configuration values.
 # @notationType -- (sectionstart) Materialize Integration
@@ -155,10 +153,46 @@ pipeline:
   # -- (h4) Configuration for log behavior
   # @notationType -- (sectionstart) Log configuration
   logging:
-    # -- Alloy agent (daemonset) tunables.
     agent:
+      # -- Rate limit for alloy agent incoming pod logs.
+      # This is per agent.
       rateLimit: 5000
+      # -- Burst limit for alloy agent incoming pod logs.
       burst: 20000
+
+      destination:
+        loki:
+          # -- alloy-gateway push endpoint URL.
+          url: 'http://mzmon-alloy-gateway.{{ include "mzmon.alloyGateway.namespace" $ }}.svc:3100/loki/api/v1/push'
+          # -- Retry configuration.
+          retries:
+            maxBackoffRetries: 10
+            minBackoffPeriod: 1s
+            maxBackoffPeriod: 5m
+            retryOnHttp429: true
+          # -- Type of authentication to use with the alloy-gateway endpoint.
+          # Use none if no authentication is required.
+          authType: none
+          tls:
+            # -- Whether to enable TLS for alloy-gateway dest.
+            enabled: false
+            # -- Whether to verify the TLS certificate for the alloy-gateway dest.
+            verify: true
+            # -- Certificate Authority (CA) PEM contents for TLS.
+            ca: ""
+            caEnv: AGENT_LOKI_DEST_TLS_CA
+            # -- Client certificate PEM contents for TLS.
+            cert: ""
+            certEnv: AGENT_LOKI_DEST_TLS_CERT
+            # -- Client private key PEM contents for TLS.
+            key: ""
+            keyEnv: AGENT_LOKI_DEST_TLS_KEY
+            # -- Alternative SNI (Server Name Indication) to specify.
+            serverName: ""
+            # -- Minimum TLS version to allow.
+            # Use TLS12 if you need better compat.
+            # TLS11 and TLS10 are not recommended for production.
+            minVersion: TLS13
 
     gateway:
       destination:
@@ -167,7 +201,7 @@ pipeline:
           # By default, we use the in-cluster loki
           enabled: true
           # -- Loki push endpoint URL.
-          url: 'http://loki-gateway.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+          url: 'http://mzmon-loki-distributor.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
           # -- Retry configuration.
           retries:
             maxBackoffRetries: 10
@@ -185,23 +219,23 @@ pipeline:
           # TODO: add a check for this
           basicAuth:
             password: ""
-            passwordEnv: LOKI_DEST_PASSWORD
+            passwordEnv: GATEWAY_LOKI_DEST_PASSWORD
             username: ""
-            usernameEnv: LOKI_DEST_USERNAME
+            usernameEnv: GATEWAY_LOKI_DEST_USERNAME
           # -- Configuration for bearer token when using authType=bearer
           # This is used for bearer type tokens.
           bearer:
             token: ""
-            tokenEnv: LOKI_DEST_BEARER_TOKEN
+            tokenEnv: GATEWAY_LOKI_DEST_BEARER_TOKEN
           # -- Configuration for OAuth2 when using authType=oauth2
           oauth2:
             clientId: ""
-            clientIdEnv: LOKI_DEST_OAUTH2_CLIENT_ID
+            clientIdEnv: GATEWAY_LOKI_DEST_OAUTH2_CLIENT_ID
             clientSecret: ""
-            clientSecretEnv: LOKI_DEST_OAUTH2_CLIENT_SECRET
+            clientSecretEnv: GATEWAY_LOKI_DEST_OAUTH2_CLIENT_SECRET
             scopes: []
             tokenUrl: ""
-            tokenUrlEnv: LOKI_DEST_OAUTH2_TOKEN_URL
+            tokenUrlEnv: GATEWAY_LOKI_DEST_OAUTH2_TOKEN_URL
           tls:
             # -- Whether to enable TLS for the loki destination.
             enabled: false
@@ -209,13 +243,13 @@ pipeline:
             verify: true
             # -- Certificate Authority (CA) PEM contents for TLS.
             ca: ""
-            caEnv: LOKI_DEST_TLS_CA
+            caEnv: GATEWAY_LOKI_DEST_TLS_CA
             # -- Client certificate PEM contents for TLS.
             cert: ""
-            certEnv: LOKI_DEST_TLS_CERT
+            certEnv: GATEWAY_LOKI_DEST_TLS_CERT
             # -- Client private key PEM contents for TLS.
             key: ""
-            keyEnv: LOKI_DEST_TLS_KEY
+            keyEnv: GATEWAY_LOKI_DEST_TLS_KEY
             # -- Alternative SNI (Server Name Indication) to specify.
             serverName: ""
             # -- Minimum TLS version to allow.
@@ -232,21 +266,26 @@ pipeline:
           protocol: grpc
           # -- OTLP push endpoint URL.
           url: ""
-      logTenancy:
-        # -- Default tenant to write logs to.
-        # This is used when tenantMap values is set to `static`.
-        staticTenant: loki
-        tenantLabel: app.kubernetes.io/name
-        # -- Type of tenancy used to write logs.
-        # Use static to write to the staticTenant value (recommended).
-        # Use byEnvironment to separate by the environment name.
-        # Use byNamespace to use the namespace of the source pod as the tenant.
-        # Use byLabel to use a label (tenantLabel) to specifically identify the tenant.
-        # Use none to disable tenancy (only use if loki does not have tenancy).
-        tenantMap:
-          infra: static
-          audit: static
-          environment: static
+    tenancy:
+      # -- Default tenant to write logs to.
+      # This is used when tenantMap values is set to `static`.
+      staticTenant: loki
+      tenantLabel: app.kubernetes.io/name
+      # -- Type of tenancy used to write logs.
+      # Use static to write to the staticTenant value (recommended).
+      # Use byEnvironment to separate by the environment name.
+      # Use byNamespace to use the namespace of the source pod as the tenant.
+      # Use byLabel to use a label (tenantLabel) to specifically identify the tenant.
+      # Use none to disable tenancy (only use if loki does not have tenancy).
+      tenantMap:
+        default: static
+        infra: static
+        audit: static
+        environment: static
+
+  # -- (h4) Configuration for metrics behavior
+  # @notationType -- (sectionstart) Metrics configuration
+  metrics: {}
 
   # -- (h4) Configuration for exporters attached to the Alloy gateway
   # @notationType -- (sectionstart) Exporter configuration
@@ -427,8 +466,13 @@ alloy-agent:
         # add: [DAC_READ_SEARCH]
 
     # -- Resources for the alloy agent containers.
-    # TODO
-    resources: {}
+    resources:
+      limits:
+        cpu: 100m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 200Mi
 
   image:
     registry: ghcr.io
@@ -452,7 +496,9 @@ alloy-agent:
     hostPid: false
 
     nodeSelector: {}
-    tolerations: []
+    tolerations:
+      - key: node.materialize.com/daemonsets-not-scheduled
+        operator: Exists
 
     priorityClassName: ""
 
@@ -463,10 +509,161 @@ alloy-agent:
 
 # -- (h4) Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.
 # @notationType -- (sectionstart) Alloy Gateway
-# @default -- `{}`
-alloy-gateway: {}
-# Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
-# enabled: true
+# @raw
+#
+# Upstream reference:
+#   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
+#   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
+alloy-gateway:
+  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
+  # enabled: true
+  namespaceOverride: null
+  # -- Control for the PodLogs crd.
+  crds:
+    create: false
+
+  global:
+    # -- Security context for the alloy gateway pods.
+    podSecurityContext:
+      runAsUser: 473
+      runAsGroup: 473
+      fsGroup: 473
+
+  alloy:
+    configMap:
+      create: false
+
+      name: mzmon-alloy-gateway
+      key: config.alloy
+
+    clustering:
+      enabled: true
+      name: default
+
+    # -- Stability level of alloy components.
+    stabilityLevel: generally-available
+
+    enableReporting: false
+
+    storagePath: /tmp/alloy
+
+    # -- Extra environment variables to pass to the alloy gateway pod.
+    extraEnv: []
+    # -- Environment variable configmaps/secrets to pass to the alloy gateway pod.
+    envFrom:
+      - configMapRef:
+          name: mzmon-alloy-gateway-env
+      - secretRef:
+          name: mzmon-alloy-gateway-env
+          optional: true
+
+    # -- Ports to expose from alloy-gateway.
+    extraPorts:
+      - name: loki
+        port: 3100
+        targetPort: 3100
+        protocol: TCP
+      - name: otlp-grpc
+        port: 4317
+        targetPort: 4317
+        protocol: TCP
+      - name: otlp-http
+        port: 4318
+        targetPort: 4318
+        protocol: TCP
+      # - name: faro
+      #   port: 12347
+
+    # -- Volume mounts to expose to alloy gateway.
+    mounts:
+      varlog: false
+
+      extra:
+        - name: tmp
+          mountPath: /tmp
+
+    # -- Security context for the alloy gateway containers.
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 473
+      runAsGroup: 473
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+
+    # -- Resources for the alloy gateway containers.
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+  image:
+    registry: ghcr.io
+    repository: materializeinc/mzmon-alloy
+    tag: v1.17.0-mz1
+    pullPolicy: IfNotPresent
+
+  configReloader:
+    enabled: false
+
+  controller:
+    type: deployment
+
+    replicas: null
+
+    extraLabels: {}
+    # -- Extra annotations to apply to the alloy gateway pod.
+    # If you are using pulumi, be sure to add
+    # `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`
+    extraAnnotations: {}
+
+    hostNetwork: false
+    hostPid: false
+
+    nodeSelector: {}
+    tolerations: []
+    topologySpreadConstraints: []
+
+    priorityClassName: ""
+
+    volumes:
+      extra:
+        - name: tmp
+          emptyDir: {}
+
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    autoscaling:
+      horizontal:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 8
+        targetCPUUtilizationPercentage: 50
+        targetMemoryUtilizationPercentage: 60
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          selectPolicy: Max
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 120
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          selectPolicy: Max
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 300
+            - type: Pods
+              value: 2
+              periodSeconds: 300
 
 # -- (h4) Bundled Loki backend for logs.
 # @notationType -- (sectionstart) Loki
@@ -901,6 +1098,9 @@ loki:
   # is a first-class requirement for us.
   lokiCanary:
     enabled: true
+    kind: Deployment
+    lokiurl: mzmon-loki-query-frontend.loki.svc:3100
+    push: false
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos

@@ -11,7 +11,16 @@ metadata:
   annotations:
     {{- include "mzmon.annotations" $ | nindent 4 }}
 data:
+  {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
   AGENT_POD_LOG_RATE_LIMIT: {{ .Values.pipeline.logging.agent.rateLimit | quote }}
   AGENT_POD_LOG_BURST: {{ .Values.pipeline.logging.agent.burst | quote }}
-  {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
+  {{- $lokiDest := .Values.pipeline.logging.agent.destination.loki }}
+  AGENT_LOKI_DEST: {{ tpl $lokiDest.url $ | quote }}
+  {{- if eq $lokiDest.authType "none" }}
+  {{- else }}
+  {{- printf "Unsupported .Values.pipeline.logging.agent.destination.loki.authType %s" $lokiDest.authType | fail }}
+  {{- end }}
+  {{- if $lokiDest.tls.enabled }}
+    {{- fail "TLS is not supported for the alloy-gateway destination yet" }}
+  {{- end }}
 {{- end }}

@@ -227,12 +227,6 @@ the profile preset values files under `examples/`.
       <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.</td>
     </tr>
-    <tr>
-      <td class="helm-value-key">tags<wbr>.prometheus-operator-crds</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Prometheus Operator CRDs. OR'd with `tags.crds`.</td>
-    </tr>
   </tbody>
 </table>
 
@@ -376,15 +370,83 @@ Configuration for log behavior
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.rateLimit</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>5000</code></td>
+      <td class="helm-value-desc">Rate limit for alloy agent incoming pod logs. This is per agent.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.burst</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>20000</code></td>
+      <td class="helm-value-desc">Burst limit for alloy agent incoming pod logs.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://mzmon-alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-desc">alloy-gateway push endpoint URL.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.retries</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "burst": 20000,
-  "rateLimit": 5000
+  "maxBackoffPeriod": "5m",
+  "maxBackoffRetries": 10,
+  "minBackoffPeriod": "1s",
+  "retryOnHttp429": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Alloy agent (daemonset) tunables.</td>
+      <td class="helm-value-desc">Retry configuration.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.authType</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"none"</code></td>
+      <td class="helm-value-desc">Type of authentication to use with the alloy-gateway endpoint. Use none if no authentication is required.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Whether to enable TLS for alloy-gateway dest.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the alloy-gateway dest.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"TLS13"</code></td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
@@ -395,7 +457,7 @@ Configuration for log behavior
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-gateway.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-default"><code>"http://mzmon-loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
       <td class="helm-value-desc">Loki push endpoint URL.</td>
     </tr>
     <tr>
@@ -423,9 +485,9 @@ Configuration for log behavior
       <td class="helm-value-default"><pre>
 {
   "password": "",
-  "passwordEnv": "LOKI_DEST_PASSWORD",
+  "passwordEnv": "GATEWAY_LOKI_DEST_PASSWORD",
   "username": "",
-  "usernameEnv": "LOKI_DEST_USERNAME"
+  "usernameEnv": "GATEWAY_LOKI_DEST_USERNAME"
 }</pre>
 </td>
       <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this</td>
@@ -436,7 +498,7 @@ Configuration for log behavior
       <td class="helm-value-default"><pre>
 {
   "token": "",
-  "tokenEnv": "LOKI_DEST_BEARER_TOKEN"
+  "tokenEnv": "GATEWAY_LOKI_DEST_BEARER_TOKEN"
 }</pre>
 </td>
       <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.</td>
@@ -447,12 +509,12 @@ Configuration for log behavior
       <td class="helm-value-default"><pre>
 {
   "clientId": "",
-  "clientIdEnv": "LOKI_DEST_OAUTH2_CLIENT_ID",
+  "clientIdEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_ID",
   "clientSecret": "",
-  "clientSecretEnv": "LOKI_DEST_OAUTH2_CLIENT_SECRET",
+  "clientSecretEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_SECRET",
   "scopes": [],
   "tokenUrl": "",
-  "tokenUrlEnv": "LOKI_DEST_OAUTH2_TOKEN_URL"
+  "tokenUrlEnv": "GATEWAY_LOKI_DEST_OAUTH2_TOKEN_URL"
 }</pre>
 </td>
       <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
@@ -518,17 +580,18 @@ Configuration for log behavior
       <td class="helm-value-desc">OTLP push endpoint URL.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.logTenancy<wbr>.staticTenant</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.tenancy<wbr>.staticTenant</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"loki"</code></td>
       <td class="helm-value-desc">Default tenant to write logs to. This is used when tenantMap values is set to `static`.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.logTenancy<wbr>.tenantMap</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.tenancy<wbr>.tenantMap</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
   "audit": "static",
+  "default": "static",
   "environment": "static",
   "infra": "static"
 }</pre>
@@ -537,6 +600,10 @@ Configuration for log behavior
     </tr>
   </tbody>
 </table>
+
+#### Metrics configuration
+
+Configuration for metrics behavior
 
 #### Exporter configuration
 
@@ -886,9 +953,18 @@ Upstream reference:
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.resources</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{}</pre>
+{
+  "limits": {
+    "cpu": "100m",
+    "memory": "200Mi"
+  },
+  "requests": {
+    "cpu": "100m",
+    "memory": "200Mi"
+  }
+}</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy agent containers. TODO</td>
+      <td class="helm-value-desc">Resources for the alloy agent containers.</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.extraAnnotations</td>
@@ -904,6 +980,160 @@ Upstream reference:
 #### Alloy Gateway
 
 Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.
+
+Upstream reference:
+  * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
+  * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.crds</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "create": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Control for the PodLogs crd.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.global<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "fsGroup": 473,
+  "runAsGroup": 473,
+  "runAsUser": 473
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the alloy gateway pods.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.stabilityLevel</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"generally-available"</code></td>
+      <td class="helm-value-desc">Stability level of alloy components.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.envFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMapRef": {
+      "name": "mzmon-alloy-gateway-env"
+    }
+  },
+  {
+    "secretRef": {
+      "name": "mzmon-alloy-gateway-env",
+      "optional": true
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment variable configmaps/secrets to pass to the alloy gateway pod.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.extraPorts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "loki",
+    "port": 3100,
+    "protocol": "TCP",
+    "targetPort": 3100
+  },
+  {
+    "name": "otlp-grpc",
+    "port": 4317,
+    "protocol": "TCP",
+    "targetPort": 4317
+  },
+  {
+    "name": "otlp-http",
+    "port": 4318,
+    "protocol": "TCP",
+    "targetPort": 4318
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Ports to expose from alloy-gateway.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.mounts</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "extra": [
+    {
+      "mountPath": "/tmp",
+      "name": "tmp"
+    }
+  ],
+  "varlog": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Volume mounts to expose to alloy gateway.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.securityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true,
+  "runAsGroup": 473,
+  "runAsNonRoot": true,
+  "runAsUser": 473
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the alloy gateway containers.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "cpu": "500m",
+    "memory": "512Mi"
+  },
+  "requests": {
+    "cpu": "500m",
+    "memory": "512Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resources for the alloy gateway containers.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.extraAnnotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`</td>
+    </tr>
+  </tbody>
+</table>
 
 #### Loki
 
@@ -1550,7 +1780,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"mzmon-loki-query-frontend.loki.svc:3100", "push":false}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td>
     </tr>
   </tbody>

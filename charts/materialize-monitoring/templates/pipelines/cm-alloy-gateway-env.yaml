@@ -11,6 +11,7 @@ metadata:
   annotations:
     {{- include "mzmon.annotations" $ | nindent 4 }}
 data:
+  {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
   {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
   {{- if $lokiDest.enabled }}
   GATEWAY_LOKI_DEST: {{ tpl $lokiDest.url $ | quote }}
@@ -39,4 +40,14 @@ data:
     {{- fail "OTLP is not supported for the alloy-gateway destination yet" }}
   {{- end }}
   {{- /* </otlpDest> */}}
+  {{- $tenancy := $.Values.pipeline.logging.tenancy | required "pipeline.logging.tenancy is required" }}
+  GATEWAY_STATIC_TENANT: {{ $tenancy.staticTenant | quote }}
+  {{- if hasPrefix $tenancy.tenantLabel "__meta_kubernetes" }}
+  GATEWAY_TENANT_LABEL: {{ $tenancy.tenantLabel | quote }}
+  {{- else }}
+  GATEWAY_TENANT_LABEL: __meta_kubernetes_pod_label_{{ $tenancy.tenantLabel | replace "/" "_" | replace "." "_" | quote }}
+  {{- end }}
+  GATEWAY_TENANT_MAP_INFRA: {{ $tenancy.tenantMap.infra | quote }}
+  GATEWAY_TENANT_MAP_AUDIT: {{ $tenancy.tenantMap.audit | quote }}
+  GATEWAY_TENANT_MAP_ENVIRONMENT: {{ $tenancy.tenantMap.environment | quote }}
 {{- end }}

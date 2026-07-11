@@ -256,6 +256,9 @@ loki.write "destination" {
       max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
       min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
       retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
+  {{- if eq $.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
+      tenant_id = {{ $.Values.pipeline.logging.tenancy.staticTenant | quote }}
+  {{- end }}
     }
   {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
   {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
