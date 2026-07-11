@@ -26,8 +26,10 @@ charts/*.tgz
 # Local values overrides
 values.local.yaml
 values.*.local.yaml
+/mzmon.yaml
 # Helm secrets / decrypted values
 secrets.dec.*
+.debug/
 
 # ---- Docker ----
 *.iid
@@ -62,6 +64,7 @@ Thumbs.db
 !.env.example
 *.pem
 *.key
+.*.env
 
 # ---- Misc ----
 *.log
@@ -129,3 +132,8 @@ dmypy.json
 .ruff_cache/
 # Jupyter
 .ipynb_checkpoints/
+
+# ---- Proof of concept ----
+packages/ref-*
+/test-schemas/
+/scratch/
