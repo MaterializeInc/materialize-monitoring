@@ -269,6 +269,8 @@ pub enum StageBlock {
     Sampling(StageSamplingBlock),
     #[serde(rename = "stage.cri")]
     Cri(StageCriBlock),
+    #[serde(rename = "stage.tenant")]
+    Tenant(StageTenantBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -289,6 +291,7 @@ impl_to_block_dispatch!(StageBlock {
     StructuredMetadataDrop,
     Sampling,
     Cri,
+    Tenant,
     Raw
 });
 
@@ -810,6 +813,48 @@ impl ToBlock for StageCriBlock {
     }
 }
 
+// ----- stage.tenant -----
+
+/// `stage.tenant` — sets the tenant ID (Loki `X-Scope-OrgID`) for entries.
+///
+/// Set exactly one of `label`, `source`, or `value` (alloy enforces this at
+/// load). Each is `Expressable<String>` so the tenant can be selected
+/// dynamically, e.g. `label = coalesce(sys.env("…"), "<default label>")`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageTenantBlock {
+    /// Name of an existing label whose value is used as the tenant ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Expressable<String>>,
+    /// Name of an extracted-map field whose value is used as the tenant ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Expressable<String>>,
+    /// Static string used as the tenant ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Expressable<String>>,
+}
+
+impl ToBlock for StageTenantBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.label {
+            attributes.insert("label".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.source {
+            attributes.insert("source".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.value {
+            attributes.insert("value".into(), v.to_attribute_value()?);
+        }
+        Ok(Block {
+            component: "stage.tenant".into(),
+            label: None,
+            attributes,
+            ..Default::default()
+        })
+    }
+}
+
 // ============================================================
 // tests
 // ============================================================
@@ -895,13 +940,16 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_renders(
-            pipeline.render(),
+        // A single list-valued ref is assigned directly (not wrapped in `[…]`,
+        // which alloy rejects at load). Byte-checked without the alloy-fmt
+        // oracle: a single-line attr beside the multi-line `forward_to` array
+        // hits the renderer's known alignment divergence (alloy fmt aligns the
+        // `=`); the output is valid alloy, just not aligned.
+        assert_eq!(
+            pipeline.render().unwrap(),
             concat!(
                 "loki.source.file {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.relabel.pods.output,\n",
-                "\t]\n",
+                "\ttargets = discovery.relabel.pods.output\n",
                 "\tforward_to = [\n",
                 "\t\tloki.write.gateway.receiver,\n",
                 "\t]\n",
@@ -910,10 +958,13 @@ mod tests {
         );
     }
 
-    /// one `targets` array legally mixes a discovery-export
-    /// ref with an inline literal target — alloy type-checks `targets` as
-    /// `list(capsule)` and flattens list-valued elements (verified against
-    /// `alloy validate`). Expected output below is `alloy fmt`-canonical.
+    /// One `targets` list may mix a discovery-export ref with an inline literal
+    /// target. A discovery ref is list-valued (`list(discovery.Target)`) while a
+    /// literal is a single `discovery.Target`, so they can't share a bare array
+    /// (alloy would fail to convert the inner list) — they combine via
+    /// `array.concat(ref, [literal])`. Byte-checked without the alloy-fmt oracle:
+    /// the renderer emits the inline literal object multi-line, whereas alloy fmt
+    /// would inline it; the output is valid alloy, just not fmt-canonical.
     #[test]
     fn loki_source_file_mixes_target_refs_and_literals() {
         let pipeline = Pipeline::from_yaml_str(
@@ -928,17 +979,16 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_renders(
-            pipeline.render(),
+        assert_eq!(
+            pipeline.render().unwrap(),
             concat!(
                 "loki.source.file {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.relabel.pods.output,\n",
-                "\t\t{\n",
-                "\t\t\t__path__ = \"/var/log/app.log\",\n",
-                "\t\t\tjob      = \"app\",\n",
-                "\t\t},\n",
-                "\t]\n",
+                "\ttargets = array.concat(discovery.relabel.pods.output, [\n",
+                "\t\t\t{\n",
+                "\t\t\t\t__path__ = \"/var/log/app.log\",\n",
+                "\t\t\t\tjob      = \"app\",\n",
+                "\t\t\t},\n",
+                "\t\t])\n",
                 "\tforward_to = [\n",
                 "\t\tloki.write.gateway.receiver,\n",
                 "\t]\n",
@@ -1136,6 +1186,45 @@ mod tests {
                 "\t]\n",
                 "\n",
                 "\tstage.cri { }\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_tenant_accepts_literal_and_expression_label() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.tenant:
+                        label: __tenant_static
+                    - stage.tenant:
+                        label:
+                          function: coalesce
+                          arguments:
+                            - env: GATEWAY_TENANT_LABEL
+                            - "default_label"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.tenant {\n",
+                "\t\tlabel = \"__tenant_static\"\n",
+                "\t}\n",
+                "\n",
+                "\tstage.tenant {\n",
+                "\t\tlabel = coalesce(sys.env(\"GATEWAY_TENANT_LABEL\"), \"default_label\")\n",
+                "\t}\n",
                 "}\n",
             ),
         );

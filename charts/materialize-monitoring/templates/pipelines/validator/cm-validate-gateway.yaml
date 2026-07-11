@@ -1,0 +1,28 @@
+{{- $fullname := include "mzmon.fullname" . }}
+{{- $gatewayValues := index .Values "alloy-gateway" | required "alloy-gateway values are required" }}
+{{- $pipelineValues := .Values.pipeline }}
+{{- $defaultAnnotations := dict
+  "helm.sh/hook" "pre-install,pre-upgrade"
+  "helm.sh/hook-weight" "0"
+  "helm.sh/hook-delete-policy" "before-hook-creation"
+}}
+{{- if and ( include "mzmon.alloyGateway.enabled" $ ) $pipelineValues.preValidateJob.enabled }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $fullname }}-validate-gateway
+  namespace: {{ include "mzmon.alloyGateway.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-gateway
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+    {{- if $pipelineValues.preValidateJob.annotations }}
+      {{- toYaml $pipelineValues.preValidateJob.annotations | nindent 4 }}
+    {{- else }}
+      {{- toYaml $defaultAnnotations | nindent 4 }}
+    {{- end }}
+data:
+  {{ include "mzmon.alloyGateway.configMap.key" $ }}: |-
+    {{- include "mzmon.alloyGateway.pipeline" $ | nindent 4 }}
+{{- end }}

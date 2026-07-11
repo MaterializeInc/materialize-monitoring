@@ -344,6 +344,12 @@ $defs:
             $ref: "#/$defs/stage.cri"
         required: [stage.cri]
         additionalProperties: false
+      - type: object
+        properties:
+          stage.tenant:
+            $ref: "#/$defs/stage.tenant"
+        required: [stage.tenant]
+        additionalProperties: false
       # Escape hatch: any sub-block can also be a raw block.
       - $ref: "./common/raw.schema.yaml"
 
@@ -705,6 +711,32 @@ $defs:
 
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagecri-block
     type: object
+    additionalProperties: false
+
+  stage.tenant:
+    description: |
+      Sets the tenant ID (Loki `X-Scope-OrgID`) for entries, from a label, an
+      extracted-map field, or a static value.
+
+      Set exactly one of `label`, `source`, or `value`.
+      Each accepts an expression, so the tenant can be selected dynamically
+      (e.g. `label` from `coalesce(sys.env(...), "<default>")`).
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagetenant-block
+    type: object
+    properties:
+      label:
+        description: |
+          Name of an existing label whose value is used as the tenant ID.
+        $ref: "#/$defs/expressionOrString"
+      source:
+        description: |
+          Name of an extracted-map field whose value is used as the tenant ID.
+        $ref: "#/$defs/expressionOrString"
+      value:
+        description: |
+          Static string used as the tenant ID.
+        $ref: "#/$defs/expressionOrString"
     additionalProperties: false
 
   # ============================================================

@@ -72,6 +72,7 @@ dependencies:
     repository: https://grafana.github.io/helm-charts
     condition: alloy-agent.enabled
     tags:
+      - default
       - pipeline
       - alloy-agent
   - name: alloy
@@ -80,6 +81,7 @@ dependencies:
     repository: https://grafana.github.io/helm-charts
     condition: alloy-gateway.enabled
     tags:
+      - default
       - pipeline
       - alloy-gateway
   - name: loki
@@ -87,6 +89,7 @@ dependencies:
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: loki.enabled
     tags:
+      - default
       - bundled-backends
       - loki
   - name: thanos
@@ -94,6 +97,7 @@ dependencies:
     repository: oci://ghcr.io/thanos-community/helm-charts
     condition: thanos.enabled
     tags:
+      - default
       - bundled-backends
       - thanos
   - name: grafana
@@ -101,20 +105,23 @@ dependencies:
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:
-      - bundled-backends
+      - default
+      - managed-grafana
       - grafana-standalone
   - name: grafana-operator
     version: "^5.22.2"
     repository: oci://ghcr.io/grafana/helm-charts
     condition: grafana-operator.enabled
     tags:
-      - bundled-backends
+      - default
+      - managed-grafana
       - grafana-operator
   - name: alertmanager
     version: "^1.25.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: alertmanager.enabled
     tags:
+      - default
       - bundled-backends
       - alertmanager
   - name: kube-state-metrics

@@ -15,7 +15,7 @@
 
 use crate::alloy::ast;
 use crate::alloy::ast::{AttributeValue, Block, Identifier, ToBlock, impl_to_block_dispatch};
-use crate::alloy::components::capsule::TargetEntry;
+use crate::alloy::components::capsule::{TargetEntry, target_list};
 use crate::alloy::components::relabel::RelabelSubBlock;
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
@@ -189,13 +189,10 @@ pub struct DiscoveryRelabelBlock {
 impl ToBlock for DiscoveryRelabelBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        // `targets` is a list of refs (e.g. `discovery.kubernetes.pods.targets`),
-        // not quoted strings — wrap each as an Expression::ref_name so the
-        // renderer emits a bare identifier.
-        attributes.insert(
-            "targets".into(),
-            AttributeValue::Array(self.targets.iter().map(AttributeValue::from).collect()),
-        );
+        // `targets` refs (e.g. `discovery.kubernetes.pods.targets`) are
+        // list-valued; `target_list` emits bare identifiers and combines them
+        // with `array.concat` rather than a bare `[…]` (which alloy rejects).
+        attributes.insert("targets".into(), target_list(&self.targets));
 
         let blocks = self
             .blocks
@@ -269,9 +266,11 @@ mod tests {
     }
 
     #[test]
-    fn discovery_relabel_emits_targets_as_bare_refs() {
-        // Verifies the critical property: `targets` is an array of refs
-        // (bare identifiers, NOT quoted strings).
+    fn discovery_relabel_emits_single_target_as_bare_ref() {
+        // Verifies two critical properties: `targets` is a bare ref (NOT a
+        // quoted string), and a single list-valued ref is assigned directly
+        // rather than wrapped in `[…]` (wrapping fails at load with
+        // "conversion from '[]discovery.Target' is not supported").
         let pipeline = Pipeline::from_yaml_str(
             r#"
             blocks:
@@ -285,9 +284,7 @@ mod tests {
             pipeline.render(),
             concat!(
                 "discovery.relabel \"k8s_filtered\" {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.kubernetes.pods.targets,\n",
-                "\t]\n",
+                "\ttargets = discovery.kubernetes.pods.targets\n",
                 "}\n",
             ),
         );
@@ -315,16 +312,19 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_renders(
-            pipeline.render(),
+        // A ref (list-valued) mixed with an inline literal combines via
+        // `array.concat(ref, [literal])`. Byte-checked without the alloy-fmt
+        // oracle — the renderer emits the inline literal object multi-line
+        // (valid alloy, not fmt-canonical).
+        assert_eq!(
+            pipeline.render().unwrap(),
             concat!(
                 "discovery.relabel \"mixed\" {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.kubernetes.pods.targets,\n",
-                "\t\t{\n",
-                "\t\t\tjob = \"static\",\n",
-                "\t\t},\n",
-                "\t]\n",
+                "\ttargets = array.concat(discovery.kubernetes.pods.targets, [\n",
+                "\t\t\t{\n",
+                "\t\t\t\tjob = \"static\",\n",
+                "\t\t\t},\n",
+                "\t\t])\n",
                 "\n",
                 "\trule {\n",
                 "\t\taction = \"keep\"\n",
@@ -359,9 +359,7 @@ mod tests {
             pipeline.render(),
             concat!(
                 "discovery.relabel {\n",
-                "\ttargets = [\n",
-                "\t\tdiscovery.kubernetes.pods.targets,\n",
-                "\t]\n",
+                "\ttargets = discovery.kubernetes.pods.targets\n",
                 "\n",
                 "\trule {\n",
                 "\t\taction = \"keep\"\n",

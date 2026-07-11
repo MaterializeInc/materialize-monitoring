@@ -123,6 +123,20 @@ blocks:
         - stage.label_drop:
             values: ["instance"]
 
+        # --- Tenant configs ----------------------------------------
+        - stage.static_labels:
+            values:
+              __tenant_type:
+                function: coalesce
+                arguments:
+                  - env: GATEWAY_TENANT_MAP_INFRA
+                  - "static"
+              __tenant_static:
+                function: coalesce
+                arguments:
+                  - env: GATEWAY_STATIC_TENANT
+                  - "loki"
+
         # --- level/cluster defaults -----------------------------------------
         - stage.template:
             source: level
@@ -553,6 +567,13 @@ blocks:
               - stage.labels:
                   values:
                     environment_id: environment_id
+              - stage.static_labels:
+                  values:
+                    __tenant_type:
+                      function: coalesce
+                      arguments:
+                        - env: GATEWAY_TENANT_MAP_ENVIRONMENT
+                        - "static"
               - stage.match:
                   selector: '{container="environmentd"}'
                   blocks:
@@ -655,6 +676,32 @@ blocks:
         - stage.labels:
             values:
               level: level
+
+        # --- Set tenancy -------------------------------------------------
+        - stage.match:
+            selector: '{__tenant_type="static"}'
+            blocks:
+              - stage.tenant:
+                  label: __tenant_static
+        - stage.match:
+            selector: '{__tenant_type="byEnvironment"}'
+            blocks:
+              - stage.tenant:
+                  label: environment_id
+        - stage.match:
+            selector: '{__tenant_type="byNamespace"}'
+            blocks:
+              - stage.tenant:
+                  label: namespace
+        - stage.match:
+            selector: '{__tenant_type="byLabel"}'
+            blocks:
+              - stage.tenant:
+                  label:
+                    function: coalesce
+                    arguments:
+                      - env: GATEWAY_TENANT_LABEL
+                      - "__meta_kubernetes_pod_label_app_kubernetes_io_name"
 
         # --- per-level rate limits ------------------------------------------
         - stage.match:

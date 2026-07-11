@@ -1,0 +1,26 @@
+{{- if ( include "mzmon.alloyAgent.enabled" $ ) }}
+{{- $fullname := printf "%s-%s" ( include "mzmon.fullname" $ ) "alloy-agent-env" }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "mzmon.alloyAgent.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: alloy-agent
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
+  AGENT_POD_LOG_RATE_LIMIT: {{ .Values.pipeline.logging.agent.rateLimit | quote }}
+  AGENT_POD_LOG_BURST: {{ .Values.pipeline.logging.agent.burst | quote }}
+  {{- $lokiDest := .Values.pipeline.logging.agent.destination.loki }}
+  AGENT_LOKI_DEST: {{ tpl $lokiDest.url $ | quote }}
+  {{- if eq $lokiDest.authType "none" }}
+  {{- else }}
+  {{- printf "Unsupported .Values.pipeline.logging.agent.destination.loki.authType %s" $lokiDest.authType | fail }}
+  {{- end }}
+  {{- if $lokiDest.tls.enabled }}
+    {{- fail "TLS is not supported for the alloy-gateway destination yet" }}
+  {{- end }}
+{{- end }}

@@ -108,6 +108,13 @@ loki.process "input_processor" {
 		]
 	}
 
+	stage.static_labels {
+		values = {
+			__tenant_type   = coalesce(sys.env("GATEWAY_TENANT_MAP_INFRA"), "static"),
+			__tenant_static = coalesce(sys.env("GATEWAY_STATIC_TENANT"), "loki"),
+		}
+	}
+
 	stage.template {
 		source   = "level"
 		template = "{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}"
@@ -1039,6 +1046,12 @@ loki.process "input_processor" {
 			}
 		}
 
+		stage.static_labels {
+			values = {
+				__tenant_type = coalesce(sys.env("GATEWAY_TENANT_MAP_ENVIRONMENT"), "static"),
+			}
+		}
+
 		stage.match {
 			selector = "{container=\"environmentd\"}"
 
@@ -1418,6 +1431,38 @@ loki.process "input_processor" {
 	stage.labels {
 		values = {
 			level = "level",
+		}
+	}
+
+	stage.match {
+		selector = "{__tenant_type=\"static\"}"
+
+		stage.tenant {
+			label = "__tenant_static"
+		}
+	}
+
+	stage.match {
+		selector = "{__tenant_type=\"byEnvironment\"}"
+
+		stage.tenant {
+			label = "environment_id"
+		}
+	}
+
+	stage.match {
+		selector = "{__tenant_type=\"byNamespace\"}"
+
+		stage.tenant {
+			label = "namespace"
+		}
+	}
+
+	stage.match {
+		selector = "{__tenant_type=\"byLabel\"}"
+
+		stage.tenant {
+			label = coalesce(sys.env("GATEWAY_TENANT_LABEL"), "__meta_kubernetes_pod_label_app_kubernetes_io_name")
 		}
 	}
 
