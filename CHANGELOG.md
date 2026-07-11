@@ -8,9 +8,20 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## Pipelines v0.5.0 (Unreleased)
+## Pipelines v0.6.0 (Unreleased)
 
 _Changes Pending_
+
+## Pipelines v0.5.0
+
+* Enable alloy pipelines in materialize-monitoring
+    * [materialize-monitoring#89](https://github.com/MaterializeInc/materialize-monitoring/pull/89)
+* Split loki.write out of main processing pipeline
+    * [materialize-monitoring#81](https://github.com/MaterializeInc/materialize-monitoring/pull/81)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.7.0..v0.8.0
 
 ## Prometheus Scrapers v0.3.0 (Unreleased)
 
