@@ -26,10 +26,27 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="prometheus-scrapers-v040-unreleased"&gt;Prometheus Scrapers v0.4.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="pipelines-v050-unreleased"&gt;Pipelines v0.5.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v050-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="pipelines-v060-unreleased"&gt;Pipelines v0.6.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v060-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="prometheus-scrapers-v030"&gt;Prometheus Scrapers v0.3.0&lt;a class="anchor" href="#prometheus-scrapers-v030"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="pipelines-v050"&gt;Pipelines v0.5.0&lt;a class="anchor" href="#pipelines-v050"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Enable alloy pipelines in materialize-monitoring
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/89" rel="external" class="github-source-link"&gt;materialize-monitoring#89&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Split loki.write out of main processing pipeline
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/81" rel="external" class="github-source-link"&gt;materialize-monitoring#81&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Included mzmon-lib (shared library) @ v0.7.0..v0.8.0&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="prometheus-scrapers-v030"&gt;Prometheus Scrapers v0.3.0&lt;a class="anchor" href="#prometheus-scrapers-v030"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h3 id="dependencies-1"&gt;Dependencies&lt;a class="anchor" href="#dependencies-1"&gt;#&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.7.0..v0.8.0
 &lt;ul&gt;
