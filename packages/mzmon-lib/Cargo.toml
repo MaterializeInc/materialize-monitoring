@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 indexmap = { version = "2.14.0", features = ["serde"] }
 itertools = "0.15.0"
-jsonschema = { version = "0.46.5", default-features = false }
+jsonschema = { version = "0.47.0", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }
 # preserve_order keeps map key order from the source YAML through the
 # serde_json::Value intermediate (Value uses indexmap instead of BTreeMap).
