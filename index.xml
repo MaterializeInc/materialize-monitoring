@@ -354,58 +354,11 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v050-unreleased"&gt;materialize-monitoring Helm Chart v0.5.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v050-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="pipelines-v070-unreleased"&gt;Pipelines v0.7.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="mzmon-lib-shared-library-v090-unreleased"&gt;mzmon-lib (shared library) v0.9.0 (Unreleased)&lt;a class="anchor" href="#mzmon-lib-shared-library-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="pipelines-v060"&gt;Pipelines v0.6.0&lt;a class="anchor" href="#pipelines-v060"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;Implement alloy metrics pipelines
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/96" rel="external" class="github-source-link"&gt;materialize-monitoring#96&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
-&lt;ul&gt;
-&lt;li&gt;Release mzmon-lib (shared library) v0.8.0
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/75" rel="external" class="github-source-link"&gt;materialize-monitoring#75&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Update Rust crate jsonschema to 0.47.0
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/98" rel="external" class="github-source-link"&gt;materialize-monitoring#98&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Update Rust crate jsonschema to v0.46.10
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/91" rel="external" class="github-source-link"&gt;materialize-monitoring#91&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="pipelines-v050"&gt;Pipelines v0.5.0&lt;a class="anchor" href="#pipelines-v050"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;Enable alloy pipelines in materialize-monitoring
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/89" rel="external" class="github-source-link"&gt;materialize-monitoring#89&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Split loki.write out of main processing pipeline
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/81" rel="external" class="github-source-link"&gt;materialize-monitoring#81&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="dependencies-1"&gt;Dependencies&lt;a class="anchor" href="#dependencies-1"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.7.0..v0.8.0&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="prometheus-scrapers-v030-unreleased"&gt;Prometheus Scrapers v0.3.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Thu, 27 Jun 2024 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
