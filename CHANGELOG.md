@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.9.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.6.0 (Unreleased)
 
 _Changes Pending_
@@ -31,9 +35,22 @@ _Changes Pending_
 
 _Changes Pending_
 
-## mzmon-lib (shared library) v0.8.0 (Unreleased)
+## mzmon-lib (shared library) v0.8.0
 
-_Changes Pending_
+* Update Rust crate jsonschema to 0.47.0
+    * [materialize-monitoring#98](https://github.com/MaterializeInc/materialize-monitoring/pull/98)
+* Implement alloy metrics pipelines
+    * [materialize-monitoring#96](https://github.com/MaterializeInc/materialize-monitoring/pull/96)
+* Update Rust crate jsonschema to v0.46.10
+    * [materialize-monitoring#91](https://github.com/MaterializeInc/materialize-monitoring/pull/91)
+* Enable alloy pipelines in materialize-monitoring
+    * [materialize-monitoring#89](https://github.com/MaterializeInc/materialize-monitoring/pull/89)
+* Implement Gateway Pipeline for Logs
+    * [materialize-monitoring#79](https://github.com/MaterializeInc/materialize-monitoring/pull/79)
+* Update dependency grafana-foundation-sdk to v0.0.18
+    * [materialize-monitoring#51](https://github.com/MaterializeInc/materialize-monitoring/pull/51)
+* Update Rust crate reqwest to 0.13
+    * [materialize-monitoring#61](https://github.com/MaterializeInc/materialize-monitoring/pull/61)
 
 ## materialize-monitoring Helm Chart v0.4.0 (Unreleased)
 
