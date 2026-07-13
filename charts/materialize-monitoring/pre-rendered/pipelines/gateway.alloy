@@ -60,6 +60,16 @@ otelcol.receiver.otlp "gateway" {
 	}
 }
 
+prometheus.receive_http "gateway" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+
+	http {
+		listen_port = 9090
+	}
+}
+
 loki.source.kubernetes_events "k8s_events" {
 	forward_to = [
 		loki.process.input_processor.receiver,
@@ -76,8 +86,40 @@ prometheus.operator.podmonitors "default" {
 	}
 
 	scrape {
-		default_scrape_interval = "30s"
-		default_scrape_timeout  = "10s"
+		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
+		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed# Coalesce app identity into a standard `app` label."
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_k8s_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+		regex = "(.+)"
 	}
 }
 
@@ -91,8 +133,40 @@ prometheus.operator.servicemonitors "default" {
 	}
 
 	scrape {
-		default_scrape_interval = "30s"
-		default_scrape_timeout  = "10s"
+		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
+		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed# Coalesce app identity into a standard `app` label."
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_k8s_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+		regex = "(.+)"
 	}
 }
 
@@ -103,12 +177,6 @@ otelcol.exporter.loki "bridge" {
 }
 
 otelcol.exporter.prometheus "bridge" {
-	forward_to = [
-		prometheus.relabel.input_processor.receiver,
-	]
-}
-
-prometheus.receive_http "gateway" {
 	forward_to = [
 		prometheus.relabel.input_processor.receiver,
 	]
@@ -1598,6 +1666,12 @@ loki.process "sample_debug" {
 		source              = "app"
 		value               = "alloy"
 		drop_counter_reason = "skip self"
+	}
+
+	stage.drop {
+		source              = "app"
+		value               = "loki"
+		drop_counter_reason = "skip loki"
 	}
 
 	stage.sampling {

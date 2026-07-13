@@ -6,9 +6,9 @@ Get loki namespace.
 Usage:
   {{- include "mzmon.loki.namespace" $ }}
 */}}
-{{- define "mzmon.loki.namespace" -}}
-  {{- $ns := $.Values.loki.namespaceOverride | default ( include "mzmon.namespace" $ ) -}}
-  {{- printf "%s" $ns -}}
+{{- define "mzmon.loki.namespace" }}
+  {{- $ns := $.Values.loki.namespaceOverride | default ( include "mzmon.namespace" $ ) }}
+  {{- printf "%s" $ns }}
 {{- end }}
 
 {{- /*

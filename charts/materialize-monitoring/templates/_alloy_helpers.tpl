@@ -228,14 +228,27 @@ Usage:
 {{- define "mzmon.alloyGateway.pipeline.destination" }}
   {{- $pipelineValues := $.Values.pipeline }}
   {{- $logForward := list }}
+  {{- $metricsForward := list }}
   {{- if $pipelineValues.logging.gateway.destination.loki.enabled }}
     {{- $logForward = append $logForward "loki.write.destination.receiver" }}
     {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
   {{- end }}
+  {{- if $pipelineValues.metrics.gateway.destination.prometheusRemoteWrite.enabled }}
+    {{- $metricsForward = append $metricsForward "prometheus.remote_write.destination.receiver" }}
+    {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ }}
+  {{- end }}
 loki.process "egress" {
 	  forward_to = [
   {{- range $logForward }}
-      {{ . }},
+        {{ . }},
+  {{- end }}
+    ]
+}
+
+prometheus.relabel "egress" {
+	  forward_to = [
+  {{- range $metricsForward }}
+        {{ . }},
   {{- end }}
     ]
 }
@@ -251,30 +264,61 @@ Usage:
   {{- $gatewayLogValues := $.Values.pipeline.logging.gateway }}
 loki.write "destination" {
     endpoint {
-      url = sys.env("GATEWAY_LOKI_DEST")
-      max_backoff_period = {{ $gatewayLogValues.destination.loki.retries.maxBackoffPeriod | quote }}
-      max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
-      min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
-      retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
+        url = sys.env("GATEWAY_LOKI_DEST")
+        max_backoff_period = {{ $gatewayLogValues.destination.loki.retries.maxBackoffPeriod | quote }}
+        max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
+        min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
+        retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
   {{- if eq $.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
-      tenant_id = {{ $.Values.pipeline.logging.tenancy.staticTenant | quote }}
+        tenant_id = {{ $.Values.pipeline.logging.tenancy.staticTenant | quote }}
   {{- end }}
     }
   {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
   {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
 
     basic_auth {
-      username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
-      password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+        username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
+        password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
     }
   {{- else if eq $gatewayLogValues.destination.loki.authType "bearer" }}
 
     authorization {
-      type = "Bearer"
-      credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+        type = "Bearer"
+        credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
     }
   {{- else }}
     {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
+  {{- end }}
+}
+{{- end }}
+
+{{/*
+Generate the alloy-gateway prometheus.remote_write blocks.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ | nindent 4 }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" }}
+  {{- $gatewayMetricsValues := $.Values.pipeline.metrics.gateway }}
+prometheus.remote_write "destination" {
+    endpoint {
+        url = sys.env("GATEWAY_PROM_DEST")
+    }
+  {{- if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "none" }}
+  {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "basicAuth" }}
+
+    basic_auth {
+        username = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
+        password = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+    }
+  {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "bearer" }}
+
+    authorization {
+        type = "Bearer"
+        credentials = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+    }
+  {{- else }}
+    {{- printf "Unsupported authType: %s" $gatewayMetricsValues.destination.prometheusRemoteWrite.authType | fail }}
   {{- end }}
 }
 {{- end }}

@@ -63,7 +63,7 @@ blocks:
                     - env: ALLOY_LOKI_PORT
                     - "3100"
 
-  # OTLP receiver for logs, bridged into the loki pipeline via the exporter below.
+  # OTLP receiver for logs/metrics, bridged into the loki/prometheus pipelines via the exporters below.
   # grpc defaults to :4317, http to :4318.
   - raw:
       component: otelcol.receiver.otlp
@@ -77,6 +77,14 @@ blocks:
               - ref: otelcol.exporter.loki.bridge.input
             metrics:
               - ref: otelcol.exporter.prometheus.bridge.input
+
+  - prometheus.receive_http:
+      label: gateway
+      forward_to:
+        - "prometheus.relabel.input_processor.receiver"
+      blocks:
+        - http:
+            listen_port: 9090
 
   # --- collectors ---------------------------------------------------
 
@@ -92,23 +100,46 @@ blocks:
       label: default
       forward_to:
         - prometheus.relabel.input_processor.receiver
-      blocks:
+      blocks: &operatorBlocks
         - clustering:
             enabled: true
         - scrape:
-            default_scrape_interval: "30s"
-            default_scrape_timeout: "10s"
+            default_scrape_interval:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_SCRAPE_INTERVAL
+                - "30s"
+            default_scrape_timeout:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_SCRAPE_TIMEOUT
+                - "10s"
+        - rule:
+            # defensively ignore up{} metrics from pods that are not running
+            action: drop
+            source_labels:
+              - __meta_kubernetes_pod_phase
+            regex: Pending|Succeeded|Failed# Coalesce app identity into a standard `app` label.
+        # Standardize on a single app label
+        # Priority: app.kubernetes.io/name > app > k8s_app  (last non-empty wins).
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_k8s_app"]
+            regex: "(.+)"
+            target_label: app
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_app"]
+            regex: "(.+)"
+            target_label: app
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            regex: "(.+)"
+            target_label: app
 
   - prometheus.operator.servicemonitors:
       label: default
       forward_to:
         - prometheus.relabel.input_processor.receiver
-      blocks:
-        - clustering:
-            enabled: true
-        - scrape:
-            default_scrape_interval: "30s"
-            default_scrape_timeout: "10s"
+      blocks: *operatorBlocks
 
   # --- bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
@@ -127,11 +158,6 @@ blocks:
       attributes:
         forward_to:
           - ref: prometheus.relabel.input_processor.receiver
-
-  - prometheus.receive_http:
-      label: gateway
-      forward_to:
-        - "prometheus.relabel.input_processor.receiver"
 
   # --- main processing pipeline -----------
 
@@ -803,6 +829,12 @@ blocks:
       label: input_processor
       forward_to:
         - prometheus.relabel.egress.receiver
+      # Central metric seam before egress. Intentionally rule-free: we assume
+      # sources don't push junk labels in the first place. Per-target label
+      # hygiene lives in the PodMonitor/ServiceMonitor CRs (curated
+      # podTargetLabels); node-label curation lives in the cAdvisor ScrapeConfig
+      # allowlist (scrapeconfig-cadvisor.yaml). Add genuinely cross-cutting rules
+      # here as they come up (cost governance, dashboard-contract normalization).
 
   # --- local sampled debug tap ------------------------------------------------
 
@@ -815,6 +847,10 @@ blocks:
             source: app
             value: alloy
             drop_counter_reason: "skip self"
+        - stage.drop:
+            source: app
+            value: loki
+            drop_counter_reason: "skip loki"
         - stage.sampling:
             rate: 0.01
             drop_counter_reason: sample_debug

@@ -285,7 +285,74 @@ pipeline:
 
   # -- (h4) Configuration for metrics behavior
   # @notationType -- (sectionstart) Metrics configuration
-  metrics: {}
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          # -- Enable writing to a Prometheus remote write destination.
+          # We default to in-cluster Thanos.
+          enabled: true
+
+          # -- Prometheus remote write endpoint URL.
+          url: 'http://thanos-receive.{{ include "mzmon.thanos.namespace" $ }}.svc:10908/api/v1/receive'
+
+          # -- Type of authentication to use with the loki endpoint.
+          # Use none if no authentication is required.
+          # Use basicAuth for username/password.
+          # Use bearer for bearer token.
+          # Use oauth2 for OAuth2 client credentials.
+          # Use sigv4 for AWS SigV4 signing (For AMP).
+          authType: none
+          # -- Configuration for auth when using authType=basicAuth
+          basicAuth:
+            password: ""
+            passwordEnv: GATEWAY_PROMETHEUS_DEST_PASSWORD
+            username: ""
+            usernameEnv: GATEWAY_PROMETHEUS_DEST_USERNAME
+          # -- Configuration for bearer token when using authType=bearer
+          # This is used for bearer type tokens.
+          bearer:
+            token: ""
+            tokenEnv: GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN
+          # -- Configuration for OAuth2 when using authType=oauth2
+          oauth2:
+            clientId: ""
+            clientIdEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID
+            clientSecret: ""
+            clientSecretEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_SECRET
+            scopes: []
+            tokenUrl: ""
+            tokenUrlEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL
+          tls:
+            # -- Whether to enable TLS for the prometheus destination.
+            enabled: false
+            # -- Whether to verify the TLS certificate for the prometheus destination.
+            verify: true
+            # -- Certificate Authority (CA) PEM contents for TLS.
+            ca: ""
+            caEnv: GATEWAY_PROMETHEUS_DEST_TLS_CA
+            # -- Client certificate PEM contents for TLS.
+            cert: ""
+            certEnv: GATEWAY_PROMETHEUS_DEST_TLS_CERT
+            # -- Client private key PEM contents for TLS.
+            key: ""
+            keyEnv: GATEWAY_PROMETHEUS_DEST_TLS_KEY
+            # -- Alternative SNI (Server Name Indication) to specify.
+            serverName: ""
+            # -- Minimum TLS version to allow.
+            # Use TLS12 if you need better compat.
+            # TLS11 and TLS10 are not recommended for production.
+            minVersion: TLS13
+        otlp:
+          # -- Enable writing to an OTLP destination.
+          # By default, we do not use the OTLP destination.
+          enabled: false
+          # -- Protocol to use for OTLP.
+          # Use grpc for gRPC protocol.
+          # Use http for HTTP protocol.
+          protocol: grpc
+          # -- OTLP push endpoint URL.
+          url: ""
 
 # -- Configuration for dashboards, rules, and alerts
 # @notationType -- (sectionstart) Monitoring configurations
@@ -490,6 +557,9 @@ alloy-agent:
         - name: tmp
           emptyDir: {}
 
+  serviceMonitor:
+    enabled: true
+
 # -- (h4) Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.
 # @notationType -- (sectionstart) Alloy Gateway
 # @raw
@@ -557,6 +627,10 @@ alloy-gateway:
       - name: otlp-http
         port: 4318
         targetPort: 4318
+        protocol: TCP
+      - name: prom
+        port: 9090
+        targetPort: 9090
         protocol: TCP
       # - name: faro
       #   port: 12347
@@ -652,6 +726,9 @@ alloy-gateway:
             - type: Pods
               value: 2
               periodSeconds: 300
+
+  serviceMonitor:
+    enabled: true
 
 # -- (h4) Bundled Loki backend for logs.
 # @notationType -- (sectionstart) Loki
@@ -1084,6 +1161,12 @@ loki:
   chunksCache:
     allocatedMemory: 2048
 
+  monitoring:
+    serviceMonitor:
+      # -- Enable a ServiceMonitor for the loki microservices.
+      enabled: true
+      jobPrefix: loki/
+
   # -- (h5) End-to-end write→read canary for meta-monitoring.
   # On by default upstream; surfaced here because self-monitoring the log store
   # is a first-class requirement for us.
@@ -1163,6 +1246,9 @@ grafana-operator:
     # To install crds during upgrades, this must be false
     immutable: false
 
+  serviceMonitor:
+    enabled: true
+
 # -- (h4) Bundled Grafana for dashboard rendering.
 # @notationType -- (sectionstart) Grafana Instance
 # @raw
@@ -1176,6 +1262,9 @@ grafana:
 
   grafana.ini: {}
 
+  serviceMonitor:
+    enabled: true
+
 # -- (h4) Bundled Alertmanager for routing alerts emitted by the rule packages.
 # @notationType -- (sectionstart) Alertmanager
 alertmanager: {}
@@ -1184,14 +1273,31 @@ alertmanager: {}
 
 # -- (h4) kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.
 # @notationType -- (sectionstart) Kube State Metrics
-kube-state-metrics: {}
-# Circuit breaker (precedence over `tags.cluster-metrics` and `tags.kube-state-metrics`):
-# enabled: true
+# @raw
+#
+# Upstream reference:
+#    * https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml
+kube-state-metrics:
+  # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.kube-state-metrics`):
+  # enabled: true
+  prometheus:
+    monitor:
+      enabled: true
 
 # -- (h4) metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
 # @notationType -- (sectionstart) Metrics Server
+# @raw
+#
+# Upstream reference:
+#    * https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml
 metrics-server:
   # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.metrics-server`):
   # enabled: true
   # -- Number of replicas for metrics-server.
   replicas: 1
+
+  metrics:
+    enabled: true
+
+  serviceMonitor:
+    enabled: true

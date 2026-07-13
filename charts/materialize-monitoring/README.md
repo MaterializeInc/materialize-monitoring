@@ -610,6 +610,131 @@ Configuration for log behavior
 
 Configuration for metrics behavior
 
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable writing to a Prometheus remote write destination. We default to in-cluster Thanos.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://thanos-receive.{{ include \"mzmon.thanos.namespace\" $ }}.svc:10908/api/v1/receive"</code></td>
+      <td class="helm-value-desc">Prometheus remote write endpoint URL.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.authType</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"none"</code></td>
+      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials. Use sigv4 for AWS SigV4 signing (For AMP).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.basicAuth</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "password": "",
+  "passwordEnv": "GATEWAY_PROMETHEUS_DEST_PASSWORD",
+  "username": "",
+  "usernameEnv": "GATEWAY_PROMETHEUS_DEST_USERNAME"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.bearer</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "token": "",
+  "tokenEnv": "GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.oauth2</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "clientId": "",
+  "clientIdEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID",
+  "clientSecret": "",
+  "clientSecretEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_SECRET",
+  "scopes": [],
+  "tokenUrl": "",
+  "tokenUrlEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Whether to enable TLS for the prometheus destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.verify</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the prometheus destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.ca</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.cert</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.key</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.minVersion</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"TLS13"</code></td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grpc"</code></td>
+      <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">OTLP push endpoint URL.</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Monitoring configurations
 
 Configuration for dashboards, rules, and alerts
@@ -1039,6 +1164,12 @@ Upstream reference:
     "port": 4318,
     "protocol": "TCP",
     "targetPort": 4318
+  },
+  {
+    "name": "prom",
+    "port": 9090,
+    "protocol": "TCP",
+    "targetPort": 9090
   }
 ]</pre>
 </td>
@@ -1756,6 +1887,12 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
       <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td>
@@ -1896,9 +2033,15 @@ Bundled Alertmanager for routing alerts emitted by the rule packages.
 
 kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.
 
+Upstream reference:
+   * https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml
+
 #### Metrics Server
 
 metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
+
+Upstream reference:
+   * https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml
 
 <table class="helm-values">
   <thead>
