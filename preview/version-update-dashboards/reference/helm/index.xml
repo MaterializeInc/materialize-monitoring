@@ -18,5 +18,5 @@ metrics surface.&lt;/p&gt;
 &lt;h2 id="requirements"&gt;Requirements&lt;a class="anchor" href="#requirements"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;Kubernetes: &lt;code&gt;&amp;gt;=1.27.0-0&lt;/code&gt;&lt;/p&gt;
 &lt;h3 id="storage-requirements"&gt;Storage Requirements&lt;a class="anchor" href="#storage-requirements"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;p&gt;Using Thanos or Loki (in the default bundled-stack profile) requires
+&lt;p&gt;Using Thanos or Loki (both enabled by default) requires
 object storage (such as an AWS S3 bucket) for long-term storage.&lt;/p&gt;</description></item></channel></rss>
