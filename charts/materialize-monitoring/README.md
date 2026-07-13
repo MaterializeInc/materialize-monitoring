@@ -389,7 +389,7 @@ Configuration for log behavior
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://mzmon-alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-default"><code>"http://alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
       <td class="helm-value-desc">alloy-gateway push endpoint URL.</td>
     </tr>
     <tr>
@@ -462,7 +462,7 @@ Configuration for log behavior
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://mzmon-loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-default"><code>"http://loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
       <td class="helm-value-desc">Loki push endpoint URL.</td>
     </tr>
     <tr>
@@ -609,63 +609,6 @@ Configuration for log behavior
 #### Metrics configuration
 
 Configuration for metrics behavior
-
-#### Exporter configuration
-
-Configuration for exporters attached to the Alloy gateway
-
-<table class="helm-values">
-  <thead>
-    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-  </thead>
-  <tbody>    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable Prometheus remote_write exporter on the gateway.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.endpoint</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Prometheus-compatible remote_write endpoint URL.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.usernameSecret</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{}</pre>
-</td>
-      <td class="helm-value-desc">Secret reference for remote_write basic-auth username. `{name, key}` form.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.passwordSecret</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{}</pre>
-</td>
-      <td class="helm-value-desc">Secret reference for remote_write basic-auth password. `{name, key}` form.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.otlp<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable OTLP exporter on the gateway.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.otlp<wbr>.endpoint</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">OTLP gRPC endpoint URL.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.bundled<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable export to the bundled Loki / Thanos backends. Implied when `profile=bundled-stack`.</td>
-    </tr>
-  </tbody>
-</table>
 
 ### Monitoring configurations
 
@@ -864,6 +807,18 @@ Upstream reference:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"alloy-agent"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-agent<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -995,6 +950,18 @@ Upstream reference:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"alloy-gateway"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -1153,10 +1120,16 @@ Upstream reference:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">loki<wbr>.namespaceOverride</td>
+      <td class="helm-value-key">loki<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"loki"</code></td>
-      <td class="helm-value-desc">Install loki into this namespace.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.deploymentMode</td>
@@ -1178,7 +1151,7 @@ Upstream reference:
   "namespaceSelector": {}
 }</pre>
 </td>
-      <td class="helm-value-desc">Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to alloy or prometheus).</td>
+      <td class="helm-value-desc">Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.ingress</td>
@@ -1188,7 +1161,7 @@ Upstream reference:
   "namespaceSelector": {}
 }</pre>
 </td>
-      <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to alloy and grafana).</td>
+      <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.externalStorage</td>
@@ -1785,7 +1758,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"mzmon-loki-query-frontend.loki.svc:3100", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td>
     </tr>
   </tbody>
@@ -1800,6 +1773,18 @@ Bundled Thanos backend for long-term metrics.
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">thanos<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"thanos"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.query</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>

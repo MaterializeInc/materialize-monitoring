@@ -163,7 +163,7 @@ pipeline:
       destination:
         loki:
           # -- alloy-gateway push endpoint URL.
-          url: 'http://mzmon-alloy-gateway.{{ include "mzmon.alloyGateway.namespace" $ }}.svc:3100/loki/api/v1/push'
+          url: 'http://alloy-gateway.{{ include "mzmon.alloyGateway.namespace" $ }}.svc:3100/loki/api/v1/push'
           # -- Retry configuration.
           retries:
             maxBackoffRetries: 10
@@ -201,7 +201,7 @@ pipeline:
           # By default, we use the in-cluster loki
           enabled: true
           # -- Loki push endpoint URL.
-          url: 'http://mzmon-loki-distributor.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+          url: 'http://loki-distributor.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
           # -- Retry configuration.
           retries:
             maxBackoffRetries: 10
@@ -286,28 +286,6 @@ pipeline:
   # -- (h4) Configuration for metrics behavior
   # @notationType -- (sectionstart) Metrics configuration
   metrics: {}
-
-  # -- (h4) Configuration for exporters attached to the Alloy gateway
-  # @notationType -- (sectionstart) Exporter configuration
-  exporters:
-    prometheusRemoteWrite:
-      # -- Enable Prometheus remote_write exporter on the gateway.
-      enabled: false
-      # -- Prometheus-compatible remote_write endpoint URL.
-      endpoint: ""
-      basicAuth:
-        # -- Secret reference for remote_write basic-auth username. `{name, key}` form.
-        usernameSecret: {}
-        # -- Secret reference for remote_write basic-auth password. `{name, key}` form.
-        passwordSecret: {}
-    otlp:
-      # -- Enable OTLP exporter on the gateway.
-      enabled: false
-      # -- OTLP gRPC endpoint URL.
-      endpoint: ""
-    bundled:
-      # -- Enable export to the bundled Loki / Thanos backends. Implied when `profile=bundled-stack`.
-      enabled: false
 
 # -- Configuration for dashboards, rules, and alerts
 # @notationType -- (sectionstart) Monitoring configurations
@@ -404,6 +382,10 @@ _subchartSection: stub
 alloy-agent:
   # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "alloy-agent"
+  # -- Namespace override.
   namespaceOverride: null
   # -- Control for the PodLogs crd.
   crds:
@@ -477,7 +459,8 @@ alloy-agent:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.17.0-mz1@sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
+    tag: v1.17.0-mz1
+    digest: sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -517,6 +500,10 @@ alloy-agent:
 alloy-gateway:
   # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "alloy-gateway"
+  # -- Namespace override.
   namespaceOverride: null
   # -- Control for the PodLogs crd.
   crds:
@@ -605,7 +592,8 @@ alloy-gateway:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.17.0-mz1@sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
+    tag: v1.17.0-mz1
+    digest: sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -675,8 +663,11 @@ alloy-gateway:
 loki:
   # Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
   # enabled: true
-  # -- Install loki into this namespace.
-  namespaceOverride: loki
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "loki"
+  # -- Namespace override.
+  namespaceOverride: null
   # -- How loki is deployed.
   # We prefer to run in Distributed/Microservices mode.
   deploymentMode: Distributed
@@ -698,11 +689,11 @@ loki:
     # YAGNI: flavor not in schema (but we probably don't need cilium anyways)
     # flavor: kubernetes
     # -- Selector for incoming traffic to metric endpoints.
-    # This must be configured manually (usually set to alloy or prometheus).
+    # This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).
     metrics:
       namespaceSelector: {}
     # -- Selector for incoming traffic to the read/write endpoints.
-    # This must be configured manually (usually set to alloy and grafana).
+    # This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).
     ingress:
       namespaceSelector: {}
     # -- Outgoing traffic from loki to the object store.
@@ -1099,7 +1090,7 @@ loki:
   lokiCanary:
     enabled: true
     kind: Deployment
-    lokiurl: mzmon-loki-query-frontend.loki.svc:3100
+    lokiurl: loki-query-frontend:3100
     push: false
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
@@ -1107,6 +1098,11 @@ loki:
 thanos:
   # Circuit breaker (precedence over `tags.bundled-backends` and `tags.thanos`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "thanos"
+  # -- Namespace override.
+  namespaceOverride: null
 
   global:
     objstore:
