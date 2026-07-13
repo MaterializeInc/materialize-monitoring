@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Metrics on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/</link><description>Recent content in Metrics on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/index.xml" rel="self" type="application/rss+xml"/><item><title>Scraping</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/scraping/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/scraping/</guid><description>&lt;h1 id="scraping-metrics-with-materialize-monitoring"&gt;Scraping Metrics with &lt;code&gt;materialize-monitoring&lt;/code&gt;&lt;a class="anchor" href="#scraping-metrics-with-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;
+
+&lt;div class="warning wip"&gt;
+ &lt;strong class="gutter"&gt;Work in Progress!&lt;/strong&gt;
+ &lt;p&gt;This content is a work in progress and is not yet ready for public consumption.&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;p&gt;By default, &lt;code&gt;materialize-monitoring&lt;/code&gt; is configured to scrape metrics from any ServiceMonitor or PodMonitor resources in the cluster.
+This allows you to easily add new metrics to your monitoring stack by simply creating a new ServiceMonitor resources.&lt;/p&gt;
+&lt;h2 id="scrape-architecture-with-grafana-alloy"&gt;Scrape Architecture with Grafana Alloy&lt;a class="anchor" href="#scrape-architecture-with-grafana-alloy"&gt;#&lt;/a&gt;&lt;/h2&gt;
+
+&lt;div class="warning wip"&gt;
+ &lt;strong class="gutter"&gt;Work in Progress!&lt;/strong&gt;
+ &lt;p&gt;This content is a work in progress and is not yet ready for public consumption.&lt;/p&gt;</description></item><item><title>Storing</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/storing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/storing/</guid><description>&lt;h1 id="storing-metrics"&gt;Storing Metrics&lt;a class="anchor" href="#storing-metrics"&gt;#&lt;/a&gt;&lt;/h1&gt;
+
+&lt;div class="warning wip"&gt;
+ &lt;strong class="gutter"&gt;Work in Progress!&lt;/strong&gt;
+ &lt;p&gt;This content is a work in progress and is not yet ready for public consumption.&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;p&gt;Metrics collected by &lt;code&gt;alloy-gateway&lt;/code&gt; are forwarded to a Prometheus &lt;strong&gt;remote-write&lt;/strong&gt; backend.
+Out of the box that is an in-cluster &lt;strong&gt;Thanos Receive&lt;/strong&gt;; you can point it at any remote-write-compatible store (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …) through chart values.
+Everything below lives under &lt;code&gt;pipeline.metrics.gateway.destination.prometheusRemoteWrite&lt;/code&gt;.&lt;/p&gt;
+&lt;h2 id="the-remote-write-destination"&gt;The remote-write destination&lt;a class="anchor" href="#the-remote-write-destination"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;table&gt;
+ &lt;thead&gt;
+ &lt;tr&gt;
+ &lt;th&gt;Value&lt;/th&gt;
+ &lt;th&gt;Purpose&lt;/th&gt;
+ &lt;/tr&gt;
+ &lt;/thead&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;enabled&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;Toggle the metrics remote-write sink (default &lt;code&gt;true&lt;/code&gt;).&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;url&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;Remote-write endpoint (default: in-cluster Thanos Receive).&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;authType&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;code&gt;none&lt;/code&gt; (default), &lt;code&gt;basicAuth&lt;/code&gt;, &lt;code&gt;bearer&lt;/code&gt;, or &lt;code&gt;sigv4&lt;/code&gt;.&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;sigv4&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;AWS SigV4 signing config — for Amazon Managed Prometheus (see below).&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Point it at an external store:&lt;/p&gt;</description></item><item><title>Querying</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/querying/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/querying/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Rules</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/rules/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-pin-dependencies/metrics/rules/</guid><description>&lt;h1 id="metric-rules"&gt;Metric Rules&lt;a class="anchor" href="#metric-rules"&gt;#&lt;/a&gt;&lt;/h1&gt;</description></item></channel></rss>
