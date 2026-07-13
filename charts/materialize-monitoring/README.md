@@ -22,11 +22,13 @@ metrics surface.
 
 ```bash
 helm repo add materialize https://materializeinc.github.io/materialize-monitoring
-helm install mz-mon materialize/materialize-monitoring --set profile=bundled-stack
+# Defaults deploy the full recommended stack; `--set tags.default=false`
+# turns everything off so you can enable pieces individually.
+helm install mz-mon materialize/materialize-monitoring
 ```
 
-For a deeper walkthrough of values — including profile presets, the
-subchart-enablement model, and per-section guidance — see the
+For a deeper walkthrough of values — including the preset values files under
+`profiles/`, the subchart-enablement model, and per-section guidance — see the
 [materialize-monitoring values reference](https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/)
 on the docsite.
 
@@ -34,7 +36,7 @@ on the docsite.
 Kubernetes: `>=1.27.0-0`
 ### Storage Requirements
 
-Using Thanos or Loki (in the default bundled-stack profile) requires
+Using Thanos or Loki (both enabled by default) requires
 object storage (such as an AWS S3 bucket) for long-term storage.
 
 In development, Thanos may use a PVC for less-reliable storage.
@@ -125,24 +127,32 @@ Subchart enablement has two layers, in precedence order:
    override.
 2. **Helm tags (the `tags:` block).** When no `<chart>.enabled` is set,
    enablement is decided by tags. Each dependency in `Chart.yaml`
-   carries a *group tag* (e.g. `bundled-backends`) and a *per-chart
-   tag* (e.g. `loki`); a dependency is included if any of its tags
-   evaluates true (OR semantics). To opt one chart out of an
-   otherwise-enabled group, set the group tag false and flip the
-   per-chart tags individually — or use the circuit breaker.
+   carries the master `default` tag, a *group tag* (e.g.
+   `bundled-backends`), and a *per-chart tag* (e.g. `loki`); a dependency
+   is included if any of its tags evaluates true (OR semantics). To opt
+   one chart out of an otherwise-enabled group, set the group tag false
+   and flip the per-chart tags individually — or use the circuit breaker.
 
 Group ↔ chart mapping:
 
 | Group tag          | Charts                                              |
 | ------------------ | --------------------------------------------------- |
+| `default`          | `pipeline` + `bundled-backends` + `managed-grafana` |
+|                    | groups + `kube-state-metrics` (recommended stack)   |
 | `pipeline`         | `alloy-agent`, `alloy-gateway`                      |
-| `bundled-backends` | `loki`, `thanos`, `grafana`, `alertmanager`         |
+| `bundled-backends` | `loki`, `thanos`, `alertmanager`                    |
+| `managed-grafana`  | `grafana`, `grafana-operator`                       |
 | `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
 | `crds`             | `prometheus-operator-crds`                          |
 
-The tag defaults match `profile=bundled-stack`. Other profiles flip
-`bundled-backends` off and the pipeline exporters appropriately; see
-the profile preset values files under `examples/`.
+`default` is the only group on by default and enables the full
+recommended stack. `--set tags.default=false` turns everything off, so
+you can enable a single group (`bundled-backends`, `managed-grafana`,
+`pipeline`, `cluster-metrics`) or individual charts on top. Profile
+preset values files under `profiles/` flip these appropriately.
+(`kube-state-metrics` is in `default`, but `metrics-server` is not —
+most clusters already run metrics-server; enable it via
+`tags.cluster-metrics` or `tags.metrics-server` if yours doesn't.)
 
 <table class="helm-values">
   <thead>
@@ -164,7 +174,7 @@ the profile preset values files under `examples/`.
       <td class="helm-value-key">tags<wbr>.bundled-backends</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable Loki, Thanos, Grafana, and Alertmanager as a group.</td>
+      <td class="helm-value-desc">Enable Loki, Thanos, and Alertmanager as a group. (Grafana is in the `managed-grafana` group.)</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.cluster-metrics</td>
@@ -173,58 +183,52 @@ the profile preset values files under `examples/`.
       <td class="helm-value-desc">Enable kube-state-metrics and metrics-server as a group.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">tags<wbr>.crds</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install Prometheus Operator CRDs.</td>
-    </tr>
-    <tr>
       <td class="helm-value-key">tags<wbr>.alloy-agent</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Alloy agent. OR'd with `tags.pipeline`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just the Alloy agent. OR'd with `tags.default` / `tags.pipeline`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alloy-gateway</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Alloy gateway. OR'd with `tags.pipeline`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just the Alloy gateway. OR'd with `tags.default` / `tags.pipeline`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.loki</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Loki. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Loki. OR'd with `tags.default` / `tags.bundled-backends`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.thanos</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Thanos. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Thanos. OR'd with `tags.default` / `tags.bundled-backends`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.grafana-standalone</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Grafana standalone. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Grafana standalone. OR'd with `tags.default` / `tags.managed-grafana`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.grafana-operator</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Grafana operator. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Grafana operator. OR'd with `tags.default` / `tags.managed-grafana`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alertmanager</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Alertmanager. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Alertmanager. OR'd with `tags.default` / `tags.bundled-backends`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.kube-state-metrics</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just kube-state-metrics. OR'd with `tags.cluster-metrics`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just kube-state-metrics. OR'd with `tags.default` / `tags.cluster-metrics`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.metrics-server</td>
@@ -389,7 +393,7 @@ Configuration for log behavior
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://mzmon-alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-default"><code>"http://alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
       <td class="helm-value-desc">alloy-gateway push endpoint URL.</td>
     </tr>
     <tr>
@@ -462,7 +466,7 @@ Configuration for log behavior
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://mzmon-loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
+      <td class="helm-value-default"><code>"http://loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
       <td class="helm-value-desc">Loki push endpoint URL.</td>
     </tr>
     <tr>
@@ -573,6 +577,12 @@ Configuration for log behavior
       <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.shareMetricDestination</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Use metric OTLP destination.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grpc"</code></td>
@@ -610,59 +620,138 @@ Configuration for log behavior
 
 Configuration for metrics behavior
 
-#### Exporter configuration
-
-Configuration for exporters attached to the Alloy gateway
-
 <table class="helm-values">
   <thead>
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable Prometheus remote_write exporter on the gateway.</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable writing to a Prometheus remote write destination. We default to in-cluster Thanos.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.endpoint</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Prometheus-compatible remote_write endpoint URL.</td>
+      <td class="helm-value-default"><code>"http://thanos-receive.{{ include \"mzmon.thanos.namespace\" $ }}.svc:10908/api/v1/receive"</code></td>
+      <td class="helm-value-desc">Prometheus remote write endpoint URL.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.usernameSecret</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.authType</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"none"</code></td>
+      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials. Use sigv4 for AWS SigV4 signing (For AMP).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.basicAuth</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{}</pre>
+{
+  "password": "",
+  "passwordEnv": "GATEWAY_PROMETHEUS_DEST_PASSWORD",
+  "username": "",
+  "usernameEnv": "GATEWAY_PROMETHEUS_DEST_USERNAME"
+}</pre>
 </td>
-      <td class="helm-value-desc">Secret reference for remote_write basic-auth username. `{name, key}` form.</td>
+      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.prometheusRemoteWrite<wbr>.basicAuth<wbr>.passwordSecret</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.bearer</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{}</pre>
+{
+  "token": "",
+  "tokenEnv": "GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN"
+}</pre>
 </td>
-      <td class="helm-value-desc">Secret reference for remote_write basic-auth password. `{name, key}` form.</td>
+      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.otlp<wbr>.enabled</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.oauth2</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "clientId": "",
+  "clientIdEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID",
+  "clientSecret": "",
+  "clientSecretEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_SECRET",
+  "scopes": [],
+  "tokenUrl": "",
+  "tokenUrlEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL"
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.sigv4</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "region": "",
+  "roleArn": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for AWS signatures when using authType=sigv4 This generally does not need to be set (it is derived from IRSA).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable OTLP exporter on the gateway.</td>
+      <td class="helm-value-desc">Whether to enable TLS for the prometheus destination.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.otlp<wbr>.endpoint</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.verify</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the prometheus destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.ca</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">OTLP gRPC endpoint URL.</td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.exporters<wbr>.bundled<wbr>.enabled</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.cert</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.key</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.minVersion</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"TLS13"</code></td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable export to the bundled Loki / Thanos backends. Implied when `profile=bundled-stack`.</td>
+      <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grpc"</code></td>
+      <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">OTLP push endpoint URL.</td>
     </tr>
   </tbody>
 </table>
@@ -864,6 +953,18 @@ Upstream reference:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"alloy-agent"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-agent<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -995,6 +1096,18 @@ Upstream reference:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"alloy-gateway"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -1072,6 +1185,12 @@ Upstream reference:
     "port": 4318,
     "protocol": "TCP",
     "targetPort": 4318
+  },
+  {
+    "name": "prom",
+    "port": 9090,
+    "protocol": "TCP",
+    "targetPort": 9090
   }
 ]</pre>
 </td>
@@ -1137,6 +1256,20 @@ Upstream reference:
 </td>
       <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`</td>
     </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.create</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create a service account for alloy-gateway.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA.</td>
+    </tr>
   </tbody>
 </table>
 
@@ -1153,10 +1286,16 @@ Upstream reference:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">loki<wbr>.namespaceOverride</td>
+      <td class="helm-value-key">loki<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"loki"</code></td>
-      <td class="helm-value-desc">Install loki into this namespace.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.deploymentMode</td>
@@ -1178,7 +1317,7 @@ Upstream reference:
   "namespaceSelector": {}
 }</pre>
 </td>
-      <td class="helm-value-desc">Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to alloy or prometheus).</td>
+      <td class="helm-value-desc">Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.ingress</td>
@@ -1188,7 +1327,7 @@ Upstream reference:
   "namespaceSelector": {}
 }</pre>
 </td>
-      <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to alloy and grafana).</td>
+      <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.externalStorage</td>
@@ -1783,9 +1922,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"mzmon-loki-query-frontend.loki.svc:3100", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td>
     </tr>
   </tbody>
@@ -1800,6 +1945,18 @@ Bundled Thanos backend for long-term metrics.
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">thanos<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"thanos"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.query</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -1911,9 +2068,15 @@ Bundled Alertmanager for routing alerts emitted by the rule packages.
 
 kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.
 
+Upstream reference:
+   * https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml
+
 #### Metrics Server
 
 metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
+
+Upstream reference:
+   * https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml
 
 <table class="helm-values">
   <thead>

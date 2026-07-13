@@ -30,7 +30,7 @@ spec:
         {{- include "mzmon.labels" $ | nindent 8 }}
         app.kubernetes.io/component: alloy-gateway
     spec:
-      serviceAccountName: {{ include "mzmon.alloyGateway.serviceAccountName" $ }}
+      # serviceAccountName: {{ include "mzmon.alloyGateway.serviceAccountName" $ }}
       restartPolicy: Never
       securityContext:
         {{- toYaml $pipelineValues.preValidateJob.podSecurityContext | nindent 8 }}

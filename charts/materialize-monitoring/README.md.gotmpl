@@ -17,11 +17,13 @@ To update: edit `values.yaml` (or `README.md.gotmpl`), then run
 
 ```bash
 helm repo add materialize https://materializeinc.github.io/materialize-monitoring
-helm install mz-mon materialize/materialize-monitoring --set profile=bundled-stack
+# Defaults deploy the full recommended stack; `--set tags.default=false`
+# turns everything off so you can enable pieces individually.
+helm install mz-mon materialize/materialize-monitoring
 ```
 
-For a deeper walkthrough of values — including profile presets, the
-subchart-enablement model, and per-section guidance — see the
+For a deeper walkthrough of values — including the preset values files under
+`profiles/`, the subchart-enablement model, and per-section guidance — see the
 [materialize-monitoring values reference](https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/)
 on the docsite.
 

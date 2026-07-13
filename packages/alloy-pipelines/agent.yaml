@@ -225,6 +225,10 @@ blocks:
   - loki.echo:
       label: stub
 
+  # --- Local metric collection ----------------------------------------------
+  # - prometheus.exporter.cadvisor: {}
+  # - prometheus.exporter.unix: {}
+
   # --- forwarding sink ------------------------------------------------------
 
   # Static stub: forwards everything to the alloy-gateway. This endpoint will

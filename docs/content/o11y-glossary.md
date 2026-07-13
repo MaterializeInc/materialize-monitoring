@@ -119,7 +119,7 @@ A target reliability number expressed as a percentage over a time window — e.g
 [Grafana Alloy](https://grafana.com/docs/alloy/) is the collector at the heart of this stack. It scrapes metrics, ingests logs, applies relabeling, and exports to one or more backends (Prometheus remote-write, Loki push, OTLP, the Datadog Agent). Replaces older agents like Grafana Agent and Promtail.
 
 **Monitoring Profile**
-A named pipeline configuration that targets a specific backend shape: `datadog-agent`, `prometheus-remote-write`, `otlp`, or `bundled-stack`. Customers pick a profile via Helm values; the chart wires Alloy and (for the bundled profile) Loki/Thanos/Grafana accordingly. Distinct from a *profile* in the continuous-profiling sense (Pyroscope, etc.).
+A preset values file under `charts/materialize-monitoring/profiles/`, applied with `helm -f`, that configures the chart for a particular deployment shape — object-storage backend, split namespaces, an external Grafana, Loki sizing, and so on. The bundled backend stack (Loki, Thanos, Grafana, Alertmanager, plus the Alloy pipeline) is enabled by default through the `tags.default` group; profiles layer on top. Distinct from a *profile* in the continuous-profiling sense (Pyroscope, etc.).
 
 **Prometheus Exporter**
 A small process that translates some other system's state into Prometheus metrics on an HTTP endpoint. `kube-state-metrics`, `node-exporter`, and `cAdvisor` are common examples. Materialize itself exports its metrics natively from `environmentd` and `clusterd` — no separate exporter is required for the Materialize surface.

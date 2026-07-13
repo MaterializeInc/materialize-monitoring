@@ -17,12 +17,25 @@ description: |
   otelcol.exporter.loki bridge) all feed loki.process.input_processor. These
   ingress components are not typed yet, so they use `raw:` escapes.
 
-  Egress is split out into gateway-dest-stub.yaml. input_processor forwards to
-  loki.process.egress.receiver (a passthrough seam defined in that stub), which
-  lets the write destination be swapped at chart-assembly time — including the
-  component *type* (loki.write vs an otelcol bridge) — without editing this
-  file. gateway.alloy therefore references a component it does not define and is
-  validated jointly with the stub (see `make pipelines`).
+  Metrics: this file also carries a metrics pipeline. prometheus.receive_http
+  (pushed remote-write), an otelcol.exporter.prometheus bridge off the OTLP
+  receiver, and prometheus.operator.{podmonitors,servicemonitors} (clustering on;
+  scrape defaults from GATEWAY_SCRAPE_INTERVAL / GATEWAY_SCRAPE_TIMEOUT) all feed
+  prometheus.relabel.input_processor, which forwards to a prometheus.relabel.egress
+  seam. input_processor is intentionally rule-free: relabeling lives at the target
+  phase instead — in the PodMonitor/ServiceMonitor CRs, in the operator components'
+  rule blocks (uniform target rules: pod-liveness drop, app-label coalescing), and
+  in the cAdvisor ScrapeConfig node-label allowlist (packages/prometheus-scrapers/).
+
+  Egress seams (loki.process.egress and prometheus.relabel.egress) are defined
+  downstream, not here, so the write destinations can be swapped without editing
+  this file. IMPORTANT: at deploy the destination blocks are rendered by the
+  chart's _alloy_helpers.tpl (Helm, from .Values.pipeline.{logging,metrics}.gateway
+  .destination.*), which is NOT schema-validated — only the pre-validate jobs
+  (alloy validate on the assembled configMap) check it. gateway-dest-stub.yaml is
+  a build-time stand-in for those seams so gateway.alloy (which references
+  components it does not define) can be validated jointly at build/CI time (see
+  `make pipelines`); it is not what deploys.
 
   Many mz-system services share an identical json/template/structured_metadata
   shape. That shape is defined once via YAML anchors (&mz_svc_*) on the
@@ -63,15 +76,7 @@ blocks:
                     - env: ALLOY_LOKI_PORT
                     - "3100"
 
-  # Kubernetes events source, feeding the main processor.
-  - raw:
-      component: loki.source.kubernetes_events
-      label: k8s_events
-      attributes:
-        forward_to:
-          - ref: loki.process.input_processor.receiver
-
-  # OTLP receiver for logs, bridged into the loki pipeline via the exporter below.
+  # OTLP receiver for logs/metrics, bridged into the loki/prometheus pipelines via the exporters below.
   # grpc defaults to :4317, http to :4318.
   - raw:
       component: otelcol.receiver.otlp
@@ -83,8 +88,76 @@ blocks:
           attributes:
             logs:
               - ref: otelcol.exporter.loki.bridge.input
+            metrics:
+              - ref: otelcol.exporter.prometheus.bridge.input
 
+  - prometheus.receive_http:
+      label: gateway
+      forward_to:
+        - "prometheus.relabel.input_processor.receiver"
+      blocks:
+        - http:
+            listen_port: 9090
+
+  # --- collectors ---------------------------------------------------
+
+  # Kubernetes events source, feeding the main processor.
+  - raw:
+      component: loki.source.kubernetes_events
+      label: k8s_events
+      attributes:
+        forward_to:
+          - ref: loki.process.input_processor.receiver
+
+  - prometheus.operator.podmonitors:
+      label: default
+      forward_to:
+        - prometheus.relabel.input_processor.receiver
+      blocks: &operatorBlocks
+        - clustering:
+            enabled: true
+        - scrape:
+            default_scrape_interval:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_SCRAPE_INTERVAL
+                - "30s"
+            default_scrape_timeout:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_SCRAPE_TIMEOUT
+                - "10s"
+        - rule:
+            # defensively ignore up{} metrics from pods that are not running
+            action: drop
+            source_labels:
+              - __meta_kubernetes_pod_phase
+            regex: "Pending|Succeeded|Failed"
+        # Coalesce app identity into a standard `app` label.
+        # Standardize on a single app label
+        # Priority: app.kubernetes.io/name > app > k8s_app  (last non-empty wins).
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_k8s_app"]
+            regex: "(.+)"
+            target_label: app
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_app"]
+            regex: "(.+)"
+            target_label: app
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            regex: "(.+)"
+            target_label: app
+
+  - prometheus.operator.servicemonitors:
+      label: default
+      forward_to:
+        - prometheus.relabel.input_processor.receiver
+      blocks: *operatorBlocks
+
+  # --- bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
+  # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
   - raw:
       component: otelcol.exporter.loki
       label: bridge
@@ -92,7 +165,15 @@ blocks:
         forward_to:
           - ref: loki.process.input_processor.receiver
 
-  # --- main processing pipeline (ported from staging-gateway.alloy) -----------
+  # Bridge: turns OTLP metrics into Prometheus and feeds the main processor.
+  - raw:
+      component: otelcol.exporter.prometheus
+      label: bridge
+      attributes:
+        forward_to:
+          - ref: prometheus.relabel.input_processor.receiver
+
+  # --- main processing pipeline -----------
 
   - loki.process:
       label: input_processor
@@ -758,6 +839,17 @@ blocks:
               app: app
               container: container
 
+  - prometheus.relabel:
+      label: input_processor
+      forward_to:
+        - prometheus.relabel.egress.receiver
+      # Central metric seam before egress. Intentionally rule-free: we assume
+      # sources don't push junk labels in the first place. Per-target label
+      # hygiene lives in the PodMonitor/ServiceMonitor CRs (curated
+      # podTargetLabels); node-label curation lives in the cAdvisor ScrapeConfig
+      # allowlist (scrapeconfig-cadvisor.yaml). Add genuinely cross-cutting rules
+      # here as they come up (cost governance, dashboard-contract normalization).
+
   # --- local sampled debug tap ------------------------------------------------
 
   # Echo a ~1% sample of non-alloy entries locally for debugging.
@@ -769,6 +861,10 @@ blocks:
             source: app
             value: alloy
             drop_counter_reason: "skip self"
+        - stage.drop:
+            source: app
+            value: loki
+            drop_counter_reason: "skip loki"
         - stage.sampling:
             rate: 0.01
             drop_counter_reason: sample_debug

@@ -914,8 +914,18 @@ mod tests {
               kubernetes_sd_configs:
                 - role: node
               relabel_configs:
-                - action: labelmap
-                  regex: __meta_kubernetes_node_label_(.+)
+                - source_labels: [__meta_kubernetes_node_label_topology_kubernetes_io_region]
+                  target_label: topology_kubernetes_io_region
+                - source_labels: [__meta_kubernetes_node_label_topology_kubernetes_io_zone]
+                  target_label: topology_kubernetes_io_zone
+                - source_labels: [__meta_kubernetes_node_label_karpenter_sh_nodepool]
+                  target_label: karpenter_sh_nodepool
+                - source_labels: [__meta_kubernetes_node_label_karpenter_sh_capacity_type]
+                  target_label: karpenter_sh_capacity_type
+                - source_labels: [__meta_kubernetes_node_label_node_kubernetes_io_instance_type]
+                  target_label: node_kubernetes_io_instance_type
+                - source_labels: [__meta_kubernetes_node_name]
+                  target_label: node
                 - target_label: __address__
                   replacement: kubernetes.default.svc:443
                 - source_labels: [__meta_kubernetes_node_name]

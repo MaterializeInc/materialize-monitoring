@@ -47,6 +47,7 @@ packages/mzmon-lib/schemas/alloy/               ← validation schemas (embedded
   ├── top.schema.yaml                           – description / logging / livedebugging / blocks
   ├── loki.schema.yaml                          – loki.*, stage.* $defs, shared `rule` $def
   ├── discovery.schema.yaml                     – discovery.*, cross-ref'ing `rule` from loki
+  ├── prometheus.schema.yaml                    – prometheus.*, cross-ref'ing `rule` from loki + `target` from discovery
   └── common/                                   – shared fragments. $id tail MUST match the file path
       ├── raw.schema.yaml                       – {raw: <block>} escape hatch + block primitives
       ├── attribute.schema.yaml                 – attributeValue (anyOf: literal | expression | …)
@@ -61,12 +62,17 @@ packages/mzmon-lib/src/alloy/                   ← AST, render, validate, pipel
   ├── test_support.rs                           – assert_renders (oracle: pipes through `alloy fmt`)
   └── components/                               ← typed sugar; tests colocated with impl
       ├── top.rs                                – LoggingBlock, LiveDebuggingBlock
-      ├── capsule.rs                            – LogsReceiver, RelabelRules, TargetEntry (+ string_map,
-                                                  logs_receiver_list, target_list helpers)
+      ├── capsule.rs                            – LogsReceiver, MetricsReceiver, RelabelRules, TargetEntry
+                                                  (+ string_map, logs_receiver_list,
+                                                  metrics_receiver_list, target_list helpers)
       ├── loki.rs                               – LokiEchoBlock, LokiSourceJournalBlock, ...
       ├── relabel.rs                            – RelabelRule + RelabelSubBlock (shared by *.relabel)
-      └── discovery.rs                          – DiscoveryKubernetesBlock, DiscoveryRelabelBlock,
-                                                  KubernetesSubBlock variants
+      ├── discovery.rs                          – DiscoveryKubernetesBlock, DiscoveryRelabelBlock,
+      │                                            KubernetesSubBlock variants
+      └── prometheus.rs                         – Prometheus{Echo,Relabel,Scrape,ReceiveHttp,RemoteWrite,
+                                                  OperatorPodMonitors,OperatorServiceMonitors}Block
+                                                  (+ endpoint/http/clustering/basic_auth/tls_config/
+                                                  selector/scrape sub-blocks)
 
 packages/mz-monitoring-build/                   ← CLI: `mz-monitoring-build gen-pipelines`
 ```
@@ -91,8 +97,8 @@ This section captures the live state so the next session has something concrete 
 
 | YAML | Rendered to | Status |
 |---|---|---|
-| `packages/alloy-pipelines/gateway.yaml` | `charts/.../pipelines/gateway.alloy` | **implemented** — port of the reference `staging-gateway.alloy` `input_processor` (level/timestamp/per-service field normalization, per-level rate limits, final label shaping) + ingress (`loki.source.api`, `loki.source.kubernetes_events`, `otelcol.receiver.otlp` → `otelcol.exporter.loki` bridge — all `raw:`), a sampled debug tap; forwards to a `loki.process.egress` seam supplied by the dest stub |
-| `packages/alloy-pipelines/gateway-dest-stub.yaml` | `charts/.../pipelines/gateway-dest-stub.alloy` | **default egress tail** — the `loki.process "egress"` passthrough seam + a default `loki.write "destination"`; split out so the chart can swap the destination. Not standalone-valid; validated jointly with `gateway.alloy` |
+| `packages/alloy-pipelines/gateway.yaml` | `charts/.../pipelines/gateway.alloy` | **implemented** — carries logs AND metrics. Logs: port of the reference `staging-gateway.alloy` `input_processor` (level/timestamp/per-service field normalization, per-level rate limits, final label shaping) + ingress (`loki.source.api`, `loki.source.kubernetes_events`, `otelcol.receiver.otlp`→`otelcol.exporter.loki` bridge — `raw:`), sampled debug tap. Metrics: `prometheus.receive_http` + OTLP→`otelcol.exporter.prometheus` bridge + `prometheus.operator.{podmonitors,servicemonitors}` (clustering on, env-driven scrape defaults) → `prometheus.relabel "input_processor"` (rule-free) → `prometheus.relabel "egress"` seam. Both log and metric egress seams supplied downstream (see below) |
+| `packages/alloy-pipelines/gateway-dest-stub.yaml` | `charts/.../pipelines/gateway-dest-stub.alloy` | **build-time egress stand-in ONLY** — the `loki.process "egress"`/`prometheus.relabel "egress"` seams + default `loki.write`/`prometheus.remote_write "destination"`. NOT what deploys: at install the destination is rendered by `charts/.../templates/_alloy_helpers.tpl` (Helm, from `.Values.pipeline.{logging,metrics}.gateway.destination.*`), which **skips the JSONSchema** — only the pre-validate jobs (`alloy validate`) check it. The stub exists so `make pipelines` can `alloy validate` `gateway.alloy` jointly (it dangles the `egress` refs alone). Keep it in step with the helper, but the helper is source of truth. Metrics helper auth: `none`/`basicAuth`/`bearer`/`sigv4` (sigv4 = AMP + IRSA) |
 | `packages/alloy-pipelines/agent.yaml` | `charts/.../pipelines/agent.alloy` | **implemented & largely typed** — staging-agent parity (journal + node-local pod logs → gateway, sampled debug tap) |
 
 Both pass `alloy validate`. `agent.yaml` is a faithful port of the reference `staging-agent.alloy` (`packages/ref-alloy-pipelines/`, not checked in). It started with several `raw:` escapes; most have since been graduated to typed forms (`stage.static_labels`/`selectors.field` via `Expressable`, `attach_metadata.namespace`, `stage.cri`). As of the last session **only two `raw:` blocks remain**, both expected:
@@ -109,13 +115,17 @@ Configurable knobs in `agent.yaml`: `cluster`/`node` labels via `sys.env(...)` (
 
 **Top-level discovery.* components**: `discovery.kubernetes`, `discovery.relabel`.
 
+**Top-level prometheus.* components**: `prometheus.echo`, `prometheus.relabel`, `prometheus.scrape`, `prometheus.receive_http`, `prometheus.remote_write`, `prometheus.operator.podmonitors`, `prometheus.operator.servicemonitors`. Scoped to the stable, in-cluster surface — see [Metrics](../../../docs/content/reference/internal/pipelines/metrics.md) for the per-component `raw:`-deferred list (remote_write endpoint auth/TLS/queue tuning, operator `client`, scrape oauth2/authorization, selector `match_expression`, receive_http `tls`).
+
+**`prometheus.*` sub-blocks**: `clustering` (`enabled`, shared by scrape + operators), `basic_auth`/`tls_config` (on scrape), `http` (receive_http server), `endpoint` (remote_write — `url` + scalars + a raw-only nested `blocks` for auth/queue), `selector` (operator — `match_labels` + raw-only nested `blocks` for `match_expression`), `scrape` (operator defaults), and the shared `rule` (cross-file `$ref` to `loki.schema.yaml#/$defs/rule`, reusing the `RelabelRule` sugar).
+
 **`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes), `stage.tenant` (`label`/`source`/`value`, each `Expressable<String>`).
 
 **`discovery.kubernetes` sub-blocks**: `selectors` (incl. `field`/`label` as `Expressable<String>`), `attach_metadata` (`node` + `namespace`). Other sub-blocks (e.g. `namespaces`) use `raw:`.
 
-**`*.relabel` sub-blocks**: `rule` (shared `$def` between `loki.relabel` and `discovery.relabel` via cross-file `$ref` to `loki.schema.yaml#/$defs/ruleBlock`).
+**`*.relabel` sub-blocks**: `rule` (shared `$def` used by `loki.relabel`, `discovery.relabel`, and `prometheus.relabel` via cross-file `$ref` to `loki.schema.yaml#/$defs/ruleBlock`; the operator components' `rule` refs `#/$defs/rule` directly).
 
-**Literal-or-expression fields** use `Expressable<T>` (`ast.rs`): a field typed `Expressable<f64|String|bool>` (or `Option<…>`) accepts either a scalar literal or an inline expression object (`{env}`, `{function}`, `{operator}`, `{ref}`). In use on `stage.limit` rate/burst, `stage.drop` older_than, `stage.static_labels` values, `selectors` field/label. Schema side: `anyOf: [{type: <scalar>}, {$ref: common/expression.schema.yaml}]` (safe — scalar vs object are disjoint). *Scalars only* — never `Expressable<map/object>` (a literal map would collide with the expression object, the same overlap that forced `anyOf` in the raw `attributeValue`). This is an actively-expanding pattern; adopt per-field as needed.
+**Literal-or-expression fields** use `Expressable<T>` (`ast.rs`): a field typed `Expressable<f64|String|bool>` (or `Option<…>`) accepts either a scalar literal or an inline expression object (`{env}`, `{function}`, `{operator}`, `{ref}`). In use on `stage.limit` rate/burst, `stage.drop` older_than, `stage.static_labels` values, `selectors` field/label, and the operator `scrape` block's `default_scrape_interval`/`default_scrape_timeout`. Schema side: `anyOf: [{type: <scalar>}, {$ref: common/expression.schema.yaml}]` (safe — scalar vs object are disjoint). *Scalars only* — never `Expressable<map/object>` (a literal map would collide with the expression object, the same overlap that forced `anyOf` in the raw `attributeValue`). This is an actively-expanding pattern; adopt per-field as needed.
 
 **Every sub-block `oneOf` ends with a `raw:` branch** — the escape hatch is non-negotiable in the design.
 
@@ -127,7 +137,7 @@ The `ComponentBlock` enum in `pipeline.rs` dispatches to typed sugar structs (vi
 
 **Done: every component in the typed-schema coverage list above round-trips through the typed path.** No pending sugar work.
 
-**Capsule types** (`components/capsule.rs`) make the bare-ref invariant structural: `LogsReceiver` (`forward_to`), `RelabelRules` (`relabel_rules`), and `TargetEntry` (`targets`, untagged `Ref(Identifier) | Literal(IndexMap)`). **`targets` refs are list-valued and must NOT be bare-array-wrapped.** A `discovery.*` export (`discovery.kubernetes.pods.targets`, `discovery.relabel.x.output`) is a `list(discovery.Target)`; a literal is a single `discovery.Target`. `targets = [ <ref> ]` is `list(list(Target))` and alloy **rejects it at load** (`conversion from '[]discovery.Target' is not supported`) — even though `alloy validate` *accepts* it. So `target_list` (capsule.rs) emits: a single ref directly (`targets = discovery.x.targets`), literals-only as an array (`[{…}]`), and multiple/mixed via `array.concat(ref, …, [{…}])`. (Earlier this list-wrapped and "verified against `alloy validate`" — a false green that broke a live agent; see the `alloy validate` gotcha below.) `forward_to`/`relabel_rules` are NOT affected — those refs are single capsules, so list-wrapping (`forward_to`) or direct assignment (`relabel_rules`) is correct. Schema side: `$defs/target` (discovery.schema.yaml, generic) vs `$defs/fileTargetEntry` (loki.schema.yaml, `required: [__path__]`) — strictness lives in the schema, the Rust type stays generic. A new capsule type (e.g. `otelcol.Consumer` when otelcol lands) is a newtype + `From<&T> for AttributeValue` via `Expression::name_to_ref` + a schema `$def`.
+**Capsule types** (`components/capsule.rs`) make the bare-ref invariant structural: `LogsReceiver` (`forward_to`), `MetricsReceiver` (`forward_to` on prometheus.* — the metrics analog of `LogsReceiver`, list-wrapped via `metrics_receiver_list`), `RelabelRules` (`relabel_rules`), and `TargetEntry` (`targets`, untagged `Ref(Identifier) | Literal(IndexMap)`; `prometheus.scrape` reuses it). **`targets` refs are list-valued and must NOT be bare-array-wrapped.** A `discovery.*` export (`discovery.kubernetes.pods.targets`, `discovery.relabel.x.output`) is a `list(discovery.Target)`; a literal is a single `discovery.Target`. `targets = [ <ref> ]` is `list(list(Target))` and alloy **rejects it at load** (`conversion from '[]discovery.Target' is not supported`) — even though `alloy validate` *accepts* it. So `target_list` (capsule.rs) emits: a single ref directly (`targets = discovery.x.targets`), literals-only as an array (`[{…}]`), and multiple/mixed via `array.concat(ref, …, [{…}])`. (Earlier this list-wrapped and "verified against `alloy validate`" — a false green that broke a live agent; see the `alloy validate` gotcha below.) `forward_to`/`relabel_rules` are NOT affected — those refs are single capsules, so list-wrapping (`forward_to`) or direct assignment (`relabel_rules`) is correct. Schema side: `$defs/target` (discovery.schema.yaml, generic) vs `$defs/fileTargetEntry` (loki.schema.yaml, `required: [__path__]`) — strictness lives in the schema, the Rust type stays generic. A new capsule type (e.g. `otelcol.Consumer` when otelcol lands) is a newtype + `From<&T> for AttributeValue` via `Expression::name_to_ref` + a schema `$def`.
 
 ## Load-bearing invariants
 

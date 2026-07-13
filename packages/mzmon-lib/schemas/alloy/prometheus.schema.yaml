@@ -1,0 +1,751 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for prometheus.* components in alloy pipeline definitions.
+#
+# DESIGN NOTE: typed schemas are strict (additionalProperties: false on each
+# typed block). Undocumented attributes are rejected deliberately — extend the
+# relevant $def to add one, or wrap the whole block in a `raw:` escape (see
+# raw.schema.yaml).
+#
+# The typed shape is intentionally FLAT — attributes live directly under the
+# discriminator key alongside `label` and (where applicable) `blocks`. This
+# differs from the raw shape, which keeps a `component / label / attributes /
+# blocks` partition because raw needs `component` as its own discriminator.
+#
+# SCOPE: this covers the metrics building blocks we expect to use, running
+# in-cluster. Deliberately left to the `raw:` escape for now (graduate as usage
+# demands): remote_write endpoint auth/TLS/queue tuning, the operator `client`
+# (Kubernetes API) block, oauth2/authorization/sigv4/azuread, and the
+# receive_http `tls` block.
+#
+# Schemas grow with usage; they are not meant to mirror alloy upstream
+# exhaustively. The full policy lives in:
+#   docs/content/reference/internal/pipelines/authoring.md
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/prometheus.schema.yaml"
+title: "Alloy Prometheus components"
+description: |
+  Schemas for the prometheus.* alloy components used by materialize-monitoring pipelines.
+
+  Only the attributes we commonly set are documented here.
+  For anything outside this schema, fall back to the `raw:` escape hatch from raw.schema.yaml.
+
+  See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/
+
+type: object
+# Externally-tagged: each branch requires its component key and forbids the others,
+# so `oneOf` matches exactly one component per block.
+oneOf:
+  - type: object
+    properties:
+      prometheus.echo:
+        $ref: "#/$defs/prometheus.echo"
+    required: [prometheus.echo]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.relabel:
+        $ref: "#/$defs/prometheus.relabel"
+    required: [prometheus.relabel]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.scrape:
+        $ref: "#/$defs/prometheus.scrape"
+    required: [prometheus.scrape]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.receive_http:
+        $ref: "#/$defs/prometheus.receive_http"
+    required: [prometheus.receive_http]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.remote_write:
+        $ref: "#/$defs/prometheus.remote_write"
+    required: [prometheus.remote_write]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.operator.podmonitors:
+        $ref: "#/$defs/prometheus.operator.podmonitors"
+    required: [prometheus.operator.podmonitors]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.operator.servicemonitors:
+        $ref: "#/$defs/prometheus.operator.servicemonitors"
+    required: [prometheus.operator.servicemonitors]
+    additionalProperties: false
+
+$defs:
+  label:
+    description: User-defined identifier to distinguish multiple instances.
+    type: string
+
+  expressionOrString:
+    description: |
+      A value that can be either a literal string or an expression string.
+      Used for fields that support dynamic expressions but often just need a constant.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-string
+    oneOf:
+      - type: string
+      - $ref: "./common/expression.schema.yaml"
+
+  expressionOrDuration:
+    description: |
+      A value that can be either a literal Go duration string or an expression
+      (e.g. sourced from an environment variable via `{env: VAR_NAME}`).
+      Used for duration fields that are often wired to a runtime knob.
+    oneOf:
+      - type: string
+        format: go-duration
+      - $ref: "./common/expression.schema.yaml"
+
+  metricsReceiver:
+    description: |
+      Reference to a prometheus.* component that can receive metric samples.
+
+      Used by `forward_to` to specify where to send scraped/processed metrics.
+      Exported as `receiver` by prometheus.echo / prometheus.relabel /
+      prometheus.remote_write / prometheus.receive_http.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#metricsreceiver
+    type: string
+
+  # ============================================================
+  # Top-level components
+  # ============================================================
+
+  prometheus.echo:
+    description: |
+      Metrics receiver that prints incoming samples to stdout in Prometheus
+      exposition format.
+
+      Mainly useful as a debug sink during development.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.echo/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      format:
+        description: |
+          Output encoding.
+          `text` (default) is the Prometheus text exposition format;
+          `openmetrics` is the OpenMetrics format.
+        type: string
+        enum: [text, openmetrics]
+    additionalProperties: false
+
+  prometheus.relabel:
+    description: |
+      Rewrites the label set of every metric that passes through using `rule`
+      blocks before forwarding downstream.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.relabel/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Metrics receivers to forward relabeled samples to.
+        type: array
+        items:
+          $ref: "#/$defs/metricsReceiver"
+      max_cache_size:
+        description: |
+          Maximum number of entries in the relabeling result cache.
+          Defaults to 100,000.
+        type: number
+        examples: [100000]
+      cache_ttl:
+        description: |
+          How long a relabeling result stays cached.
+          Defaults to `0` (no expiry).
+        type: string
+        format: go-duration
+      blocks:
+        description: |
+          One or more `rule` blocks defining the relabel sequence.
+        type: array
+        items:
+          # Cross-file ref — the `rule` def is shared, defined in loki.schema.yaml.
+          $ref: "./loki.schema.yaml#/$defs/ruleBlock"
+    required: [forward_to]
+    additionalProperties: false
+
+  prometheus.scrape:
+    description: |
+      Scrapes metrics from a set of `targets` and forwards them downstream.
+
+      Running in-cluster, most targets are unauthenticated app `/metrics`
+      endpoints; `basic_auth` / `bearer_token*` / `tls_config` cover the
+      authenticated cases (e.g. the kubelet).
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      targets:
+        description: |
+          Targets to scrape. Each entry is a `map(string)` of labels
+          (including `__address__`), or a reference to another component's
+          targets export (e.g. `discovery.relabel.pods.output`).
+        type: array
+        items:
+          # Cross-file ref — the generic `target` def lives in discovery.schema.yaml.
+          $ref: "./discovery.schema.yaml#/$defs/target"
+      forward_to:
+        description: Metrics receivers to forward scraped samples to.
+        type: array
+        items:
+          $ref: "#/$defs/metricsReceiver"
+      scrape_interval:
+        description: |
+          How frequently to scrape the targets.
+          Defaults to `60s`.
+        type: string
+        format: go-duration
+        examples: ["60s", "30s", "15s"]
+      scrape_timeout:
+        description: |
+          Per-scrape timeout.
+          Defaults to `10s`.
+        type: string
+        format: go-duration
+      metrics_path:
+        description: |
+          HTTP path to scrape.
+          Defaults to `/metrics`.
+        type: string
+      scheme:
+        description: |
+          URL scheme to use (`http` or `https`).
+        type: string
+      job_name:
+        description: |
+          Value of the `job` label applied to scraped metrics.
+          Defaults to the component name.
+        type: string
+      honor_labels:
+        description: |
+          When true, label conflicts between the target and the scraped metric
+          keep the metric's labels rather than being renamed with an `exported_`
+          prefix.
+        type: boolean
+      honor_timestamps:
+        description: |
+          When true (default), timestamps present in the scraped data are kept.
+        type: boolean
+      follow_redirects:
+        description: |
+          When true (default), HTTP 3xx redirects are followed.
+        type: boolean
+      enable_compression:
+        description: |
+          When true (default), request gzip compression from the target.
+        type: boolean
+      enable_http2:
+        description: |
+          When true (default), allow HTTP/2 for scrape requests.
+        type: boolean
+      bearer_token:
+        description: |
+          Bearer token for target authentication (a secret; often sourced from
+          an environment variable via an expression). Mutually exclusive with
+          the other auth methods.
+        $ref: "#/$defs/expressionOrString"
+      bearer_token_file:
+        description: |
+          Path to a file containing a bearer token for target authentication
+          (e.g. `/var/run/secrets/kubernetes.io/serviceaccount/token`).
+        type: string
+      blocks:
+        description: |
+          Optional nested blocks (`basic_auth`, `tls_config`, `clustering`).
+          Anything else (e.g. `oauth2`, `authorization`) uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/scrapeSubBlock"
+    required: [targets, forward_to]
+    additionalProperties: false
+
+  prometheus.receive_http:
+    description: |
+      Runs an HTTP server exposing a Prometheus remote-write endpoint
+      (`POST /api/v1/metrics/write`) and forwards received samples downstream.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.receive_http/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Metrics receivers to forward received samples to.
+        type: array
+        items:
+          $ref: "#/$defs/metricsReceiver"
+      blocks:
+        description: |
+          Optional nested blocks. `http` configures the server; a `tls` block
+          uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/receiveHttpSubBlock"
+    required: [forward_to]
+    additionalProperties: false
+
+  prometheus.remote_write:
+    description: |
+      Delivers metrics to one or more Prometheus-compatible remote-write
+      endpoints, buffering through a write-ahead log.
+
+      Only the `endpoint` `url` and common scalars are typed. Endpoint auth
+      (`basic_auth`, `bearer_token`, `tls_config`), `queue_config`, and
+      `write_relabel_config` are reachable via a `raw:` block nested inside the
+      `endpoint` (see `remoteWriteEndpoint.blocks`).
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      external_labels:
+        description: |
+          Labels added to every metric before it is sent to the endpoints.
+        type: object
+        additionalProperties:
+          type: string
+      blocks:
+        description: |
+          One or more `endpoint` blocks describing where to send metrics.
+        type: array
+        items:
+          $ref: "#/$defs/remoteWriteSubBlock"
+    additionalProperties: false
+
+  prometheus.operator.podmonitors:
+    description: |
+      Discovers `PodMonitor` custom resources and scrapes the pods they select,
+      forwarding the metrics downstream. Runs the equivalent of the Prometheus
+      Operator's PodMonitor handling.
+
+      Running in-cluster, no `client` block is needed — Alloy uses the pod's
+      service account automatically.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.podmonitors/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Metrics receivers to forward scraped samples to.
+        type: array
+        items:
+          $ref: "#/$defs/metricsReceiver"
+      namespaces:
+        description: |
+          Namespaces to search for PodMonitors in.
+          Defaults to all namespaces.
+        type: array
+        items:
+          type: string
+      informer_sync_timeout:
+        description: |
+          Timeout for the initial Kubernetes informer sync.
+          Defaults to `1m`.
+        type: string
+        format: go-duration
+      blocks:
+        description: |
+          Optional nested blocks (`clustering`, `selector`, `scrape`, `rule`).
+          The `client` (Kubernetes API) block uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/operatorSubBlock"
+    required: [forward_to]
+    additionalProperties: false
+
+  prometheus.operator.servicemonitors:
+    description: |
+      Discovers `ServiceMonitor` custom resources and scrapes the endpoints they
+      select, forwarding the metrics downstream. Runs the equivalent of the
+      Prometheus Operator's ServiceMonitor handling.
+
+      Running in-cluster, no `client` block is needed — Alloy uses the pod's
+      service account automatically.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.servicemonitors/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Metrics receivers to forward scraped samples to.
+        type: array
+        items:
+          $ref: "#/$defs/metricsReceiver"
+      namespaces:
+        description: |
+          Namespaces to search for ServiceMonitors in.
+          Defaults to all namespaces.
+        type: array
+        items:
+          type: string
+      kubernetes_role:
+        description: |
+          Kubernetes role used to discover scrape targets.
+          Defaults to `endpoints`.
+        type: string
+        examples: ["endpoints", "endpointslice"]
+      informer_sync_timeout:
+        description: |
+          Timeout for the initial Kubernetes informer sync.
+          Defaults to `1m`.
+        type: string
+        format: go-duration
+      blocks:
+        description: |
+          Optional nested blocks (`clustering`, `selector`, `scrape`, `rule`).
+          The `client` (Kubernetes API) block uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/operatorSubBlock"
+    required: [forward_to]
+    additionalProperties: false
+
+  # ============================================================
+  # Sub-block lists (each ends with the `raw` escape branch)
+  # ============================================================
+
+  scrapeSubBlock:
+    description: |
+      One sub-block in a `prometheus.scrape` body.
+      The final `raw` branch is the escape hatch for sub-blocks not typed here.
+    oneOf:
+      - type: object
+        properties:
+          basic_auth:
+            $ref: "#/$defs/basic_auth"
+        required: [basic_auth]
+        additionalProperties: false
+      - type: object
+        properties:
+          tls_config:
+            $ref: "#/$defs/tls_config"
+        required: [tls_config]
+        additionalProperties: false
+      - type: object
+        properties:
+          clustering:
+            $ref: "#/$defs/clustering"
+        required: [clustering]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  receiveHttpSubBlock:
+    description: |
+      One sub-block in a `prometheus.receive_http` body.
+      The final `raw` branch is the escape hatch (e.g. for the `tls` block).
+    oneOf:
+      - type: object
+        properties:
+          http:
+            $ref: "#/$defs/httpServer"
+        required: [http]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  remoteWriteSubBlock:
+    description: |
+      One sub-block in a `prometheus.remote_write` body.
+      The final `raw` branch is the escape hatch for sub-blocks not typed here.
+    oneOf:
+      - type: object
+        properties:
+          endpoint:
+            $ref: "#/$defs/remoteWriteEndpoint"
+        required: [endpoint]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  operatorSubBlock:
+    description: |
+      One sub-block in a `prometheus.operator.*` body.
+      The final `raw` branch is the escape hatch for sub-blocks not typed here
+      (notably the `client` Kubernetes API block).
+    oneOf:
+      - type: object
+        properties:
+          clustering:
+            $ref: "#/$defs/clustering"
+        required: [clustering]
+        additionalProperties: false
+      - type: object
+        properties:
+          selector:
+            $ref: "#/$defs/operatorSelector"
+        required: [selector]
+        additionalProperties: false
+      - type: object
+        properties:
+          scrape:
+            $ref: "#/$defs/operatorScrape"
+        required: [scrape]
+        additionalProperties: false
+      - type: object
+        properties:
+          rule:
+            # Cross-file ref — the `rule` def is shared, defined in loki.schema.yaml.
+            $ref: "./loki.schema.yaml#/$defs/rule"
+        required: [rule]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  rawOnlyBlock:
+    description: |
+      A nested-block list that only supports the `raw:` escape (no typed
+      sub-blocks yet). Used where the surrounding block's scalars are typed but
+      its nested blocks are deferred to raw.
+    type: array
+    items:
+      $ref: "./common/raw.schema.yaml"
+
+  # ============================================================
+  # Shared block defs
+  # ============================================================
+
+  clustering:
+    description: |
+      Distributes scrape targets across the nodes of an Alloy cluster so each
+      target is scraped by exactly one instance.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/#clustering-block
+    type: object
+    properties:
+      enabled:
+        description: |
+          When true, participate in cluster-wide target distribution.
+        type: boolean
+    required: [enabled]
+    additionalProperties: false
+
+  basic_auth:
+    description: |
+      HTTP Basic authentication for the scrape request.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/#basic_auth-block
+    type: object
+    properties:
+      username:
+        description: Basic auth username.
+        type: string
+      password:
+        description: |
+          Basic auth password (a secret; often sourced from an environment
+          variable via an expression). Mutually exclusive with `password_file`.
+        $ref: "#/$defs/expressionOrString"
+      password_file:
+        description: |
+          Path to a file containing the basic auth password.
+        type: string
+    additionalProperties: false
+
+  tls_config:
+    description: |
+      TLS settings for the scrape connection.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/#tls_config-block
+    type: object
+    properties:
+      ca_file:
+        description: Path to the CA certificate used to validate the server.
+        type: string
+      ca_pem:
+        description: Inline PEM CA certificate used to validate the server.
+        type: string
+      cert_file:
+        description: Path to the client certificate.
+        type: string
+      cert_pem:
+        description: Inline PEM client certificate.
+        type: string
+      key_file:
+        description: Path to the client key.
+        type: string
+      key_pem:
+        description: Inline PEM client key (a secret).
+        type: string
+      insecure_skip_verify:
+        description: |
+          When true, skip server certificate verification. Common for scraping
+          the kubelet with its self-signed certificate.
+        type: boolean
+      server_name:
+        description: ServerName (SNI) used to verify the server certificate.
+        type: string
+      min_version:
+        description: Minimum acceptable TLS version (e.g. `TLS12`).
+        type: string
+    additionalProperties: false
+
+  httpServer:
+    description: |
+      Configures the HTTP server that `prometheus.receive_http` runs.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.receive_http/#http-block
+    type: object
+    properties:
+      listen_address:
+        description: |
+          Address to listen on.
+          Defaults to all interfaces.
+        type: string
+      listen_port:
+        description: |
+          Port to listen on.
+          Defaults to `8080`.
+        type: number
+        examples: [8080]
+      conn_limit:
+        description: |
+          Maximum number of simultaneous connections.
+          Defaults to `0` (unlimited).
+        type: number
+      server_idle_timeout:
+        description: |
+          Idle timeout for connections.
+          Defaults to `120s`.
+        type: string
+        format: go-duration
+      server_read_timeout:
+        description: |
+          Read timeout for requests.
+          Defaults to `30s`.
+        type: string
+        format: go-duration
+      server_write_timeout:
+        description: |
+          Write timeout for responses.
+          Defaults to `30s`.
+        type: string
+        format: go-duration
+    additionalProperties: false
+
+  operatorSelector:
+    description: |
+      Label selector restricting which PodMonitor/ServiceMonitor resources the
+      operator component picks up.
+
+      Only `match_labels` is typed; the repeatable `match_expression` block uses
+      the `raw:` escape.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.podmonitors/#selector-block
+    type: object
+    properties:
+      match_labels:
+        description: |
+          Map of label name to value; a resource must carry all of them to match.
+        type: object
+        additionalProperties:
+          type: string
+      blocks:
+        description: |
+          `match_expression` blocks (set-based selectors), via the `raw:` escape.
+        $ref: "#/$defs/rawOnlyBlock"
+    additionalProperties: false
+
+  operatorScrape:
+    description: |
+      Default scrape settings applied to targets discovered by the operator
+      component (overridable per PodMonitor/ServiceMonitor).
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.podmonitors/#scrape-block
+    type: object
+    properties:
+      default_scrape_interval:
+        description: |
+          Default scrape interval when a monitor doesn't specify one.
+          Defaults to `1m`. Accepts an expression, so it can be wired to an
+          environment variable.
+        $ref: "#/$defs/expressionOrDuration"
+      default_scrape_timeout:
+        description: |
+          Default scrape timeout when a monitor doesn't specify one.
+          Defaults to `10s`. Accepts an expression, so it can be wired to an
+          environment variable.
+        $ref: "#/$defs/expressionOrDuration"
+      default_sample_limit:
+        description: |
+          Default per-scrape sample limit when a monitor doesn't specify one.
+        type: number
+      honor_metadata:
+        description: |
+          When true, keep metric metadata (type/help) reported by the target.
+        type: boolean
+      scrape_native_histograms:
+        description: |
+          When true, scrape native histogram samples.
+        type: boolean
+      enable_type_and_unit_labels:
+        description: |
+          When true, expose metric type and unit as labels.
+        type: boolean
+    additionalProperties: false
+
+  remoteWriteEndpoint:
+    description: |
+      One remote-write destination for `prometheus.remote_write`.
+
+      Only `url` and common scalars are typed. Auth (`basic_auth`, `oauth2`,
+      `authorization`, `tls_config`), `queue_config`, `metadata_config`, and
+      `write_relabel_config` are reachable via a `raw:` block nested in `blocks`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/#endpoint-block
+    type: object
+    properties:
+      url:
+        description: Full URL of the remote-write endpoint.
+        type: string
+      name:
+        description: |
+          Optional human-readable name for the endpoint (surfaced in metrics).
+        type: string
+      remote_timeout:
+        description: |
+          Timeout for requests to the endpoint.
+          Defaults to `30s`.
+        type: string
+        format: go-duration
+      headers:
+        description: |
+          Extra HTTP headers to send with every remote-write request.
+        type: object
+        additionalProperties:
+          type: string
+      send_exemplars:
+        description: |
+          When true (default), send exemplars along with samples.
+        type: boolean
+      send_native_histograms:
+        description: |
+          When true, send native histogram samples.
+        type: boolean
+      enable_http2:
+        description: |
+          When true, allow HTTP/2 for remote-write requests.
+        type: boolean
+      follow_redirects:
+        description: |
+          When true (default), follow HTTP 3xx redirects.
+        type: boolean
+      blocks:
+        description: |
+          Nested endpoint blocks (`basic_auth`, `tls_config`, `queue_config`,
+          `write_relabel_config`, ...) via the `raw:` escape.
+        $ref: "#/$defs/rawOnlyBlock"
+    required: [url]
+    additionalProperties: false

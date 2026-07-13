@@ -1,0 +1,21 @@
+# Example AWS overlay that uses AWS Managed Prometheus.
+
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          enabled: true
+          authType: sigv4
+
+          # Region should be like us-east-1
+          # Workspace ID should be like ws-11111111-2222-3333-4444-555555555555
+          url: "https://aps-workspaces.<REGION>.amazonaws.com/workspaces/<WORKSPACE-ID>/api/v1/remote_write"
+
+alloy-gateway:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::012345678901:role/YourAMPRole"
+
+thanos:
+  enabled: false

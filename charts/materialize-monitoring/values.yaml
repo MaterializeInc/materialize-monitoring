@@ -36,24 +36,32 @@ namespaceOverride: ""
 #    override.
 # 2. **Helm tags (the `tags:` block).** When no `<chart>.enabled` is set,
 #    enablement is decided by tags. Each dependency in `Chart.yaml`
-#    carries a *group tag* (e.g. `bundled-backends`) and a *per-chart
-#    tag* (e.g. `loki`); a dependency is included if any of its tags
-#    evaluates true (OR semantics). To opt one chart out of an
-#    otherwise-enabled group, set the group tag false and flip the
-#    per-chart tags individually — or use the circuit breaker.
+#    carries the master `default` tag, a *group tag* (e.g.
+#    `bundled-backends`), and a *per-chart tag* (e.g. `loki`); a dependency
+#    is included if any of its tags evaluates true (OR semantics). To opt
+#    one chart out of an otherwise-enabled group, set the group tag false
+#    and flip the per-chart tags individually — or use the circuit breaker.
 #
 # Group ↔ chart mapping:
 #
 # | Group tag          | Charts                                              |
 # | ------------------ | --------------------------------------------------- |
+# | `default`          | `pipeline` + `bundled-backends` + `managed-grafana` |
+# |                    | groups + `kube-state-metrics` (recommended stack)   |
 # | `pipeline`         | `alloy-agent`, `alloy-gateway`                      |
-# | `bundled-backends` | `loki`, `thanos`, `grafana`, `alertmanager`         |
+# | `bundled-backends` | `loki`, `thanos`, `alertmanager`                    |
+# | `managed-grafana`  | `grafana`, `grafana-operator`                       |
 # | `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
 # | `crds`             | `prometheus-operator-crds`                          |
 #
-# The tag defaults match `profile=bundled-stack`. Other profiles flip
-# `bundled-backends` off and the pipeline exporters appropriately; see
-# the profile preset values files under `examples/`.
+# `default` is the only group on by default and enables the full
+# recommended stack. `--set tags.default=false` turns everything off, so
+# you can enable a single group (`bundled-backends`, `managed-grafana`,
+# `pipeline`, `cluster-metrics`) or individual charts on top. Profile
+# preset values files under `profiles/` flip these appropriately.
+# (`kube-state-metrics` is in `default`, but `metrics-server` is not —
+# most clusters already run metrics-server; enable it via
+# `tags.cluster-metrics` or `tags.metrics-server` if yours doesn't.)
 tags:
   # Group toggles
   # -- Enable all recommended defaults.
@@ -61,28 +69,27 @@ tags:
   default: true
   # -- Enable both Alloy releases (agent + gateway).
   pipeline: false
-  # -- Enable Loki, Thanos, Grafana, and Alertmanager as a group.
+  # -- Enable Loki, Thanos, and Alertmanager as a group. (Grafana is in the
+  # `managed-grafana` group.)
   bundled-backends: false
   # -- Enable kube-state-metrics and metrics-server as a group.
   cluster-metrics: false
-  # -- Install Prometheus Operator CRDs.
-  crds: false
   # Per-chart overrides (OR'd with the group tag above)
-  # -- Per-chart override: enable just the Alloy agent. OR'd with `tags.pipeline`.
+  # -- Per-chart override: enable just the Alloy agent. OR'd with `tags.default` / `tags.pipeline`.
   alloy-agent: false
-  # -- Per-chart override: enable just the Alloy gateway. OR'd with `tags.pipeline`.
+  # -- Per-chart override: enable just the Alloy gateway. OR'd with `tags.default` / `tags.pipeline`.
   alloy-gateway: false
-  # -- Per-chart override: enable just Loki. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Loki. OR'd with `tags.default` / `tags.bundled-backends`.
   loki: false
-  # -- Per-chart override: enable just Thanos. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Thanos. OR'd with `tags.default` / `tags.bundled-backends`.
   thanos: false
-  # -- Per-chart override: enable just Grafana standalone. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Grafana standalone. OR'd with `tags.default` / `tags.managed-grafana`.
   grafana-standalone: false
-  # -- Per-chart override: enable just Grafana operator. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Grafana operator. OR'd with `tags.default` / `tags.managed-grafana`.
   grafana-operator: false
-  # -- Per-chart override: enable just Alertmanager. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Alertmanager. OR'd with `tags.default` / `tags.bundled-backends`.
   alertmanager: false
-  # -- Per-chart override: enable just kube-state-metrics. OR'd with `tags.cluster-metrics`.
+  # -- Per-chart override: enable just kube-state-metrics. OR'd with `tags.default` / `tags.cluster-metrics`.
   kube-state-metrics: false
   # -- Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
   metrics-server: false
@@ -163,7 +170,7 @@ pipeline:
       destination:
         loki:
           # -- alloy-gateway push endpoint URL.
-          url: 'http://mzmon-alloy-gateway.{{ include "mzmon.alloyGateway.namespace" $ }}.svc:3100/loki/api/v1/push'
+          url: 'http://alloy-gateway.{{ include "mzmon.alloyGateway.namespace" $ }}.svc:3100/loki/api/v1/push'
           # -- Retry configuration.
           retries:
             maxBackoffRetries: 10
@@ -201,7 +208,7 @@ pipeline:
           # By default, we use the in-cluster loki
           enabled: true
           # -- Loki push endpoint URL.
-          url: 'http://mzmon-loki-distributor.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+          url: 'http://loki-distributor.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
           # -- Retry configuration.
           retries:
             maxBackoffRetries: 10
@@ -260,6 +267,8 @@ pipeline:
           # -- Enable writing to an OTLP destination.
           # By default, we do not use the OTLP destination.
           enabled: false
+          # -- Use metric OTLP destination.
+          shareMetricDestination: false
           # -- Protocol to use for OTLP.
           # Use grpc for gRPC protocol.
           # Use http for HTTP protocol.
@@ -285,29 +294,79 @@ pipeline:
 
   # -- (h4) Configuration for metrics behavior
   # @notationType -- (sectionstart) Metrics configuration
-  metrics: {}
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          # -- Enable writing to a Prometheus remote write destination.
+          # We default to in-cluster Thanos.
+          enabled: true
 
-  # -- (h4) Configuration for exporters attached to the Alloy gateway
-  # @notationType -- (sectionstart) Exporter configuration
-  exporters:
-    prometheusRemoteWrite:
-      # -- Enable Prometheus remote_write exporter on the gateway.
-      enabled: false
-      # -- Prometheus-compatible remote_write endpoint URL.
-      endpoint: ""
-      basicAuth:
-        # -- Secret reference for remote_write basic-auth username. `{name, key}` form.
-        usernameSecret: {}
-        # -- Secret reference for remote_write basic-auth password. `{name, key}` form.
-        passwordSecret: {}
-    otlp:
-      # -- Enable OTLP exporter on the gateway.
-      enabled: false
-      # -- OTLP gRPC endpoint URL.
-      endpoint: ""
-    bundled:
-      # -- Enable export to the bundled Loki / Thanos backends. Implied when `profile=bundled-stack`.
-      enabled: false
+          # -- Prometheus remote write endpoint URL.
+          url: 'http://thanos-receive.{{ include "mzmon.thanos.namespace" $ }}.svc:10908/api/v1/receive'
+
+          # -- Type of authentication to use with the loki endpoint.
+          # Use none if no authentication is required.
+          # Use basicAuth for username/password.
+          # Use bearer for bearer token.
+          # Use oauth2 for OAuth2 client credentials.
+          # Use sigv4 for AWS SigV4 signing (For AMP).
+          authType: none
+          # -- Configuration for auth when using authType=basicAuth
+          basicAuth:
+            password: ""
+            passwordEnv: GATEWAY_PROMETHEUS_DEST_PASSWORD
+            username: ""
+            usernameEnv: GATEWAY_PROMETHEUS_DEST_USERNAME
+          # -- Configuration for bearer token when using authType=bearer
+          # This is used for bearer type tokens.
+          bearer:
+            token: ""
+            tokenEnv: GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN
+          # -- Configuration for OAuth2 when using authType=oauth2
+          oauth2:
+            clientId: ""
+            clientIdEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID
+            clientSecret: ""
+            clientSecretEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_SECRET
+            scopes: []
+            tokenUrl: ""
+            tokenUrlEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL
+          # -- Configuration for AWS signatures when using authType=sigv4
+          # This generally does not need to be set (it is derived from IRSA).
+          sigv4:
+            region: ""
+            roleArn: ""
+          tls:
+            # -- Whether to enable TLS for the prometheus destination.
+            enabled: false
+            # -- Whether to verify the TLS certificate for the prometheus destination.
+            verify: true
+            # -- Certificate Authority (CA) PEM contents for TLS.
+            ca: ""
+            caEnv: GATEWAY_PROMETHEUS_DEST_TLS_CA
+            # -- Client certificate PEM contents for TLS.
+            cert: ""
+            certEnv: GATEWAY_PROMETHEUS_DEST_TLS_CERT
+            # -- Client private key PEM contents for TLS.
+            key: ""
+            keyEnv: GATEWAY_PROMETHEUS_DEST_TLS_KEY
+            # -- Alternative SNI (Server Name Indication) to specify.
+            serverName: ""
+            # -- Minimum TLS version to allow.
+            # Use TLS12 if you need better compat.
+            # TLS11 and TLS10 are not recommended for production.
+            minVersion: TLS13
+        otlp:
+          # -- Enable writing to an OTLP destination.
+          # By default, we do not use the OTLP destination.
+          enabled: false
+          # -- Protocol to use for OTLP.
+          # Use grpc for gRPC protocol.
+          # Use http for HTTP protocol.
+          protocol: grpc
+          # -- OTLP push endpoint URL.
+          url: ""
 
 # -- Configuration for dashboards, rules, and alerts
 # @notationType -- (sectionstart) Monitoring configurations
@@ -402,8 +461,12 @@ _subchartSection: stub
 #   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
 #   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
 alloy-agent:
-  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
+  # Circuit breaker (precedence over `tags.default`, `tags.pipeline`, and `tags.alloy-agent`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "alloy-agent"
+  # -- Namespace override.
   namespaceOverride: null
   # -- Control for the PodLogs crd.
   crds:
@@ -477,7 +540,8 @@ alloy-agent:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.17.0-mz1@sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
+    tag: v1.17.0-mz1
+    digest: sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -507,6 +571,9 @@ alloy-agent:
         - name: tmp
           emptyDir: {}
 
+  serviceMonitor:
+    enabled: true
+
 # -- (h4) Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.
 # @notationType -- (sectionstart) Alloy Gateway
 # @raw
@@ -515,8 +582,12 @@ alloy-agent:
 #   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
 #   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
 alloy-gateway:
-  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
+  # Circuit breaker (precedence over `tags.default`, `tags.pipeline`, and `tags.alloy-gateway`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "alloy-gateway"
+  # -- Namespace override.
   namespaceOverride: null
   # -- Control for the PodLogs crd.
   crds:
@@ -571,6 +642,10 @@ alloy-gateway:
         port: 4318
         targetPort: 4318
         protocol: TCP
+      - name: prom
+        port: 9090
+        targetPort: 9090
+        protocol: TCP
       # - name: faro
       #   port: 12347
 
@@ -605,7 +680,8 @@ alloy-gateway:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.17.0-mz1@sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
+    tag: v1.17.0-mz1
+    digest: sha256:c47e93792dd1b6ddcd75207d49eaa6610a4db4837d950a582bf7ff8563acd68f
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -665,6 +741,16 @@ alloy-gateway:
               value: 2
               periodSeconds: 300
 
+  serviceAccount:
+    # -- Create a service account for alloy-gateway.
+    create: true
+    # -- Extra annotations to set on the alloy-gateway service account.
+    # Use `eks.amazonaws.com/role-arn` to set up IRSA.
+    annotations: {}
+
+  serviceMonitor:
+    enabled: true
+
 # -- (h4) Bundled Loki backend for logs.
 # @notationType -- (sectionstart) Loki
 # @raw
@@ -673,10 +759,13 @@ alloy-gateway:
 #   * https://github.com/grafana-community/helm-charts/tree/main/charts/loki
 #   * https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml
 loki:
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
+  # Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.loki`):
   # enabled: true
-  # -- Install loki into this namespace.
-  namespaceOverride: loki
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "loki"
+  # -- Namespace override.
+  namespaceOverride: null
   # -- How loki is deployed.
   # We prefer to run in Distributed/Microservices mode.
   deploymentMode: Distributed
@@ -698,11 +787,11 @@ loki:
     # YAGNI: flavor not in schema (but we probably don't need cilium anyways)
     # flavor: kubernetes
     # -- Selector for incoming traffic to metric endpoints.
-    # This must be configured manually (usually set to alloy or prometheus).
+    # This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).
     metrics:
       namespaceSelector: {}
     # -- Selector for incoming traffic to the read/write endpoints.
-    # This must be configured manually (usually set to alloy and grafana).
+    # This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).
     ingress:
       namespaceSelector: {}
     # -- Outgoing traffic from loki to the object store.
@@ -1093,20 +1182,31 @@ loki:
   chunksCache:
     allocatedMemory: 2048
 
+  monitoring:
+    serviceMonitor:
+      # -- Enable a ServiceMonitor for the loki microservices.
+      enabled: true
+      jobPrefix: loki/
+
   # -- (h5) End-to-end write→read canary for meta-monitoring.
   # On by default upstream; surfaced here because self-monitoring the log store
   # is a first-class requirement for us.
   lokiCanary:
     enabled: true
     kind: Deployment
-    lokiurl: mzmon-loki-query-frontend.loki.svc:3100
+    lokiurl: loki-query-frontend:3100
     push: false
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos
 thanos:
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.thanos`):
+  # Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.thanos`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "thanos"
+  # -- Namespace override.
+  namespaceOverride: null
 
   global:
     objstore:
@@ -1160,12 +1260,15 @@ thanos:
 #   * https://grafana.github.io/grafana-operator/docs/installation/helm/#values
 #   * https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml
 grafana-operator:
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.grafana-operator`):
+  # Circuit breaker (precedence over `tags.default`, `tags.managed-grafana`, and `tags.grafana-operator`):
   # enabled:
   # -- CRD behavior
   crds:
     # To install crds during upgrades, this must be false
     immutable: false
+
+  serviceMonitor:
+    enabled: true
 
 # -- (h4) Bundled Grafana for dashboard rendering.
 # @notationType -- (sectionstart) Grafana Instance
@@ -1174,28 +1277,48 @@ grafana-operator:
 # Upstream reference:
 #   * https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
 grafana:
-  # Circuit breaker (precedence over `tags.grafana-standalone`):
+  # Circuit breaker (precedence over `tags.default`, `tags.managed-grafana`, and `tags.grafana-standalone`):
   # enabled: true
   replicas: 1
 
   grafana.ini: {}
 
+  serviceMonitor:
+    enabled: true
+
 # -- (h4) Bundled Alertmanager for routing alerts emitted by the rule packages.
 # @notationType -- (sectionstart) Alertmanager
 alertmanager: {}
-# Circuit breaker (precedence over `tags.bundled-backends` and `tags.alertmanager`):
+# Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.alertmanager`):
 # enabled: true
 
 # -- (h4) kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.
 # @notationType -- (sectionstart) Kube State Metrics
-kube-state-metrics: {}
-# Circuit breaker (precedence over `tags.cluster-metrics` and `tags.kube-state-metrics`):
-# enabled: true
+# @raw
+#
+# Upstream reference:
+#    * https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml
+kube-state-metrics:
+  # Circuit breaker (precedence over `tags.default`, `tags.cluster-metrics`, and `tags.kube-state-metrics`):
+  # enabled: true
+  prometheus:
+    monitor:
+      enabled: true
 
 # -- (h4) metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.
 # @notationType -- (sectionstart) Metrics Server
+# @raw
+#
+# Upstream reference:
+#    * https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml
 metrics-server:
   # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.metrics-server`):
   # enabled: true
   # -- Number of replicas for metrics-server.
   replicas: 1
+
+  metrics:
+    enabled: true
+
+  serviceMonitor:
+    enabled: true

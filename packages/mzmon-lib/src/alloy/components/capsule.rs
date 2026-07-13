@@ -54,6 +54,25 @@ impl RelabelRules {
     }
 }
 
+/// Reference to a component's exported `MetricsReceiver`
+/// (e.g. `prometheus.remote_write.default.receiver`).
+///
+/// The metrics-side analog of [`LogsReceiver`]: components exchange it through
+/// `forward_to`, and `prometheus.echo` / `prometheus.relabel` /
+/// `prometheus.remote_write` / `prometheus.receive_http` export a `receiver` of
+/// this type. Deserializes from a plain YAML string; renders as a bare ref.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/compatibility/#metricsreceiver
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct MetricsReceiver(pub Identifier);
+
+impl MetricsReceiver {
+    pub fn new(name: impl Into<Identifier>) -> Self {
+        Self(name.into())
+    }
+}
+
 /// One element of a `targets` list.
 ///
 /// A `discovery.*` export (e.g. `discovery.kubernetes.pods.targets`) is itself a
@@ -96,6 +115,12 @@ impl From<&RelabelRules> for AttributeValue {
     }
 }
 
+impl From<&MetricsReceiver> for AttributeValue {
+    fn from(receiver: &MetricsReceiver) -> Self {
+        AttributeValue::Expression(Expression::name_to_ref(&receiver.0))
+    }
+}
+
 impl From<&TargetEntry> for AttributeValue {
     fn from(entry: &TargetEntry) -> Self {
         match entry {
@@ -109,6 +134,15 @@ impl From<&TargetEntry> for AttributeValue {
 ///
 /// Replaces the per-file `target_refs()` helpers.
 pub fn logs_receiver_list(receivers: &[LogsReceiver]) -> AttributeValue {
+    AttributeValue::Array(receivers.iter().map(AttributeValue::from).collect())
+}
+
+/// Wrap a `forward_to`-style list of `MetricsReceiver`s as an
+/// `AttributeValue::Array` of bare refs.
+///
+/// Unlike `targets` (list-valued, see [`target_list`]), each `forward_to`
+/// element is a single capsule, so list-wrapping is correct here.
+pub fn metrics_receiver_list(receivers: &[MetricsReceiver]) -> AttributeValue {
     AttributeValue::Array(receivers.iter().map(AttributeValue::from).collect())
 }
 
@@ -230,6 +264,59 @@ mod tests {
                 assert_eq!(e.ref_name.as_deref(), Some("loki.relabel.filtered.rules"));
             }
             other => panic!("expected Expression with ref_name, got {other:?}"),
+        }
+    }
+
+    // ----- MetricsReceiver -----
+
+    #[test]
+    fn metrics_receiver_deserializes_from_plain_yaml_string() {
+        let r: MetricsReceiver =
+            serde_yaml_ng::from_str("prometheus.remote_write.default.receiver").unwrap();
+        assert_eq!(
+            r,
+            MetricsReceiver("prometheus.remote_write.default.receiver".into())
+        );
+    }
+
+    #[test]
+    fn metrics_receiver_converts_to_bare_ref_expression() {
+        let v = AttributeValue::from(&MetricsReceiver(
+            "prometheus.remote_write.default.receiver".into(),
+        ));
+        match v {
+            AttributeValue::Expression(e) => {
+                assert_eq!(
+                    e.ref_name.as_deref(),
+                    Some("prometheus.remote_write.default.receiver")
+                );
+            }
+            other => panic!("expected Expression with ref_name, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn metrics_receiver_list_wraps_each_as_bare_ref() {
+        let v = metrics_receiver_list(&[
+            MetricsReceiver("prometheus.relabel.a.receiver".into()),
+            MetricsReceiver("prometheus.remote_write.b.receiver".into()),
+        ]);
+        match v {
+            AttributeValue::Array(items) => {
+                assert_eq!(items.len(), 2);
+                for (item, expected) in items.iter().zip([
+                    "prometheus.relabel.a.receiver",
+                    "prometheus.remote_write.b.receiver",
+                ]) {
+                    match item {
+                        AttributeValue::Expression(e) => {
+                            assert_eq!(e.ref_name.as_deref(), Some(expected));
+                        }
+                        other => panic!("expected Expression, got {other:?}"),
+                    }
+                }
+            }
+            other => panic!("expected Array, got {other:?}"),
         }
     }
 

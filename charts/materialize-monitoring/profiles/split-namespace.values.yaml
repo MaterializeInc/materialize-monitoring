@@ -1,0 +1,24 @@
+# Use a separate namespace for each subchart.
+# Use this if you want less trust between monitoring components.
+# There is more management overhead but it is more secure.
+# Support for this model is provided as best effort.
+alloy-agent:
+  namespaceOverride: alloy-agent
+
+alloy-gateway:
+  namespaceOverride: alloy-gateway
+
+loki:
+  namespaceOverride: loki
+
+thanos:
+  namespaceOverride: thanos
+
+grafana-operator:
+  namespaceOverride: grafana-operator
+
+grafana:
+  namespaceOverride: grafana
+
+alertmanager:
+  namespaceOverride: alertmanager

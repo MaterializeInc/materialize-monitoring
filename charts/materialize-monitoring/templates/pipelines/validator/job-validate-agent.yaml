@@ -30,7 +30,7 @@ spec:
         {{- include "mzmon.labels" $ | nindent 8 }}
         app.kubernetes.io/component: alloy-agent
     spec:
-      serviceAccountName: {{ include "mzmon.alloyAgent.serviceAccountName" $ }}
+      # serviceAccountName: {{ include "mzmon.alloyAgent.serviceAccountName" $ }}
       restartPolicy: Never
       securityContext:
         {{- toYaml $pipelineValues.preValidateJob.podSecurityContext | nindent 8 }}

@@ -12,12 +12,25 @@
 // otelcol.exporter.loki bridge) all feed loki.process.input_processor. These
 // ingress components are not typed yet, so they use `raw:` escapes.
 //
-// Egress is split out into gateway-dest-stub.yaml. input_processor forwards to
-// loki.process.egress.receiver (a passthrough seam defined in that stub), which
-// lets the write destination be swapped at chart-assembly time — including the
-// component *type* (loki.write vs an otelcol bridge) — without editing this
-// file. gateway.alloy therefore references a component it does not define and is
-// validated jointly with the stub (see `make pipelines`).
+// Metrics: this file also carries a metrics pipeline. prometheus.receive_http
+// (pushed remote-write), an otelcol.exporter.prometheus bridge off the OTLP
+// receiver, and prometheus.operator.{podmonitors,servicemonitors} (clustering on;
+// scrape defaults from GATEWAY_SCRAPE_INTERVAL / GATEWAY_SCRAPE_TIMEOUT) all feed
+// prometheus.relabel.input_processor, which forwards to a prometheus.relabel.egress
+// seam. input_processor is intentionally rule-free: relabeling lives at the target
+// phase instead — in the PodMonitor/ServiceMonitor CRs, in the operator components'
+// rule blocks (uniform target rules: pod-liveness drop, app-label coalescing), and
+// in the cAdvisor ScrapeConfig node-label allowlist (packages/prometheus-scrapers/).
+//
+// Egress seams (loki.process.egress and prometheus.relabel.egress) are defined
+// downstream, not here, so the write destinations can be swapped without editing
+// this file. IMPORTANT: at deploy the destination blocks are rendered by the
+// chart's _alloy_helpers.tpl (Helm, from .Values.pipeline.{logging,metrics}.gateway
+// .destination.*), which is NOT schema-validated — only the pre-validate jobs
+// (alloy validate on the assembled configMap) check it. gateway-dest-stub.yaml is
+// a build-time stand-in for those seams so gateway.alloy (which references
+// components it does not define) can be validated jointly at build/CI time (see
+// `make pipelines`); it is not what deploys.
 //
 // Many mz-system services share an identical json/template/structured_metadata
 // shape. That shape is defined once via YAML anchors (&mz_svc_*) on the
@@ -45,12 +58,6 @@ loki.source.api "gateway" {
 	}
 }
 
-loki.source.kubernetes_events "k8s_events" {
-	forward_to = [
-		loki.process.input_processor.receiver,
-	]
-}
-
 otelcol.receiver.otlp "gateway" {
 	grpc { }
 
@@ -60,12 +67,131 @@ otelcol.receiver.otlp "gateway" {
 		logs = [
 			otelcol.exporter.loki.bridge.input,
 		]
+		metrics = [
+			otelcol.exporter.prometheus.bridge.input,
+		]
+	}
+}
+
+prometheus.receive_http "gateway" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+
+	http {
+		listen_port = 9090
+	}
+}
+
+loki.source.kubernetes_events "k8s_events" {
+	forward_to = [
+		loki.process.input_processor.receiver,
+	]
+}
+
+prometheus.operator.podmonitors "default" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+
+	clustering {
+		enabled = true
+	}
+
+	scrape {
+		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
+		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_k8s_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+}
+
+prometheus.operator.servicemonitors "default" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+
+	clustering {
+		enabled = true
+	}
+
+	scrape {
+		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
+		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_k8s_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+		regex = "(.+)"
 	}
 }
 
 otelcol.exporter.loki "bridge" {
 	forward_to = [
 		loki.process.input_processor.receiver,
+	]
+}
+
+otelcol.exporter.prometheus "bridge" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
 	]
 }
 
@@ -1538,6 +1664,12 @@ loki.process "input_processor" {
 	}
 }
 
+prometheus.relabel "input_processor" {
+	forward_to = [
+		prometheus.relabel.egress.receiver,
+	]
+}
+
 loki.process "sample_debug" {
 	forward_to = [
 		loki.echo.stub.receiver,
@@ -1547,6 +1679,12 @@ loki.process "sample_debug" {
 		source              = "app"
 		value               = "alloy"
 		drop_counter_reason = "skip self"
+	}
+
+	stage.drop {
+		source              = "app"
+		value               = "loki"
+		drop_counter_reason = "skip loki"
 	}
 
 	stage.sampling {
