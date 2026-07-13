@@ -45,12 +45,6 @@ loki.source.api "gateway" {
 	}
 }
 
-loki.source.kubernetes_events "k8s_events" {
-	forward_to = [
-		loki.process.input_processor.receiver,
-	]
-}
-
 otelcol.receiver.otlp "gateway" {
 	grpc { }
 
@@ -60,12 +54,63 @@ otelcol.receiver.otlp "gateway" {
 		logs = [
 			otelcol.exporter.loki.bridge.input,
 		]
+		metrics = [
+			otelcol.exporter.prometheus.bridge.input,
+		]
+	}
+}
+
+loki.source.kubernetes_events "k8s_events" {
+	forward_to = [
+		loki.process.input_processor.receiver,
+	]
+}
+
+prometheus.operator.podmonitors "default" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+
+	clustering {
+		enabled = true
+	}
+
+	scrape {
+		default_scrape_interval = "30s"
+		default_scrape_timeout  = "10s"
+	}
+}
+
+prometheus.operator.servicemonitors "default" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+
+	clustering {
+		enabled = true
+	}
+
+	scrape {
+		default_scrape_interval = "30s"
+		default_scrape_timeout  = "10s"
 	}
 }
 
 otelcol.exporter.loki "bridge" {
 	forward_to = [
 		loki.process.input_processor.receiver,
+	]
+}
+
+otelcol.exporter.prometheus "bridge" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
+	]
+}
+
+prometheus.receive_http "gateway" {
+	forward_to = [
+		prometheus.relabel.input_processor.receiver,
 	]
 }
 
@@ -1536,6 +1581,12 @@ loki.process "input_processor" {
 			container     = "container",
 		}
 	}
+}
+
+prometheus.relabel "input_processor" {
+	forward_to = [
+		prometheus.relabel.egress.receiver,
+	]
 }
 
 loki.process "sample_debug" {

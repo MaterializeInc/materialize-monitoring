@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{Block, ToBlock, impl_to_block_dispatch};
-use crate::alloy::components::{discovery, loki, top};
+use crate::alloy::components::{discovery, loki, prometheus, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -45,6 +45,20 @@ pub enum ComponentBlock {
     DiscoveryKubernetes(discovery::DiscoveryKubernetesBlock),
     #[serde(rename = "discovery.relabel")]
     DiscoveryRelabel(discovery::DiscoveryRelabelBlock),
+    #[serde(rename = "prometheus.echo")]
+    PrometheusEcho(prometheus::PrometheusEchoBlock),
+    #[serde(rename = "prometheus.relabel")]
+    PrometheusRelabel(prometheus::PrometheusRelabelBlock),
+    #[serde(rename = "prometheus.scrape")]
+    PrometheusScrape(prometheus::PrometheusScrapeBlock),
+    #[serde(rename = "prometheus.receive_http")]
+    PrometheusReceiveHttp(prometheus::PrometheusReceiveHttpBlock),
+    #[serde(rename = "prometheus.remote_write")]
+    PrometheusRemoteWrite(prometheus::PrometheusRemoteWriteBlock),
+    #[serde(rename = "prometheus.operator.podmonitors")]
+    PrometheusOperatorPodMonitors(prometheus::PrometheusOperatorPodMonitorsBlock),
+    #[serde(rename = "prometheus.operator.servicemonitors")]
+    PrometheusOperatorServiceMonitors(prometheus::PrometheusOperatorServiceMonitorsBlock),
 }
 impl_to_block_dispatch!(ComponentBlock {
     Raw,
@@ -55,6 +69,13 @@ impl_to_block_dispatch!(ComponentBlock {
     LokiSourceFile,
     DiscoveryKubernetes,
     DiscoveryRelabel,
+    PrometheusEcho,
+    PrometheusRelabel,
+    PrometheusScrape,
+    PrometheusReceiveHttp,
+    PrometheusRemoteWrite,
+    PrometheusOperatorPodMonitors,
+    PrometheusOperatorServiceMonitors,
 });
 
 impl Pipeline {

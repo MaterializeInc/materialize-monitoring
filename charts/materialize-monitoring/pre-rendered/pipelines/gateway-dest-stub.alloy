@@ -22,8 +22,20 @@ loki.process "egress" {
 	]
 }
 
+prometheus.relabel "egress" {
+	forward_to = [
+		prometheus.remote_write.destination.receiver,
+	]
+}
+
 loki.write "destination" {
 	endpoint {
-		url = coalesce(sys.env("GATEWAY_LOKI_DEST"), "http://loki-gateway.loki.svc:3100/loki/api/v1/push")
+		url = coalesce(sys.env("GATEWAY_LOKI_DEST"), "http://loki-distributor.monitoring.svc:3100/loki/api/v1/push")
+	}
+}
+
+prometheus.remote_write "destination" {
+	endpoint {
+		url = coalesce(sys.env("GATEWAY_PROMETHEUS_DEST"), "http://thanos-receive.monitoring.svc:9090/api/v1/push")
 	}
 }

@@ -29,6 +29,10 @@ blocks:
       label: egress
       forward_to: ["loki.write.destination.receiver"]
 
+  - prometheus.relabel:
+      label: egress
+      forward_to: ["prometheus.remote_write.destination.receiver"]
+
   # Default sink: forwards processed entries to the log store.
   - raw:
       component: loki.write
@@ -40,4 +44,17 @@ blocks:
               function: coalesce
               arguments:
                 - env: GATEWAY_LOKI_DEST
-                - "http://loki-gateway.loki.svc:3100/loki/api/v1/push"
+                - "http://loki-distributor.monitoring.svc:3100/loki/api/v1/push"
+
+  # Default sink for metrics
+  - raw:
+      component: prometheus.remote_write
+      label: destination
+      blocks:
+        - component: endpoint
+          attributes:
+            url:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_PROMETHEUS_DEST
+                - "http://thanos-receive.monitoring.svc:9090/api/v1/push"

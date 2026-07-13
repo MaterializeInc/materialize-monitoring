@@ -63,14 +63,6 @@ blocks:
                     - env: ALLOY_LOKI_PORT
                     - "3100"
 
-  # Kubernetes events source, feeding the main processor.
-  - raw:
-      component: loki.source.kubernetes_events
-      label: k8s_events
-      attributes:
-        forward_to:
-          - ref: loki.process.input_processor.receiver
-
   # OTLP receiver for logs, bridged into the loki pipeline via the exporter below.
   # grpc defaults to :4317, http to :4318.
   - raw:
@@ -83,8 +75,44 @@ blocks:
           attributes:
             logs:
               - ref: otelcol.exporter.loki.bridge.input
+            metrics:
+              - ref: otelcol.exporter.prometheus.bridge.input
 
+  # --- collectors ---------------------------------------------------
+
+  # Kubernetes events source, feeding the main processor.
+  - raw:
+      component: loki.source.kubernetes_events
+      label: k8s_events
+      attributes:
+        forward_to:
+          - ref: loki.process.input_processor.receiver
+
+  - prometheus.operator.podmonitors:
+      label: default
+      forward_to:
+        - prometheus.relabel.input_processor.receiver
+      blocks:
+        - clustering:
+            enabled: true
+        - scrape:
+            default_scrape_interval: "30s"
+            default_scrape_timeout: "10s"
+
+  - prometheus.operator.servicemonitors:
+      label: default
+      forward_to:
+        - prometheus.relabel.input_processor.receiver
+      blocks:
+        - clustering:
+            enabled: true
+        - scrape:
+            default_scrape_interval: "30s"
+            default_scrape_timeout: "10s"
+
+  # --- bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
+  # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
   - raw:
       component: otelcol.exporter.loki
       label: bridge
@@ -92,7 +120,20 @@ blocks:
         forward_to:
           - ref: loki.process.input_processor.receiver
 
-  # --- main processing pipeline (ported from staging-gateway.alloy) -----------
+  # Bridge: turns OTLP metrics into Prometheus and feeds the main processor.
+  - raw:
+      component: otelcol.exporter.prometheus
+      label: bridge
+      attributes:
+        forward_to:
+          - ref: prometheus.relabel.input_processor.receiver
+
+  - prometheus.receive_http:
+      label: gateway
+      forward_to:
+        - "prometheus.relabel.input_processor.receiver"
+
+  # --- main processing pipeline -----------
 
   - loki.process:
       label: input_processor
@@ -757,6 +798,11 @@ blocks:
               namespace: namespace
               app: app
               container: container
+
+  - prometheus.relabel:
+      label: input_processor
+      forward_to:
+        - prometheus.relabel.egress.receiver
 
   # --- local sampled debug tap ------------------------------------------------
 
