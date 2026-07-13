@@ -8,13 +8,28 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.7.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.9.0 (Unreleased)
 
 _Changes Pending_
 
-## Pipelines v0.6.0 (Unreleased)
+## Pipelines v0.6.0
 
-_Changes Pending_
+* Implement alloy metrics pipelines
+    * [materialize-monitoring#96](https://github.com/MaterializeInc/materialize-monitoring/pull/96)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * Release mzmon-lib (shared library) v0.8.0
+        * [materialize-monitoring#75](https://github.com/MaterializeInc/materialize-monitoring/pull/75)
+    * Update Rust crate jsonschema to 0.47.0
+        * [materialize-monitoring#98](https://github.com/MaterializeInc/materialize-monitoring/pull/98)
+    * Update Rust crate jsonschema to v0.46.10
+        * [materialize-monitoring#91](https://github.com/MaterializeInc/materialize-monitoring/pull/91)
 
 ## Pipelines v0.5.0
 
