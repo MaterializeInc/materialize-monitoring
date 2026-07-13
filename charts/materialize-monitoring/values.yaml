@@ -36,24 +36,32 @@ namespaceOverride: ""
 #    override.
 # 2. **Helm tags (the `tags:` block).** When no `<chart>.enabled` is set,
 #    enablement is decided by tags. Each dependency in `Chart.yaml`
-#    carries a *group tag* (e.g. `bundled-backends`) and a *per-chart
-#    tag* (e.g. `loki`); a dependency is included if any of its tags
-#    evaluates true (OR semantics). To opt one chart out of an
-#    otherwise-enabled group, set the group tag false and flip the
-#    per-chart tags individually — or use the circuit breaker.
+#    carries the master `default` tag, a *group tag* (e.g.
+#    `bundled-backends`), and a *per-chart tag* (e.g. `loki`); a dependency
+#    is included if any of its tags evaluates true (OR semantics). To opt
+#    one chart out of an otherwise-enabled group, set the group tag false
+#    and flip the per-chart tags individually — or use the circuit breaker.
 #
 # Group ↔ chart mapping:
 #
 # | Group tag          | Charts                                              |
 # | ------------------ | --------------------------------------------------- |
+# | `default`          | `pipeline` + `bundled-backends` + `managed-grafana` |
+# |                    | groups + `kube-state-metrics` (recommended stack)   |
 # | `pipeline`         | `alloy-agent`, `alloy-gateway`                      |
-# | `bundled-backends` | `loki`, `thanos`, `grafana`, `alertmanager`         |
+# | `bundled-backends` | `loki`, `thanos`, `alertmanager`                    |
+# | `managed-grafana`  | `grafana`, `grafana-operator`                       |
 # | `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
 # | `crds`             | `prometheus-operator-crds`                          |
 #
-# The tag defaults match `profile=bundled-stack`. Other profiles flip
-# `bundled-backends` off and the pipeline exporters appropriately; see
-# the profile preset values files under `examples/`.
+# `default` is the only group on by default and enables the full
+# recommended stack. `--set tags.default=false` turns everything off, so
+# you can enable a single group (`bundled-backends`, `managed-grafana`,
+# `pipeline`, `cluster-metrics`) or individual charts on top. Profile
+# preset values files under `profiles/` flip these appropriately.
+# (`kube-state-metrics` is in `default`, but `metrics-server` is not —
+# most clusters already run metrics-server; enable it via
+# `tags.cluster-metrics` or `tags.metrics-server` if yours doesn't.)
 tags:
   # Group toggles
   # -- Enable all recommended defaults.
@@ -61,28 +69,27 @@ tags:
   default: true
   # -- Enable both Alloy releases (agent + gateway).
   pipeline: false
-  # -- Enable Loki, Thanos, Grafana, and Alertmanager as a group.
+  # -- Enable Loki, Thanos, and Alertmanager as a group. (Grafana is in the
+  # `managed-grafana` group.)
   bundled-backends: false
   # -- Enable kube-state-metrics and metrics-server as a group.
   cluster-metrics: false
-  # -- Install Prometheus Operator CRDs.
-  crds: false
   # Per-chart overrides (OR'd with the group tag above)
-  # -- Per-chart override: enable just the Alloy agent. OR'd with `tags.pipeline`.
+  # -- Per-chart override: enable just the Alloy agent. OR'd with `tags.default` / `tags.pipeline`.
   alloy-agent: false
-  # -- Per-chart override: enable just the Alloy gateway. OR'd with `tags.pipeline`.
+  # -- Per-chart override: enable just the Alloy gateway. OR'd with `tags.default` / `tags.pipeline`.
   alloy-gateway: false
-  # -- Per-chart override: enable just Loki. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Loki. OR'd with `tags.default` / `tags.bundled-backends`.
   loki: false
-  # -- Per-chart override: enable just Thanos. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Thanos. OR'd with `tags.default` / `tags.bundled-backends`.
   thanos: false
-  # -- Per-chart override: enable just Grafana standalone. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Grafana standalone. OR'd with `tags.default` / `tags.managed-grafana`.
   grafana-standalone: false
-  # -- Per-chart override: enable just Grafana operator. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Grafana operator. OR'd with `tags.default` / `tags.managed-grafana`.
   grafana-operator: false
-  # -- Per-chart override: enable just Alertmanager. OR'd with `tags.bundled-backends`.
+  # -- Per-chart override: enable just Alertmanager. OR'd with `tags.default` / `tags.bundled-backends`.
   alertmanager: false
-  # -- Per-chart override: enable just kube-state-metrics. OR'd with `tags.cluster-metrics`.
+  # -- Per-chart override: enable just kube-state-metrics. OR'd with `tags.default` / `tags.cluster-metrics`.
   kube-state-metrics: false
   # -- Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
   metrics-server: false
@@ -260,6 +267,8 @@ pipeline:
           # -- Enable writing to an OTLP destination.
           # By default, we do not use the OTLP destination.
           enabled: false
+          # -- Use metric OTLP destination.
+          shareMetricDestination: false
           # -- Protocol to use for OTLP.
           # Use grpc for gRPC protocol.
           # Use http for HTTP protocol.
@@ -323,6 +332,11 @@ pipeline:
             scopes: []
             tokenUrl: ""
             tokenUrlEnv: GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL
+          # -- Configuration for AWS signatures when using authType=sigv4
+          # This generally does not need to be set (it is derived from IRSA).
+          sigv4:
+            region: ""
+            roleArn: ""
           tls:
             # -- Whether to enable TLS for the prometheus destination.
             enabled: false
@@ -447,7 +461,7 @@ _subchartSection: stub
 #   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
 #   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
 alloy-agent:
-  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-agent`):
+  # Circuit breaker (precedence over `tags.default`, `tags.pipeline`, and `tags.alloy-agent`):
   # enabled: true
   # -- Standard Helm full-name override.
   # We use a static name for deterministic relations.
@@ -568,7 +582,7 @@ alloy-agent:
 #   * https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
 #   * https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml
 alloy-gateway:
-  # Circuit breaker (precedence over `tags.pipeline` and `tags.alloy-gateway`):
+  # Circuit breaker (precedence over `tags.default`, `tags.pipeline`, and `tags.alloy-gateway`):
   # enabled: true
   # -- Standard Helm full-name override.
   # We use a static name for deterministic relations.
@@ -727,6 +741,13 @@ alloy-gateway:
               value: 2
               periodSeconds: 300
 
+  serviceAccount:
+    # -- Create a service account for alloy-gateway.
+    create: true
+    # -- Extra annotations to set on the alloy-gateway service account.
+    # Use `eks.amazonaws.com/role-arn` to set up IRSA.
+    annotations: {}
+
   serviceMonitor:
     enabled: true
 
@@ -738,7 +759,7 @@ alloy-gateway:
 #   * https://github.com/grafana-community/helm-charts/tree/main/charts/loki
 #   * https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml
 loki:
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.loki`):
+  # Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.loki`):
   # enabled: true
   # -- Standard Helm full-name override.
   # We use a static name for deterministic relations.
@@ -1179,7 +1200,7 @@ loki:
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos
 thanos:
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.thanos`):
+  # Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.thanos`):
   # enabled: true
   # -- Standard Helm full-name override.
   # We use a static name for deterministic relations.
@@ -1239,7 +1260,7 @@ thanos:
 #   * https://grafana.github.io/grafana-operator/docs/installation/helm/#values
 #   * https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml
 grafana-operator:
-  # Circuit breaker (precedence over `tags.bundled-backends` and `tags.grafana-operator`):
+  # Circuit breaker (precedence over `tags.default`, `tags.managed-grafana`, and `tags.grafana-operator`):
   # enabled:
   # -- CRD behavior
   crds:
@@ -1256,7 +1277,7 @@ grafana-operator:
 # Upstream reference:
 #   * https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
 grafana:
-  # Circuit breaker (precedence over `tags.grafana-standalone`):
+  # Circuit breaker (precedence over `tags.default`, `tags.managed-grafana`, and `tags.grafana-standalone`):
   # enabled: true
   replicas: 1
 
@@ -1268,7 +1289,7 @@ grafana:
 # -- (h4) Bundled Alertmanager for routing alerts emitted by the rule packages.
 # @notationType -- (sectionstart) Alertmanager
 alertmanager: {}
-# Circuit breaker (precedence over `tags.bundled-backends` and `tags.alertmanager`):
+# Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.alertmanager`):
 # enabled: true
 
 # -- (h4) kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.
@@ -1278,7 +1299,7 @@ alertmanager: {}
 # Upstream reference:
 #    * https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml
 kube-state-metrics:
-  # Circuit breaker (precedence over `tags.cluster-metrics` and `tags.kube-state-metrics`):
+  # Circuit breaker (precedence over `tags.default`, `tags.cluster-metrics`, and `tags.kube-state-metrics`):
   # enabled: true
   prometheus:
     monitor:

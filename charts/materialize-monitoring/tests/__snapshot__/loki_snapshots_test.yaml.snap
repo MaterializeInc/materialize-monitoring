@@ -9,7 +9,7 @@ ingester pdb:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ingester
+      name: loki-ingester
       namespace: loki
     spec:
       maxUnavailable: 1
@@ -31,11 +31,11 @@ loki config configmap:
         auth_enabled: true
         bloom_build:
           builder:
-            planner_address: t-loki-bloom-planner-headless.loki.svc.cluster.local:9095
+            planner_address: loki-bloom-planner-headless.loki.svc.cluster.local:9095
           enabled: false
         bloom_gateway:
           client:
-            addresses: dnssrvnoa+_grpc._tcp.t-loki-bloom-gateway-headless.loki.svc.cluster.local
+            addresses: dnssrvnoa+_grpc._tcp.loki-bloom-gateway-headless.loki.svc.cluster.local
           enabled: false
         chunk_store_config:
           chunk_cache_config:
@@ -48,12 +48,12 @@ loki config configmap:
               batch_size: 4
               parallelism: 5
             memcached_client:
-              addresses: dnssrvnoa+_memcached-client._tcp.t-loki-chunks-cache.loki.svc.cluster.local
+              addresses: dnssrvnoa+_memcached-client._tcp.loki-chunks-cache.loki.svc.cluster.local
               consistent_hash: true
               max_idle_conns: 72
               timeout: 2000ms
         common:
-          compactor_grpc_address: 't-loki-compactor.loki.svc.cluster.local:9095'
+          compactor_grpc_address: 'loki-compactor.loki.svc.cluster.local:9095'
           path_prefix: /var/loki
           replication_factor: 3
           storage:
@@ -66,10 +66,10 @@ loki config configmap:
           retention_delete_delay: 8h
           retention_enabled: true
         frontend:
-          scheduler_address: t-loki-query-scheduler-headless.loki.svc.cluster.local:9095
-          tail_proxy_url: http://t-loki-querier.loki.svc.cluster.local:3100
+          scheduler_address: loki-query-scheduler-headless.loki.svc.cluster.local:9095
+          tail_proxy_url: http://loki-querier.loki.svc.cluster.local:3100
         frontend_worker:
-          scheduler_address: t-loki-query-scheduler-headless.loki.svc.cluster.local:9095
+          scheduler_address: loki-query-scheduler-headless.loki.svc.cluster.local:9095
         index_gateway:
           mode: simple
         ingester:
@@ -91,7 +91,7 @@ loki config configmap:
           advertise_port: 7946
           bind_port: 7946
           join_members:
-          - t-loki-memberlist.loki.svc.cluster.local
+          - loki-memberlist.loki.svc.cluster.local
           max_join_backoff: 1m
           max_join_retries: 10
           min_join_backoff: 1s
@@ -109,7 +109,7 @@ loki config configmap:
                 writeback_size_limit: 500MB
               default_validity: 12h
               memcached_client:
-                addresses: dnssrvnoa+_memcached-client._tcp.t-loki-results-cache.loki.svc.cluster.local
+                addresses: dnssrvnoa+_memcached-client._tcp.loki-results-cache.loki.svc.cluster.local
                 consistent_hash: true
                 timeout: 500ms
                 update_interval: 1m
@@ -151,14 +151,14 @@ loki config configmap:
             working_directory: /var/loki/data/bloomshipper
           boltdb_shipper:
             index_gateway_client:
-              server_address: dns+t-loki-index-gateway-headless.loki.svc.cluster.local:9095
+              server_address: dns+loki-index-gateway-headless.loki.svc.cluster.local:9095
           hedging:
             at: 250ms
             max_per_second: 20
             up_to: 3
           tsdb_shipper:
             index_gateway_client:
-              server_address: dns+t-loki-index-gateway-headless.loki.svc.cluster.local:9095
+              server_address: dns+loki-index-gateway-headless.loki.svc.cluster.local:9095
           use_thanos_objstore: false
         tracing:
           enabled: false
@@ -183,7 +183,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-chunks-cache
+      name: loki-chunks-cache
       namespace: loki
     spec:
       clusterIP: None
@@ -210,7 +210,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-compactor
+      name: loki-compactor
       namespace: loki
     spec:
       ports:
@@ -245,7 +245,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-compactor-headless
+      name: loki-compactor-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -279,7 +279,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-distributor
+      name: loki-distributor
       namespace: loki
     spec:
       ports:
@@ -314,7 +314,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-distributor-headless
+      name: loki-distributor-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -348,7 +348,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-index-gateway
+      name: loki-index-gateway
       namespace: loki
     spec:
       ports:
@@ -383,7 +383,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-index-gateway-headless
+      name: loki-index-gateway-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -417,7 +417,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ingester
+      name: loki-ingester
       namespace: loki
     spec:
       ports:
@@ -452,7 +452,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-ingester-headless
+      name: loki-ingester-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -510,7 +510,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-querier
+      name: loki-querier
       namespace: loki
     spec:
       ports:
@@ -545,7 +545,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-querier-headless
+      name: loki-querier-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -579,7 +579,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-query-frontend
+      name: loki-query-frontend
       namespace: loki
     spec:
       ports:
@@ -614,7 +614,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-query-frontend-headless
+      name: loki-query-frontend-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -648,7 +648,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-query-scheduler
+      name: loki-query-scheduler
       namespace: loki
     spec:
       ports:
@@ -683,7 +683,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-query-scheduler-headless
+      name: loki-query-scheduler-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -717,7 +717,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-results-cache
+      name: loki-results-cache
       namespace: loki
     spec:
       clusterIP: None
@@ -744,7 +744,7 @@ medium (base) services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ruler
+      name: loki-ruler
       namespace: loki
     spec:
       ports:
@@ -779,7 +779,7 @@ medium (base) services:
         helm.sh/chart: loki-15.0.1
         prometheus.io/service-monitor: "false"
         variant: headless
-      name: t-loki-ruler-headless
+      name: loki-ruler-headless
       namespace: loki
     spec:
       clusterIP: None
@@ -815,7 +815,7 @@ medium (base) workloads:
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
         name: memcached-chunks-cache
-      name: t-loki-chunks-cache
+      name: loki-chunks-cache
       namespace: loki
     spec:
       podManagementPolicy: Parallel
@@ -826,7 +826,7 @@ medium (base) workloads:
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
           name: memcached-chunks-cache
-      serviceName: t-loki-chunks-cache
+      serviceName: loki-chunks-cache
       template:
         metadata:
           annotations: null
@@ -928,7 +928,7 @@ medium (base) workloads:
             runAsUser: 11211
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki-memcached
+          serviceAccountName: loki-memcached
           terminationGracePeriodSeconds: 60
           tolerations: []
           topologySpreadConstraints: []
@@ -944,7 +944,7 @@ medium (base) workloads:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-compactor
+      name: loki-compactor
       namespace: loki
     spec:
       podManagementPolicy: Parallel
@@ -955,11 +955,11 @@ medium (base) workloads:
           app.kubernetes.io/component: compactor
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
-      serviceName: t-loki-compactor-headless
+      serviceName: loki-compactor-headless
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: compactor
           labels:
             app.kubernetes.io/component: compactor
@@ -1052,7 +1052,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 30
           volumes:
             - emptyDir: {}
@@ -1081,7 +1081,7 @@ medium (base) workloads:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-distributor
+      name: loki-distributor
       namespace: loki
     spec:
       revisionHistoryLimit: 10
@@ -1097,7 +1097,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: distributor
           labels:
             app.kubernetes.io/component: distributor
@@ -1190,7 +1190,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 30
           volumes:
             - emptyDir: {}
@@ -1216,7 +1216,7 @@ medium (base) workloads:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-index-gateway
+      name: loki-index-gateway
       namespace: loki
     spec:
       replicas: 2
@@ -1226,11 +1226,11 @@ medium (base) workloads:
           app.kubernetes.io/component: index-gateway
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
-      serviceName: t-loki-index-gateway-headless
+      serviceName: loki-index-gateway-headless
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: index-gateway
           labels:
             app.kubernetes.io/component: index-gateway
@@ -1323,7 +1323,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 300
           volumes:
             - emptyDir: {}
@@ -1352,7 +1352,7 @@ medium (base) workloads:
         app.kubernetes.io/part-of: memberlist
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ingester
+      name: loki-ingester
       namespace: loki
     spec:
       podManagementPolicy: Parallel
@@ -1363,11 +1363,11 @@ medium (base) workloads:
           app.kubernetes.io/component: ingester
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
-      serviceName: t-loki-ingester-headless
+      serviceName: loki-ingester-headless
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: ingester
           labels:
             app.kubernetes.io/component: ingester
@@ -1454,7 +1454,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 60
           topologySpreadConstraints:
             - labelSelector:
@@ -1497,7 +1497,7 @@ medium (base) workloads:
         type: RollingUpdate
   6: |
     apiVersion: apps/v1
-    kind: DaemonSet
+    kind: Deployment
     metadata:
       labels:
         app.kubernetes.io/component: canary
@@ -1508,11 +1508,17 @@ medium (base) workloads:
       name: loki-canary
       namespace: loki
     spec:
+      replicas: 1
+      revisionHistoryLimit: 10
       selector:
         matchLabels:
           app.kubernetes.io/component: canary
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
+      strategy:
+        rollingUpdate:
+          maxUnavailable: 1
+        type: RollingUpdate
       template:
         metadata:
           annotations:
@@ -1527,13 +1533,13 @@ medium (base) workloads:
           automountServiceAccountToken: false
           containers:
             - args:
-                - -addr=t-loki-gateway.loki.svc.cluster.local.:80
+                - -addr=loki-query-frontend:3100
                 - -labelname=pod
                 - -labelvalue=$(POD_NAME)
                 - -user=self-monitoring
                 - -tenant-id=self-monitoring
                 - -pass=
-                - -push=true
+                - -push=false
               env:
                 - name: POD_NAME
                   valueFrom:
@@ -1584,15 +1590,11 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki-canary
+          serviceAccountName: loki-canary
           terminationGracePeriodSeconds: 30
           volumes:
             - emptyDir: {}
               name: temp
-      updateStrategy:
-        rollingUpdate:
-          maxUnavailable: 1
-        type: RollingUpdate
   7: |
     apiVersion: apps/v1
     kind: Deployment
@@ -1604,7 +1606,7 @@ medium (base) workloads:
         app.kubernetes.io/part-of: memberlist
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-querier
+      name: loki-querier
       namespace: loki
     spec:
       revisionHistoryLimit: 10
@@ -1620,7 +1622,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: querier
           labels:
             app.kubernetes.io/component: querier
@@ -1713,7 +1715,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 30
           topologySpreadConstraints:
             - labelSelector:
@@ -1748,7 +1750,7 @@ medium (base) workloads:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-query-frontend
+      name: loki-query-frontend
       namespace: loki
     spec:
       revisionHistoryLimit: 10
@@ -1764,7 +1766,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: query-frontend
           labels:
             app.kubernetes.io/component: query-frontend
@@ -1857,7 +1859,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 30
           volumes:
             - emptyDir: {}
@@ -1883,7 +1885,7 @@ medium (base) workloads:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-query-scheduler
+      name: loki-query-scheduler
       namespace: loki
     spec:
       replicas: 2
@@ -1900,7 +1902,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: query-scheduler
           labels:
             app.kubernetes.io/component: query-scheduler
@@ -1993,7 +1995,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 30
           volumes:
             - emptyDir: {}
@@ -2021,7 +2023,7 @@ medium (base) workloads:
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
         name: memcached-results-cache
-      name: t-loki-results-cache
+      name: loki-results-cache
       namespace: loki
     spec:
       podManagementPolicy: Parallel
@@ -2032,7 +2034,7 @@ medium (base) workloads:
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
           name: memcached-results-cache
-      serviceName: t-loki-results-cache
+      serviceName: loki-results-cache
       template:
         metadata:
           annotations: null
@@ -2134,7 +2136,7 @@ medium (base) workloads:
             runAsUser: 11211
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki-memcached
+          serviceAccountName: loki-memcached
           terminationGracePeriodSeconds: 60
           tolerations: []
           topologySpreadConstraints: []
@@ -2151,7 +2153,7 @@ medium (base) workloads:
         app.kubernetes.io/part-of: memberlist
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ruler
+      name: loki-ruler
       namespace: loki
     spec:
       replicas: 2
@@ -2161,11 +2163,11 @@ medium (base) workloads:
           app.kubernetes.io/component: ruler
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki
-      serviceName: t-loki-ruler
+      serviceName: loki-ruler
       template:
         metadata:
           annotations:
-            checksum/config: 0887092ee3cdddead81d7252d398acd0d57d044d2c5d7d62c555fa3635b2e439
+            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
             kubectl.kubernetes.io/default-container: ruler
           labels:
             app.kubernetes.io/component: ruler
@@ -2258,7 +2260,7 @@ medium (base) workloads:
             runAsUser: 10001
             seccompProfile:
               type: RuntimeDefault
-          serviceAccountName: t-loki
+          serviceAccountName: loki
           terminationGracePeriodSeconds: 300
           volumes:
             - emptyDir: {}
@@ -2294,7 +2296,7 @@ memberlist service:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-memberlist
+      name: loki-memberlist
       namespace: loki
     spec:
       clusterIP: None
@@ -2318,7 +2320,7 @@ networkpolicy:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-namespace-only
+      name: loki-namespace-only
       namespace: loki
     spec:
       egress:
@@ -2343,7 +2345,7 @@ networkpolicy:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-egress-dns
+      name: loki-egress-dns
       namespace: loki
     spec:
       egress:
@@ -2369,7 +2371,7 @@ networkpolicy:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ingress
+      name: loki-ingress
       namespace: loki
     spec:
       ingress:
@@ -2402,7 +2404,7 @@ networkpolicy:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-ingress-metrics
+      name: loki-ingress-metrics
       namespace: loki
     spec:
       ingress:
@@ -2428,7 +2430,7 @@ networkpolicy:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-egress-alertmanager
+      name: loki-egress-alertmanager
       namespace: loki
     spec:
       egress:
@@ -2451,7 +2453,7 @@ networkpolicy:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.2
         helm.sh/chart: loki-15.0.1
-      name: t-loki-egress-external-storage
+      name: loki-egress-external-storage
       namespace: loki
     spec:
       egress:

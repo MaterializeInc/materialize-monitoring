@@ -1,0 +1,28 @@
+# Profile: use an existing (external) Grafana instead of the bundled one.
+#
+# Deploy the full recommended stack, but disable the bundled Grafana backend
+# and point grafana-operator at an existing external Grafana. grafana-operator
+# stays enabled (it's the client of the Grafana backend, not a manager of its
+# own) so dashboards/datasources are still reconciled — against your instance.
+
+tags:
+  # Full recommended stack (Loki, Thanos, Alertmanager, Grafana, grafana-operator,
+  # the Alloy pipeline). We turn off just the bundled Grafana backend below.
+  default: true
+
+grafana:
+  # Disable the bundled Grafana backend; we use the external one instead.
+  # `<chart>.enabled` is a circuit breaker — it takes precedence over tags.
+  enabled: false
+
+connections:
+  grafana:
+    # Point grafana-operator at the existing external Grafana instance.
+    mode: external
+    # Define the connection details
+    external:
+      url: https://grafana.example.com
+      # You must set either apiKey secret or adminUser+adminPassword secrets
+      apiKey:
+        name: external-grafana-api-key
+        key: apiKey

@@ -45,8 +45,8 @@ The `materialize-monitoring` Helm chart is designed to be highly customizable, s
 
 Typically, you would want to create a values.yaml file that has your
 specific configurations.
-You may start fresh or you can copy an example from
-the `charts/materialize-monitoring/examples/` directory in this repository.
+You may start fresh or you can copy a preset from
+the `charts/materialize-monitoring/profiles/` directory in this repository.
 
 > [!WARNING]
 >  Be aware that when merging examples together that you do not have

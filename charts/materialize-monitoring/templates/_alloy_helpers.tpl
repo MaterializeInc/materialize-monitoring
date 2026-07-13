@@ -303,8 +303,21 @@ Usage:
 prometheus.remote_write "destination" {
     endpoint {
         url = sys.env("GATEWAY_PROM_DEST")
+        external_labels = {
+            cluster = sys.env("CLUSTER_NAME"),
+        }
     }
   {{- if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "none" }}
+  {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "sigv4" }}
+
+    sigv4 {
+    {{- if $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.region }}
+        region = {{ $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.region | quote }}
+    {{- end }}
+    {{- if $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.roleArn }}
+        role_arn = {{ $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.roleArn | quote }}
+    {{- end }}
+    }
   {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "basicAuth" }}
 
     basic_auth {

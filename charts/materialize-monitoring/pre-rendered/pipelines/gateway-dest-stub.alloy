@@ -1,20 +1,25 @@
-// Default egress tail for the alloy-gateway pipeline, split out from gateway.yaml
-// so the write destination can be swapped at chart-assembly time without editing
-// the committed processing pipeline.
+// BUILD-TIME egress stand-in for the alloy-gateway pipeline. This is NOT what
+// deploys.
 //
-// gateway.yaml's loki.process.input_processor forwards to
-// loki.process.egress.receiver — a type-neutral passthrough seam. This file
-// provides that seam plus a default loki.write destination. A deployment may
-// render its own version of this tail (for example, pointing egress at an
-// otelcol.receiver.loki.<label>.receiver instead of loki.write) as long as it
-// keeps the `loki.process "egress"` label as the contract the main pipeline
-// references.
+// gateway.yaml forwards logs to loki.process.egress.receiver and metrics to
+// prometheus.relabel.egress.receiver — type-neutral passthrough seams it does not
+// define. This file provides those seams plus default loki.write / prometheus
+// .remote_write destinations, so `make pipelines` can render gateway.alloy and
+// `alloy validate` it jointly (it dangles the egress refs on its own). The
+// contract the main pipeline depends on is the `egress` labels; a deployment is
+// free to render a different tail as long as it keeps them.
 //
-// This stub is not a standalone config: it is rendered and validated jointly
-// with gateway.alloy (as alloy loads a config directory) — see `make pipelines`.
+// At DEPLOY time the destination is rendered instead by the chart's
+// charts/materialize-monitoring/templates/_alloy_helpers.tpl (from
+// .Values.pipeline.{logging,metrics}.gateway.destination.*), which supports
+// none/basicAuth/bearer/sigv4 auth and retry tuning. That templated output does NOT go
+// through the JSONSchema — the pre-validate jobs (alloy validate on the assembled
+// configMap) are its only check. Keep this stub roughly in step with that helper,
+// but the helper is the source of truth for what runs.
 //
-// loki.write.destination's endpoint is configurable via GATEWAY_LOKI_DEST
-// (falling back to an in-cluster default). Auth (basic_auth) is deferred.
+// Endpoints fall back to in-cluster defaults via coalesce(sys.env(…), default),
+// reading GATEWAY_LOKI_DEST / GATEWAY_PROM_DEST (matching the helper's env vars).
+// Auth is deferred in the stub.
 
 loki.process "egress" {
 	forward_to = [
@@ -36,6 +41,6 @@ loki.write "destination" {
 
 prometheus.remote_write "destination" {
 	endpoint {
-		url = coalesce(sys.env("GATEWAY_PROMETHEUS_DEST"), "http://thanos-receive.monitoring.svc:9090/api/v1/push")
+		url = coalesce(sys.env("GATEWAY_PROM_DEST"), "http://thanos-receive.monitoring.svc:9090/api/v1/push")
 	}
 }

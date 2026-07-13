@@ -29,7 +29,7 @@ metrics surface.
 Kubernetes: `>=1.27.0-0`
 ### Storage Requirements
 
-Using Thanos or Loki (in the default bundled-stack profile) requires
+Using Thanos or Loki (both enabled by default) requires
 object storage (such as an AWS S3 bucket) for long-term storage.
 
 In development, Thanos may use a PVC for less-reliable storage.
@@ -120,24 +120,32 @@ Subchart enablement has two layers, in precedence order:
    override.
 2. **Helm tags (the `tags:` block).** When no `<chart>.enabled` is set,
    enablement is decided by tags. Each dependency in `Chart.yaml`
-   carries a *group tag* (e.g. `bundled-backends`) and a *per-chart
-   tag* (e.g. `loki`); a dependency is included if any of its tags
-   evaluates true (OR semantics). To opt one chart out of an
-   otherwise-enabled group, set the group tag false and flip the
-   per-chart tags individually — or use the circuit breaker.
+   carries the master `default` tag, a *group tag* (e.g.
+   `bundled-backends`), and a *per-chart tag* (e.g. `loki`); a dependency
+   is included if any of its tags evaluates true (OR semantics). To opt
+   one chart out of an otherwise-enabled group, set the group tag false
+   and flip the per-chart tags individually — or use the circuit breaker.
 
 Group ↔ chart mapping:
 
 | Group tag          | Charts                                              |
 | ------------------ | --------------------------------------------------- |
+| `default`          | `pipeline` + `bundled-backends` + `managed-grafana` |
+|                    | groups + `kube-state-metrics` (recommended stack)   |
 | `pipeline`         | `alloy-agent`, `alloy-gateway`                      |
-| `bundled-backends` | `loki`, `thanos`, `grafana`, `alertmanager`         |
+| `bundled-backends` | `loki`, `thanos`, `alertmanager`                    |
+| `managed-grafana`  | `grafana`, `grafana-operator`                       |
 | `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
 | `crds`             | `prometheus-operator-crds`                          |
 
-The tag defaults match `profile=bundled-stack`. Other profiles flip
-`bundled-backends` off and the pipeline exporters appropriately; see
-the profile preset values files under `examples/`.
+`default` is the only group on by default and enables the full
+recommended stack. `--set tags.default=false` turns everything off, so
+you can enable a single group (`bundled-backends`, `managed-grafana`,
+`pipeline`, `cluster-metrics`) or individual charts on top. Profile
+preset values files under `profiles/` flip these appropriately.
+(`kube-state-metrics` is in `default`, but `metrics-server` is not —
+most clusters already run metrics-server; enable it via
+`tags.cluster-metrics` or `tags.metrics-server` if yours doesn't.)
 
 <table class="helm-values">
   <thead>
@@ -159,7 +167,7 @@ the profile preset values files under `examples/`.
       <td class="helm-value-key">tags<wbr>.bundled-backends</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable Loki, Thanos, Grafana, and Alertmanager as a group.</td>
+      <td class="helm-value-desc">Enable Loki, Thanos, and Alertmanager as a group. (Grafana is in the `managed-grafana` group.)</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.cluster-metrics</td>
@@ -168,58 +176,52 @@ the profile preset values files under `examples/`.
       <td class="helm-value-desc">Enable kube-state-metrics and metrics-server as a group.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">tags<wbr>.crds</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install Prometheus Operator CRDs.</td>
-    </tr>
-    <tr>
       <td class="helm-value-key">tags<wbr>.alloy-agent</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Alloy agent. OR'd with `tags.pipeline`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just the Alloy agent. OR'd with `tags.default` / `tags.pipeline`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alloy-gateway</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Alloy gateway. OR'd with `tags.pipeline`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just the Alloy gateway. OR'd with `tags.default` / `tags.pipeline`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.loki</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Loki. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Loki. OR'd with `tags.default` / `tags.bundled-backends`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.thanos</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Thanos. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Thanos. OR'd with `tags.default` / `tags.bundled-backends`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.grafana-standalone</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Grafana standalone. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Grafana standalone. OR'd with `tags.default` / `tags.managed-grafana`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.grafana-operator</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Grafana operator. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Grafana operator. OR'd with `tags.default` / `tags.managed-grafana`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alertmanager</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Alertmanager. OR'd with `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Alertmanager. OR'd with `tags.default` / `tags.bundled-backends`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.kube-state-metrics</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just kube-state-metrics. OR'd with `tags.cluster-metrics`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just kube-state-metrics. OR'd with `tags.default` / `tags.cluster-metrics`.</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.metrics-server</td>
@@ -568,6 +570,12 @@ Configuration for log behavior
       <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.shareMetricDestination</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Use metric OTLP destination.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grpc"</code></td>
@@ -666,6 +674,17 @@ Configuration for metrics behavior
 }</pre>
 </td>
       <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.sigv4</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "region": "",
+  "roleArn": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Configuration for AWS signatures when using authType=sigv4 This generally does not need to be set (it is derived from IRSA).</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.enabled</td>
@@ -1229,6 +1248,20 @@ Upstream reference:
 {}</pre>
 </td>
       <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.create</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create a service account for alloy-gateway.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA.</td>
     </tr>
   </tbody>
 </table>

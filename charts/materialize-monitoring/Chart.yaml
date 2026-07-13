@@ -129,6 +129,7 @@ dependencies:
     repository: oci://ghcr.io/prometheus-community/charts
     condition: kube-state-metrics.enabled
     tags:
+      - default
       - cluster-metrics
       - kube-state-metrics
   - name: metrics-server
