@@ -46,10 +46,22 @@ reference/internal/releasing.md.
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.7.0..v0.8.0&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="prometheus-scrapers-v030"&gt;Prometheus Scrapers v0.3.0&lt;a class="anchor" href="#prometheus-scrapers-v030"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Implement alloy metrics pipelines
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/96" rel="external" class="github-source-link"&gt;materialize-monitoring#96&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h3 id="dependencies-1"&gt;Dependencies&lt;a class="anchor" href="#dependencies-1"&gt;#&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.7.0..v0.8.0
 &lt;ul&gt;
+&lt;li&gt;Update Rust crate jsonschema to v0.46.10
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/91" rel="external" class="github-source-link"&gt;materialize-monitoring#91&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;Enable alloy pipelines in materialize-monitoring
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/89" rel="external" class="github-source-link"&gt;materialize-monitoring#89&lt;/a&gt;&lt;/li&gt;
