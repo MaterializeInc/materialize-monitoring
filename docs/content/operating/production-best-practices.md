@@ -31,6 +31,27 @@ Checklist items are tagged with the **primary** owner.
 | Size, retention budget, tenant policy | — | offers profiles | sets values | **decides** |
 | Incident response, upgrades, DR, capacity | — | tooling + alerts | applies changes | **owns** |
 
+## Namespace layout {#namespace-layout}
+
+Each subchart uses a deterministic name (a static `fullnameOverride`, e.g. `loki`, `thanos`, so no release-name prefix), which assumes **one instance of each backend per namespace** — a reasonable constraint for an umbrella infrastructure chart.
+Two layouts are supported; both are fine, so pick per your isolation needs.
+
+**Shared namespace (default).** Everything deploys into the release namespace (recommended: `monitoring`). This is the default and the path most installs should take.
+
+**Split namespace.** One namespace per subchart, via the `split-namespace` profile (`-f charts/materialize-monitoring/profiles/split-namespace.values.yaml`), which sets a `namespaceOverride` per component (`loki`, `thanos`, `grafana`, …). Support is best-effort.
+
+| | Shared (default) | Split |
+|---|---|---|
+| Ops overhead | low — one namespace, one RBAC scope, simpler NetworkPolicy and install | higher — N namespaces, cross-namespace NetworkPolicy/DNS, per-namespace bindings |
+| Isolation / trust | components share a trust boundary; larger blast radius | least-privilege between components; contained blast radius |
+| Per-component quotas / RBAC | coarse | fine-grained |
+| Support | primary | best-effort |
+
+> [!INFO]
+>   The layout changes the namespace half of every workload-identity binding: an IRSA / GKE / Azure trust-policy subject targets `system:serviceaccount:<namespace>:<sa>`, where `<namespace>` is the release namespace under the shared layout and the per-component namespace under split. The ServiceAccount name is unaffected (it's the deterministic `fullnameOverride`). See [Logs &amp; Events &gt; Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics &gt; Storing](../../metrics/storing/#thanos-object-storage).
+
+`[consumer]` selects the layout at install time; `[operator]` owns the namespace/RBAC policy it implies.
+
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.

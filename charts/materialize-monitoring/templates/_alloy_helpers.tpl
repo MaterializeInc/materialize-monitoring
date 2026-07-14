@@ -272,23 +272,23 @@ loki.write "destination" {
   {{- if eq $.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
         tenant_id = {{ $.Values.pipeline.logging.tenancy.staticTenant | quote }}
   {{- end }}
-    }
-  {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
-  {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
+      {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
+      {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
 
-    basic_auth {
-        username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
-        password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
-    }
-  {{- else if eq $gatewayLogValues.destination.loki.authType "bearer" }}
+        basic_auth {
+            username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
+            password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+        }
+      {{- else if eq $gatewayLogValues.destination.loki.authType "bearer" }}
 
-    authorization {
-        type = "Bearer"
-        credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+        authorization {
+            type = "Bearer"
+            credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+        }
+      {{- else }}
+        {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
+      {{- end }}
     }
-  {{- else }}
-    {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
-  {{- end }}
 }
 {{- end }}
 
@@ -301,38 +301,38 @@ Usage:
 {{- define "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" }}
   {{- $gatewayMetricsValues := $.Values.pipeline.metrics.gateway }}
 prometheus.remote_write "destination" {
+    external_labels = {
+        cluster = sys.env("CLUSTER_NAME"),
+    }
     endpoint {
         url = sys.env("GATEWAY_PROM_DEST")
-        external_labels = {
-            cluster = sys.env("CLUSTER_NAME"),
+      {{- if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "none" }}
+      {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "sigv4" }}
+
+        sigv4 {
+        {{- if $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.region }}
+            region = {{ $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.region | quote }}
+        {{- end }}
+        {{- if $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.roleArn }}
+            role_arn = {{ $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.roleArn | quote }}
+        {{- end }}
         }
-    }
-  {{- if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "none" }}
-  {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "sigv4" }}
+      {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "basicAuth" }}
 
-    sigv4 {
-    {{- if $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.region }}
-        region = {{ $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.region | quote }}
-    {{- end }}
-    {{- if $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.roleArn }}
-        role_arn = {{ $gatewayMetricsValues.destination.prometheusRemoteWrite.sigv4.roleArn | quote }}
-    {{- end }}
-    }
-  {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "basicAuth" }}
+        basic_auth {
+            username = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
+            password = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+        }
+      {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "bearer" }}
 
-    basic_auth {
-        username = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
-        password = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+        authorization {
+            type = "Bearer"
+            credentials = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+        }
+      {{- else }}
+        {{- printf "Unsupported authType: %s" $gatewayMetricsValues.destination.prometheusRemoteWrite.authType | fail }}
+      {{- end }}
     }
-  {{- else if eq $gatewayMetricsValues.destination.prometheusRemoteWrite.authType "bearer" }}
-
-    authorization {
-        type = "Bearer"
-        credentials = sys.env({{ $gatewayMetricsValues.destination.prometheusRemoteWrite.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
-    }
-  {{- else }}
-    {{- printf "Unsupported authType: %s" $gatewayMetricsValues.destination.prometheusRemoteWrite.authType | fail }}
-  {{- end }}
 }
 {{- end }}
 

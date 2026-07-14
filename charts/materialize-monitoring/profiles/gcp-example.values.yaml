@@ -1,0 +1,65 @@
+# Example GCP/GKE overlay. Replace every <REPLACE-ME> and combine with other
+# profiles as needed.
+#
+# Access is granted via GKE Workload Identity — annotate each ServiceAccount
+# with a Google service account (GSA) below, and bind that GSA to the KSA with
+# roles/iam.workloadIdentityUser:
+#   loki   -> serviceAccount:<project>.svc.id.goog[monitoring/loki]
+#   thanos -> serviceAccount:<project>.svc.id.goog[monitoring/thanos-thanos]
+# See docs: "Logs & Events > Storing" and "Metrics > Storing".
+
+tags: {}
+
+thanos:
+  global:
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: "<REPLACE-ME>"
+    objstore:
+      # createSecret renders `config` into the objstore Secret the chart
+      # references. Without it, `config` is ignored (createSecret defaults false).
+      createSecret: true
+      # Thanos GCS objstore config. Workload Identity supplies credentials, so no
+      # `service_account` key is needed. NOTE: `endpoint`/`region`/`insecure` are
+      # S3-only fields and are NOT valid here.
+      config: |
+        type: GCS
+        config:
+          bucket: "<REPLACE-ME>"
+
+loki:
+  networkPolicy:
+    enabled: true
+    metrics:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ingress:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: "<REPLACE-ME>"
+  loki:
+    storage:
+      bucketNames:
+        chunks: "<REPLACE-ME>"
+        ruler: "<REPLACE-ME>"
+      object_store:
+        type: gcs
+    schemaConfig:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: gcs
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    compactor:
+      # MUST match storage.object_store.type. Otherwise the compactor's
+      # delete-request store falls back to the base default (s3) and fails at
+      # startup with "failed to create delete request store object client:
+      # create bucket: no s3 endpoint in config file".
+      delete_request_store: gcs

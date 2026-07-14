@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Regression tests for the alloy-gateway destination auth wiring in
+# `_alloy_helpers.tpl` (+ the env configMap). Two bug classes these lock down:
+#
+#   1. Block level. In alloy, `external_labels` is a TOP-LEVEL argument of
+#      `prometheus.remote_write`, while `basic_auth`/`authorization`/`sigv4` are
+#      sub-blocks of the `endpoint` block. A block at the wrong level renders a
+#      config alloy rejects at load ("unrecognized attribute/block"). The
+#      `endpoint \{[^}]*<block> \{` regex matches only when <block> appears
+#      before `endpoint`'s closing `}` — i.e. nested inside it.
+#   2. Unhandled authType. The env configMap switches on authType; a missing
+#      case (e.g. sigv4) `fail`s the render. Asserting the env CM renders catches
+#      that.
+suite: alloy-gateway destination auth
+release:
+  name: test-mon
+  namespace: monitoring
+set:
+  # Enable only the Alloy pipeline (agent + gateway); backends off so the
+  # loki/thanos subchart validators don't require bucket/objstore values.
+  tags.default: false
+  tags.pipeline: true
+tests:
+  - it: "metrics: external_labels renders at the top level, not inside endpoint"
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: none
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'external_labels = \{'
+      # external_labels must NOT be nested inside endpoint.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*external_labels'
+
+  - it: "metrics: sigv4 renders inside endpoint"
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: sigv4
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.sigv4.region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*sigv4 \{'
+
+  - it: "metrics: sigv4 is a handled authType in the env configMap (renders, no fail)"
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: sigv4
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.sigv4.region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "metrics: basic_auth renders inside endpoint"
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: basicAuth
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*basic_auth \{'
+
+  - it: "metrics: bearer authorization renders inside endpoint"
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: bearer
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*authorization \{'
+
+  - it: "loki: basic_auth renders inside endpoint"
+    set:
+      pipeline.logging.gateway.destination.loki.authType: basicAuth
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*basic_auth \{'
+
+  - it: "loki: bearer authorization renders inside endpoint"
+    set:
+      pipeline.logging.gateway.destination.loki.authType: bearer
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*authorization \{'

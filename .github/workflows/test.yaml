@@ -70,3 +70,19 @@ jobs:
             git status --porcelain -- "$dir"
             exit 1
           fi
+
+  helm-tests:
+    name: helm unittest
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          lfs: true
+      # helm is preinstalled on the runner image. The subchart deps are vendored
+      # (charts/materialize-monitoring/charts/*.tgz are committed), so no
+      # `helm dependency build` / OCI registry access is needed.
+      - name: Install helm-unittest plugin
+        # Pinned to match the version used locally via `make helm-tests`.
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3
+      - name: helm unittest
+        run: make helm-tests
