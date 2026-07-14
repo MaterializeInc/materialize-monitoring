@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring Helm Chart v0.5.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.6.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring Helm Chart v0.5.0
+
+* CLO-112 Harden Long-Term storage in GCP
+    * [materialize-monitoring#103](https://github.com/MaterializeInc/materialize-monitoring/pull/103)
 
 ## Pipelines v0.7.0 (Unreleased)
 
