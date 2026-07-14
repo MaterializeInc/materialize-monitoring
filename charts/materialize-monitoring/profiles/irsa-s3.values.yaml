@@ -10,7 +10,7 @@
 #     Condition:
 #       StringEquals:
 #         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:aud: sts.amazonaws.com
-#         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:sub: system:serviceaccount:monitoring:your-release-thanos-thanos
+#         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:sub: system:serviceaccount:monitoring:thanos-thanos
 
 ## ThanosBucketRW Policy:
 # Version: "2012-10-17"
