@@ -61,13 +61,14 @@ loki:
         ruler: "your-loki-bucket-name"
       object_store:
         type: s3
+    compactor:
+      # MUST match storage.object_store.type. (s3 is also the base default, so
+      # this is explicit)
+      delete_request_store: s3
 
   serviceAccount:
     annotations:
       eks.amazonaws.com/role-arn: "arn:aws:iam::012345678901:role/YourLokiRole"
-
-  compactor:
-    delete_request_store: s3
 
   networkPolicy:
     # -- Outgoing traffic from loki to AWS S3 (and STS).

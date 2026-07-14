@@ -765,6 +765,9 @@ large workloads:
     apiVersion: apps/v1
     kind: StatefulSet
     metadata:
+      annotations:
+        argocd.argoproj.io/sync-wave: "20"
+        config.kubernetes.io/depends-on: statefulset/loki-ingester
       labels:
         app.kubernetes.io/component: compactor
         app.kubernetes.io/instance: t

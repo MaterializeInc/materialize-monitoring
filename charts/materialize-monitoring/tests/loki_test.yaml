@@ -75,6 +75,19 @@ tests:
       - failedTemplate:
           errorPattern: "loki.loki.storage.bucketNames.ruler is required"
 
+  # Backend-consistency guard: the compactor's delete-request store must name the
+  # same backend as storage.object_store.type, or the compactor fails at startup
+  # ("no s3 endpoint in config file"). Here object_store is gcs while the base
+  # default delete_request_store stays s3 → validation must catch it.
+  - it: should fail when the compactor delete-request store backend mismatches the object store
+    set:
+      loki.loki.storage.object_store.type: gcs
+      # loki.loki.compactor.delete_request_store intentionally left at the base default (s3)
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "delete_request_store.*must match.*object_store\\.type"
+
   - it: fails in downstream chart when buckets are not defined
     set:
       loki.loki.storage.bucketNames.chunks: ""

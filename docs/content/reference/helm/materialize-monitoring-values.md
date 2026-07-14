@@ -1331,7 +1331,8 @@ Upstream reference:
     "0.0.0.0/0"
   ],
   "ports": [
-    443
+    443,
+    80
   ]
 }</pre>
 </td>

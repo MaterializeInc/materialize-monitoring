@@ -800,6 +800,7 @@ loki:
     externalStorage:
       ports:
         - 443
+        - 80
       cidrs:
         - "0.0.0.0/0"
 
@@ -1107,6 +1108,10 @@ loki:
     # -- Kind of workload for the compactor.
     # This must be a statefulset.
     kind: StatefulSet
+
+    annotations:
+      argocd.argoproj.io/sync-wave: "20"
+      config.kubernetes.io/depends-on: statefulset/loki-ingester
 
     persistence:
       # -- Run the compactor ephemerally (no PVC, node-local emptyDir).

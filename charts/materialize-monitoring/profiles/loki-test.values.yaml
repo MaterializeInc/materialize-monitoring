@@ -34,8 +34,8 @@ loki:
       bucketNames:
         chunks: loki-chunks
         ruler: loki-ruler
-    # -- The thanos object-store client is not used with the filesystem backend.
-    use_thanos_objstore: false
+      # -- The thanos object-store client is not used with the filesystem backend.
+      use_thanos_objstore: false
     # -- Schema must reference the filesystem object store in test.
     schemaConfig:
       configs:

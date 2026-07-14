@@ -305,6 +305,27 @@ Usage:
     {{- if or ( not $values.loki.storage.bucketNames.ruler ) ( eq $values.loki.storage.bucketNames.ruler "<REPLACE-ME>" ) ( eq $values.loki.storage.bucketNames.ruler "your-loki-bucket-name" ) }}
       {{- $errors = append $errors "loki.loki.storage.bucketNames.ruler is required when loki is enabled." }}
     {{- end }}
+
+    {{- /* Object-store backend consistency (thanos objstore mode).
+           storage.object_store.type is the backend; the compactor's
+           delete-request store and each schema period name a backend too. If
+           they drift, the compactor fails at startup ("no s3 endpoint in config
+           file") or chunks for a schema period don't resolve. This is the
+           footgun of having to set the backend in several places — catch it at
+           template time instead of at pod startup. */}}
+    {{- $objType := dig "loki" "storage" "object_store" "type" "" $values }}
+    {{- if and ( dig "loki" "storage" "use_thanos_objstore" false $values ) $objType }}
+      {{- $delStore := dig "loki" "compactor" "delete_request_store" "" $values }}
+      {{- if and $delStore ( ne $delStore $objType ) }}
+        {{- $errors = append $errors ( printf "loki.loki.compactor.delete_request_store (%q) must match loki.loki.storage.object_store.type (%q); otherwise the compactor's delete-request store falls back and fails at startup with \"no s3 endpoint in config file\"." $delStore $objType ) }}
+      {{- end }}
+      {{- range $i, $cfg := dig "loki" "schemaConfig" "configs" list $values }}
+        {{- $schemaStore := dig "object_store" "" $cfg }}
+        {{- if and $schemaStore ( ne $schemaStore $objType ) }}
+          {{- $warnings = append $warnings ( printf "loki.loki.schemaConfig.configs[%d].object_store (%q) differs from loki.loki.storage.object_store.type (%q). Expected only during an append-only backend migration; otherwise chunks for that period won't resolve." $i $schemaStore $objType ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}
