@@ -16,7 +16,7 @@ ARG USERNAME="alloy"
 ARG ALLOY_VERSION=v1.17.1
 
 # Seed with distroless user/group files
-COPY --from=gcr.io/distroless/base-debian13@sha256:7c4468db5fea18a1630860619be640c4c0ad158c0d63f12951b96b7d0f5ddd62 /etc/passwd /etc/group /etc/
+COPY --from=gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20 /etc/passwd /etc/group /etc/
 
 # Create alloy user in container, but do not set it as default
 RUN groupadd --gid "$UID" "$USERNAME" \
@@ -52,7 +52,7 @@ RUN mkdir -p /tmp/alloy \
 RUN alloy --version | grep boringcrypto
 
 ## Final build image
-FROM gcr.io/distroless/base-debian13@sha256:7c4468db5fea18a1630860619be640c4c0ad158c0d63f12951b96b7d0f5ddd62
+FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20
 
 ARG TARGETARCH
 ARG LINUX_TAG1=${TARGETARCH/arm64/aarch64}
