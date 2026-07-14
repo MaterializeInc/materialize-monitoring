@@ -55,6 +55,9 @@ data:
       {{- if $promDest.bearer.token }}
   {{ $promDest.bearer.tokenEnv }}: {{ tpl $promDest.bearer.token $ | quote }}
       {{- end }}
+    {{- else if eq $promDest.authType "sigv4" }}
+      {{- /* SigV4 signs with ambient AWS credentials (IRSA); region/roleArn go
+             straight into the alloy config, so no env secrets are needed here. */}}
     {{- else }}
       {{- printf "Unsupported .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType (%s)" $promDest.authType | fail }}
     {{- end }}

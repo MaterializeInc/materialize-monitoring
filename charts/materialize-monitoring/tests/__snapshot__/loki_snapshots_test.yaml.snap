@@ -57,10 +57,13 @@ loki config configmap:
           path_prefix: /var/loki
           replication_factor: 3
           storage:
-            s3:
-              bucketnames: test-chunks
-              insecure: false
-              s3forcepathstyle: false
+            object_store:
+              s3:
+                bucket_name: test-chunks
+                http: {}
+                insecure: false
+                sse: {}
+              storage_prefix: null
         compactor:
           delete_request_store: s3
           retention_delete_delay: 8h
@@ -122,6 +125,14 @@ loki config configmap:
             type: s3
           wal:
             dir: /var/loki/ruler-wal
+        ruler_storage:
+          backend: s3
+          s3:
+            bucket_name: test-ruler
+            http: {}
+            insecure: false
+            sse: {}
+          storage_prefix: null
         runtime_config:
           file: /etc/loki/runtime-config/runtime-config.yaml
         schema_config:
@@ -159,7 +170,7 @@ loki config configmap:
           tsdb_shipper:
             index_gateway_client:
               server_address: dns+loki-index-gateway-headless.loki.svc.cluster.local:9095
-          use_thanos_objstore: false
+          use_thanos_objstore: true
         tracing:
           enabled: false
     kind: ConfigMap
@@ -959,7 +970,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: compactor
           labels:
             app.kubernetes.io/component: compactor
@@ -1097,7 +1108,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: distributor
           labels:
             app.kubernetes.io/component: distributor
@@ -1230,7 +1241,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: index-gateway
           labels:
             app.kubernetes.io/component: index-gateway
@@ -1367,7 +1378,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: ingester
           labels:
             app.kubernetes.io/component: ingester
@@ -1622,7 +1633,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: querier
           labels:
             app.kubernetes.io/component: querier
@@ -1766,7 +1777,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: query-frontend
           labels:
             app.kubernetes.io/component: query-frontend
@@ -1902,7 +1913,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: query-scheduler
           labels:
             app.kubernetes.io/component: query-scheduler
@@ -2167,7 +2178,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: ff1b094864ec27d91623147d0fc95edd654a9f51771a5b8a7b716035713868c3
+            checksum/config: 90db529fdef206d70396a74885d47ad18e9335bba07770d818c49592bbb15af6
             kubectl.kubernetes.io/default-container: ruler
           labels:
             app.kubernetes.io/component: ruler

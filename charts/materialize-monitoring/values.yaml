@@ -810,12 +810,12 @@ loki:
       bucketNames:
         chunks: "<REPLACE-ME>"
         ruler: "<REPLACE-ME>"
-    # -- Use the thanos object store client
-    use_thanos_objstore: true
-    # -- Object storage configuration.
-    # Modify as needed.
-    object_store:
-      type: s3
+      # -- Use the thanos object store client
+      use_thanos_objstore: true
+      # -- Object storage configuration.
+      # Modify as needed.
+      object_store:
+        type: s3
 
     # -- Schema configuration for the loki TSDB.
     # This is append-only and MUST be copied into projects and mutated on upgrades
@@ -1199,6 +1199,11 @@ loki:
 
 # -- (h4) Bundled Thanos backend for long-term metrics.
 # @notationType -- (sectionstart) Thanos
+# @raw
+#
+# Upstream reference:
+#   * https://github.com/thanos-community/helm-charts/tree/master/charts/thanos
+#   * https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml
 thanos:
   # Circuit breaker (precedence over `tags.default`, `tags.bundled-backends`, and `tags.thanos`):
   # enabled: true
@@ -1210,9 +1215,11 @@ thanos:
 
   global:
     objstore:
-      createSecret: false
+      createSecret: true
       secretName: thanos-objstore-config
       secretKey: objstore.yml
+      config: |
+        {{ fail "Either configure this secret or set `thanos.global.objstore.createSecret` to false." }}
     serviceMonitor:
       enabled: true
     serviceAccount:

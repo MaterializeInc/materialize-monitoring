@@ -1,17 +1,70 @@
 # Example AWS/EKS overlay that should be customized with other profiles
 
+## YourThanosRole Role Trust Relationship:
+# Version: "2012-10-17"
+# Statement:
+#   - Effect: Allow
+#     Principal:
+#       Federated: arn:aws:iam::012345678901:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC
+#     Action: sts:AssumeRoleWithWebIdentity
+#     Condition:
+#       StringEquals:
+#         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:aud: sts.amazonaws.com
+#         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:sub: system:serviceaccount:monitoring:thanos-thanos
+## ThanosBucketRW Policy:
+# Version: "2012-10-17"
+# Statement:
+#   - Effect: Allow
+#     Action:
+#       - s3:ListBucket
+#       - s3:GetBucketLocation
+#     Resource: arn:aws:s3:::your-thanos-bucket-name
+#   - Effect: Allow
+#     Action:
+#       - s3:GetObject
+#       - s3:PutObject
+#       - s3:DeleteObject
+#     Resource: arn:aws:s3:::your-thanos-bucket-name/*
+
+## YourLokiRole Role Trust Relationship:
+# Version: "2012-10-17"
+# Statement:
+#   - Effect: Allow
+#     Principal:
+#       Federated: arn:aws:iam::012345678901:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC
+#     Action: sts:AssumeRoleWithWebIdentity
+#     Condition:
+#       StringEquals:
+#         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:aud: sts.amazonaws.com
+#         oidc.eks.us-east-1.amazonaws.com/id/EKSAAAAAAABBBBBBBCCCCCCCC:sub: system:serviceaccount:monitoring:loki
+## LokiBucketRW Policy:
+# Version: "2012-10-17"
+# Statement:
+#   - Effect: Allow
+#     Action:
+#       - s3:ListBucket
+#       - s3:GetBucketLocation
+#     Resource: arn:aws:s3:::your-loki-bucket-name
+#   - Effect: Allow
+#     Action:
+#       - s3:GetObject
+#       - s3:PutObject
+#       - s3:DeleteObject
+#     Resource: arn:aws:s3:::your-loki-bucket-name/*
+
+
 loki:
   loki:
     storage:
       bucketNames:
-        chunks: "<REPLACE-ME>"
-        ruler: "<REPLACE-ME>"
+        chunks: "your-loki-bucket-name"
+        ruler: "your-loki-bucket-name"
       object_store:
         type: s3
 
   serviceAccount:
     annotations:
-      eks.amazonaws.com/role-arn: "<REPLACE-ME>"
+      eks.amazonaws.com/role-arn: "arn:aws:iam::012345678901:role/YourLokiRole"
 
   compactor:
     delete_request_store: s3
@@ -24,3 +77,20 @@ loki:
         - 443
       cidrs:
         - "0.0.0.0/0"
+
+
+thanos:
+  enabled: true
+  global:
+    objstore:
+      createSecret: true
+      config: |
+        type: s3
+        config:
+          bucket: your-thanos-bucket-name
+          endpoint: s3.amazonaws.com
+          region: us-east-1
+          insecure: false
+    serviceAccount:
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::012345678901:role/YourThanosRole"

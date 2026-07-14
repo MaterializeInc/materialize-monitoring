@@ -786,7 +786,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: compactor
           labels:
             app.kubernetes.io/component: compactor
@@ -924,7 +924,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: distributor
           labels:
             app.kubernetes.io/component: distributor
@@ -1057,7 +1057,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: index-gateway
           labels:
             app.kubernetes.io/component: index-gateway
@@ -1194,7 +1194,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: ingester
           labels:
             app.kubernetes.io/component: ingester
@@ -1449,7 +1449,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: querier
           labels:
             app.kubernetes.io/component: querier
@@ -1593,7 +1593,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: query-frontend
           labels:
             app.kubernetes.io/component: query-frontend
@@ -1729,7 +1729,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: query-scheduler
           labels:
             app.kubernetes.io/component: query-scheduler
@@ -1994,7 +1994,7 @@ small workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3f9917dffe6a4be4a144a931701f50f9074de1892d1a8020c63b6dfde34d40f4
+            checksum/config: 3ee84b756a8de8e737c8ad2758d8f238cc043af7a13cce289d3e11a8875d9ebe
             kubectl.kubernetes.io/default-container: ruler
           labels:
             app.kubernetes.io/component: ruler

@@ -88,7 +88,7 @@ The Thanos ServiceAccount is `thanos-thanos` (a deterministic `fullnameOverride`
 {{% tab "AWS · EKS (IRSA)" %}}
 **IRSA** (IAM Roles for Service Accounts). Chain: the Thanos ServiceAccount is annotated with a role ARN → EKS projects an OIDC token → the SDK calls **STS `AssumeRoleWithWebIdentity`** → temporary credentials → **S3**. Requires the cluster's **OIDC provider** registered in IAM (one-time).
 
-A ready-made starting point lives at `charts/materialize-monitoring/profiles/irsa-s3.values.yaml`.
+A ready-made starting point lives at `charts/materialize-monitoring/profiles/aws-example.values.yaml`.
 
 *Trust policy* — scope `:sub` to the **Thanos namespace and ServiceAccount**, not another workload's:
 
@@ -227,6 +227,8 @@ The bundled Thanos runs as a small set of roles over the shared bucket:
 `queryFrontend` and `ruler` are available but off by default (`thanos.queryFrontend` / `thanos.ruler`).
 
 ## Other Metric Storage Backends
+
+### Google Cloud Monitoring (GCM) {#gcm}
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)
 

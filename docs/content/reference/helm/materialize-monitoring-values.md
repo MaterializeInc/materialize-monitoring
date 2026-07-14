@@ -1349,13 +1349,13 @@ Upstream reference:
       <td class="helm-value-desc">Bucket names for object storage. These are required to be populated.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">loki<wbr>.loki<wbr>.use_thanos_objstore</td>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.use_thanos_objstore</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
       <td class="helm-value-desc">Use the thanos object store client</td>
     </tr>
     <tr>
-      <td class="helm-value-key">loki<wbr>.loki<wbr>.object_store</td>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.object_store</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
@@ -1932,6 +1932,10 @@ https://grafana.com/docs/loki/latest/get-started/components/
 #### Thanos
 
 Bundled Thanos backend for long-term metrics.
+
+Upstream reference:
+  * https://github.com/thanos-community/helm-charts/tree/master/charts/thanos
+  * https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml
 
 <table class="helm-values">
   <thead>

@@ -299,10 +299,10 @@ Usage:
   {{- $errors := list }}
   {{- $warnings := list }}
   {{- if ( include "mzmon.loki.enabled" $ ) }}
-    {{- if or ( not $values.loki.storage.bucketNames.chunks ) ( eq $values.loki.storage.bucketNames.chunks "<REPLACE-ME>" ) }}
+    {{- if or ( not $values.loki.storage.bucketNames.chunks ) ( eq $values.loki.storage.bucketNames.chunks "<REPLACE-ME>" ) ( eq $values.loki.storage.bucketNames.chunks "your-loki-bucket-name" ) }}
       {{- $errors = append $errors "loki.loki.storage.bucketNames.chunks is required when loki is enabled." }}
     {{- end }}
-    {{- if or ( not $values.loki.storage.bucketNames.ruler ) ( eq $values.loki.storage.bucketNames.ruler "<REPLACE-ME>" ) }}
+    {{- if or ( not $values.loki.storage.bucketNames.ruler ) ( eq $values.loki.storage.bucketNames.ruler "<REPLACE-ME>" ) ( eq $values.loki.storage.bucketNames.ruler "your-loki-bucket-name" ) }}
       {{- $errors = append $errors "loki.loki.storage.bucketNames.ruler is required when loki is enabled." }}
     {{- end }}
   {{- end }}

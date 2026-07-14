@@ -6,7 +6,8 @@ release:
 # Enablement + required inputs shared by every case. Profiles are layered on
 # top per-test via `values:`.
 set:
-  tags.bundled-backends: true
+  tags.default: false
+  tags.loki: true
   loki.loki.storage.bucketNames.chunks: "test-chunks"
   loki.loki.storage.bucketNames.ruler: "test-ruler"
   loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy

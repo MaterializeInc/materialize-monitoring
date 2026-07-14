@@ -9,7 +9,8 @@ release:
   name: t
   namespace: loki
 set:
-  tags.bundled-backends: true
+  tags.default: false
+  tags.loki: true
   loki.loki.storage.bucketNames.chunks: "test-chunks"
   loki.loki.storage.bucketNames.ruler: "test-ruler"
   loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy

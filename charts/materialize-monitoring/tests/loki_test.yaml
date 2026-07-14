@@ -8,7 +8,8 @@ release:
   revision: 5
   namespace: test-monitoring
 set:
-  tags.bundled-backends: true
+  tags.default: false
+  tags.loki: true
   loki.loki.storage.bucketNames.chunks: "test-chunks"
   loki.loki.storage.bucketNames.ruler: "test-ruler"
   loki.networkPolicy.metrics.namespaceSelector:
@@ -20,29 +21,32 @@ set:
 tests:
   - it: should have loki enabled with circuit-breaker
     set:
-      tags.bundled-backends: false
+      tags.default: false
+      tags.loki: false
       loki.enabled: true
     template: ../charts/loki/templates/serviceaccount.yaml
     asserts:
       - containsDocument:
           apiVersion: v1
           kind: ServiceAccount
-          metadata:
-            name: mzmon-loki
-            namespace: loki
+          name: loki
+          namespace: test-monitoring
   - it: should have loki enabled with bundled-backends tags
     set:
+      tags.default: false
+      tags.loki: false
       tags.bundled-backends: true
+      thanos.enabled: false
     template: ../charts/loki/templates/serviceaccount.yaml
     asserts:
       - containsDocument:
           apiVersion: v1
           kind: ServiceAccount
-          metadata:
-            name: mzmon-loki
-            namespace: loki
+          name: loki
+          namespace: test-monitoring
   - it: should have loki enabled with loki tags
     set:
+      tags.default: false
       tags.bundled-backends: false
       tags.loki: true
     template: ../charts/loki/templates/serviceaccount.yaml
@@ -50,9 +54,8 @@ tests:
       - containsDocument:
           apiVersion: v1
           kind: ServiceAccount
-          metadata:
-            name: mzmon-loki
-            namespace: loki
+          name: loki
+          namespace: test-monitoring
   # This test case doesn't work since it relies on the template to exist
   # - it: should not loki enabled with circuit-breaker off
   #   set:

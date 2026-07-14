@@ -31,7 +31,7 @@ Checklist items are tagged with the **primary** owner.
 | Size, retention budget, tenant policy | — | offers profiles | sets values | **decides** |
 | Incident response, upgrades, DR, capacity | — | tooling + alerts | applies changes | **owns** |
 
-## Namespace layout
+## Namespace layout {#namespace-layout}
 
 Each subchart uses a deterministic name (a static `fullnameOverride`, e.g. `loki`, `thanos`, so no release-name prefix), which assumes **one instance of each backend per namespace** — a reasonable constraint for an umbrella infrastructure chart.
 Two layouts are supported; both are fine, so pick per your isolation needs.
