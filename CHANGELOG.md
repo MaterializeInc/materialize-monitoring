@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring Helm Chart v0.6.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.7.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring Helm Chart v0.6.0
+
+* Allow configuring otlpExporter, googleCloudExporter, datadogExporter
+    * [materialize-monitoring#106](https://github.com/MaterializeInc/materialize-monitoring/pull/106)
 
 ## materialize-monitoring Helm Chart v0.5.0
 
