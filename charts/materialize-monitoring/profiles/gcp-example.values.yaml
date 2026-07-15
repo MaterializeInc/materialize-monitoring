@@ -6,9 +6,15 @@
 # roles/iam.workloadIdentityUser:
 #   loki   -> serviceAccount:<project>.svc.id.goog[monitoring/loki]
 #   thanos -> serviceAccount:<project>.svc.id.goog[monitoring/thanos-thanos]
+#   alloy-gateway -> serviceAccount:<project>.svc.id.goog[monitoring/alloy-gateway]
 # See docs: "Logs & Events > Storing" and "Metrics > Storing".
 
 tags: {}
+
+alloy-gateway:
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: "<REPLACE-ME>"
 
 thanos:
   global:

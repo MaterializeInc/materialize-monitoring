@@ -571,28 +571,10 @@ Configuration for log behavior
       <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.enabled</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.shareMetricDestination</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Use metric OTLP destination.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"grpc"</code></td>
-      <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.url</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">OTLP push endpoint URL.</td>
+      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. By default, we do not use the OTLP destination. NOTE: This is configured in the pipeline.metrics.gateway.destination.otlp block, not the logging block.</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.tenancy<wbr>.staticTenant</td>
@@ -735,23 +717,203 @@ Configuration for metrics behavior
       <td class="helm-value-default"><code>"TLS13"</code></td>
       <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
     </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.enabled</td>
+  </tbody>
+</table>
+
+##### OpenTelemetry/OTLP destinations.
+
+OpenTelemetry/OTLP destination configuration for metrics (and logging).
+
+This supports several components and allows further customization of endpoints.
+Multiple exporters can be enabled at once.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to an OTLP destination. By default, we do not use the OTLP destination.</td>
+      <td class="helm-value-desc">Enable writing metrics to an OpenTelemetry/OTLP destination. By default, we do not use the OTel destination. WARNING: if logging otel destination is enabled, this block will still be used for configuration! (just not for metrics)</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.protocol</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable writing to a Google Cloud Monitoring / Cloud Logging destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.compression</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"gzip"</code></td>
+      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.handlers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "otelcol.exporter.googlecloud.destination.input"
+]</pre>
+</td>
+      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>An `otelcol.exporter.googlecloud.destination` definition.</code></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.googlecloud block. The default config uses Workload Identity Federation (WIF) to authenticate to GCP.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable writing to a Datadog destination.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.compression</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"gzip"</code></td>
+      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Datadog.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.hostMetadata<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Whether to include host metadata in the Datadog exporter. FIXME: how do we support this in an Agent->Gateway architecture?</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.handlers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "otelcol.exporter.datadog.destination.input"
+]</pre>
+</td>
+      <td class="helm-value-desc">Handlers to use for the Datadog exporter.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>An `otelcol.exporter.datadog.destination` definition.</code></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.datadog block.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. This is the generic fallback for other destinations. You can also use this if you need to set a custom destination block.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">OTLP push endpoint URL. This does not need a protocol prefix (http:// or https://)</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.protocol</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grpc"</code></td>
       <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otlp<wbr>.url</td>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.compression</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"snappy"</code></td>
+      <td class="helm-value-desc">Compression to use Use gzip for better compatibility. Use snappy for better performance.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.handlers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "otelcol.exporter.otlp[http].destination.input"
+]</pre>
+</td>
+      <td class="helm-value-desc">Handlers to use for the OTLP exporter. Update this if your config was customized.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><pre>{{- $exporterType := ternary ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) "otlp" "otlphttp" }}
+otelcol.exporter.{{ $exporterType }} "destination" {
+    client {
+        endpoint = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.url | required "destination.otlp.url must be set" | quote }}
+        compression = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.compression | quote }}
+{{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
+        auth = {{ include "mzmon.alloyGateway.otelDest.authHandler" $ | quote }}
+{{- end }}
+    }
+}
+</pre></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.otlp block. Use this if you need to configure multiple destinations or use an alternative endpoint entirely.</td>
+    </tr>
+  </tbody>
+</table>
+
+##### OpenTelemetry Authentication Configuration
+
+Configuration for OpenTelemetry/OTLP destinations. This is only needed for destinations that require an auth handler (like otlpExporter).
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.authType</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"none"</code></td>
+      <td class="helm-value-desc">Type of authentication to use with the OpenTelemetry destination. Valid values are: `none`, `basic`, `bearer`, `awsSigv4`, and `custom`.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.basic<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>An `otelcol.auth.basic.oteldest` definition.</code></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.basic block. This uses the GATEWAY_OTEL_DEST_USERNAME/GATEWAY_OTEL_DEST_PASSWORD env vars.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.bearer<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>An `otelcol.auth.bearer.oteldest` definition.</code></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.bearer block. This uses the GATEWAY_OTEL_DEST_BEARER_TOKEN env var.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.awsSigv4<wbr>.region</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">OTLP push endpoint URL.</td>
+      <td class="helm-value-desc">Override the region to sign requests for.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.awsSigv4<wbr>.roleArn</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Override the role ARN to assume for signing requests.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.awsSigv4<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>An `otelcol.auth.sigv4.oteldest` definition.</code></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.sigv4 block.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.custom<wbr>.handler</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"{{ fail \"Be sure to set this\" }}"</code></td>
+      <td class="helm-value-desc">Handler for a custom auth handler (Advanced escape hatch). This should point to the definition you used. Most auth types use `.handler` for their capsule export. If you need multiple handlers, you can skip this field and instead modify your otlpExporter.config to not use "mzmon.alloyGateway.otelDest.authHandler".</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.custom<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><pre>// THIS IS AN EXAMPLE
+otelcol.auth.basic "oteldest" {
+    client_auth {
+        username = sys.env("GATEWAY_OTEL_DEST_USERNAME")
+        password = sys.env("GATEWAY_OTEL_DEST_PASSWORD")
+    }
+}
+</pre></td>
+      <td class="helm-value-desc">Raw configuration for a custom auth handler.</td>
     </tr>
   </tbody>
 </table>
@@ -1268,7 +1430,7 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA.</td>
+      <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA. Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.</td>
     </tr>
   </tbody>
 </table>

@@ -263,18 +263,11 @@ pipeline:
             # Use TLS12 if you need better compat.
             # TLS11 and TLS10 are not recommended for production.
             minVersion: TLS13
-        otlp:
-          # -- Enable writing to an OTLP destination.
+        otel:
+          # -- Enable writing to an OpenTelemetry/OTLP destination.
           # By default, we do not use the OTLP destination.
+          # NOTE: This is configured in the pipeline.metrics.gateway.destination.otlp block, not the logging block.
           enabled: false
-          # -- Use metric OTLP destination.
-          shareMetricDestination: false
-          # -- Protocol to use for OTLP.
-          # Use grpc for gRPC protocol.
-          # Use http for HTTP protocol.
-          protocol: grpc
-          # -- OTLP push endpoint URL.
-          url: ""
     tenancy:
       # -- Default tenant to write logs to.
       # This is used when tenantMap values is set to `static`.
@@ -357,16 +350,188 @@ pipeline:
             # Use TLS12 if you need better compat.
             # TLS11 and TLS10 are not recommended for production.
             minVersion: TLS13
-        otlp:
-          # -- Enable writing to an OTLP destination.
-          # By default, we do not use the OTLP destination.
+
+        # -- (h5) OpenTelemetry/OTLP destination configuration for metrics (and logging).
+        # @notationType -- (sectionstart) OpenTelemetry/OTLP destinations.
+        # @raw
+        #
+        # This supports several components and allows further customization of endpoints.
+        # Multiple exporters can be enabled at once.
+        otel:
+          # -- Enable writing metrics to an OpenTelemetry/OTLP destination.
+          # By default, we do not use the OTel destination.
+          # WARNING: if logging otel destination is enabled, this block will still be used for configuration!
+          # (just not for metrics)
           enabled: false
-          # -- Protocol to use for OTLP.
-          # Use grpc for gRPC protocol.
-          # Use http for HTTP protocol.
-          protocol: grpc
-          # -- OTLP push endpoint URL.
-          url: ""
+
+          googleCloudExporter:
+            # -- Enable writing to a Google Cloud Monitoring / Cloud Logging destination.
+            enabled: false
+            # -- Compression for logs/metrics
+            # Only gzip is supported for Google Cloud Monitoring / Logging.
+            compression: gzip
+
+            # -- Handlers to use for the Google Cloud exporter.
+            handlers:
+              - otelcol.exporter.googlecloud.destination.input
+
+            # -- Raw configuration for an otelcol.exporter.googlecloud block.
+            # @default -- An `otelcol.exporter.googlecloud.destination` definition.
+            # The default config uses Workload Identity Federation (WIF) to authenticate to GCP.
+            config: |
+              otelcol.exporter.googlecloud "destination" {
+                  metric {
+                      compression = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.compression | quote }}
+                  }
+                  log {
+                      compression = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.compression | quote }}
+                  }
+              }
+
+          datadogExporter:
+            # -- Enable writing to a Datadog destination.
+            enabled: false
+            # -- Compression for logs/metrics
+            # Only gzip is supported for Datadog.
+            compression: gzip
+
+            url: "datadoghq.com"
+            metricEndpoint: "https://api.datadoghq.com"
+            logsEndpoint: "https://http-intake.logs.datadoghq.com"
+
+            hostMetadata:
+              # -- Whether to include host metadata in the Datadog exporter.
+              # FIXME: how do we support this in an Agent->Gateway architecture?
+              enabled: false
+
+            # -- Handlers to use for the Datadog exporter.
+            handlers:
+              - otelcol.exporter.datadog.destination.input
+
+            # -- Raw configuration for an otelcol.exporter.datadog block.
+            # @default -- An `otelcol.exporter.datadog.destination` definition.
+            config: |
+              otelcol.exporter.datadog "destination" {
+                  api {
+                      api_key = sys.env("GATEWAY_OTEL_DEST_DATADOG_API_KEY")
+                      fail_on_invalid_key = true
+                      site = {{ .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.url | default "datadoghq.com" | quote }}
+                  }
+                  metrics {
+                     endpoint = {{ .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.metricEndpoint | quote }}
+                  }
+                  logs {
+                      endpoint = {{ .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.logsEndpoint | quote }}
+                  }
+                  host_metadata {
+                      enabled = {{ .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.hostMetadata.enabled | toString }}
+                  }
+              }
+
+          otlpExporter:
+            # -- Enable writing to an OpenTelemetry/OTLP destination.
+            # This is the generic fallback for other destinations.
+            # You can also use this if you need to set a custom destination block.
+            enabled: false
+            # -- OTLP push endpoint URL.
+            # This does not need a protocol prefix (http:// or https://)
+            url: ""
+            # -- Protocol to use for OTLP.
+            # Use grpc for gRPC protocol.
+            # Use http for HTTP protocol.
+            protocol: grpc
+            # -- Compression to use
+            # Use gzip for better compatibility.
+            # Use snappy for better performance.
+            compression: snappy
+            # -- Handlers to use for the OTLP exporter.
+            # @default -- ["otelcol.exporter.otlp[http].destination.input"]
+            # Update this if your config was customized.
+            handlers:
+              - 'otelcol.exporter.{{ ternary ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) "otlp" "otlphttp" }}.destination.input'
+            # -- Raw configuration for an otelcol.exporter.otlp block.
+            # Use this if you need to configure multiple destinations or use an alternative endpoint entirely.
+            config: |
+              {{- $exporterType := ternary ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) "otlp" "otlphttp" }}
+              otelcol.exporter.{{ $exporterType }} "destination" {
+                  client {
+                      endpoint = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.url | required "destination.otlp.url must be set" | quote }}
+                      compression = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.compression | quote }}
+              {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
+                      auth = {{ include "mzmon.alloyGateway.otelDest.authHandler" $ | quote }}
+              {{- end }}
+                  }
+              }
+
+          # -- (h5) Configuration for OpenTelemetry/OTLP destinations.
+          # @notationType -- (sectionstart) OpenTelemetry Authentication Configuration
+          # This is only needed for destinations that require an auth handler (like otlpExporter).
+          auth:
+            # -- Type of authentication to use with the OpenTelemetry destination.
+            # Valid values are: `none`, `basic`, `bearer`, `awsSigv4`, and `custom`.
+            authType: none
+
+            basic:
+              handler: otelcol.auth.basic.oteldest.handler
+              # -- Raw configuration for an otelcol.auth.basic block.
+              # @default -- An `otelcol.auth.basic.oteldest` definition.
+              # This uses the GATEWAY_OTEL_DEST_USERNAME/GATEWAY_OTEL_DEST_PASSWORD env vars.
+              config: |
+                otelcol.auth.basic "oteldest" {
+                    client_auth {
+                        username = sys.env("GATEWAY_OTEL_DEST_USERNAME")
+                        password = sys.env("GATEWAY_OTEL_DEST_PASSWORD")
+                    }
+                }
+
+            bearer:
+              handler: otelcol.auth.bearer.oteldest.handler
+              # -- Raw configuration for an otelcol.auth.bearer block.
+              # @default -- An `otelcol.auth.bearer.oteldest` definition.
+              # This uses the GATEWAY_OTEL_DEST_BEARER_TOKEN env var.
+              config: |
+                otelcol.auth.bearer "oteldest" {
+                    header = "Authorization"
+                    scheme = "Bearer"
+                    token  = sys.env("GATEWAY_OTEL_DEST_BEARER_TOKEN")
+                }
+
+            awsSigv4:
+              handler: otelcol.auth.sigv4.oteldest.handler
+              # -- Override the region to sign requests for.
+              region: ""
+              # -- Override the role ARN to assume for signing requests.
+              roleArn: ""
+              # -- Raw configuration for an otelcol.auth.sigv4 block.
+              # @default -- An `otelcol.auth.sigv4.oteldest` definition.
+              config: |
+                otelcol.auth.sigv4 "oteldest" {
+                {{- if .Values.pipeline.metrics.gateway.destination.otel.auth.awsSigv4.region }}
+                    region = {{ .Values.pipeline.metrics.gateway.destination.otel.auth.awsSigv4.region | quote }}
+                {{- end }}
+                {{- if .Values.pipeline.metrics.gateway.destination.otel.auth.awsSigv4.roleArn }}
+                    assume_role {
+                        role_arn = {{ .Values.pipeline.metrics.gateway.destination.otel.auth.awsSigv4.roleArn | quote }}
+                    }
+                {{- end }}
+                }
+
+            custom:
+              # -- Handler for a custom auth handler (Advanced escape hatch).
+              # This should point to the definition you used.
+              # Most auth types use `.handler` for their capsule export.
+              # If you need multiple handlers, you can skip this field and instead modify
+              # your otlpExporter.config to not use "mzmon.alloyGateway.otelDest.authHandler".
+              handler: '{{ fail "Be sure to set this" }}'
+              # -- Raw configuration for a custom auth handler.
+              config: |
+                // THIS IS AN EXAMPLE
+                otelcol.auth.basic "oteldest" {
+                    client_auth {
+                        username = sys.env("GATEWAY_OTEL_DEST_USERNAME")
+                        password = sys.env("GATEWAY_OTEL_DEST_PASSWORD")
+                    }
+                }
 
 # -- Configuration for dashboards, rules, and alerts
 # @notationType -- (sectionstart) Monitoring configurations
@@ -496,6 +661,9 @@ alloy-agent:
 
     storagePath: /tmp/alloy
 
+    extraArgs:
+      - --feature.community-components.enabled
+
     # -- Extra environment variables to pass to the alloy agent pod.
     extraEnv: []
     # -- Environment variable configmaps/secrets to pass to the alloy agent pod.
@@ -617,6 +785,9 @@ alloy-gateway:
     enableReporting: false
 
     storagePath: /tmp/alloy
+
+    extraArgs:
+      - --feature.community-components.enabled
 
     # -- Extra environment variables to pass to the alloy gateway pod.
     extraEnv: []
@@ -746,6 +917,7 @@ alloy-gateway:
     create: true
     # -- Extra annotations to set on the alloy-gateway service account.
     # Use `eks.amazonaws.com/role-arn` to set up IRSA.
+    # Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.
     annotations: {}
 
   serviceMonitor:

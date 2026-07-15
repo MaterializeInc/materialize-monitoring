@@ -41,6 +41,7 @@ spec:
           command:
             - alloy
             - validate
+            - --feature.community-components.enabled
             - /etc/alloy/{{ include "mzmon.alloyGateway.configMap.key" $ }}
           securityContext:
             {{- toYaml $pipelineValues.preValidateJob.containerSecurityContext | nindent 12 }}

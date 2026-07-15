@@ -211,6 +211,9 @@ Usage:
 {{- define "mzmon.alloyGateway.pipeline.contents" }}
   {{- $values := index $.Values "alloy-gateway" | required "alloy-gateway is missing from values." }}
   {{- $pipelineValues := $.Values.pipeline }}
+  {{- if (index $.Values "pipelines") -}}
+    {{- fail "pipelines.* is the wrong key. Use pipeline.*" }}
+  {{- end }}
 
   {{- /* Output main snippet */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway.alloy" }}
@@ -237,6 +240,15 @@ Usage:
     {{- $metricsForward = append $metricsForward "prometheus.remote_write.destination.receiver" }}
     {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ }}
   {{- end }}
+  {{- if ( include "mzmon.alloyGateway.otelDest.enabled" $ ) }}
+    {{- if $.Values.pipeline.metrics.gateway.destination.otel.enabled }}
+      {{- $metricsForward = append $metricsForward "otelcol.receiver.prometheus.outputBridge.receiver" }}
+    {{- end }}
+    {{- if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
+      {{- $logForward = append $logForward "otelcol.receiver.loki.outputBridge.receiver" }}
+    {{- end }}
+    {{- include "mzmon.alloyGateway.otelDest.render" $ }}
+  {{- end }}
 loki.process "egress" {
 	  forward_to = [
   {{- range $logForward }}
@@ -258,7 +270,7 @@ prometheus.relabel "egress" {
 Generate the alloy-gateway loki.write.destination blocks.
 
 Usage:
-  {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ | nindent 4 }}
+  {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
 */}}
 {{- define "mzmon.alloyGateway.pipeline.loki.dest" }}
   {{- $gatewayLogValues := $.Values.pipeline.logging.gateway }}
@@ -292,11 +304,12 @@ loki.write "destination" {
 }
 {{- end }}
 
+
 {{/*
 Generate the alloy-gateway prometheus.remote_write blocks.
 
 Usage:
-  {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ | nindent 4 }}
+  {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ }}
 */}}
 {{- define "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" }}
   {{- $gatewayMetricsValues := $.Values.pipeline.metrics.gateway }}
@@ -336,6 +349,145 @@ prometheus.remote_write "destination" {
 }
 {{- end }}
 
+
+{{/*
+Check if alloy-gateway OpenTelemetry destination is enabled.
+
+This returns a truthy string if enabled and a falsy string (empty) if not.
+
+This is true if EITHER the metrics gateway destination is enabled OR the logging gateway destination is enabled.
+
+Usage:
+  {{- if ( include "mzmon.alloyGateway.otelDest.enabled" $ ) }}
+    ...
+  {{- end }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.enabled" }}
+  {{- if $.Values.pipeline.metrics.gateway.destination.otel.enabled }}
+    {{- "true" }}
+  {{- else if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+
+{{/*
+Render the alloy-gateway OpenTelemetry destination blocks.
+
+Usage:
+  {{- include "mzmon.alloyGateway.otelDest.render" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.render" }}
+  {{- $otelDestValues := $.Values.pipeline.metrics.gateway.destination.otel }}
+  {{- $blocks := list }}
+  {{- $forwardTo := list }}
+
+  {{- if $otelDestValues.otlpExporter.enabled }}
+    {{- $blocks = append $blocks ( tpl $otelDestValues.otlpExporter.config $ ) }}
+    {{- $forwardTo = concat $forwardTo $otelDestValues.otlpExporter.handlers -}}
+  {{- end }}
+
+  {{- if $otelDestValues.googleCloudExporter.enabled }}
+    {{- $blocks = append $blocks ( tpl $otelDestValues.googleCloudExporter.config $ ) }}
+    {{- $forwardTo = concat $forwardTo $otelDestValues.googleCloudExporter.handlers -}}
+  {{- end }}
+
+  {{- if $otelDestValues.datadogExporter.enabled }}
+    {{- $blocks = append $blocks ( tpl $otelDestValues.datadogExporter.config $ ) }}
+    {{- $forwardTo = concat $forwardTo $otelDestValues.datadogExporter.handlers -}}
+  {{- end }}
+
+  {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
+    {{- $blocks = append $blocks ( include "mzmon.alloyGateway.otelDest.auth.render" $ ) }}
+  {{- end }}
+
+  {{- if $otelDestValues.enabled }}
+
+otelcol.receiver.prometheus "outputBridge" {
+    output {
+        metrics = [
+    {{- range $forwardTo }}
+            {{ . }},
+    {{- end }}
+        ]
+    }
+}
+  {{- end }}
+  {{- if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
+
+otelcol.receiver.loki "outputBridge" {
+    output {
+        logs = [
+    {{- range $forwardTo }}
+            {{ . }},
+    {{- end }}
+        ]
+    }
+}
+  {{- end }}
+
+  {{- /* output blocks */}}
+  {{- printf "\n\n" }}
+  {{- $blocks | join "\n\n" }}
+{{- end }}
+
+
+{{/*
+Check if alloy-gateway OpenTelemetry destination auth is enabled.
+
+Usage:
+  {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
+    ...
+  {{- end }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.authEnabled" }}
+  {{- $otelDestValues := $.Values.pipeline.metrics.gateway.destination.otel }}
+  {{- if ne $otelDestValues.auth.authType "none" }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{/*
+Get the auth handler for an alloy-gateway OpenTelemetry destination.
+
+Usage:
+  {{- include "mzmon.alloyGateway.otelDest.authHandler" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.authHandler" }}
+  {{- $otelDestValues := $.Values.pipeline.metrics.gateway.destination.otel }}
+  {{- if eq $otelDestValues.auth.authType "basic" }}
+    {{- tpl $otelDestValues.auth.basic.handler $ }}
+  {{- else if eq $otelDestValues.auth.authType "bearer" }}
+    {{- tpl $otelDestValues.auth.bearer.handler $ }}
+  {{- else if or ( eq $otelDestValues.auth.authType "sigv4" ) ( eq $otelDestValues.auth.authType "awsSigv4" ) }}
+    {{- tpl $otelDestValues.auth.awsSigv4.handler $ }}
+  {{- else if eq $otelDestValues.auth.authType "custom" }}
+    {{- tpl $otelDestValues.auth.custom.handler $ }}
+  {{- else }}
+    {{- printf "Unsupported authType (%s)" $otelDestValues.auth.authType | fail }}
+  {{- end }}
+{{- end }}
+
+{{/*
+Render an auth block.
+
+Usage:
+  {{- include "mzmon.alloyGateway.otelDest.auth.render" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.auth.render" }}
+  {{- $otelDestValues := $.Values.pipeline.metrics.gateway.destination.otel }}
+  {{- if eq $otelDestValues.auth.authType "basic" }}
+    {{- tpl $otelDestValues.auth.basic.config $ }}
+  {{- else if eq $otelDestValues.auth.authType "bearer" }}
+    {{- tpl $otelDestValues.auth.bearer.config $ }}
+  {{- else if or ( eq $otelDestValues.auth.authType "sigv4" ) ( eq $otelDestValues.auth.authType "awsSigv4" ) }}
+    {{- tpl $otelDestValues.auth.awsSigv4.config $ }}
+  {{- else if eq $otelDestValues.auth.authType "custom" }}
+    {{- tpl $otelDestValues.auth.custom.config $ }}
+  {{- else }}
+    {{- printf "Unsupported authType (%s)" $otelDestValues.auth.authType | fail }}
+  {{- end }}
+{{- end }}
 
 {{/*
 Generate the alloy-agent pipeline.

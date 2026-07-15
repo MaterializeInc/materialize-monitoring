@@ -35,11 +35,6 @@ data:
     {{- end }}
   {{- end }}
   {{- /* </lokiDest> */}}
-  {{- $otlpDest := .Values.pipeline.logging.gateway.destination.otlp }}
-  {{- if $otlpDest.enabled }}
-    {{- fail "OTLP is not supported for the alloy-gateway destination yet" }}
-  {{- end }}
-  {{- /* </otlpDest> */}}
   {{- $promDest := .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite }}
   {{- if $promDest.enabled }}
   GATEWAY_PROM_DEST: {{ tpl $promDest.url $ | quote }}
@@ -66,10 +61,6 @@ data:
     {{- end }}
   {{- end }}
   {{- /* </promDest> */}}
-  {{- if .Values.pipeline.metrics.gateway.destination.otlp.enabled }}
-    {{- fail "OTLP is not supported for the alloy-gateway metrics destination yet" }}
-  {{- end }}
-  {{- /* </otlpDest> */}}
   {{- $tenancy := $.Values.pipeline.logging.tenancy | required "pipeline.logging.tenancy is required" }}
   GATEWAY_STATIC_TENANT: {{ $tenancy.staticTenant | quote }}
   {{- if hasPrefix $tenancy.tenantLabel "__meta_kubernetes" }}
