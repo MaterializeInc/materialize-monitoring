@@ -96,6 +96,11 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
     {{- printf "<pre>\n" }}
     {{- $default | mustFromJson | toPrettyJson }}
     {{- printf "</pre>\n" }}
+  {{- else if ( contains "\\n" $default ) }}
+    {{- /* Multiline string block */}}
+    {{- printf "<pre>" }}
+    {{- $default | mustFromJson | replace "\\n" "<br>" | replace "," ", " }}
+    {{- printf "</pre>" }}
   {{- else }}
     {{- printf "<code>" }}
     {{- $default | replace "," ", " }}
