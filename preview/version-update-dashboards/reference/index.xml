@@ -26,8 +26,16 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v0130-unreleased"&gt;Dashboards v0.13.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0130-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v060-unreleased"&gt;materialize-monitoring Helm Chart v0.6.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v060-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v070-unreleased"&gt;materialize-monitoring Helm Chart v0.7.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v060"&gt;materialize-monitoring Helm Chart v0.6.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v060"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Allow configuring otlpExporter, googleCloudExporter, datadogExporter
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/106" rel="external" class="github-source-link"&gt;materialize-monitoring#106&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v050"&gt;materialize-monitoring Helm Chart v0.5.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v050"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;CLO-112 Harden Long-Term storage in GCP
