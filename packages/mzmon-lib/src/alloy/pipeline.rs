@@ -71,6 +71,10 @@ pub enum ComponentBlock {
     OtelcolProcessorAttributes(otelcol::OtelcolProcessorAttributesBlock),
     #[serde(rename = "otelcol.processor.groupbyattrs")]
     OtelcolProcessorGroupByAttrs(otelcol::OtelcolProcessorGroupByAttrsBlock),
+    #[serde(rename = "otelcol.processor.filter")]
+    OtelcolProcessorFilter(otelcol::OtelcolProcessorFilterBlock),
+    #[serde(rename = "otelcol.processor.transform")]
+    OtelcolProcessorTransform(otelcol::OtelcolProcessorTransformBlock),
 }
 impl_to_block_dispatch!(ComponentBlock {
     Raw,
@@ -92,6 +96,8 @@ impl_to_block_dispatch!(ComponentBlock {
     OtelcolProcessorMemoryLimiter,
     OtelcolProcessorAttributes,
     OtelcolProcessorGroupByAttrs,
+    OtelcolProcessorFilter,
+    OtelcolProcessorTransform,
 });
 
 impl Pipeline {

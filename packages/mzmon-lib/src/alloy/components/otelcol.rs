@@ -13,15 +13,18 @@
 //! Each block deserializes from the flat `{otelcol.X: {label, attrs..., blocks}}`
 //! form and converts to a generic [`Block`] via [`ToBlock`].
 //!
-//! This first tranche covers the stream-shaping processors: `batch`,
-//! `memory_limiter`, `attributes`, and `groupbyattrs`. Every otelcol component
-//! forwards through an `output` block whose `metrics` / `logs` / `traces` lists
-//! are [`OtelcolConsumer`] capsules (bare refs), so `output` is a shared typed
-//! sub-block here. The intricate OTTL processors (`filter`, `transform`) stay on
-//! the `raw:` escape for now.
+//! Covers the stream-shaping processors — `batch`, `memory_limiter`,
+//! `attributes`, `groupbyattrs` — and the OTTL processors `filter` and
+//! `transform`. Every otelcol component forwards through an `output` block whose
+//! `metrics` / `logs` / `traces` lists are [`OtelcolConsumer`] capsules (bare
+//! refs), so `output` is a shared typed sub-block here. OTTL statements and
+//! conditions are carried as [`Ottl`] strings (rendered verbatim, escaped) and
+//! are `Expressable`, so a statement can also be sourced from an expression; we
+//! do not model OTTL's function library.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, Ottl, ToBlock,
+    impl_to_block_dispatch,
 };
 use crate::alloy::components::capsule::{OtelcolConsumer, otelcol_consumer_list};
 use crate::alloy::error::Result;
@@ -31,6 +34,17 @@ use serde::{Deserialize, Serialize};
 /// Collect a `Vec` of `ToBlock` sub-blocks into rendered `Block`s.
 fn to_blocks<T: ToBlock>(blocks: &[T]) -> Result<Vec<Block>> {
     blocks.iter().map(ToBlock::to_block).collect()
+}
+
+/// Render a list of OTTL statements/conditions as an `AttributeValue::Array`.
+/// Each element is a raw OTTL string or an expression that yields one.
+fn ottl_list(items: &[Expressable<Ottl>]) -> Result<AttributeValue> {
+    Ok(AttributeValue::Array(
+        items
+            .iter()
+            .map(Expressable::to_attribute_value)
+            .collect::<Result<Vec<_>>>()?,
+    ))
 }
 
 /// Convert a `Vec<String>` to an `AttributeValue::Array` of string literals.
@@ -53,8 +67,8 @@ fn string_array(values: &[String]) -> AttributeValue {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OtelcolProcessorBatchBlock {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<Identifier>,
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
     /// Flush a batch after this long regardless of size. Defaults to `200ms`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<GoDuration>,
@@ -98,7 +112,7 @@ impl ToBlock for OtelcolProcessorBatchBlock {
         }
         Ok(Block {
             component: "otelcol.processor.batch".into(),
-            label: self.label.clone(),
+            label: Some(self.label.clone()),
             attributes,
             blocks: to_blocks(&self.blocks)?,
         })
@@ -117,8 +131,8 @@ impl ToBlock for OtelcolProcessorBatchBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OtelcolProcessorMemoryLimiterBlock {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<Identifier>,
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
     /// How often to check memory usage (e.g. `1s`). Required.
     pub check_interval: Expressable<String>,
     /// Hard memory limit as a byte size (e.g. `1GiB`). Exclusive with `limit_percentage`.
@@ -159,7 +173,7 @@ impl ToBlock for OtelcolProcessorMemoryLimiterBlock {
         }
         Ok(Block {
             component: "otelcol.processor.memory_limiter".into(),
-            label: self.label.clone(),
+            label: Some(self.label.clone()),
             attributes,
             blocks: to_blocks(&self.blocks)?,
         })
@@ -177,8 +191,8 @@ impl ToBlock for OtelcolProcessorMemoryLimiterBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OtelcolProcessorAttributesBlock {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<Identifier>,
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
     /// `action` blocks (applied in order) plus `output`. `include`/`exclude`
     /// match blocks use `raw:`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -189,7 +203,7 @@ impl ToBlock for OtelcolProcessorAttributesBlock {
     fn to_block(&self) -> Result<Block> {
         Ok(Block {
             component: "otelcol.processor.attributes".into(),
-            label: self.label.clone(),
+            label: Some(self.label.clone()),
             attributes: IndexMap::new(),
             blocks: to_blocks(&self.blocks)?,
         })
@@ -260,8 +274,8 @@ impl ToBlock for AttributesActionBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OtelcolProcessorGroupByAttrsBlock {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<Identifier>,
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
     /// Attribute keys to group records by. Empty = compaction only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keys: Vec<String>,
@@ -278,7 +292,7 @@ impl ToBlock for OtelcolProcessorGroupByAttrsBlock {
         }
         Ok(Block {
             component: "otelcol.processor.groupbyattrs".into(),
-            label: self.label.clone(),
+            label: Some(self.label.clone()),
             attributes,
             blocks: to_blocks(&self.blocks)?,
         })
@@ -354,6 +368,257 @@ impl_to_block_dispatch!(AttributesSubBlock {
 });
 
 // ============================================================
+// otelcol.processor.filter  (+ *_conditions sub-blocks)
+// ============================================================
+
+/// An `otelcol.processor.filter` block — drops telemetry matching OTTL
+/// conditions.
+///
+/// Uses the inferred-context `*_conditions` blocks; the deprecated per-signal
+/// `traces`/`metrics`/`logs` blocks are intentionally not typed (use `raw:`).
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.filter/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolProcessorFilterBlock {
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
+    /// How to react to errors while evaluating a condition (`ignore`/`silent`/`propagate`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_mode: Option<String>,
+    /// Nested blocks (`output`, `trace_conditions`, `metric_conditions`,
+    /// `log_conditions`; `debug_metrics` uses `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<FilterSubBlock>,
+}
+
+impl ToBlock for OtelcolProcessorFilterBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.error_mode {
+            attributes.insert("error_mode".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "otelcol.processor.filter".into(),
+            label: Some(self.label.clone()),
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// A `*_conditions` sub-block — inferred-context OTTL conditions for one signal.
+/// Shared shape behind `trace_conditions` / `metric_conditions` /
+/// `log_conditions`; the enclosing enum supplies the block name.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.filter/#trace_conditions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilterConditionsBlock {
+    /// OTTL context for evaluating the conditions (e.g. `span`, `metric`, `log`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+    /// OTTL conditions; any one matching drops the telemetry.
+    pub conditions: Vec<Expressable<Ottl>>,
+}
+
+impl FilterConditionsBlock {
+    fn to_named_block(&self, component: &str) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(ctx) = &self.context {
+            attributes.insert("context".into(), AttributeValue::String(ctx.clone()));
+        }
+        attributes.insert("conditions".into(), ottl_list(&self.conditions)?);
+        Ok(Block {
+            component: component.into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// Sub-block under an `otelcol.processor.filter` body. `Raw` is the escape hatch
+/// (e.g. for `debug_metrics` or the deprecated `traces`/`metrics`/`logs` blocks).
+///
+/// The three `*_conditions` variants share [`FilterConditionsBlock`], so the
+/// dispatch is hand-written (rather than via `impl_to_block_dispatch!`) to pass
+/// each its block name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FilterSubBlock {
+    #[serde(rename = "output")]
+    Output(OtelcolOutputBlock),
+    #[serde(rename = "trace_conditions")]
+    TraceConditions(FilterConditionsBlock),
+    #[serde(rename = "metric_conditions")]
+    MetricConditions(FilterConditionsBlock),
+    #[serde(rename = "log_conditions")]
+    LogConditions(FilterConditionsBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+
+impl ToBlock for FilterSubBlock {
+    fn to_block(&self) -> Result<Block> {
+        match self {
+            Self::Output(b) => b.to_block(),
+            Self::TraceConditions(b) => b.to_named_block("trace_conditions"),
+            Self::MetricConditions(b) => b.to_named_block("metric_conditions"),
+            Self::LogConditions(b) => b.to_named_block("log_conditions"),
+            Self::Raw(b) => b.to_block(),
+        }
+    }
+}
+
+// ============================================================
+// otelcol.processor.transform  (+ *_statements / statements sub-blocks)
+// ============================================================
+
+/// An `otelcol.processor.transform` block — modifies telemetry with OTTL.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolProcessorTransformBlock {
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
+    /// How to react to errors while processing a statement (`ignore`/`silent`/`propagate`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_mode: Option<String>,
+    /// Nested blocks (`output`, `trace_statements`, `metric_statements`,
+    /// `log_statements`, `statements`; `debug_metrics` uses `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<TransformSubBlock>,
+}
+
+impl ToBlock for OtelcolProcessorTransformBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.error_mode {
+            attributes.insert("error_mode".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "otelcol.processor.transform".into(),
+            label: Some(self.label.clone()),
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// A `*_statements` sub-block — a context-scoped group of OTTL statements.
+/// Shared shape behind `trace_statements` / `metric_statements` /
+/// `log_statements`; the enclosing enum supplies the block name.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/#trace_statements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransformStatementsBlock {
+    /// OTTL context the statements run in (e.g. `resource`, `span`, `datapoint`).
+    pub context: String,
+    /// OTTL statements, applied in order.
+    pub statements: Vec<Expressable<Ottl>>,
+    /// Optional guard conditions (ORed) gating the statements.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<Expressable<Ottl>>,
+    /// Per-block error handling; overrides the component-level `error_mode`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_mode: Option<String>,
+}
+
+impl TransformStatementsBlock {
+    fn to_named_block(&self, component: &str) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert(
+            "context".into(),
+            AttributeValue::String(self.context.clone()),
+        );
+        attributes.insert("statements".into(), ottl_list(&self.statements)?);
+        if !self.conditions.is_empty() {
+            attributes.insert("conditions".into(), ottl_list(&self.conditions)?);
+        }
+        if let Some(em) = &self.error_mode {
+            attributes.insert("error_mode".into(), AttributeValue::String(em.clone()));
+        }
+        Ok(Block {
+            component: component.into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// A `statements` sub-block — OTTL statements with context inferred per signal.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/#statements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransformInferredStatementsBlock {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trace: Vec<Expressable<Ottl>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub metric: Vec<Expressable<Ottl>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log: Vec<Expressable<Ottl>>,
+}
+
+impl ToBlock for TransformInferredStatementsBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if !self.trace.is_empty() {
+            attributes.insert("trace".into(), ottl_list(&self.trace)?);
+        }
+        if !self.metric.is_empty() {
+            attributes.insert("metric".into(), ottl_list(&self.metric)?);
+        }
+        if !self.log.is_empty() {
+            attributes.insert("log".into(), ottl_list(&self.log)?);
+        }
+        Ok(Block {
+            component: "statements".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// Sub-block under an `otelcol.processor.transform` body. `Raw` is the escape
+/// hatch (e.g. for `debug_metrics`).
+///
+/// The three `*_statements` variants share [`TransformStatementsBlock`], so the
+/// dispatch is hand-written to pass each its block name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TransformSubBlock {
+    #[serde(rename = "output")]
+    Output(OtelcolOutputBlock),
+    #[serde(rename = "trace_statements")]
+    TraceStatements(TransformStatementsBlock),
+    #[serde(rename = "metric_statements")]
+    MetricStatements(TransformStatementsBlock),
+    #[serde(rename = "log_statements")]
+    LogStatements(TransformStatementsBlock),
+    #[serde(rename = "statements")]
+    Statements(TransformInferredStatementsBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+
+impl ToBlock for TransformSubBlock {
+    fn to_block(&self) -> Result<Block> {
+        match self {
+            Self::Output(b) => b.to_block(),
+            Self::TraceStatements(b) => b.to_named_block("trace_statements"),
+            Self::MetricStatements(b) => b.to_named_block("metric_statements"),
+            Self::LogStatements(b) => b.to_named_block("log_statements"),
+            Self::Statements(b) => b.to_block(),
+            Self::Raw(b) => b.to_block(),
+        }
+    }
+}
+
+// ============================================================
 // tests
 // ============================================================
 
@@ -404,6 +669,7 @@ mod tests {
             r#"
             blocks:
               - otelcol.processor.memory_limiter:
+                  label: mem
                   check_interval: "1s"
                   limit_percentage:
                     function: encoding.from_json
@@ -422,7 +688,7 @@ mod tests {
         assert_renders(
             pipeline.render(),
             concat!(
-                "otelcol.processor.memory_limiter {\n",
+                "otelcol.processor.memory_limiter \"mem\" {\n",
                 "\tcheck_interval         = \"1s\"\n",
                 "\tlimit_percentage       = encoding.from_json(coalesce(sys.env(\"MEMORY_LIMIT_PERCENTAGE\"), \"80\"))\n",
                 "\tspike_limit_percentage = 20\n",
@@ -443,6 +709,7 @@ mod tests {
             r#"
             blocks:
               - otelcol.processor.memory_limiter:
+                  label: mem
                   check_interval: "1s"
                   limit: "1GiB"
                   spike_limit: "256MiB"
@@ -452,7 +719,7 @@ mod tests {
         assert_renders(
             pipeline.render(),
             concat!(
-                "otelcol.processor.memory_limiter {\n",
+                "otelcol.processor.memory_limiter \"mem\" {\n",
                 "\tcheck_interval = \"1s\"\n",
                 "\tlimit          = \"1GiB\"\n",
                 "\tspike_limit    = \"256MiB\"\n",
@@ -514,6 +781,7 @@ mod tests {
             r#"
             blocks:
               - otelcol.processor.groupbyattrs:
+                  label: group
                   keys: ["namespace", "cluster"]
                   blocks:
                     - output:
@@ -524,7 +792,7 @@ mod tests {
         assert_renders(
             pipeline.render(),
             concat!(
-                "otelcol.processor.groupbyattrs {\n",
+                "otelcol.processor.groupbyattrs \"group\" {\n",
                 "\tkeys = [\n",
                 "\t\t\"namespace\",\n",
                 "\t\t\"cluster\",\n",
@@ -547,6 +815,7 @@ mod tests {
             r#"
             blocks:
               - otelcol.processor.batch:
+                  label: batch
                   blocks:
                     - raw:
                         component: debug_metrics
@@ -560,7 +829,7 @@ mod tests {
         assert_renders(
             pipeline.render(),
             concat!(
-                "otelcol.processor.batch {\n",
+                "otelcol.processor.batch \"batch\" {\n",
                 "\tdebug_metrics {\n",
                 "\t\tdisable_high_cardinality_metrics = true\n",
                 "\t}\n",
@@ -572,6 +841,164 @@ mod tests {
                 "\t}\n",
                 "}\n",
             ),
+        );
+    }
+
+    #[test]
+    fn filter_metric_conditions_round_trips() {
+        // A `metric_conditions` block: the OTTL condition is a raw string
+        // (rendered as an escaped alloy string), and a second condition is
+        // sourced from an env var — proving `conditions` is `Expressable<Ottl>`.
+        //
+        // Byte-checked with `assert_eq!` (not `assert_renders`): `context` sits in
+        // an attribute group with the multi-line `conditions` array, hitting the
+        // renderer's known alignment quirk (alloy fmt aligns `context =`). Valid
+        // alloy, just not fmt-canonical — see the renderer-alignment cleanup note.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.processor.filter:
+                  label: drop
+                  error_mode: ignore
+                  blocks:
+                    - metric_conditions:
+                        context: datapoint
+                        conditions:
+                          - 'name == "up"'
+                          - env: EXTRA_DROP
+                    - output:
+                        metrics: ["otelcol.exporter.prometheus.bridge.input"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "otelcol.processor.filter \"drop\" {\n",
+                "\terror_mode = \"ignore\"\n",
+                "\n",
+                "\tmetric_conditions {\n",
+                "\t\tcontext = \"datapoint\"\n",
+                "\t\tconditions = [\n",
+                "\t\t\t\"name == \\\"up\\\"\",\n",
+                "\t\t\tsys.env(\"EXTRA_DROP\"),\n",
+                "\t\t]\n",
+                "\t}\n",
+                "\n",
+                "\toutput {\n",
+                "\t\tmetrics = [\n",
+                "\t\t\totelcol.exporter.prometheus.bridge.input,\n",
+                "\t\t]\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn transform_metric_statements_round_trips() {
+        // Context-scoped OTTL statements: quotes inside each statement render as
+        // escaped alloy strings.
+        //
+        // Byte-checked with `assert_eq!` (not `assert_renders`): `context` beside
+        // the multi-line `statements` array hits the renderer's alignment quirk
+        // (alloy fmt aligns `context =`). Valid alloy, just not fmt-canonical.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.processor.transform:
+                  label: shape
+                  error_mode: ignore
+                  blocks:
+                    - metric_statements:
+                        context: datapoint
+                        statements:
+                          - 'set(attributes["env"], "prod")'
+                          - 'delete_key(attributes, "service_instance_id")'
+                    - output:
+                        metrics: ["otelcol.exporter.prometheus.bridge.input"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "otelcol.processor.transform \"shape\" {\n",
+                "\terror_mode = \"ignore\"\n",
+                "\n",
+                "\tmetric_statements {\n",
+                "\t\tcontext = \"datapoint\"\n",
+                "\t\tstatements = [\n",
+                "\t\t\t\"set(attributes[\\\"env\\\"], \\\"prod\\\")\",\n",
+                "\t\t\t\"delete_key(attributes, \\\"service_instance_id\\\")\",\n",
+                "\t\t]\n",
+                "\t}\n",
+                "\n",
+                "\toutput {\n",
+                "\t\tmetrics = [\n",
+                "\t\t\totelcol.exporter.prometheus.bridge.input,\n",
+                "\t\t]\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn transform_inferred_statements_round_trips() {
+        // The context-inference `statements` block (no explicit context).
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.processor.transform:
+                  label: shape
+                  blocks:
+                    - statements:
+                        metric:
+                          - 'set(resource.attributes["dropped"], true)'
+                    - output:
+                        metrics: ["otelcol.exporter.prometheus.bridge.input"]
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "otelcol.processor.transform \"shape\" {\n",
+                "\tstatements {\n",
+                "\t\tmetric = [\n",
+                "\t\t\t\"set(resource.attributes[\\\"dropped\\\"], true)\",\n",
+                "\t\t]\n",
+                "\t}\n",
+                "\n",
+                "\toutput {\n",
+                "\t\tmetrics = [\n",
+                "\t\t\totelcol.exporter.prometheus.bridge.input,\n",
+                "\t\t]\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn missing_label_is_rejected_by_schema() {
+        // otelcol components require a label (alloy rejects an unlabeled one), so
+        // the schema requires it — a labelless block fails validation rather than
+        // rendering un-loadable alloy.
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.processor.batch:
+                  blocks:
+                    - output:
+                        metrics: ["otelcol.exporter.prometheus.bridge.input"]
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, crate::alloy::error::Error::Multiple(_)),
+            "expected a schema rejection for the missing label, got {err:?}"
         );
     }
 }

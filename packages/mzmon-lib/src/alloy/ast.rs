@@ -110,6 +110,28 @@ mod private {
     impl Sealed for String {}
     impl Sealed for bool {}
     impl Sealed for f64 {}
+    impl Sealed for super::Ottl {}
+}
+
+/// A single OTTL (OpenTelemetry Transformation Language) statement or condition,
+/// carried verbatim as a string.
+///
+/// We deliberately do NOT model OTTL's grammar or function library: the string
+/// is passed through and rendered as a normal (escaped) alloy string. The
+/// dedicated newtype over `String` documents intent at the field level — a
+/// `Vec<Expressable<Ottl>>` reads as "OTTL statements, each a literal or an
+/// expression" — keeps OTTL fields greppable, and (via [`LiteralScalar`]) lets
+/// them be `Expressable` so a statement can also be sourced from an expression.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/#ottl-context
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Ottl(pub String);
+
+impl LiteralScalar for Ottl {
+    fn to_attribute_value(&self) -> Result<AttributeValue> {
+        Ok(AttributeValue::String(self.0.clone()))
+    }
 }
 
 impl LiteralScalar for String {

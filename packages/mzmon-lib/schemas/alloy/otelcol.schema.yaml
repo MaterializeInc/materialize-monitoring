@@ -11,12 +11,14 @@
 # differs from the raw shape, which keeps a `component / label / attributes /
 # blocks` partition because raw needs `component` as its own discriminator.
 #
-# SCOPE: this first otelcol tranche covers the processors that reshape/limit a
-# metrics (or logs/traces) stream before it egresses: batch, memory_limiter,
-# attributes, and groupbyattrs. The more intricate `filter` and `transform`
-# processors (OTTL-heavy) are deliberately deferred to the `raw:` escape for now.
-# receivers/exporters/connectors and the per-processor `debug_metrics` block also
-# stay on `raw:` until usage demands typing them.
+# SCOPE: covers the stream-shaping processors — batch, memory_limiter,
+# attributes, groupbyattrs — plus the OTTL processors filter and transform.
+# OTTL statements/conditions are carried as raw, reasonably-formatted strings
+# (see the `ottl` $def); we do NOT model OTTL's grammar or function library.
+# Deprecated filter blocks (`traces`/`metrics`/`logs`) are intentionally omitted
+# in favor of the inferred-context `*_conditions` blocks — reach for `raw:` if you
+# truly need the deprecated form. receivers/exporters/connectors and the
+# per-processor `debug_metrics` block stay on `raw:` until usage demands typing.
 #
 # Schemas grow with usage; they are not meant to mirror alloy upstream
 # exhaustively. The full policy lives in:
@@ -60,10 +62,25 @@ oneOf:
         $ref: "#/$defs/otelcol.processor.groupbyattrs"
     required: [otelcol.processor.groupbyattrs]
     additionalProperties: false
+  - type: object
+    properties:
+      otelcol.processor.filter:
+        $ref: "#/$defs/otelcol.processor.filter"
+    required: [otelcol.processor.filter]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.processor.transform:
+        $ref: "#/$defs/otelcol.processor.transform"
+    required: [otelcol.processor.transform]
+    additionalProperties: false
 
 $defs:
   label:
-    description: User-defined identifier to distinguish multiple instances.
+    description: |
+      User-defined identifier to distinguish instances. Required — alloy rejects
+      an unlabeled otelcol component at load, so the schema requires it too
+      (unlike the other component families here, which leave `label` optional).
     type: string
 
   expressionOrString:
@@ -105,6 +122,33 @@ $defs:
 
       See: https://grafana.com/docs/alloy/latest/reference/compatibility/#opentelemetry-collector-consumer
     type: string
+
+  errorMode:
+    description: |
+      How to react to an error while processing a statement/condition:
+      `propagate` (default — return the error, dropping the payload), `ignore`
+      (log and continue), or `silent` (continue without logging). `ignore` is the
+      recommended mode.
+    type: string
+    enum: [ignore, silent, propagate]
+
+  ottl:
+    description: |
+      A single OTTL (OpenTelemetry Transformation Language) statement or
+      condition, carried verbatim. We don't model OTTL's grammar or function
+      library — write it as you would upstream; it renders as a normal (escaped)
+      alloy string, which is equivalent to the backtick raw form.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/#ottl-context
+    type: string
+
+  expressionOrOttl:
+    description: |
+      An OTTL statement/condition string, or an expression that yields one
+      (e.g. `{env: VAR_NAME}`).
+    oneOf:
+      - $ref: "#/$defs/ottl"
+      - $ref: "./common/expression.schema.yaml"
 
   # ============================================================
   # Top-level components
@@ -158,6 +202,7 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/processorSubBlock"
+    required: [label]
     additionalProperties: false
 
   otelcol.processor.memory_limiter:
@@ -207,7 +252,7 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/processorSubBlock"
-    required: [check_interval]
+    required: [label, check_interval]
     additionalProperties: false
 
   otelcol.processor.attributes:
@@ -229,6 +274,7 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/attributesSubBlock"
+    required: [label]
     additionalProperties: false
 
   otelcol.processor.groupbyattrs:
@@ -256,6 +302,63 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/processorSubBlock"
+    required: [label]
+    additionalProperties: false
+
+  otelcol.processor.filter:
+    description: |
+      Drops telemetry matching OTTL conditions — if any condition evaluates to
+      true, the data is dropped. Use the inferred-context `*_conditions` blocks.
+      (The older per-signal `traces`/`metrics`/`logs` blocks are deprecated and
+      intentionally omitted here; use `raw:` if you truly need them, but they
+      can't be combined with the `*_conditions` blocks.)
+
+      NOTE: the `*_conditions` blocks require alloy >= 1.17 (we pin 1.17.x).
+      Older alloy only has the deprecated `traces`/`metrics`/`logs` blocks and
+      rejects `*_conditions` with "unrecognized block name".
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.filter/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      error_mode:
+        $ref: "#/$defs/errorMode"
+      blocks:
+        description: |
+          Nested blocks. `output` wires downstream consumers; `trace_conditions`
+          / `metric_conditions` / `log_conditions` carry the OTTL conditions. A
+          `debug_metrics` block uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/filterSubBlock"
+    required: [label]
+    additionalProperties: false
+
+  otelcol.processor.transform:
+    description: |
+      Modifies telemetry with OTTL statements. Group statements under the
+      context that owns the data they touch (`resource`/`scope`/signal) via the
+      `*_statements` blocks, or let the context be inferred via the `statements`
+      block.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      error_mode:
+        $ref: "#/$defs/errorMode"
+      blocks:
+        description: |
+          Nested blocks. `output` wires downstream consumers; `trace_statements`
+          / `metric_statements` / `log_statements` carry context-scoped OTTL, and
+          `statements` carries context-inferred OTTL. A `debug_metrics` block
+          uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/transformSubBlock"
+    required: [label]
     additionalProperties: false
 
   # ============================================================
@@ -292,6 +395,75 @@ $defs:
           output:
             $ref: "#/$defs/output"
         required: [output]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  filterSubBlock:
+    description: |
+      One sub-block in an `otelcol.processor.filter` body.
+      The final `raw` branch is the escape hatch (e.g. for `debug_metrics` or the
+      deprecated `traces`/`metrics`/`logs` blocks).
+    oneOf:
+      - type: object
+        properties:
+          output:
+            $ref: "#/$defs/output"
+        required: [output]
+        additionalProperties: false
+      - type: object
+        properties:
+          trace_conditions:
+            $ref: "#/$defs/filterConditions"
+        required: [trace_conditions]
+        additionalProperties: false
+      - type: object
+        properties:
+          metric_conditions:
+            $ref: "#/$defs/filterConditions"
+        required: [metric_conditions]
+        additionalProperties: false
+      - type: object
+        properties:
+          log_conditions:
+            $ref: "#/$defs/filterConditions"
+        required: [log_conditions]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  transformSubBlock:
+    description: |
+      One sub-block in an `otelcol.processor.transform` body.
+      The final `raw` branch is the escape hatch (e.g. for `debug_metrics`).
+    oneOf:
+      - type: object
+        properties:
+          output:
+            $ref: "#/$defs/output"
+        required: [output]
+        additionalProperties: false
+      - type: object
+        properties:
+          trace_statements:
+            $ref: "#/$defs/transformStatements"
+        required: [trace_statements]
+        additionalProperties: false
+      - type: object
+        properties:
+          metric_statements:
+            $ref: "#/$defs/transformStatements"
+        required: [metric_statements]
+        additionalProperties: false
+      - type: object
+        properties:
+          log_statements:
+            $ref: "#/$defs/transformStatements"
+        required: [log_statements]
+        additionalProperties: false
+      - type: object
+        properties:
+          statements:
+            $ref: "#/$defs/transformInferredStatements"
+        required: [statements]
         additionalProperties: false
       - $ref: "./common/raw.schema.yaml"
 
@@ -373,4 +545,91 @@ $defs:
         type: string
         enum: [string, int, double]
     required: [action]
+    additionalProperties: false
+
+  filterConditions:
+    description: |
+      Inferred-context OTTL conditions for one signal. If any condition evaluates
+      to true, the matching telemetry is dropped. Backs the `trace_conditions` /
+      `metric_conditions` / `log_conditions` blocks.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.filter/#trace_conditions
+    type: object
+    properties:
+      context:
+        description: |
+          OTTL context for evaluating the conditions. Valid values depend on the
+          signal: traces — `resource`/`span`/`spanevent`; metrics —
+          `resource`/`metric`/`datapoint`; logs — `resource`/`log`.
+        type: string
+        enum: [resource, span, spanevent, metric, datapoint, log]
+      conditions:
+        description: |
+          OTTL conditions; only one needs to match for the telemetry to be
+          dropped.
+        type: array
+        items:
+          $ref: "#/$defs/expressionOrOttl"
+    required: [conditions]
+    additionalProperties: false
+
+  transformStatements:
+    description: |
+      A context-scoped group of OTTL statements (with optional guard
+      conditions). Backs the `trace_statements` / `metric_statements` /
+      `log_statements` blocks.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/#trace_statements
+    type: object
+    properties:
+      context:
+        description: |
+          OTTL context the statements run in. All signals support
+          `resource`/`scope`; traces add `span`/`spanevent`, metrics add
+          `metric`/`datapoint`, logs add `log`.
+        type: string
+        enum: [resource, scope, span, spanevent, metric, datapoint, log]
+      statements:
+        description: OTTL statements, applied in order.
+        type: array
+        items:
+          $ref: "#/$defs/expressionOrOttl"
+      conditions:
+        description: |
+          Optional guard conditions (ORed); the statements run only if one is
+          true.
+        type: array
+        items:
+          $ref: "#/$defs/expressionOrOttl"
+      error_mode:
+        description: |
+          Per-block error handling; overrides the component-level `error_mode`.
+        $ref: "#/$defs/errorMode"
+    required: [context, statements]
+    additionalProperties: false
+
+  transformInferredStatements:
+    description: |
+      OTTL statements with the context inferred from each statement's paths and
+      functions. Backs the `statements` block; can replace or complement the
+      explicit `*_statements` blocks.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.transform/#statements
+    type: object
+    properties:
+      trace:
+        description: OTTL statements transforming traces.
+        type: array
+        items:
+          $ref: "#/$defs/expressionOrOttl"
+      metric:
+        description: OTTL statements transforming metrics.
+        type: array
+        items:
+          $ref: "#/$defs/expressionOrOttl"
+      log:
+        description: OTTL statements transforming logs.
+        type: array
+        items:
+          $ref: "#/$defs/expressionOrOttl"
     additionalProperties: false
