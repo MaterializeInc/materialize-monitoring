@@ -73,6 +73,25 @@ impl MetricsReceiver {
     }
 }
 
+/// Reference to an otelcol component's exported consumer `input`
+/// (e.g. `otelcol.exporter.prometheus.bridge.input`).
+///
+/// The otelcol analog of [`LogsReceiver`]/[`MetricsReceiver`]: otelcol
+/// components hand telemetry to the next stage through their `output` block's
+/// `metrics` / `logs` / `traces` lists, each element being an `otelcol.Consumer`.
+/// Deserializes from a plain YAML string; renders as a bare ref.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/compatibility/#opentelemetry-collector-consumer
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OtelcolConsumer(pub Identifier);
+
+impl OtelcolConsumer {
+    pub fn new(name: impl Into<Identifier>) -> Self {
+        Self(name.into())
+    }
+}
+
 /// One element of a `targets` list.
 ///
 /// A `discovery.*` export (e.g. `discovery.kubernetes.pods.targets`) is itself a
@@ -121,6 +140,12 @@ impl From<&MetricsReceiver> for AttributeValue {
     }
 }
 
+impl From<&OtelcolConsumer> for AttributeValue {
+    fn from(consumer: &OtelcolConsumer) -> Self {
+        AttributeValue::Expression(Expression::name_to_ref(&consumer.0))
+    }
+}
+
 impl From<&TargetEntry> for AttributeValue {
     fn from(entry: &TargetEntry) -> Self {
         match entry {
@@ -144,6 +169,15 @@ pub fn logs_receiver_list(receivers: &[LogsReceiver]) -> AttributeValue {
 /// element is a single capsule, so list-wrapping is correct here.
 pub fn metrics_receiver_list(receivers: &[MetricsReceiver]) -> AttributeValue {
     AttributeValue::Array(receivers.iter().map(AttributeValue::from).collect())
+}
+
+/// Wrap an otelcol `output` list (`metrics` / `logs` / `traces`) of
+/// [`OtelcolConsumer`]s as an `AttributeValue::Array` of bare refs.
+///
+/// Like `forward_to`, each element is a single capsule, so list-wrapping is
+/// correct here (unlike `targets`, see [`target_list`]).
+pub fn otelcol_consumer_list(consumers: &[OtelcolConsumer]) -> AttributeValue {
+    AttributeValue::Array(consumers.iter().map(AttributeValue::from).collect())
 }
 
 /// Render a `targets` value.
@@ -307,6 +341,43 @@ mod tests {
                 for (item, expected) in items.iter().zip([
                     "prometheus.relabel.a.receiver",
                     "prometheus.remote_write.b.receiver",
+                ]) {
+                    match item {
+                        AttributeValue::Expression(e) => {
+                            assert_eq!(e.ref_name.as_deref(), Some(expected));
+                        }
+                        other => panic!("expected Expression, got {other:?}"),
+                    }
+                }
+            }
+            other => panic!("expected Array, got {other:?}"),
+        }
+    }
+
+    // ----- OtelcolConsumer -----
+
+    #[test]
+    fn otelcol_consumer_deserializes_from_plain_yaml_string() {
+        let c: OtelcolConsumer =
+            serde_yaml_ng::from_str("otelcol.exporter.prometheus.bridge.input").unwrap();
+        assert_eq!(
+            c,
+            OtelcolConsumer("otelcol.exporter.prometheus.bridge.input".into())
+        );
+    }
+
+    #[test]
+    fn otelcol_consumer_list_wraps_each_as_bare_ref() {
+        let v = otelcol_consumer_list(&[
+            OtelcolConsumer("otelcol.processor.batch.default.input".into()),
+            OtelcolConsumer("otelcol.exporter.prometheus.bridge.input".into()),
+        ]);
+        match v {
+            AttributeValue::Array(items) => {
+                assert_eq!(items.len(), 2);
+                for (item, expected) in items.iter().zip([
+                    "otelcol.processor.batch.default.input",
+                    "otelcol.exporter.prometheus.bridge.input",
                 ]) {
                     match item {
                         AttributeValue::Expression(e) => {

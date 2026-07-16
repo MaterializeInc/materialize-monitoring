@@ -1,0 +1,376 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for otelcol.* components in alloy pipeline definitions.
+#
+# DESIGN NOTE: typed schemas are strict (additionalProperties: false on each
+# typed block). Undocumented attributes are rejected deliberately — extend the
+# relevant $def to add one, or wrap the whole block in a `raw:` escape (see
+# raw.schema.yaml).
+#
+# The typed shape is intentionally FLAT — attributes live directly under the
+# discriminator key alongside `label` and (where applicable) `blocks`. This
+# differs from the raw shape, which keeps a `component / label / attributes /
+# blocks` partition because raw needs `component` as its own discriminator.
+#
+# SCOPE: this first otelcol tranche covers the processors that reshape/limit a
+# metrics (or logs/traces) stream before it egresses: batch, memory_limiter,
+# attributes, and groupbyattrs. The more intricate `filter` and `transform`
+# processors (OTTL-heavy) are deliberately deferred to the `raw:` escape for now.
+# receivers/exporters/connectors and the per-processor `debug_metrics` block also
+# stay on `raw:` until usage demands typing them.
+#
+# Schemas grow with usage; they are not meant to mirror alloy upstream
+# exhaustively. The full policy lives in:
+#   docs/content/reference/internal/pipelines/authoring.md
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/otelcol.schema.yaml"
+title: "Alloy OpenTelemetry Collector components"
+description: |
+  Schemas for the otelcol.* alloy components used by materialize-monitoring pipelines.
+
+  Only the attributes we commonly set are documented here.
+  For anything outside this schema, fall back to the `raw:` escape hatch from raw.schema.yaml.
+
+  See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/
+
+type: object
+# Externally-tagged: each branch requires its component key and forbids the others,
+# so `oneOf` matches exactly one component per block.
+oneOf:
+  - type: object
+    properties:
+      otelcol.processor.batch:
+        $ref: "#/$defs/otelcol.processor.batch"
+    required: [otelcol.processor.batch]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.processor.memory_limiter:
+        $ref: "#/$defs/otelcol.processor.memory_limiter"
+    required: [otelcol.processor.memory_limiter]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.processor.attributes:
+        $ref: "#/$defs/otelcol.processor.attributes"
+    required: [otelcol.processor.attributes]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.processor.groupbyattrs:
+        $ref: "#/$defs/otelcol.processor.groupbyattrs"
+    required: [otelcol.processor.groupbyattrs]
+    additionalProperties: false
+
+$defs:
+  label:
+    description: User-defined identifier to distinguish multiple instances.
+    type: string
+
+  expressionOrString:
+    description: |
+      A value that can be either a literal string or an expression
+      (e.g. sourced from an environment variable via `{env: VAR_NAME}`).
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#expression-or-string
+    oneOf:
+      - type: string
+      - $ref: "./common/expression.schema.yaml"
+
+  expressionOrNumber:
+    description: |
+      A value that can be either a literal number or an expression
+      (e.g. sourced from an environment variable via `{env: VAR_NAME}`).
+      Note that `sys.env` yields a string, so an env-sourced number usually
+      needs an `encoding.from_json(...)` coercion expression.
+    oneOf:
+      - type: number
+      - $ref: "./common/expression.schema.yaml"
+
+  expressionOrDuration:
+    description: |
+      A value that can be either a literal Go duration string or an expression
+      (e.g. sourced from an environment variable via `{env: VAR_NAME}`).
+    oneOf:
+      - type: string
+        format: go-duration
+      - $ref: "./common/expression.schema.yaml"
+
+  consumer:
+    description: |
+      Reference to an otelcol component's exported consumer `input`
+      (an `otelcol.Consumer`), e.g. `otelcol.exporter.prometheus.bridge.input`.
+
+      Used inside an `output` block's `metrics` / `logs` / `traces` lists to
+      wire this processor to the next stage.
+
+      See: https://grafana.com/docs/alloy/latest/reference/compatibility/#opentelemetry-collector-consumer
+    type: string
+
+  # ============================================================
+  # Top-level components
+  # ============================================================
+
+  otelcol.processor.batch:
+    description: |
+      Batches telemetry before forwarding, improving compression and reducing
+      the number of outgoing requests. Typically the first processor in an
+      otelcol chain.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.batch/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      timeout:
+        description: |
+          How long to wait before flushing a batch regardless of size.
+          Defaults to `200ms`. `0` disables time-based flushing.
+        type: string
+        format: go-duration
+        examples: ["200ms", "5s"]
+      send_batch_size:
+        description: |
+          Number of items to accumulate before flushing a batch.
+          Defaults to `8192`.
+        type: number
+        examples: [8192]
+      send_batch_max_size:
+        description: |
+          Hard upper bound on a batch's size; larger batches are split.
+          Defaults to `0` (no limit). Must be >= `send_batch_size` when set.
+        type: number
+      metadata_keys:
+        description: |
+          Request metadata keys whose distinct value-combinations get their own
+          batcher. Defaults to an empty list (a single batcher).
+        type: array
+        items:
+          type: string
+      metadata_cardinality_limit:
+        description: |
+          Maximum number of distinct metadata-key combinations to track.
+          Defaults to `1000`.
+        type: number
+      blocks:
+        description: |
+          Optional nested blocks. `output` wires downstream consumers; a
+          `debug_metrics` block uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/processorSubBlock"
+    additionalProperties: false
+
+  otelcol.processor.memory_limiter:
+    description: |
+      Guards against out-of-memory by refusing (and forcing a garbage collect
+      on) telemetry when memory crosses configured limits. Recommended as the
+      first processor in a chain so backpressure propagates to receivers.
+
+      The limit knobs are expression-friendly so they can be wired to
+      environment variables for per-deployment sizing.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.memory_limiter/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      check_interval:
+        description: |
+          How often to check memory usage. Required. `1s` is a common value.
+        $ref: "#/$defs/expressionOrDuration"
+      limit:
+        description: |
+          Hard memory limit as a byte size (e.g. `1GiB`). Above this, data is
+          refused until usage drops. Mutually exclusive with `limit_percentage`.
+        $ref: "#/$defs/expressionOrString"
+      spike_limit:
+        description: |
+          Spike headroom as a byte size; the soft limit is `limit - spike_limit`.
+          Defaults to 20% of `limit`. Mutually exclusive with
+          `spike_limit_percentage`.
+        $ref: "#/$defs/expressionOrString"
+      limit_percentage:
+        description: |
+          Hard memory limit as a percentage (1-100) of total memory. Prefer this
+          over `limit` in containers with a cgroup memory limit. Mutually
+          exclusive with `limit`.
+        $ref: "#/$defs/expressionOrNumber"
+      spike_limit_percentage:
+        description: |
+          Spike headroom as a percentage of total memory. Used with
+          `limit_percentage`.
+        $ref: "#/$defs/expressionOrNumber"
+      blocks:
+        description: |
+          Optional nested blocks. `output` wires downstream consumers; a
+          `debug_metrics` block uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/processorSubBlock"
+    required: [check_interval]
+    additionalProperties: false
+
+  otelcol.processor.attributes:
+    description: |
+      Adds, updates, deletes, hashes, or extracts attributes (labels) on
+      telemetry via ordered `action` blocks. The metrics-pipeline workhorse for
+      shaping resource/datapoint attributes before egress.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.attributes/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      blocks:
+        description: |
+          Nested blocks. `action` blocks apply in document order; `output` wires
+          downstream consumers. `include` / `exclude` match blocks and
+          `debug_metrics` use the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/attributesSubBlock"
+    additionalProperties: false
+
+  otelcol.processor.groupbyattrs:
+    description: |
+      Regroups telemetry so records sharing the given attribute values are
+      collected under a common resource, compacting the stream. With no `keys`,
+      it only compacts existing groupings.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.groupbyattrs/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      keys:
+        description: |
+          Attribute keys to group records by. Matching attributes are lifted
+          onto the resource. Defaults to an empty list (compaction only).
+        type: array
+        items:
+          type: string
+      blocks:
+        description: |
+          Optional nested blocks. `output` wires downstream consumers; a
+          `debug_metrics` block uses the `raw:` escape.
+        type: array
+        items:
+          $ref: "#/$defs/processorSubBlock"
+    additionalProperties: false
+
+  # ============================================================
+  # Sub-block lists (each ends with the `raw` escape branch)
+  # ============================================================
+
+  processorSubBlock:
+    description: |
+      One sub-block in a batch / memory_limiter / groupbyattrs body.
+      The final `raw` branch is the escape hatch (e.g. for `debug_metrics`).
+    oneOf:
+      - type: object
+        properties:
+          output:
+            $ref: "#/$defs/output"
+        required: [output]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  attributesSubBlock:
+    description: |
+      One sub-block in an `otelcol.processor.attributes` body.
+      The final `raw` branch is the escape hatch (e.g. for `include` / `exclude`
+      match blocks and `debug_metrics`).
+    oneOf:
+      - type: object
+        properties:
+          action:
+            $ref: "#/$defs/action"
+        required: [action]
+        additionalProperties: false
+      - type: object
+        properties:
+          output:
+            $ref: "#/$defs/output"
+        required: [output]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  # ============================================================
+  # Shared block defs
+  # ============================================================
+
+  output:
+    description: |
+      Wires this component's output to the next stage. Each of `metrics`,
+      `logs`, and `traces` is a list of `otelcol.Consumer` inputs. An omitted or
+      empty signal is dropped.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.batch/#output-block
+    type: object
+    properties:
+      metrics:
+        description: Consumers to forward metrics to.
+        type: array
+        items:
+          $ref: "#/$defs/consumer"
+      logs:
+        description: Consumers to forward logs to.
+        type: array
+        items:
+          $ref: "#/$defs/consumer"
+      traces:
+        description: Consumers to forward traces to.
+        type: array
+        items:
+          $ref: "#/$defs/consumer"
+    additionalProperties: false
+
+  action:
+    description: |
+      One attribute action, applied in document order. `action` selects the
+      operation; the other fields depend on it (e.g. `value` for insert/update,
+      `pattern` for extract, `from_attribute` for copying).
+
+      Match-scoping (`include` / `exclude`) and set-based cases use the `raw:`
+      escape.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.attributes/#action-block
+    type: object
+    properties:
+      action:
+        description: |
+          The operation to perform on the attribute.
+        type: string
+        enum: [insert, update, upsert, delete, hash, extract, convert]
+      key:
+        description: |
+          The attribute name to act on. Required for every action except a
+          regex `extract`/`delete` driven solely by `pattern`.
+        type: string
+      value:
+        description: |
+          The value to set (for insert / update / upsert). A literal string or
+          an expression (e.g. `{env: CLUSTER}`). Non-string literal values use
+          the `raw:` escape.
+        $ref: "#/$defs/expressionOrString"
+      pattern:
+        description: |
+          A regular expression. For `extract`, named capture groups become new
+          attributes; for `delete`, attributes matching the pattern are removed.
+        type: string
+      from_attribute:
+        description: |
+          Copy the value from this existing attribute (for insert / update /
+          upsert).
+        type: string
+      from_context:
+        description: |
+          Copy the value from this request-metadata / context key.
+        type: string
+      converted_type:
+        description: |
+          Target type for a `convert` action.
+        type: string
+        enum: [string, int, double]
+    required: [action]
+    additionalProperties: false

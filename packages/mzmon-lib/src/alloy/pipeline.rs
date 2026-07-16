@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{Block, ToBlock, impl_to_block_dispatch};
-use crate::alloy::components::{discovery, loki, prometheus, top};
+use crate::alloy::components::{discovery, loki, otelcol, prometheus, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -59,6 +59,18 @@ pub enum ComponentBlock {
     PrometheusOperatorPodMonitors(prometheus::PrometheusOperatorPodMonitorsBlock),
     #[serde(rename = "prometheus.operator.servicemonitors")]
     PrometheusOperatorServiceMonitors(prometheus::PrometheusOperatorServiceMonitorsBlock),
+    #[serde(rename = "otelcol.processor.batch")]
+    OtelcolProcessorBatch(otelcol::OtelcolProcessorBatchBlock),
+    #[serde(rename = "otelcol.processor.memory_limiter")]
+    // Boxed: this block's five `Expressable` limit knobs make it by far the
+    // largest variant, which would otherwise bloat every `ComponentBlock`
+    // (clippy::large_enum_variant). `Box` is transparent to serde and to the
+    // auto-deref in `impl_to_block_dispatch!`.
+    OtelcolProcessorMemoryLimiter(Box<otelcol::OtelcolProcessorMemoryLimiterBlock>),
+    #[serde(rename = "otelcol.processor.attributes")]
+    OtelcolProcessorAttributes(otelcol::OtelcolProcessorAttributesBlock),
+    #[serde(rename = "otelcol.processor.groupbyattrs")]
+    OtelcolProcessorGroupByAttrs(otelcol::OtelcolProcessorGroupByAttrsBlock),
 }
 impl_to_block_dispatch!(ComponentBlock {
     Raw,
@@ -76,6 +88,10 @@ impl_to_block_dispatch!(ComponentBlock {
     PrometheusRemoteWrite,
     PrometheusOperatorPodMonitors,
     PrometheusOperatorServiceMonitors,
+    OtelcolProcessorBatch,
+    OtelcolProcessorMemoryLimiter,
+    OtelcolProcessorAttributes,
+    OtelcolProcessorGroupByAttrs,
 });
 
 impl Pipeline {
