@@ -62,6 +62,15 @@
         "#\\s?renovate: datasource=(?<datasource>.*) packageName=(?<packageName>\\S*)(?: registryUrl=(?<registryUrl>\\S*))?( versioning=(?<versioning>.*?))?\\n.*(_TAG|_VERSION)\\s*\\??=?\\s*\"?(?<currentValue>.*)\"?"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update renovate-annotated version env vars in GitHub workflows",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z_]+:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
     }
   ]
 }
