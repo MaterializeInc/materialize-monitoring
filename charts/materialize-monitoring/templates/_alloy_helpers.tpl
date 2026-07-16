@@ -406,6 +406,14 @@ Usage:
 otelcol.receiver.prometheus "outputBridge" {
     output {
         metrics = [
+            otelcol.processor.batch.outputMetricsBatch.receiver,
+        ]
+    }
+}
+
+otelcol.processor.batch "outputMetricsBatch" {
+    output {
+        metrics = [
     {{- range $forwardTo }}
             {{ . }},
     {{- end }}
@@ -416,6 +424,14 @@ otelcol.receiver.prometheus "outputBridge" {
   {{- if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
 
 otelcol.receiver.loki "outputBridge" {
+    output {
+        logs = [
+            otelcol.processor.batch.outputLogsBatch.receiver,
+        ]
+    }
+}
+
+otelcol.processor.batch "outputLogsBatch" {
     output {
         logs = [
     {{- range $forwardTo }}

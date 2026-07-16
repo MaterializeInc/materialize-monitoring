@@ -371,6 +371,12 @@ pipeline:
             # Only gzip is supported for Google Cloud Monitoring / Logging.
             compression: gzip
 
+            instrumentation_library_labels: false
+            skip_create_descriptor: true
+            service_resource_labels: false
+
+            prefix: workload.googleapis.com/mzmon
+
             # -- Handlers to use for the Google Cloud exporter.
             handlers:
               - otelcol.exporter.googlecloud.destination.input
@@ -381,7 +387,11 @@ pipeline:
             config: |
               otelcol.exporter.googlecloud "destination" {
                   metric {
-                      compression = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.compression | quote }}
+                      compression                    = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.compression | quote }}
+                      prefix                         = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.prefix | quote }}
+                      instrumentation_library_labels = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.instrumentation_library_labels | toString }}
+                      skip_create_descriptor         = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.skip_create_descriptor | toString }}
+                      service_resource_labels        = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.service_resource_labels | toString }}
                   }
                   log {
                       compression = {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.compression | quote }}
