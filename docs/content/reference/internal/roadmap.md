@@ -92,9 +92,9 @@ The agent and gateway pipelines are in place; the OTLP export path is the near-t
 | Item | Milestone | Status |
 |---|---|---|
 | Typed Alloy **agent** pipeline | M1 | ✅ |
-| Native **OTLP exporter** (forwarding workflows evaluated for Honeycomb, Datadog, Google Cloud Observability) | M2 | ⬜ |
+| Native **OTLP exporter** (forwarding workflows evaluated for Honeycomb, Datadog, Google Cloud Observability) | M2 | ✅ |
 | Gateway pipeline (ported from the staging-gateway reference; log processing + loki.source.api / OTLP-log ingress) | M2 | ✅ |
-| Loki (logs) + Thanos (metrics) wiring | M2 | ⬜ |
+| Loki (logs) + Thanos (metrics) wiring | M2 | ✅ |
 
 ### Scraping (ScrapeConfigs & ServiceMonitors)
 
@@ -143,7 +143,7 @@ Profile finalization is an M4 activity.
 | Pre-commit suite (ruff, pyright, shellcheck, yamllint, cargo fmt, helm-docs) | M1 | ✅ |
 | Per-component versioning + changelog + release automation (see [Versioning](versioning/) / [Releasing](releasing/)) | M2 | ✅ |
 | `auto-format` workflow (label-driven formatter fixups) | M2 | ✅ |
-| `renovate` for automated dependency bumps | M2 | ⬜ |
+| `renovate` for automated dependency bumps | M2 | ✅ |
 | Synthetic-data end-to-end smoke test (metrics flow through the chart) | M4 | ⬜ |
 | kind / ArgoCD / FluxCD CI matrix | M4 | ⬜ (very low priority) |
 

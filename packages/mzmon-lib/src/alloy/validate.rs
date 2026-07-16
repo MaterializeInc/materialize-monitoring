@@ -30,6 +30,7 @@ const SCHEMA_EXPRESSION: &str = include_str!("../../schemas/alloy/common/express
 const SCHEMA_LOKI: &str = include_str!("../../schemas/alloy/loki.schema.yaml");
 const SCHEMA_DISCOVERY: &str = include_str!("../../schemas/alloy/discovery.schema.yaml");
 const SCHEMA_PROMETHEUS: &str = include_str!("../../schemas/alloy/prometheus.schema.yaml");
+const SCHEMA_OTELCOL: &str = include_str!("../../schemas/alloy/otelcol.schema.yaml");
 
 // The `$id` URLs the schemas reference one another by. These must match the
 // `$id` fields in the schema files (and the relative `$ref`s resolve to them).
@@ -40,6 +41,7 @@ const ID_EXPRESSION: &str = "https://materializeinc.github.io/materialize-monito
 const ID_LOKI: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/loki.schema.yaml";
 const ID_DISCOVERY: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/discovery.schema.yaml";
 const ID_PROMETHEUS: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/prometheus.schema.yaml";
+const ID_OTELCOL: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/otelcol.schema.yaml";
 
 /// Parse an embedded schema (authored as YAML) into a JSON value.
 fn parse_schema(src: &str) -> Value {
@@ -74,6 +76,10 @@ fn build_validator() -> Validator {
             (
                 ID_PROMETHEUS,
                 Resource::from_contents(parse_schema(SCHEMA_PROMETHEUS)),
+            ),
+            (
+                ID_OTELCOL,
+                Resource::from_contents(parse_schema(SCHEMA_OTELCOL)),
             ),
         ])
         .expect("register embedded schema resources")

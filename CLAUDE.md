@@ -19,7 +19,7 @@ Prefer fixing stale content in passing over leaving it wrong.
 ## Markdown style
 
 Break Markdown lines on sentence ends — write one sentence per line.
-Do not hard-wrap a single sentence across multiple lines at a fixed column width.
+You may wrap at 120-150 characters if you like.
 Sentence-per-line keeps diffs small and avoids rewrapping churn when a sentence changes.
 
 ## No customer information

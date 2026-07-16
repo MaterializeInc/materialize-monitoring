@@ -20,6 +20,7 @@ pub mod components {
     pub mod capsule;
     pub mod discovery;
     pub mod loki;
+    pub mod otelcol;
     pub mod prometheus;
     pub mod relabel;
     pub mod top;

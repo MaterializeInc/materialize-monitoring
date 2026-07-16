@@ -33,6 +33,9 @@ jobs:
   pipelines:
     name: pipelines (render + alloy validate)
     runs-on: ubuntu-24.04
+    env:
+      # renovate: datasource=github-releases packageName=grafana/alloy
+      ALLOY_VERSION: v1.17.1
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
@@ -40,11 +43,12 @@ jobs:
       - name: Install alloy
         # Pinned release binary (NOT `go install` — alloy needs build tags and
         # is a heavy build). Assets follow the `alloy-<os>-<arch>.zip` naming;
-        # the runner is linux/amd64. Keep this version in step with the alloy
-        # used locally for `make pipelines`.
+        # the runner is linux/amd64. ALLOY_VERSION (job env, above) is renovate-
+        # managed; keep it in step with the alloy used locally for `make
+        # pipelines` and with packages/alloy/Dockerfile's ARG ALLOY_VERSION.
         run: |
           curl -sSL \
-            "https://github.com/grafana/alloy/releases/download/v1.14.0/alloy-linux-amd64.zip" \
+            "https://github.com/grafana/alloy/releases/download/${ALLOY_VERSION}/alloy-linux-amd64.zip" \
             -o /tmp/alloy.zip
           unzip -q /tmp/alloy.zip -d /tmp
           sudo install -m 0755 /tmp/alloy-linux-amd64 /usr/local/bin/alloy

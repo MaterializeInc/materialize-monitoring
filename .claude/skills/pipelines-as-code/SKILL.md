@@ -48,6 +48,7 @@ packages/mzmon-lib/schemas/alloy/               ← validation schemas (embedded
   ├── loki.schema.yaml                          – loki.*, stage.* $defs, shared `rule` $def
   ├── discovery.schema.yaml                     – discovery.*, cross-ref'ing `rule` from loki
   ├── prometheus.schema.yaml                    – prometheus.*, cross-ref'ing `rule` from loki + `target` from discovery
+  ├── otelcol.schema.yaml                       – otelcol.processor.{batch,memory_limiter,attributes,groupbyattrs} + output/action sub-blocks
   └── common/                                   – shared fragments. $id tail MUST match the file path
       ├── raw.schema.yaml                       – {raw: <block>} escape hatch + block primitives
       ├── attribute.schema.yaml                 – attributeValue (anyOf: literal | expression | …)
@@ -62,17 +63,20 @@ packages/mzmon-lib/src/alloy/                   ← AST, render, validate, pipel
   ├── test_support.rs                           – assert_renders (oracle: pipes through `alloy fmt`)
   └── components/                               ← typed sugar; tests colocated with impl
       ├── top.rs                                – LoggingBlock, LiveDebuggingBlock
-      ├── capsule.rs                            – LogsReceiver, MetricsReceiver, RelabelRules, TargetEntry
+      ├── capsule.rs                            – LogsReceiver, MetricsReceiver, OtelcolConsumer, RelabelRules, TargetEntry
                                                   (+ string_map, logs_receiver_list,
-                                                  metrics_receiver_list, target_list helpers)
+                                                  metrics_receiver_list, otelcol_consumer_list, target_list helpers)
       ├── loki.rs                               – LokiEchoBlock, LokiSourceJournalBlock, ...
       ├── relabel.rs                            – RelabelRule + RelabelSubBlock (shared by *.relabel)
       ├── discovery.rs                          – DiscoveryKubernetesBlock, DiscoveryRelabelBlock,
       │                                            KubernetesSubBlock variants
-      └── prometheus.rs                         – Prometheus{Echo,Relabel,Scrape,ReceiveHttp,RemoteWrite,
+      ├── prometheus.rs                         – Prometheus{Echo,Relabel,Scrape,ReceiveHttp,RemoteWrite,
                                                   OperatorPodMonitors,OperatorServiceMonitors}Block
                                                   (+ endpoint/http/clustering/basic_auth/tls_config/
                                                   selector/scrape sub-blocks)
+      └── otelcol.rs                            – OtelcolProcessor{Batch,MemoryLimiter,Attributes,GroupByAttrs}Block
+                                                  (+ shared output block, attributes action block,
+                                                  Processor/Attributes sub-block enums)
 
 packages/mz-monitoring-build/                   ← CLI: `mz-monitoring-build gen-pipelines`
 ```
@@ -119,6 +123,14 @@ Configurable knobs in `agent.yaml`: `cluster`/`node` labels via `sys.env(...)` (
 
 **`prometheus.*` sub-blocks**: `clustering` (`enabled`, shared by scrape + operators), `basic_auth`/`tls_config` (on scrape), `http` (receive_http server), `endpoint` (remote_write — `url` + scalars + a raw-only nested `blocks` for auth/queue), `selector` (operator — `match_labels` + raw-only nested `blocks` for `match_expression`), `scrape` (operator defaults), and the shared `rule` (cross-file `$ref` to `loki.schema.yaml#/$defs/rule`, reusing the `RelabelRule` sugar).
 
+**Top-level otelcol.* components**: `otelcol.processor.{batch,memory_limiter,attributes,groupbyattrs,filter,transform}`. Not yet wired into any pipeline — schema+sugar only. `memory_limiter`'s limit knobs (`check_interval`/`limit`/`spike_limit`/`limit_percentage`/`spike_limit_percentage`) are all `Expressable` for env-driven sizing (its `ComponentBlock` variant is `Box`ed — five `Expressable` fields made it the outsized variant, `clippy::large_enum_variant`). Deliberately deferred to `raw:`: all receivers/exporters/connectors, the per-processor `debug_metrics` block, and (on filter) the deprecated `traces`/`metrics`/`logs` blocks.
+
+**OTTL** (`filter`/`transform`) is carried by a dedicated `Ottl` newtype (`ast.rs`, a sealed `LiteralScalar` so fields are `Vec<Expressable<Ottl>>` — literal OTTL string OR an expression). We do NOT model OTTL's grammar/function library; statements render verbatim as normal (escaped) alloy strings. filter's `*_conditions` blocks and transform's `*_statements`/`statements` blocks share one Rust struct each (`FilterConditionsBlock`, `TransformStatementsBlock`), so their `ToBlock` is hand-written (not the macro) to pass each block name.
+
+**GOTCHA — otelcol needs alloy >= 1.17 and a label on every component.** Confirmed by a real `alloy validate` (the schema/renderer agreeing is NOT proof — these aren't wired into a pipeline, so `make pipelines` doesn't validate them): (1) filter's `*_conditions` blocks are 1.17+ only — older alloy has just the deprecated `traces`/`metrics`/`logs` and errors "unrecognized block name"; we pin 1.17.1. (2) EVERY otelcol component must have a label or alloy load fails "must have a label" — so `label` is a **required** field on the otelcol structs and schema (`required: [label]`), deliberately diverging from the loki/prometheus families which leave `label` optional.
+
+**`otelcol.*` sub-blocks**: `output` (shared — `metrics`/`logs`/`traces` lists of the `OtelcolConsumer` capsule; bare refs), `action` (attributes), `*_conditions` (filter: `context` + `conditions`), `*_statements` (transform: `context`/`statements`/`conditions`/`error_mode`), `statements` (transform inferred: `trace`/`metric`/`log`). Sub-block enums: `ProcessorSubBlock`, `AttributesSubBlock`, `FilterSubBlock`, `TransformSubBlock`.
+
 **`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes), `stage.tenant` (`label`/`source`/`value`, each `Expressable<String>`).
 
 **`discovery.kubernetes` sub-blocks**: `selectors` (incl. `field`/`label` as `Expressable<String>`), `attach_metadata` (`node` + `namespace`). Other sub-blocks (e.g. `namespaces`) use `raw:`.
@@ -137,7 +149,7 @@ The `ComponentBlock` enum in `pipeline.rs` dispatches to typed sugar structs (vi
 
 **Done: every component in the typed-schema coverage list above round-trips through the typed path.** No pending sugar work.
 
-**Capsule types** (`components/capsule.rs`) make the bare-ref invariant structural: `LogsReceiver` (`forward_to`), `MetricsReceiver` (`forward_to` on prometheus.* — the metrics analog of `LogsReceiver`, list-wrapped via `metrics_receiver_list`), `RelabelRules` (`relabel_rules`), and `TargetEntry` (`targets`, untagged `Ref(Identifier) | Literal(IndexMap)`; `prometheus.scrape` reuses it). **`targets` refs are list-valued and must NOT be bare-array-wrapped.** A `discovery.*` export (`discovery.kubernetes.pods.targets`, `discovery.relabel.x.output`) is a `list(discovery.Target)`; a literal is a single `discovery.Target`. `targets = [ <ref> ]` is `list(list(Target))` and alloy **rejects it at load** (`conversion from '[]discovery.Target' is not supported`) — even though `alloy validate` *accepts* it. So `target_list` (capsule.rs) emits: a single ref directly (`targets = discovery.x.targets`), literals-only as an array (`[{…}]`), and multiple/mixed via `array.concat(ref, …, [{…}])`. (Earlier this list-wrapped and "verified against `alloy validate`" — a false green that broke a live agent; see the `alloy validate` gotcha below.) `forward_to`/`relabel_rules` are NOT affected — those refs are single capsules, so list-wrapping (`forward_to`) or direct assignment (`relabel_rules`) is correct. Schema side: `$defs/target` (discovery.schema.yaml, generic) vs `$defs/fileTargetEntry` (loki.schema.yaml, `required: [__path__]`) — strictness lives in the schema, the Rust type stays generic. A new capsule type (e.g. `otelcol.Consumer` when otelcol lands) is a newtype + `From<&T> for AttributeValue` via `Expression::name_to_ref` + a schema `$def`.
+**Capsule types** (`components/capsule.rs`) make the bare-ref invariant structural: `LogsReceiver` (`forward_to`), `MetricsReceiver` (`forward_to` on prometheus.* — the metrics analog of `LogsReceiver`, list-wrapped via `metrics_receiver_list`), `RelabelRules` (`relabel_rules`), and `TargetEntry` (`targets`, untagged `Ref(Identifier) | Literal(IndexMap)`; `prometheus.scrape` reuses it). **`targets` refs are list-valued and must NOT be bare-array-wrapped.** A `discovery.*` export (`discovery.kubernetes.pods.targets`, `discovery.relabel.x.output`) is a `list(discovery.Target)`; a literal is a single `discovery.Target`. `targets = [ <ref> ]` is `list(list(Target))` and alloy **rejects it at load** (`conversion from '[]discovery.Target' is not supported`) — even though `alloy validate` *accepts* it. So `target_list` (capsule.rs) emits: a single ref directly (`targets = discovery.x.targets`), literals-only as an array (`[{…}]`), and multiple/mixed via `array.concat(ref, …, [{…}])`. (Earlier this list-wrapped and "verified against `alloy validate`" — a false green that broke a live agent; see the `alloy validate` gotcha below.) `forward_to`/`relabel_rules` are NOT affected — those refs are single capsules, so list-wrapping (`forward_to`) or direct assignment (`relabel_rules`) is correct. Schema side: `$defs/target` (discovery.schema.yaml, generic) vs `$defs/fileTargetEntry` (loki.schema.yaml, `required: [__path__]`) — strictness lives in the schema, the Rust type stays generic. A new capsule type is a newtype + `From<&T> for AttributeValue` via `Expression::name_to_ref` + a schema `$def` — `OtelcolConsumer` (the otelcol `output` block's `metrics`/`logs`/`traces`, list-wrapped via `otelcol_consumer_list`) is the worked example.
 
 ## Load-bearing invariants
 
@@ -161,7 +173,7 @@ These are *non-obvious things that must stay true* — flagged here so reorders 
 - **`write_expression` uses a `rendered_expr` flag**: the idiomatic shape is a tuple-match over `(&env, &raw, &function, &ref_name, &operator)`, which encodes "exactly one head set" structurally. The flag pattern bit us once (forgotten assignments); a refactor would prevent recurrence.
 - **Renderer block-attribute alignment (task #15)**: current rule "any multi-line value disables alignment for the whole group" is too aggressive; alloy fmt aligns in more cases. Concretely, the only divergences in the rendered `agent.alloy` vs `alloy fmt` are (a) `rule` blocks where a single-line attr (`action`, `separator`, `replacement`) sits in a group that also contains the multi-line `source_labels` array, and (b) `loki.source.file`'s `targets` (single-line) next to the multi-line `forward_to` array. Everything else is canonical. Two ways out (an open decision): fix the alignment rule, or post-process rendered output through `alloy fmt` (we have alloy in CI now). Until then, `assert_renders` will reject tests that exercise those non-canonical shapes.
 - **Schema drift watch**: `description` blocks link to canonical alloy docs. When alloy upstream renames a field or adds one we use, the schema description and `properties` need a corresponding update. There's no automation here; it's a manual sweep when bumping alloy versions.
-- **Type `gateway.yaml`'s ingress components.** `loki.source.api`, `loki.source.kubernetes_events`, `otelcol.receiver.otlp`, and `otelcol.exporter.loki` are currently `raw:`. The otelcol pair needs a new `otelcol.Consumer` capsule type (see the Capsule types note above); the loki sources are ordinary typed-component work.
+- **Type `gateway.yaml`'s ingress components.** `loki.source.api`, `loki.source.kubernetes_events`, `otelcol.receiver.otlp`, and `otelcol.exporter.loki` are currently `raw:`. The `OtelcolConsumer` capsule now exists (used by the otelcol processors), so the otelcol pair is unblocked; the loki sources are ordinary typed-component work.
 - **`with_capacity` + push loops in `to_block` impls** (~5 sites): idiomatic form is `self.blocks.iter().map(ToBlock::to_block).collect::<Result<Vec<_>>>()?`. Cosmetic; sweep opportunistically.
 - **Capsule newtype fields are `pub`** (`LogsReceiver(pub Identifier)`): if ref-path validation is ever added, switch to private field + `fn new() -> Result<Self>`.
 

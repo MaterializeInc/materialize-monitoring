@@ -232,6 +232,10 @@ main.container {
   }
 }
 
+.markdown h3, .markdown h4, .markdown h5 {
+  font-weight: 600;
+}
+
 .markdown table.helm-values {
   pre, code {
     padding: rem(0.5);
