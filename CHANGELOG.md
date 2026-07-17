@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Prometheus Scrapers v0.4.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Helm Chart v0.7.0 (Unreleased)
 
 _Changes Pending_
@@ -56,9 +60,28 @@ _Changes Pending_
 
 * Included mzmon-lib (shared library) @ v0.7.0..v0.8.0
 
-## Prometheus Scrapers v0.3.0 (Unreleased)
+## Prometheus Scrapers v0.3.0
 
-_Changes Pending_
+* Enable MZ podmonitors by default
+    * [materialize-monitoring#116](https://github.com/MaterializeInc/materialize-monitoring/pull/116)
+* Implement alloy metrics pipelines
+    * [materialize-monitoring#96](https://github.com/MaterializeInc/materialize-monitoring/pull/96)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * CLO-152 add schema support for otelcol pipeline blocks
+        * [materialize-monitoring#110](https://github.com/MaterializeInc/materialize-monitoring/pull/110)
+    * Release mzmon-lib (shared library) v0.8.0
+        * [materialize-monitoring#75](https://github.com/MaterializeInc/materialize-monitoring/pull/75)
+    * Update Rust crate jsonschema to 0.47.0
+        * [materialize-monitoring#98](https://github.com/MaterializeInc/materialize-monitoring/pull/98)
+    * Update Rust crate jsonschema to v0.46.10
+        * [materialize-monitoring#91](https://github.com/MaterializeInc/materialize-monitoring/pull/91)
+    * Enable alloy pipelines in materialize-monitoring
+        * [materialize-monitoring#89](https://github.com/MaterializeInc/materialize-monitoring/pull/89)
+    * Implement Gateway Pipeline for Logs
+        * [materialize-monitoring#79](https://github.com/MaterializeInc/materialize-monitoring/pull/79)
 
 ## Container Images v0.2.0 (Unreleased)
 
