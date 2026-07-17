@@ -327,8 +327,15 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v080-unreleased"&gt;materialize-monitoring Helm Chart v0.8.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v080-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v040-unreleased"&gt;Prometheus Scrapers v0.4.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v070"&gt;materialize-monitoring Helm Chart v0.7.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v070"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
+&lt;li&gt;Enable MZ podmonitors by default
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/116" rel="external" class="github-source-link"&gt;materialize-monitoring#116&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;CLO-152 Replace prometheus-style pipeline with otelcol for processing
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/115" rel="external" class="github-source-link"&gt;materialize-monitoring#115&lt;/a&gt;&lt;/li&gt;
@@ -344,7 +351,7 @@ reference/internal/releasing.md.
 &lt;ul&gt;
 &lt;li&gt;Included Dashboards @ v0.11.0..v0.12.0&lt;/li&gt;
 &lt;li&gt;Included Pipelines @ v0.6.0..v0.7.0&lt;/li&gt;
-&lt;li&gt;Included Prometheus Scrapers @ v0.2.0..v0.3.0&lt;/li&gt;
+&lt;li&gt;Included Prometheus Scrapers @ v0.3.0..v0.4.0&lt;/li&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.8.0..v0.9.0&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v060"&gt;materialize-monitoring Helm Chart v0.6.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v060"&gt;#&lt;/a&gt;&lt;/h2&gt;
