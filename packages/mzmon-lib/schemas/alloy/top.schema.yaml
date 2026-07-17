@@ -48,12 +48,14 @@ $defs:
       Configure logging for this alloy instance.
     properties:
       level:
-        type: string
-        enum:
-          - error
-          - warn
-          - info
-          - debug
+        oneOf:
+          - type: string
+            enum:
+              - error
+              - warn
+              - info
+              - debug
+          - $ref: "./common/expression.schema.yaml"
         description: The log level to use for alloy.
       format:
         type: string
@@ -68,7 +70,9 @@ $defs:
     type: object
     properties:
       enabled:
-        type: boolean
+        oneOf:
+          - type: boolean
+          - $ref: "./common/expression.schema.yaml"
         description: |
           Whether to enable livedebugging in the UI.
     additionalProperties: false

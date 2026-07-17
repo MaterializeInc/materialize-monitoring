@@ -54,8 +54,21 @@ description: |
   is deployed across environments (see CLAUDE.md "keep examples generic").
 
 logging:
-  level: info
+  level:
+    function: coalesce
+    arguments:
+      - env: GATEWAY_LOG_LEVEL
+      - "info"
   format: logfmt
+
+livedebugging:
+  enabled:
+    function: encoding.from_json
+    arguments:
+      - function: coalesce
+        arguments:
+          - env: GATEWAY_LIVEDEBUGGING
+          - "false"
 
 blocks:
   # --- ingress: receive entries from alloy-agent ------------------------------

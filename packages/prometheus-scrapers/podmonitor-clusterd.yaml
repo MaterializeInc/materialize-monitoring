@@ -12,6 +12,8 @@ spec:
     matchLabels:
       # FIXME: clusterd pods are not yet groupable by label
       cluster.environmentd.materialize.cloud/type: cluster
+  namespaceSelector:
+    any: true
   # Pod labels copied onto scraped metrics (consumed by the dashboards).
   # Harmless on pods lacking a given label. Node-level labels (zone, instance
   # type, nodepool) are intentionally excluded — they are not pod labels.

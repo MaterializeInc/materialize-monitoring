@@ -1,0 +1,24 @@
+{{- $materializeValues := .Values.materialize.environmentd | required "missing materialize.environmentd from .Values" }}
+{{- if $materializeValues.serviceMonitor.enabled }}
+  {{- $monitor := $.Files.Get "pre-rendered/scrapers/prometheus-operator/podmonitor-environmentd.yaml" | fromYaml }}
+
+  {{- $fullname := printf "%s-materialize-environmentd" ( include "mzmon.fullname" . ) -}}
+  {{- $newMetadata := ( dict
+    "namespace" ( include "mzmon.namespace" $ )
+    "name" $fullname
+    "labels" ( include "mzmon.labels" $ | fromYaml )
+    "annotations" ( include "mzmon.annotations" $ | fromYaml )
+  ) }}
+  {{- $_ := mergeOverwrite $monitor.metadata $newMetadata }}
+
+  {{- if $materializeValues.serviceMonitor.selector }}
+    {{- $_ := set $monitor.spec "selector" $materializeValues.serviceMonitor.selector }}
+  {{- end }}
+  {{- if $materializeValues.serviceMonitor.targetLabels }}
+    {{- $_ := set $monitor.spec "podTargetLabels" $materializeValues.serviceMonitor.targetLabels }}
+  {{- end }}
+  {{- if $materializeValues.serviceMonitor.metricEndpoints }}
+    {{- $_ := set $monitor.spec "podMetricsEndpoints" $materializeValues.serviceMonitor.metricEndpoints }}
+  {{- end }}
+  {{- toYaml $monitor | nindent 0 }}
+{{- end }}

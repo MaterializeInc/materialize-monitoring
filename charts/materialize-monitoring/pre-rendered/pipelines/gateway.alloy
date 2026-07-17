@@ -49,8 +49,12 @@
 // is deployed across environments (see CLAUDE.md "keep examples generic").
 
 logging {
-	level  = "info"
+	level  = coalesce(sys.env("GATEWAY_LOG_LEVEL"), "info")
 	format = "logfmt"
+}
+
+livedebugging {
+	enabled = encoding.from_json(coalesce(sys.env("GATEWAY_LIVEDEBUGGING"), "false"))
 }
 
 loki.source.api "gateway" {

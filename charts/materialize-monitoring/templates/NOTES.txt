@@ -2,21 +2,46 @@ You have successfully installed the Materialize Monitoring chart.
 
 {{- if ( include "mzmon.alloyAgent.enabled" $ ) }}
 
-Alloy agent is installed and configured to collect logs.
+Grafana Alloy (agent) is installed and configured to collect logs.
   Alloy agent namespace: {{ include "mzmon.alloyAgent.namespace" $ }}
+  Destination: Alloy Gateway
 {{- end }}
 
 {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
 
-Alloy gateway is installed and configured to process metrics and logs.
+Grafana Alloy (gateway) is installed and configured to process metrics and logs.
   Alloy gateway namespace: {{ include "mzmon.alloyGateway.namespace" $ }}
+  {{- if .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled }}
+  Destination: Prometheus RemoteWrite
+  {{- end }}
+  {{- if .Values.pipeline.metrics.gateway.destination.otel.enabled }}
+  OpenTelemetry destinations are enabled for metrics:
+    {{- if .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.enabled }}
+    Destination: Generic OTLP
+    {{- end -}}
+    {{- if .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.enabled }}
+    Destination: Google Cloud Monitoring
+    {{- end }}
+    {{- if .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.enabled }}
+    Destination: DataDog
+    {{- end }}
+  {{- end }}
+  {{- if .Values.pipeline.logging.gateway.destination.loki.enabled }}
+  Destination: Grafana Loki
+  {{- end }}
 {{- end }}
 
 {{- if ( include "mzmon.loki.enabled" $ ) }}
 
-Loki is installed and configured to receive logs.
+Grafana Loki is installed and configured to receive logs.
   Loki namespace: {{ include "mzmon.loki.namespace" $ }}
   Replication factor: {{ include "mzmon.loki.replicationFactor" $ }}
+{{- end }}
+
+{{- if ( include "mzmon.thanos.enabled" $ ) }}
+
+Thanos is installed and configured to store metrics.
+  Thanos namespace: {{ include "mzmon.thanos.namespace" $ }}
 {{- end }}
 
 {{- include "mzmon.validate.format" $ | nindent 0 }}

@@ -44,13 +44,16 @@ scrape configuration files as a starting point for your own Prometheus setup.
 The `materialize-sql` scrapers collect SQL-derived metrics from the environmentd `/metrics/mz_compute`, `/metrics/mz_frontier`, `/metrics/mz_storage`, and `/metrics/mz_usage` endpoints. Scrape it as the built-in `mz_support` role.
 
 The **Classic** and **Google Cloud Managed Prometheus** configs carry `username: mz_support` inline, so they need no extra setup.
-Prometheus Operator `basicAuth` can only reference a Kubernetes Secret — it has no inline username field — so the `materialize-sql` `PodMonitor` reads the username from a Secret named `materialize-sql-monitor`.
+Prometheus Operator `basicAuth` can only reference a Kubernetes Secret — it has no inline fields — so the `materialize-sql` `PodMonitor` reads its credentials from a Secret named `materialize-sql-monitor`.
+It needs a `username` key (`mz_support`) and an **empty** `password` key.
+`mz_support` is password-less, but alloy's `prometheus.operator.*` scrapeconfig generation rejects an absent password reference with `resource name may not be empty`; an empty password produces the same `mz_support:` Basic header the username-only configs already send.
 Create it in the namespace the scrapers run in (for example, `materialize`):
 
 ```bash
 kubectl create secret generic materialize-sql-monitor \
   --namespace materialize \
-  --from-literal=username=mz_support
+  --from-literal=username=mz_support \
+  --from-literal=password=
 ```
 
 ### Which Prometheus Distribution Am I Using?
