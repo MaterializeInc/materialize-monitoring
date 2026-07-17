@@ -256,32 +256,198 @@ Materialize-specific configuration values.
       <td class="helm-value-desc">Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">materialize<wbr>.environmentLabel</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Logical environment label applied to all scraped Materialize telemetry.</td>
+      <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for environmentd</td>
     </tr>
     <tr>
-      <td class="helm-value-key">materialize<wbr>.podMonitor<wbr>.enabled</td>
+      <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
       <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">materialize<wbr>.podMonitor<wbr>.environmentdEndpoints</td>
+      <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.targetLabels</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
-[
-  "/metrics/public"
-]</pre>
+[]</pre>
 </td>
-      <td class="helm-value-desc">Which endpoints to scrape on environmentd pods. Note that `/metrics/public` did not become available until v26.25. For earlier versions, you may wish to use `/metrics` instead.</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for environmentd-sql</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for clusterd</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.deploymentMode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"self-managed"</code></td>
       <td class="helm-value-desc">Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-system<wbr>.namespace</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"materialize-environment"</code></td>
+      <td class="helm-value-desc">The namespace materialize-system was deployed into</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-system<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration TODO: nothing uses this yet</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-operator<wbr>.namespace</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"materialize"</code></td>
+      <td class="helm-value-desc">The namespace materialize-operator was deployed into</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints</td>
     </tr>
   </tbody>
 </table>

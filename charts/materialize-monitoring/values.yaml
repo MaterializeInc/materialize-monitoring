@@ -99,18 +99,66 @@ tags:
 materialize:
   # -- Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read.
   namespaces: []
-  # -- Logical environment label applied to all scraped Materialize telemetry.
-  environmentLabel: ""
-  podMonitor:
-    # -- Deploy a PodMonitor to collect Materialize metrics.
-    enabled: true
-    # -- Which endpoints to scrape on environmentd pods.
-    # Note that `/metrics/public` did not become available until v26.25.
-    # For earlier versions, you may wish to use `/metrics` instead.
-    environmentdEndpoints:
-      - /metrics/public
+  environmentd:
+    # -- ServiceMonitor/PodMonitor configuration for environmentd
+    serviceMonitor:
+      # -- Deploy a PodMonitor to collect Materialize metrics.
+      enabled: true
+      # -- Override for default selector
+      selector: {}
+      # -- Override for default labels to copy from the pod into metrics
+      targetLabels: []
+      # -- Override for default metric endpoints
+      metricEndpoints: []
+  environmentdSQL:
+    # -- ServiceMonitor/PodMonitor configuration for environmentd-sql
+    serviceMonitor:
+      # -- Deploy a PodMonitor to collect Materialize metrics.
+      enabled: true
+      # -- Override for default selector
+      selector: {}
+      # -- Override for default labels to copy from the pod into metrics
+      targetLabels: []
+      # -- Override for default metric endpoints
+      metricEndpoints: []
+    secret:
+      name: materialize-sql-monitor
+      username: mz_support
+  clusterd:
+    # -- ServiceMonitor/PodMonitor configuration for clusterd
+    serviceMonitor:
+      # -- Deploy a PodMonitor to collect Materialize metrics.
+      enabled: true
+      # -- Override for default selector
+      selector: {}
+      # -- Override for default labels to copy from the pod into metrics
+      targetLabels: []
+      # -- Override for default metric endpoints
+      metricEndpoints: []
   # -- Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.
   deploymentMode: self-managed
+
+materialize-system:
+  # -- The namespace materialize-system was deployed into
+  namespace: materialize-environment
+  # -- ServiceMonitor/PodMonitor configuration
+  # TODO: nothing uses this yet
+  serviceMonitor:
+    enabled: true
+
+materialize-operator:
+  # -- The namespace materialize-operator was deployed into
+  namespace: materialize
+  # -- ServiceMonitor/PodMonitor configuration
+  serviceMonitor:
+    enabled: true
+    # -- Override for default selector
+    selector: {}
+    # -- Override for default labels to copy from the pod into metrics
+    targetLabels: []
+    # -- Override for default metric endpoints
+    metricEndpoints: []
+
 
 # -- Pipeline configuration values that drive Alloy behavior and defaults.
 # @notationType -- (sectionstart) Pipeline configuration
