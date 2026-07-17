@@ -28,6 +28,11 @@ reference/internal/releasing.md.
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-helm-chart-v070"&gt;materialize-monitoring Helm Chart v0.7.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v070"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
+&lt;li&gt;CLO-152 Replace prometheus-style pipeline with otelcol for processing
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/115" rel="external" class="github-source-link"&gt;materialize-monitoring#115&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;CLO-152 add schema support for otelcol pipeline blocks
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/110" rel="external" class="github-source-link"&gt;materialize-monitoring#110&lt;/a&gt;&lt;/li&gt;
