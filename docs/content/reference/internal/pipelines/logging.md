@@ -60,7 +60,7 @@ These are the conventions a contributor must preserve when editing the gateway `
 
 ### Destinations
 
-`input_processor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
+`inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
 - **Logs → Loki.** The default stub wires `loki.process "egress"` → `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
@@ -76,7 +76,7 @@ Per-component history is captured in the repo `CHANGELOG.md` and the [Releasing]
 Current status (see the [Roadmap](../../roadmap/)):
 
 - **Agent pipeline** — adopted in `packages/alloy-pipelines/agent.yaml`.
-- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml` (processing) + `packages/alloy-pipelines/gateway-dest-stub.yaml` (default egress tail), ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `input_processor` block renders line-for-line against the reference. Still deferred: typing the ingress/sink components (currently `raw:`), `loki.write` auth, and the recording-rule remote-write leg.
+- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml` (processing) + `packages/alloy-pipelines/gateway-dest-stub.yaml` (default egress tail), ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `inputProcessor` block renders line-for-line against the reference. Still deferred: typing the ingress/sink components (currently `raw:`), `loki.write` auth, and the recording-rule remote-write leg.
 
 ## See more
 

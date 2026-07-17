@@ -211,7 +211,7 @@ blocks:
 
   # Echo a 1% sample of non-alloy pod logs locally for debugging.
   - loki.process:
-      label: sample_debug
+      label: sampleDebug
       forward_to: ["loki.echo.stub.receiver"]
       blocks:
         - stage.drop:
@@ -220,7 +220,7 @@ blocks:
             drop_counter_reason: "skip self"
         - stage.sampling:
             rate: 0.01
-            drop_counter_reason: sample_debug
+            drop_counter_reason: sampleDebug
 
   - loki.echo:
       label: stub

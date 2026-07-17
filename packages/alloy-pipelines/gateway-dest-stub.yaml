@@ -7,12 +7,17 @@ description: |
   deploys.
 
   gateway.yaml forwards logs to loki.process.egress.receiver and metrics to
-  prometheus.relabel.egress.receiver — type-neutral passthrough seams it does not
-  define. This file provides those seams plus default loki.write / prometheus
-  .remote_write destinations, so `make pipelines` can render gateway.alloy and
-  `alloy validate` it jointly (it dangles the egress refs on its own). The
-  contract the main pipeline depends on is the `egress` labels; a deployment is
-  free to render a different tail as long as it keeps them.
+  otelcol.processor.filter.egress.receiver — passthrough seams it does not define.
+  This file provides those seams plus default loki.write / prometheus.remote_write
+  destinations, so `make pipelines` can render gateway.alloy and `alloy validate`
+  it jointly (it dangles the egress refs on its own). The contract the main
+  pipeline depends on is the `egress` labels; a deployment is free to render a
+  different tail as long as it keeps them.
+
+  The metrics tail is a short chain: the otelcol.processor.filter.egress seam
+  feeds gateway.yaml's otelcol.exporter.prometheus.outputBridge (OTLP → Prometheus),
+  which feeds the prometheus.relabel.egress → prometheus.remote_write.destination
+  sink defined below.
 
   At DEPLOY time the destination is rendered instead by the chart's
   charts/materialize-monitoring/templates/_alloy_helpers.tpl (from
@@ -27,13 +32,25 @@ description: |
   Auth is deferred in the stub.
 
 blocks:
-  # Type-neutral egress seam: input_processor forwards here. Swap this block's
-  # forward_to to change the destination (loki.write, an otelcol bridge, a
+  # Logs egress seam: loki.process.inputProcessor forwards here. Swap this
+  # block's forward_to to change the destination (loki.write, an otelcol bridge, a
   # fan-out to several sinks, …) while keeping the `egress` label stable.
   - loki.process:
       label: egress
       forward_to: ["loki.write.destination.receiver"]
 
+  # Metrics egress seam: the tail of gateway.yaml's otelcol metrics chain
+  # (otelcol.processor.batch.outputBatch) forwards here. Swap its output to change
+  # where processed OTLP metrics go while keeping the `egress` label stable. Here
+  # it feeds gateway.yaml's outputBridge (OTLP → prom).
+  - otelcol.processor.filter:
+      label: egress
+      blocks:
+        - output:
+            metrics:
+              - otelcol.exporter.prometheus.outputBridge.input
+
+  # Post-bridge prometheus seam: outputBridge forwards here → remote_write.
   - prometheus.relabel:
       label: egress
       forward_to: ["prometheus.remote_write.destination.receiver"]
