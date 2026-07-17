@@ -232,17 +232,18 @@ Usage:
   {{- $pipelineValues := $.Values.pipeline }}
   {{- $logForward := list }}
   {{- $metricsForward := list }}
+  {{- $metricsPromForward := list }}
   {{- if $pipelineValues.logging.gateway.destination.loki.enabled }}
     {{- $logForward = append $logForward "loki.write.destination.receiver" }}
     {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
   {{- end }}
   {{- if $pipelineValues.metrics.gateway.destination.prometheusRemoteWrite.enabled }}
-    {{- $metricsForward = append $metricsForward "prometheus.remote_write.destination.receiver" }}
+    {{- $metricsPromForward = append $metricsPromForward "prometheus.remote_write.destination.receiver" }}
     {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ }}
   {{- end }}
   {{- if ( include "mzmon.alloyGateway.otelDest.enabled" $ ) }}
     {{- if $.Values.pipeline.metrics.gateway.destination.otel.enabled }}
-      {{- $metricsForward = append $metricsForward "otelcol.receiver.prometheus.outputBridge.receiver" }}
+      {{- $metricsForward = append $metricsForward "otelcol.processor.filter.egressFanOut.input" }}
     {{- end }}
     {{- if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
       {{- $logForward = append $logForward "otelcol.receiver.loki.outputBridge.receiver" }}
@@ -257,12 +258,24 @@ loki.process "egress" {
     ]
 }
 
+
 prometheus.relabel "egress" {
-	  forward_to = [
-  {{- range $metricsForward }}
+    forward_to = [
+  {{- range $metricsPromForward }}
         {{ . }},
   {{- end }}
     ]
+}
+
+
+otelcol.processor.filter "egress" {
+    output {
+        metrics = [
+  {{- range $metricsForward }}
+            {{ . }},
+  {{- end }}
+        ]
+    }
 }
 {{- end }}
 
@@ -403,15 +416,7 @@ Usage:
 
   {{- if $otelDestValues.enabled }}
 
-otelcol.receiver.prometheus "outputBridge" {
-    output {
-        metrics = [
-            otelcol.processor.batch.outputMetricsBatch.receiver,
-        ]
-    }
-}
-
-otelcol.processor.batch "outputMetricsBatch" {
+otelcol.processor.filter "egressFanOut" {
     output {
         metrics = [
     {{- range $forwardTo }}

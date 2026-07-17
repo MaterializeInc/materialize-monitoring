@@ -247,7 +247,7 @@ loki.source.file "pod_logs" {
 	}
 }
 
-loki.process "sample_debug" {
+loki.process "sampleDebug" {
 	forward_to = [
 		loki.echo.stub.receiver,
 	]
@@ -260,7 +260,7 @@ loki.process "sample_debug" {
 
 	stage.sampling {
 		rate                = 0.01
-		drop_counter_reason = "sample_debug"
+		drop_counter_reason = "sampleDebug"
 	}
 }
 

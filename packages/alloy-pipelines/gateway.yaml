@@ -7,29 +7,35 @@ description: |
   alloy-gateway is responsible for receiving data from alloy-agent
   and processing it before forwarding it to an appropriate destination.
 
-  The main pipeline (loki.process.input_processor) is ported from the reference
+  The main pipeline (loki.process.inputProcessor) is ported from the reference
   staging-gateway.alloy: it normalizes log level, timestamps, and per-service
   structured fields, applies rate limits, and settles on a stable label set
   before forwarding to a type-neutral egress seam and a local sampled debug tap.
 
   Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
   3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
-  otelcol.exporter.loki bridge) all feed loki.process.input_processor. These
+  otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. These
   ingress components are not typed yet, so they use `raw:` escapes.
 
-  Metrics: this file also carries a metrics pipeline. prometheus.receive_http
-  (pushed remote-write), an otelcol.exporter.prometheus bridge off the OTLP
-  receiver, and prometheus.operator.{podmonitors,servicemonitors} (clustering on;
-  scrape defaults from GATEWAY_SCRAPE_INTERVAL / GATEWAY_SCRAPE_TIMEOUT) all feed
-  prometheus.relabel.input_processor, which forwards to a prometheus.relabel.egress
-  seam. input_processor is intentionally rule-free: relabeling lives at the target
-  phase instead — in the PodMonitor/ServiceMonitor CRs, in the operator components'
-  rule blocks (uniform target rules: pod-liveness drop, app-label coalescing), and
-  in the cAdvisor ScrapeConfig node-label allowlist (packages/prometheus-scrapers/).
+  Metrics: this file also carries a metrics pipeline, processed primarily in
+  otelcol and converted back to Prometheus only on the way out. prometheus
+  .receive_http (pushed remote-write) and prometheus.operator.{podmonitors,
+  servicemonitors} (clustering on; scrape defaults from GATEWAY_SCRAPE_INTERVAL /
+  GATEWAY_SCRAPE_TIMEOUT) feed an otelcol.receiver.prometheus "inputBridge" that
+  converts Prometheus into OTLP; the OTLP receiver's own metrics join there too.
+  Everything lands in otelcol.processor.filter.inputMetricProcessor — the
+  otelcol-side processing choke point — then flows through a memory_limiter and a
+  batch processor to an otelcol.processor.filter.egress seam. On the way out,
+  otelcol.exporter.prometheus "outputBridge" converts OTLP back to Prometheus and
+  feeds prometheus.relabel.egress → prometheus.remote_write.
+  Target-phase relabeling still lives at the source: in the PodMonitor/
+  ServiceMonitor CRs, in the operator components' rule blocks (uniform target
+  rules: pod-liveness drop, app-label coalescing), and in the cAdvisor ScrapeConfig
+  node-label allowlist (packages/prometheus-scrapers/).
 
-  Egress seams (loki.process.egress and prometheus.relabel.egress) are defined
-  downstream, not here, so the write destinations can be swapped without editing
-  this file. IMPORTANT: at deploy the destination blocks are rendered by the
+  Egress seams (loki.process.egress for logs, otelcol.processor.filter.egress for
+  metrics) are defined downstream, not here, so the write destinations can be
+  swapped without editing this file. IMPORTANT: at deploy the destination blocks are rendered by the
   chart's _alloy_helpers.tpl (Helm, from .Values.pipeline.{logging,metrics}.gateway
   .destination.*), which is NOT schema-validated — only the pre-validate jobs
   (alloy validate on the assembled configMap) check it. gateway-dest-stub.yaml is
@@ -63,8 +69,8 @@ blocks:
       label: gateway
       attributes:
         forward_to:
-          - ref: loki.process.sample_debug.receiver
-          - ref: loki.process.input_processor.receiver
+          - ref: loki.process.sampleDebug.receiver
+          - ref: loki.process.inputProcessor.receiver
       blocks:
         - component: http
           attributes:
@@ -89,12 +95,12 @@ blocks:
             logs:
               - ref: otelcol.exporter.loki.bridge.input
             metrics:
-              - ref: otelcol.exporter.prometheus.bridge.input
+              - ref: otelcol.processor.filter.inputMetricProcessor.input
 
   - prometheus.receive_http:
       label: gateway
       forward_to:
-        - "prometheus.relabel.input_processor.receiver"
+        - "otelcol.receiver.prometheus.inputBridge.receiver"
       blocks:
         - http:
             listen_port: 9090
@@ -104,15 +110,15 @@ blocks:
   # Kubernetes events source, feeding the main processor.
   - raw:
       component: loki.source.kubernetes_events
-      label: k8s_events
+      label: k8sEvents
       attributes:
         forward_to:
-          - ref: loki.process.input_processor.receiver
+          - ref: loki.process.inputProcessor.receiver
 
   - prometheus.operator.podmonitors:
       label: default
       forward_to:
-        - prometheus.relabel.input_processor.receiver
+        - otelcol.receiver.prometheus.inputBridge.receiver
       blocks: &operatorBlocks
         - clustering:
             enabled: true
@@ -152,10 +158,10 @@ blocks:
   - prometheus.operator.servicemonitors:
       label: default
       forward_to:
-        - prometheus.relabel.input_processor.receiver
+        - otelcol.receiver.prometheus.inputBridge.receiver
       blocks: *operatorBlocks
 
-  # --- bridges ------------------------------------------------------
+  # --- input bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
   - raw:
@@ -163,24 +169,26 @@ blocks:
       label: bridge
       attributes:
         forward_to:
-          - ref: loki.process.input_processor.receiver
+          - ref: loki.process.inputProcessor.receiver
 
-  # Bridge: turns OTLP metrics into Prometheus and feeds the main processor.
+  # Bridge: turns Prometheus metrics into OTLP metrics and feeds the main processor.
   - raw:
-      component: otelcol.exporter.prometheus
-      label: bridge
-      attributes:
-        forward_to:
-          - ref: prometheus.relabel.input_processor.receiver
+      component: otelcol.receiver.prometheus
+      label: inputBridge
+      blocks:
+        - component: output
+          attributes:
+            metrics:
+              - ref: otelcol.processor.filter.inputMetricProcessor.input
 
   # --- main processing pipeline -----------
 
   - loki.process:
-      label: input_processor
+      label: inputProcessor
       forward_to:
         # egress seam lives in gateway-dest-stub.yaml (swappable destination)
         - "loki.process.egress.receiver"
-        - "loki.process.sample_debug.receiver"
+        - "loki.process.sampleDebug.receiver"
       blocks:
         # --- global drops and rate limit ------------------------------------
         - stage.drop:
@@ -839,22 +847,51 @@ blocks:
               app: app
               container: container
 
-  - prometheus.relabel:
-      label: input_processor
-      forward_to:
-        - prometheus.relabel.egress.receiver
-      # Central metric seam before egress. Intentionally rule-free: we assume
-      # sources don't push junk labels in the first place. Per-target label
-      # hygiene lives in the PodMonitor/ServiceMonitor CRs (curated
-      # podTargetLabels); node-label curation lives in the cAdvisor ScrapeConfig
-      # allowlist (scrapeconfig-cadvisor.yaml). Add genuinely cross-cutting rules
-      # here as they come up (cost governance, dashboard-contract normalization).
+  # Metrics processing choke point, otelcol side (the analog of loki.process
+  # .inputProcessor for logs). Rule-free passthrough today; the metric
+  # filter/transform work (cardinality tiers) lands here. Feeds the outbound
+  # memory_limiter → batch chain below, which forwards to the
+  # otelcol.processor.filter.egress swap seam defined downstream (gateway-dest
+  # -stub.yaml at build time, the chart's _alloy_helpers.tpl at deploy).
+  - otelcol.processor.filter:
+      label: inputMetricProcessor
+      blocks:
+        - output:
+            metrics:
+              - otelcol.processor.memory_limiter.outputMemoryLimiter.input
+
+  # Outbound resource management: cap memory (refuse at 75% to backpressure the
+  # receivers) then batch before handing off to the egress seam.
+  - otelcol.processor.memory_limiter:
+      label: outputMemoryLimiter
+      check_interval: "5s"
+      limit_percentage: 75
+      spike_limit_percentage: 15
+      blocks:
+        - output:
+            metrics:
+              - otelcol.processor.batch.outputBatch.input
+            logs:
+              - otelcol.processor.batch.outputBatch.input
+            traces:
+              - otelcol.processor.batch.outputBatch.input
+
+  - otelcol.processor.batch:
+      label: outputBatch
+      blocks:
+        - output:
+            metrics:
+              - otelcol.processor.filter.egress.input
+            logs:
+              - otelcol.processor.filter.egress.input
+            traces:
+              - otelcol.processor.filter.egress.input
 
   # --- local sampled debug tap ------------------------------------------------
 
   # Echo a ~1% sample of non-alloy entries locally for debugging.
   - loki.process:
-      label: sample_debug
+      label: sampleDebug
       forward_to: ["loki.echo.stub.receiver"]
       blocks:
         - stage.drop:
@@ -867,12 +904,26 @@ blocks:
             drop_counter_reason: "skip loki"
         - stage.sampling:
             rate: 0.01
-            drop_counter_reason: sample_debug
+            drop_counter_reason: sampleDebug
 
   - loki.echo:
       label: stub
 
+  # --- output bridges -------------------------------------------------
+
+  # Bridge: converts processed OTLP metrics back into Prometheus and feeds the
+  # prometheus.relabel.egress seam. add_metric_suffixes=false keeps names stable
+  # across the OTLP round-trip (no _total/_ratio/unit suffixes appended), so
+  # dashboards and alerts keep matching the original metric names.
+  - raw:
+      component: otelcol.exporter.prometheus
+      label: outputBridge
+      attributes:
+        forward_to:
+          - ref: prometheus.relabel.egress.receiver
+        add_metric_suffixes: false
+
   # --- egress ----------------------------------------------------------------
   # The egress seam and write destination live in gateway-dest-stub.yaml so the
-  # destination can be swapped without touching this pipeline. input_processor
+  # destination can be swapped without touching this pipeline. inputProcessor
   # forwards to loki.process.egress.receiver, defined there.

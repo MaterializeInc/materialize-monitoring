@@ -19,7 +19,7 @@ logging:
   format: logfmt
 blocks:
   - loki.process:
-      label: input_processor
+      label: inputProcessor
       forward_to: [{ref: "loki.write.gateway.receiver"}]
       blocks:
         - stage.drop:

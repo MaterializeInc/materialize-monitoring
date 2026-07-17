@@ -5,7 +5,7 @@ weight: 10
 
 # Metrics Pipelines
 
-Metrics pipelines are alloy pipelines built from the `prometheus.*` component family.
+Metrics are processed primarily in **otelcol**: Prometheus ingest and the final write use the `prometheus.*` family, but everything between is converted to OTLP and shaped by `otelcol.processor.*` components (we found little value in doing the processing with `prometheus.*` blocks).
 They are authored the same way as log pipelines — see [Authoring]({{< relref "authoring.md" >}}) for the pipeline model, the strict-attributes policy, and the `raw:` escape hatch.
 
 <!-- The logs-side runtime conventions (label families, retention) live in logging.md; this page is their metrics-side analog plus the component reference. -->
@@ -13,23 +13,41 @@ They are authored the same way as log pipelines — see [Authoring]({{< relref "
 ## Gateway topology
 
 The gateway carries metrics alongside logs (`packages/alloy-pipelines/gateway.yaml`).
-The metrics path is:
+Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write:
 
 ```
-prometheus.receive_http "gateway"            (pushed remote-write, :9090) ─┐
-otelcol.receiver.otlp → otelcol.exporter.prometheus "bridge" (OTLP metrics)─┤
-prometheus.operator.podmonitors "default"    (PodMonitor CRs)             ─┼─→ prometheus.relabel "input_processor" ─→ prometheus.relabel "egress" ─→ prometheus.remote_write "destination"
-prometheus.operator.servicemonitors "default"(ServiceMonitor CRs)         ─┘
+prometheus.receive_http "gateway"             (pushed remote-write, :9090) ─┐
+prometheus.operator.podmonitors "default"     (PodMonitor CRs)             ─┤
+prometheus.operator.servicemonitors "default" (ServiceMonitor CRs)         ─┴─→ otelcol.receiver.prometheus "inputBridge"  (Prometheus → OTLP) ─┐
+otelcol.receiver.otlp                          (OTLP metrics) ─────────────────────────────────────────────────────────────────────────────┤
+                                                                                                                                            ▼
+                     otelcol.processor.filter "inputMetricProcessor"  (otelcol-side processing choke point)
+                                               │
+                                               ▼
+                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 75%, backpressure receivers)
+                                               │
+                                               ▼
+                     otelcol.processor.batch "outputBatch"
+                                               │
+                                               ▼
+                     otelcol.processor.filter "egress"            (type-neutral swap seam)
+                                               │
+                                               ▼
+                     otelcol.exporter.prometheus "outputBridge"   (OTLP → Prometheus, add_metric_suffixes=false)
+                                               │
+                                               ▼
+                     prometheus.relabel "egress" ─→ prometheus.remote_write "destination"
 ```
 
 The operator components enable `clustering` (target load spread across the alloy cluster) and read their scrape defaults from the environment (`GATEWAY_SCRAPE_INTERVAL` / `GATEWAY_SCRAPE_TIMEOUT`, via `coalesce`).
-`input_processor` is the single choke point before egress; `egress` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
+`inputMetricProcessor` is the single choke point (the otelcol analog of the loki-side `inputProcessor`); a `memory_limiter` + `batch` pair manages the outbound stream; `otelcol.processor.filter "egress"` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
+`outputBridge` sets `add_metric_suffixes=false` so names survive the OTLP round-trip unchanged.
 
 ## The destination is Helm-templated, not schema-validated
 
 This is the important boundary.
 Only the **processing** pipeline (`gateway.yaml` → `pre-rendered/pipelines/gateway.alloy`) goes through `mz-monitoring-build`, so only it gets JSONSchema validation and typed rendering.
-The **destination** — the `prometheus.relabel "egress"` / `loki.process "egress"` seams and the `prometheus.remote_write "destination"` / `loki.write "destination"` sinks — is rendered by the Helm helper `charts/materialize-monitoring/templates/_alloy_helpers.tpl` at install time, driven by `.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite` (and the `logging.*.loki` analog).
+The **destination** — the `otelcol.processor.filter "egress"` (metrics) and `loki.process "egress"` (logs) swap seams, the prometheus tail (`prometheus.relabel "egress"` → `prometheus.remote_write "destination"`), and the `loki.write "destination"` sink — is rendered by the Helm helper `charts/materialize-monitoring/templates/_alloy_helpers.tpl` at install time, driven by `.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite` (and the `logging.*.loki` analog).
 
 That templated alloy text **never passes through our schema**.
 Its only safety net is the pre-validate jobs (`charts/.../templates/pipelines/validator/job-validate-gateway.yaml`), which run `alloy validate` on the assembled configMap at deploy time.
@@ -52,11 +70,11 @@ Metric relabeling splits across three places; putting a rule in the wrong one is
 | Phase | Sees | Home | Use for |
 |---|---|---|---|
 | **Target** (pre-scrape) | `__meta_kubernetes_*` | the PodMonitor/ServiceMonitor CRs (`relabelings`, `podTargetLabels`); the operator components' `rule` blocks for cross-cutting rules; the cAdvisor ScrapeConfig | which targets to scrape, promoting pod/node labels, per-target renames |
-| **Metric** (post-scrape) | final label set only | `prometheus.relabel "input_processor"` | cross-cutting hygiene, cost governance (`__name__` drops), dashboard-contract normalization |
+| **Metric** (post-scrape) | final label set only | the otelcol processing at `otelcol.processor.filter "inputMetricProcessor"` (add `filter`/`transform` there) | cross-cutting hygiene, cost governance (metric-name drops), dashboard-contract normalization |
 | **Identity** | — | `external_labels` on the `remote_write` destination | install/cluster/region stamps |
 
-`input_processor` is intentionally **rule-free** today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
-It stays as the seam for genuinely cross-cutting rules as they come up.
+`inputMetricProcessor` is intentionally a **rule-free passthrough** today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
+It's where the metric `filter`/`transform` work (cardinality tiers) will land as genuinely cross-cutting rules come up.
 
 Note: identity is stamped as a `cluster` `external_labels` entry on the `remote_write` destination, sourced from `env.CLUSTER_NAME` (default `default`).
 

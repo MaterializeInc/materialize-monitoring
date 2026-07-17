@@ -2,12 +2,17 @@
 // deploys.
 //
 // gateway.yaml forwards logs to loki.process.egress.receiver and metrics to
-// prometheus.relabel.egress.receiver — type-neutral passthrough seams it does not
-// define. This file provides those seams plus default loki.write / prometheus
-// .remote_write destinations, so `make pipelines` can render gateway.alloy and
-// `alloy validate` it jointly (it dangles the egress refs on its own). The
-// contract the main pipeline depends on is the `egress` labels; a deployment is
-// free to render a different tail as long as it keeps them.
+// otelcol.processor.filter.egress.receiver — passthrough seams it does not define.
+// This file provides those seams plus default loki.write / prometheus.remote_write
+// destinations, so `make pipelines` can render gateway.alloy and `alloy validate`
+// it jointly (it dangles the egress refs on its own). The contract the main
+// pipeline depends on is the `egress` labels; a deployment is free to render a
+// different tail as long as it keeps them.
+//
+// The metrics tail is a short chain: the otelcol.processor.filter.egress seam
+// feeds gateway.yaml's otelcol.exporter.prometheus.outputBridge (OTLP → Prometheus),
+// which feeds the prometheus.relabel.egress → prometheus.remote_write.destination
+// sink defined below.
 //
 // At DEPLOY time the destination is rendered instead by the chart's
 // charts/materialize-monitoring/templates/_alloy_helpers.tpl (from
@@ -25,6 +30,14 @@ loki.process "egress" {
 	forward_to = [
 		loki.write.destination.receiver,
 	]
+}
+
+otelcol.processor.filter "egress" {
+	output {
+		metrics = [
+			otelcol.exporter.prometheus.outputBridge.input,
+		]
+	}
 }
 
 prometheus.relabel "egress" {
