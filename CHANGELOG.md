@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.8.0 (Unreleased)
+
+_Changes Pending_
+
 ## Prometheus Scrapers v0.4.0 (Unreleased)
 
 _Changes Pending_
@@ -26,9 +30,18 @@ _Changes Pending_
 * CLO-112 Harden Long-Term storage in GCP
     * [materialize-monitoring#103](https://github.com/MaterializeInc/materialize-monitoring/pull/103)
 
-## Pipelines v0.7.0 (Unreleased)
+## Pipelines v0.7.0
 
-_Changes Pending_
+* Enable MZ podmonitors by default
+    * [materialize-monitoring#116](https://github.com/MaterializeInc/materialize-monitoring/pull/116)
+* CLO-152 Replace prometheus-style pipeline with otelcol for processing
+    * [materialize-monitoring#115](https://github.com/MaterializeInc/materialize-monitoring/pull/115)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * CLO-152 add schema support for otelcol pipeline blocks
+        * [materialize-monitoring#110](https://github.com/MaterializeInc/materialize-monitoring/pull/110)
 
 ## mzmon-lib (shared library) v0.9.0 (Unreleased)
 
