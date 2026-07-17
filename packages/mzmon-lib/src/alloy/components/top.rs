@@ -7,7 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-use crate::alloy::ast::{AttributeValue, Block, ToBlock};
+use crate::alloy::ast::{Block, Expressable, ToBlock};
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -20,9 +20,9 @@ type LogFormat = String;
 #[serde(deny_unknown_fields)]
 pub struct LoggingBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub level: Option<LogLevel>,
+    pub level: Option<Expressable<LogLevel>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub format: Option<LogFormat>,
+    pub format: Option<Expressable<LogFormat>>,
 }
 
 /// Top-level "livedebugging" block, which allows alloy UI to show live data.
@@ -30,17 +30,17 @@ pub struct LoggingBlock {
 #[serde(deny_unknown_fields)]
 pub struct LiveDebuggingBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
+    pub enabled: Option<Expressable<bool>>,
 }
 
 impl ToBlock for LoggingBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
         if let Some(level) = &self.level {
-            attributes.insert("level".into(), AttributeValue::String(level.clone()));
+            attributes.insert("level".into(), level.to_attribute_value()?);
         }
         if let Some(format) = &self.format {
-            attributes.insert("format".into(), AttributeValue::String(format.clone()));
+            attributes.insert("format".into(), format.to_attribute_value()?);
         }
         Ok(Block {
             attributes,
@@ -52,8 +52,8 @@ impl ToBlock for LoggingBlock {
 impl ToBlock for LiveDebuggingBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        if let Some(enabled) = self.enabled {
-            attributes.insert("enabled".into(), AttributeValue::Bool(enabled));
+        if let Some(enabled) = &self.enabled {
+            attributes.insert("enabled".into(), enabled.to_attribute_value()?);
         }
         Ok(Block {
             attributes,

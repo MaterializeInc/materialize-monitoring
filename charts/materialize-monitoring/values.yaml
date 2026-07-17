@@ -122,8 +122,10 @@ materialize:
       # -- Override for default metric endpoints
       metricEndpoints: []
     secret:
+      create: true
       name: materialize-sql-monitor
       username: mz_support
+      password: ""
   clusterd:
     # -- ServiceMonitor/PodMonitor configuration for clusterd
     serviceMonitor:

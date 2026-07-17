@@ -1016,7 +1016,7 @@ mod tests {
             &resources[0],
             r#"
             apiVersion: monitoring.googleapis.com/v1
-            kind: PodMonitoring
+            kind: ClusterPodMonitoring
             metadata:
               name: environmentd
               labels:
