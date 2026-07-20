@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Reference on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/</link><description>Recent content in Reference on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Mon, 01 Jan 0001 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/index.xml" rel="self" type="application/rss+xml"/><item><title>Compatibility</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/compatibility/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/compatibility/</guid><description>&lt;h1 id="release-compatibility"&gt;Release Compatibility&lt;a class="anchor" href="#release-compatibility"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;This shows the compatibility of materialize-monitoring with various
+technologies.&lt;/p&gt;
+&lt;h2 id="materialize-terraform-self-managed"&gt;&lt;a href="https://github.com/MaterializeInc/materialize-terraform-self-managed" rel="external" class="github-source-link"&gt;materialize-terraform-self-managed&lt;/a&gt;&lt;a class="anchor" href="#materialize-terraform-self-managed"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;No version of materialize-terraform-self-managed includes
+materialize-monitoring currently with the exception of its dashboard.&lt;/p&gt;
+&lt;h2 id="materialize-product"&gt;&lt;a href="https://github.com/MaterializeInc/materialize" rel="external" class="github-source-link"&gt;Materialize product&lt;/a&gt;&lt;a class="anchor" href="#materialize-product"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Dashboards (v0.8.0+) generally require the &lt;code&gt;mz_object_info&lt;/code&gt; metric introduced in &lt;code&gt;v26.29.0&lt;/code&gt;,
+however they will gracefully degrade without it.&lt;/p&gt;
+&lt;p&gt;Scrapers (v0.1.1+) require &lt;code&gt;app.kubernetes.io/name&lt;/code&gt; labels for environmentd introduced in &lt;code&gt;v26.24.0&lt;/code&gt;.&lt;/p&gt;
+&lt;h2 id="grafana"&gt;&lt;a href="https://grafana.com/" rel="external" class="external-link"&gt;Grafana&lt;/a&gt;&lt;a class="anchor" href="#grafana"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Dashboards (v0.8.0+) require Grafana v13+ for the dashboard schema v2.
+Grafana v12 is generally known to work, but may run into issues.&lt;/p&gt;</description></item><item><title>Custom Resource Definitions (CRDs)</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/crds/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/crds/</guid><description>&lt;h1 id="custom-resource-definitions-crds"&gt;Custom Resource Definitions (CRDs)&lt;a class="anchor" href="#custom-resource-definitions-crds"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;Kubernetes Custom Resource Definitions (CRDs) are a powerful way to extend the Kubernetes API with custom resources that can be managed using standard Kubernetes tools.
+&lt;code&gt;materialize-monitoring&lt;/code&gt; relies on several CRDs to function properly, and this section provides an overview of these CRDs and how to install them.&lt;/p&gt;
+&lt;h2 id="servicemonitor-monitoringcoreoscomv1"&gt;ServiceMonitor (monitoring.coreos.com/v1)&lt;a class="anchor" href="#servicemonitor-monitoringcoreoscomv1"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;ServiceMonitors can be written by any application which indicates
+that it should have metrics scraped by Prometheus Operator / Alloy.&lt;/p&gt;</description></item><item><title>Changelog</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-anthropics-claude-code-action-1-x/reference/changelog/</guid><description>&lt;!-- Changelog lives in repo root, mounted in hugo.toml --&gt;
+&lt;h1 id="materialize-monitoring-changelog"&gt;materialize-monitoring Changelog&lt;a class="anchor" href="#materialize-monitoring-changelog"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;!-- This repo uses different versioning streams for its artifacts.
+Artifacts are mapped out in packages/components.yaml.
+Unreleased sections are placeholders ("_Changes Pending_") until a
+version-update/&lt;component&gt; PR populates and releases them; that PR also bumps
+the component's version_paths. See reference/internal/versioning.md and
+reference/internal/releasing.md.
+--&gt;
+&lt;h2 id="pipelines-v080-unreleased"&gt;Pipelines v0.8.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v080-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="prometheus-scrapers-v040-unreleased"&gt;Prometheus Scrapers v0.4.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v070-unreleased"&gt;materialize-monitoring Helm Chart v0.7.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>
