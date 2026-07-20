@@ -17,6 +17,7 @@ import dataclasses
 import enum
 import functools
 import pathlib
+import re
 import typing
 
 import yaml
@@ -121,8 +122,94 @@ If it is not removed, it can be marked as unsupported.
 
 QueryId = str
 _DEPENDENCY_DEF = str | dict[str, "QueryDef"]
-# TODO: other types of templates
-TemplateString = str
+
+
+class QueryEngine(enum.StrEnum):
+    """A backend query language a query can be rendered for.
+
+    This is the *query engine* (Prometheus, Datadog, …), distinct from the
+    *template engine* (this library) that renders a query for it.
+    """
+
+    PROMQL = "promql"
+    DATADOG = "datadog"
+    HONEYCOMB = "honeycomb"
+    LOGQL = "logql"
+
+
+# A template-engine transform: `fn(base, *rendered_args) -> str`. Supplied per
+# query engine by a `TemplateContext`; NOT a query-engine function.
+TemplateFn = collections.abc.Callable[..., str]
+
+
+@dataclasses.dataclass(frozen=True)
+class TemplateFunction:
+    """A template-engine transform applied to a rendered template string.
+
+    Names (`orZero`, `mzClusterName`, …) are resolved to implementations by the
+    `TemplateContext`, so the same registry entry renders differently per query
+    engine. `args` are themselves template strings, rendered before the call.
+    """
+
+    name: str
+    args: list[TemplateExpr] = dataclasses.field(default_factory=list)
+
+    @classmethod
+    def from_entry(cls, entry: str | dict[str, typing.Any]) -> typing.Self:
+        """Parse a YAML template string (raw string or object form)."""
+        if isinstance(entry, str):
+            return cls(name=entry)
+        assert isinstance(entry, dict)
+        return cls(
+            name=entry["name"],
+            args=TemplateExpr.from_entry(entry.get("args", [])),
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class TemplateExpr:
+    """The object form of a template string.
+
+    Either an inline `template` (with `%%{param}` placeholders) or a reference to
+    another query by `query_id`, optionally wrapped by template-engine
+    `functions` (applied in order).
+    """
+
+    template: str | None = None
+    query_id: QueryId | None = None
+    functions: list[TemplateFunction] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Enforce exactly one of `template` / `query_id`."""
+        if (self.template is None) == (self.query_id is None):
+            raise ValueError(
+                "TemplateExpr requires exactly one of `template` or `query_id`"
+            )
+
+    @classmethod
+    def from_entry(
+        cls, entry: str | dict[str, typing.Any] | list[typing.Any] | None
+    ) -> list[typing.Self]:
+        """Parse a YAML template string (raw string or object form) into a consistent structure (list of TemplateExpr)."""
+        if entry is None:
+            return []
+        if isinstance(entry, list):
+            exprs = []
+            for item in entry:
+                exprs.extend(cls.from_entry(item))
+            return exprs
+        if isinstance(entry, str):
+            return [cls(template=entry)]
+        assert isinstance(entry, dict)
+        return [
+            cls(
+                template=entry.get("template"),
+                query_id=entry.get("queryId"),
+                functions=[
+                    TemplateFunction.from_entry(fn) for fn in entry.get("functions", [])
+                ],
+            )
+        ]
 
 
 class QueryDef(typing.TypedDict):
@@ -132,10 +219,11 @@ class QueryDef(typing.TypedDict):
     description: dict[str, str]
     stability: Stability
     dependencies: typing.NotRequired[list[_DEPENDENCY_DEF]]
-    promQL: typing.NotRequired[TemplateString]
-    datadogSQL: typing.NotRequired[TemplateString]
-    honeycombSQL: typing.NotRequired[TemplateString]
-    logQL: typing.NotRequired[TemplateString]
+    # Raw (unparsed) template values: str | {template|queryId, functions} | list.
+    promQL: typing.NotRequired[typing.Any]
+    datadogSQL: typing.NotRequired[typing.Any]
+    honeycombSQL: typing.NotRequired[typing.Any]
+    logQL: typing.NotRequired[typing.Any]
     instant: typing.NotRequired[bool]
 
 
@@ -156,6 +244,81 @@ class Description:
 
 
 @dataclasses.dataclass(frozen=True)
+class TemplateContext:
+    """Everything needed to render a query for one query engine.
+
+    The template engine builds this per target: `parameters` maps knownParameter
+    names to their rendered values (e.g. `interval` -> `[$__rate_interval]` for
+    Grafana, `[5m]` for a static Google Cloud Monitoring dashboard), `functions`
+    supplies the template-engine transforms (`orZero`, `mzClusterName`, …) for
+    this engine, and `resolve_query` looks a query up by id for `queryId`
+    references.
+    """
+
+    engine: QueryEngine
+    parameters: collections.abc.Mapping[str, str] = dataclasses.field(
+        default_factory=dict
+    )
+    functions: collections.abc.Mapping[str, TemplateFn] = dataclasses.field(
+        default_factory=dict
+    )
+    resolve_query: collections.abc.Callable[[QueryId], Query] | None = None
+
+
+_PLACEHOLDER = re.compile(r"%%\{([A-Za-z0-9_]+)\}")
+
+
+def _substitute_params(template: str, context: TemplateContext) -> str:
+    """Replace every `%%{name}` in `template` with its value from `context`."""
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        try:
+            return context.parameters[name]
+        except KeyError:
+            raise KeyError(
+                f"template parameter %%{{{name}}} has no value in this "
+                f"TemplateContext (known: {sorted(context.parameters)})"
+            ) from None
+
+    return _PLACEHOLDER.sub(replace, template)
+
+
+def _render_template_string(ts: TemplateExpr, context: TemplateContext) -> str:
+    """Render a single template string to a concrete query expression."""
+    if isinstance(ts, str):
+        return _substitute_params(ts, context)
+
+    if ts.template is not None:
+        base = _substitute_params(ts.template, context)
+    else:
+        assert ts.query_id is not None  # guaranteed by TemplateExpr.__post_init__
+        if context.resolve_query is None:
+            raise ValueError(
+                f"template references query {ts.query_id!r} but the "
+                f"TemplateContext has no resolve_query"
+            )
+        referenced = context.resolve_query(ts.query_id).render(context)
+        if isinstance(referenced, list):
+            raise ValueError(
+                f"query {ts.query_id!r} renders multiple expressions and cannot "
+                f"be embedded as a single template reference"
+            )
+        base = referenced
+
+    for fn in ts.functions:
+        impl = context.functions.get(fn.name)
+        if impl is None:
+            raise KeyError(
+                f"template function {fn.name!r} is not implemented by this "
+                f"TemplateContext (known: {sorted(context.functions)})"
+            )
+        rendered_args = [_render_template_string(arg, context) for arg in fn.args]
+        base = impl(base, *rendered_args)
+    return base
+
+
+@dataclasses.dataclass(frozen=True)
 class Query:
     """A concrete query definition in the registry."""
 
@@ -168,33 +331,101 @@ class Query:
     dependencies: list[QueryId] = dataclasses.field(default_factory=list)
     """List of query IDs that this query depends on."""
 
-    promql: TemplateString | None = None
-    """PromQL query string for this query."""
-    datadog_sql: TemplateString | None = None
-    """Datadog SQL query string for this query."""
-    honeycomb_sql: TemplateString | None = None
-    """Honeycomb SQL query string for this query."""
-    logql: TemplateString | None = None
-    """LogQL query string for this query."""
+    promql: list[TemplateExpr] = dataclasses.field(default_factory=list)
+    """PromQL template(s) for this query (one, or several distinct series)."""
+    datadog_sql: list[TemplateExpr] = dataclasses.field(default_factory=list)
+    """Datadog SQL template for this query."""
+    honeycomb_sql: list[TemplateExpr] = dataclasses.field(default_factory=list)
+    """Honeycomb SQL template for this query."""
+    logql: list[TemplateExpr] = dataclasses.field(default_factory=list)
+    """LogQL template for this query."""
     instant: bool | None = None
     """Whether this query is an instant query."""
 
     def is_metric_query(self) -> bool:
         """Check if this query has a metric definition."""
-        return (
-            self.promql is not None
-            or self.datadog_sql is not None
-            or self.honeycomb_sql is not None
-        )
+        return any([self.promql, self.datadog_sql, self.honeycomb_sql])
 
     def is_log_query(self) -> bool:
         """Check if this query has a LogQL definition."""
-        return self.logql is not None
+        return bool(self.logql)
+
+    def _value_for_engine(self, engine: QueryEngine) -> list[TemplateExpr]:
+        """Return the (unrendered) template value for `engine`, if any."""
+        return {
+            QueryEngine.PROMQL: self.promql,
+            QueryEngine.DATADOG: self.datadog_sql,
+            QueryEngine.HONEYCOMB: self.honeycomb_sql,
+            QueryEngine.LOGQL: self.logql,
+        }[engine]
+
+    def render(self, context: TemplateContext) -> list[str]:
+        """Render this query for the context's query engine.
+
+        Returns a single expression, or a list of expressions when the query
+        defines several series (a list-valued PromQL). Raises if the query has
+        no expression for the requested engine, if a `%%{param}` is unset, or if
+        a referenced function/query is missing from the context.
+        """
+        value = self._value_for_engine(context.engine)
+        if not value:
+            raise ValueError(f"query {self.id!r} has no {context.engine} expression")
+        return [_render_template_string(ts, context) for ts in value]
 
     def extract_metrics(self, context) -> collections.abc.Iterable:
         """Extract all metrics used from this query."""
         _ = context
         raise NotImplementedError("TODO: implement semantic extraction")
+
+
+# ---------------------------------------------------------------------------
+# PromQL template-engine functions.
+#
+# These implement the `functions:` named in the registry for the PromQL engine.
+# NOTE: the id->name joins here are a simplified form; the dashboards package has
+# a more robust left join (`dashboards.enrich`, tolerant of duplicate/missing
+# info series). The two should converge into a shared helper in this library.
+# ---------------------------------------------------------------------------
+
+
+def _promql_or_zero(base: str) -> str:
+    """Harden `base` to yield 0 rather than an empty result."""
+    return f"({base}) or vector(0)"
+
+
+def _promql_with_cluster_name(base: str, id_label: str = "instance_id") -> str:
+    """Attach `cluster_name` from `mz_cluster_info`, keyed on `id_label`."""
+    info = f'label_replace(mz_cluster_info, "{id_label}", "$1", "cluster_id", "(.*)")'
+    info = f'label_replace({info}, "cluster_name", "$1", "name", "(.*)")'
+    return f"{base}\n* on ({id_label}) group_left(cluster_name)\n{info}"
+
+
+def _promql_with_object_name(base: str, id_label: str) -> str:
+    """Attach catalog `name` from `mz_object_info`, keyed on `id_label`."""
+    info = f'label_replace(mz_object_info, "{id_label}", "$1", "global_id", "(.*)")'
+    return f"{base}\n* on ({id_label}) group_left(name)\n{info}"
+
+
+PROMQL_FUNCTIONS: dict[str, TemplateFn] = {
+    "orZero": _promql_or_zero,
+    "mzClusterName": _promql_with_cluster_name,
+    "mzObjectName": _promql_with_object_name,
+}
+"""The template-engine functions implemented for the PromQL query engine."""
+
+
+def promql_context(
+    parameters: collections.abc.Mapping[str, str],
+    *,
+    resolve_query: collections.abc.Callable[[QueryId], Query] | None = None,
+) -> TemplateContext:
+    """Build a PromQL :class:`TemplateContext` from parameter values."""
+    return TemplateContext(
+        engine=QueryEngine.PROMQL,
+        parameters=dict(parameters),
+        functions=PROMQL_FUNCTIONS,
+        resolve_query=resolve_query,
+    )
 
 
 class QueryRegistry:
@@ -272,15 +503,16 @@ class QueryRegistry:
                     f"Dependency definition {dependency} must be a string or a dict."
                 )
         description = Description(**query_def["description"])
+
         self._queries[query_def["id"]] = Query(
             id=query_def["id"],
             description=description,
             stability=query_def["stability"],
             dependencies=deps,
-            promql=query_def.get("promQL"),
-            datadog_sql=query_def.get("datadogSQL"),
-            honeycomb_sql=query_def.get("honeycombSQL"),
-            logql=query_def.get("logQL"),
+            promql=TemplateExpr.from_entry(query_def.get("promQL")),
+            datadog_sql=TemplateExpr.from_entry(query_def.get("datadogSQL")),
+            honeycomb_sql=TemplateExpr.from_entry(query_def.get("honeycombSQL")),
+            logql=TemplateExpr.from_entry(query_def.get("logQL")),
             instant=query_def.get("instant"),
         )
         return self._queries[query_def["id"]]
@@ -297,9 +529,28 @@ class QueryRegistry:
 
 if __name__ == "__main__":
     registry = QueryRegistry.from_directory(pathlib.Path("packages/queries"))
+
+    # A Grafana-flavored PromQL context: parameters resolve to Grafana's
+    # built-ins / dashboard variables. A Google Cloud Monitoring context would
+    # map `interval` -> `[5m]`, `mzClusterList` -> `.*`, etc.
+    ctx = promql_context(
+        {
+            "interval": "[$__rate_interval]",
+            "range": "[$__range]",
+            "mzSqlPrefix": "mz_",
+            "mzEnvironmentFilter": 'materialize_cloud_organization_name=~"$environmentIdList"',
+            "mzEnvironmentNamespaceFilter": 'namespace=~"$mzNamespaceList"',
+            "mzOperatorNamespaceFilter": 'namespace=~"$mzOperatorNamespaceList"',
+            "mzClusterList": "$mzClusterList",
+            "mzReplicaList": "$mzReplicaList",
+        },
+        resolve_query=registry.get,
+    )
+
     for query in registry.iter_metric_queries():
         print(f"{query.id}: {query.stability}")  # noqa: T201
         print(f"   {query.description.summary}")  # noqa: T201
-    for query in registry.iter_log_queries():
-        print(f"{query.id}: {query.stability}")  # noqa: T201
-        print(f"   {query.description.summary}")  # noqa: T201
+        for expr in query.render(ctx):
+            print("   ---")  # noqa: T201
+            for line in expr.strip().splitlines():
+                print(f"   {line}")  # noqa: T201

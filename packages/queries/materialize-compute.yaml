@@ -89,8 +89,10 @@ queries:
         source whose CREATE never completed, or a wedged dataflow. Confirm what
         with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
       notes: |
-        Self-managed has no hydration-state metric; this counts collections
-        parked at the wallclock-lag sentinel, which is the equivalent live signal.
+        Stopgap, not a real signal: self-managed has no hydration-state metric,
+        so this counts collections parked at the wallclock-lag u64::MAX sentinel
+        (> 1e15) as a proxy. Deprecate this query once an actual hydration-state
+        metric exists.
     promQL:
       template: |
         count(
