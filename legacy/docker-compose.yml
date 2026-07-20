@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Local Materialize instance for testing
   materialize:
-    image: materialize/materialized:latest@sha256:f751a45fa28d27a40158e1504922a79d83d61315e3cb6519d96ce363d1e4a5f7
+    image: materialize/materialized:latest@sha256:8cbcbb6446d5050142dbb8c738d367f2e0361b8e980fb4a88b073a35ed7664f6
     container_name: materialize
     ports:
       - "6875:6875"
