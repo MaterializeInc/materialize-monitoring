@@ -15,17 +15,16 @@ from __future__ import annotations
 import collections.abc
 import dataclasses
 import enum
-import functools
 import pathlib
 import re
 import typing
 
+import promql_parser
 import yaml
 
 from py_mzmon_lib import enrich
 
 
-@functools.total_ordering
 class Stability(enum.StrEnum):
     """Enumeration of query stability levels."""
 
@@ -74,6 +73,13 @@ class Stability(enum.StrEnum):
     It is a warning to use an unsupported query.
     """
 
+    # NOTE: Stability is a StrEnum, so its members are `str` instances and would
+    # otherwise inherit `str`'s lexicographic comparisons. We override the full
+    # set of ordering operators so maturity comparisons (`<`, `>`, `<=`, `>=`)
+    # all use STABILITY_MATURITY_ORDER rather than string ordering.
+    def _maturity(self) -> int:
+        return STABILITY_MATURITY_ORDER.index(self)
+
     def __lt__(self, other: object) -> bool:
         """Compare the maturity of two stability levels.
 
@@ -82,9 +88,25 @@ class Stability(enum.StrEnum):
         """
         if not isinstance(other, Stability):
             return NotImplemented
-        return STABILITY_MATURITY_ORDER.index(self) < STABILITY_MATURITY_ORDER.index(
-            other
-        )
+        return self._maturity() < other._maturity()
+
+    def __gt__(self, other: object) -> bool:
+        """Compare the maturity of two stability levels (see :py:meth:`__lt__`)."""
+        if not isinstance(other, Stability):
+            return NotImplemented
+        return self._maturity() > other._maturity()
+
+    def __le__(self, other: object) -> bool:
+        """Compare the maturity of two stability levels (see :py:meth:`__lt__`)."""
+        if not isinstance(other, Stability):
+            return NotImplemented
+        return self._maturity() <= other._maturity()
+
+    def __ge__(self, other: object) -> bool:
+        """Compare the maturity of two stability levels (see :py:meth:`__lt__`)."""
+        if not isinstance(other, Stability):
+            return NotImplemented
+        return self._maturity() >= other._maturity()
 
 
 STABILITY_MATURITY_ORDER = [
@@ -320,6 +342,47 @@ def _render_template_string(ts: TemplateExpr, context: TemplateContext) -> str:
     return base
 
 
+METRIC_RE = re.compile(r"(?P<name>[\w:]+)\{\}")
+
+
+@dataclasses.dataclass(frozen=True)
+class ExtractedMetric:
+    """A metric extracted from a query."""
+
+    name: str
+    """The metric name."""
+    labels: list[str] = dataclasses.field(default_factory=list)
+    """The metric labels."""
+
+    @classmethod
+    def extract_from_promql(cls, promql: str) -> collections.abc.Iterable[typing.Self]:
+        """Extract metrics from a PromQL expression.
+
+        This is a best-effort extraction that may not be complete or correct.
+        """
+        found_metrics: list = []
+
+        def pre_visit(node):
+            if isinstance(node, promql_parser.VectorSelector):
+                name = node.name
+                if not name:
+                    return
+                labels: set[str] = set()
+                for matcher_list in [
+                    node.matchers.matchers,
+                    *node.matchers.or_matchers,
+                ]:
+                    for matcher in matcher_list:
+                        labels.add(matcher.name)
+                found_metrics.append(cls(name=name, labels=list(labels)))
+
+        # HACK: avoid "unknown escape sequence 'd'" errors for regexes
+        # promql = promql.replace("\\", "\\\\")
+        ast = promql_parser.parse(promql)
+        promql_parser.walk(ast, pre_visit=pre_visit)
+        return list(found_metrics)
+
+
 @dataclasses.dataclass(frozen=True)
 class Query:
     """A concrete query definition in the registry."""
@@ -374,10 +437,10 @@ class Query:
             raise ValueError(f"query {self.id!r} has no {context.engine} expression")
         return [_render_template_string(ts, context) for ts in value]
 
-    def extract_metrics(self, context) -> collections.abc.Iterable:
+    def extract_metrics(self, context) -> collections.abc.Iterable[ExtractedMetric]:
         """Extract all metrics used from this query."""
-        _ = context
-        raise NotImplementedError("TODO: implement semantic extraction")
+        for rendered in self.render(context):
+            yield from ExtractedMetric.extract_from_promql(rendered)
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +509,10 @@ class QueryRegistry:
     def __getitem__(self, query_id: QueryId) -> Query:
         """Get the query definition for a given query ID."""
         return self.get(query_id)
+
+    def __len__(self) -> int:
+        """Get the size of this repo."""
+        return len(self._queries)
 
     def iter_metric_queries(self) -> collections.abc.Iterator[Query]:
         """Iterate over all queries that have a metric definition."""
@@ -543,6 +610,8 @@ if __name__ == "__main__":
             "mzOperatorNamespaceFilter": 'namespace=~"$mzOperatorNamespaceList"',
             "mzClusterList": "$mzClusterList",
             "mzReplicaList": "$mzReplicaList",
+            "mzNamespaceList": "$mzNamespaceList",
+            "cAdvisorFilter": 'container!="POD", container!="", namespace=~"$mzNamespaceList"',
         },
         resolve_query=registry.get,
     )
