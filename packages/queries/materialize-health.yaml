@@ -111,3 +111,47 @@ queries:
           }%%{range}
         ) * 100
       )
+  - id: materialize.info.version
+    stability: best-effort
+    description:
+      summary: |
+        The version of Materialize running in the environment. A single version
+        is the steady state; multiple values appear briefly during a rolling
+        upgrade.
+      notes: |
+        The presentation layer extracts the commit hash from the `mz_version`
+        label (e.g. to link the commit). If the version isn't what you expect,
+        check the environment's manifest in the deployment pipeline.
+    promQL: |
+      group by (mz_version) (
+        %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}}
+      )
+    instant: true
+  # FIXME: `$__range:1m` is a literal Grafana subquery. The `range` param
+  # renders a bracketed range-vector, not a subquery step, so there's no
+  # portable placeholder for this yet — pinned to Grafana (won't render for
+  # GCM/Datadog as written). Repin once a bare-range / subquery-step param lands.
+  - id: materialize.info.max_lag
+    stability: best-effort
+    description:
+      summary: |
+        The worst frontier lag seen anywhere in the environment over the
+        selected window — how far the most-behind collection's output trailed
+        real time. A top-level freshness pointer.
+      degraded: |
+        Climbing toward an hour means some collection is falling behind; drill
+        into per-cluster and per-collection freshness to find which, and into
+        hydration / source health for why.
+      notes: |
+        Not-yet-hydrated collections are excluded (they report the sentinel and
+        surface as "currently hydrating"). This is the peak over the window, so
+        it reflects the worst moment rather than the current value.
+    promQL: |
+      max(
+        max_over_time(
+          (
+            mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id!="", quantile="1"} < 1e9
+          )[$__range:1m]
+        )
+      )
+    instant: true

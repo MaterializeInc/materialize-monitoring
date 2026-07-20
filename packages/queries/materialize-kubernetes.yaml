@@ -1,0 +1,349 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Kubernetes workload queries (kube-state-metrics / cAdvisor).
+
+description: |
+  Kubernetes-side view of a Materialize deployment: capacity, workload
+  readiness, per-pod resource usage, and networking. Adapted from the Overview
+  dashboard's "Kubernetes Workloads" tab and the k8s-sourced Summary panels.
+
+  These read kube-state-metrics and cAdvisor (via the kubelet), NOT Materialize
+  metrics — the same meta-monitoring surface other targets (e.g. Loki health)
+  will draw on. `%%{cAdvisorFilter}` is the container-scoping filter fragment
+  (namespace + drop empty/pause series); `%%{mzNamespaceList}` is the raw
+  namespace selector used by the kube_* and container_network_* metrics.
+
+  The percent-of-limit panels have an absolute-units sibling for deployments
+  whose metrics source (e.g. GKE's managed cAdvisor/KSM) doesn't expose resource
+  limits; the dashboard picks whichever fits the environment.
+
+queries:
+  # --- capacity ------------------------------------------------------------
+  - id: materialize.kubernetes.cpu.capacity
+    stability: best-effort
+    description:
+      summary: |
+        Total CPU cores configured across the environment's containers (sum of
+        cAdvisor CPU limits), excluding the monitoring exporter — i.e. the CPU
+        available to the actual workload.
+      notes: |
+        Steps track `ALTER CLUSTER REPLICA SIZE`, replica create/drop, and pod
+        restarts. The Kubernetes Workloads tab includes the exporter (drop the
+        `container!="new-promsql-exporter"` clause); requires cAdvisor.
+    promQL: |
+      sum by (container) (
+        container_spec_cpu_quota{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+        / container_spec_cpu_period{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+      )
+  - id: materialize.kubernetes.memory.capacity
+    stability: best-effort
+    description:
+      summary: |
+        Total memory configured across the environment's containers (sum of
+        cAdvisor memory limits), excluding the monitoring exporter. Memory is
+        Materialize's dominant constraint — in-memory arrangements live in here.
+      notes: |
+        Steps track replica sizing and pod restarts. Requires cAdvisor.
+    promQL: |
+      sum by (container) (
+        container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+      )
+
+  # --- current usage (Summary) — percent-of-limit + absolute siblings ------
+  - id: materialize.kubernetes.cpu.usage.percent
+    stability: best-effort
+    description:
+      summary: |
+        Current CPU usage per container type as a fraction of its limit,
+        averaged over the last 5 minutes — shows the worst-loaded container
+        types.
+      nominal: Well below 1.0.
+      degraded: Sustained near 1.0 means a container type is CPU-bound.
+      notes: |
+        Needs CPU limits from kube-state-metrics; use the `.absolute` sibling
+        where limits aren't exposed. Requires cAdvisor + kube-state-metrics.
+    promQL: |
+      sum by (namespace, container) (
+        rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}}[5m])
+      ) / sum by (namespace, container) (
+        kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}"}
+      )
+    instant: true
+  - id: materialize.kubernetes.cpu.usage.absolute
+    stability: best-effort
+    description:
+      summary: |
+        Current CPU usage per container type in cores (rate over 5 minutes), for
+        deployments whose metrics source doesn't expose CPU limits — read it
+        against the replica sizes you configured.
+      notes: |
+        The absolute-units sibling of `materialize.kubernetes.cpu.usage.percent`.
+        Requires cAdvisor.
+    promQL: |
+      sum by (namespace, container) (
+        rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}}[5m])
+      )
+  - id: materialize.kubernetes.memory.usage.percent
+    stability: best-effort
+    description:
+      summary: |
+        Current memory usage per container type as a fraction of its limit —
+        shows the worst-loaded container types.
+      unhealthy: |
+        Sustained near 1.0 is dangerous: hitting the limit triggers an OOM-kill,
+        which on a compute replica forces a hydration cycle (in-memory state
+        rebuilt from persisted storage, minutes-to-hours). The offending
+        workload usually shows in the arrangement record counts.
+      notes: |
+        Needs memory limits from kube-state-metrics; use the `.absolute` sibling
+        where limits aren't exposed. Requires cAdvisor + kube-state-metrics.
+    promQL: |
+      sum by (namespace, container) (
+        avg by (namespace, pod, container) (
+          container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+        )
+      ) / sum by (namespace, container) (
+        avg by (namespace, pod, container) (
+          container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+        )
+      )
+    instant: true
+  - id: materialize.kubernetes.memory.usage.absolute
+    stability: best-effort
+    description:
+      summary: |
+        Current memory (working set) per container type in bytes, for
+        deployments whose metrics source doesn't expose memory limits.
+      unhealthy: |
+        Watch for sustained growth toward the replica size — hitting the limit
+        OOM-kills the pod and forces a hydration cycle.
+      notes: |
+        The absolute-units sibling of `materialize.kubernetes.memory.usage.percent`.
+        Requires cAdvisor.
+    promQL: |
+      sum by (namespace, container) (
+        container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+      )
+
+  # --- last restart (Summary) ----------------------------------------------
+  - id: materialize.kubernetes.last_restart
+    stability: best-effort
+    description:
+      summary: |
+        Seconds since the most recent container restart in the environment.
+      nominal: Hours to days ago.
+      degraded: |
+        A restart seconds/minutes ago is worth correlating with availability and
+        pod-health — it may be an active incident (crash loop, OOM, eviction).
+      notes: Requires cAdvisor.
+    promQL: |
+      time()
+      - topk(1,
+          container_start_time_seconds{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
+        )
+    instant: true
+
+  # --- workload readiness --------------------------------------------------
+  - id: materialize.kubernetes.pods.readiness
+    stability: best-effort
+    description:
+      summary: |
+        Pods in the Materialize namespace grouped by phase (Running, Pending,
+        Failed, …).
+      nominal: Nearly all Running.
+      degraded: |
+        Pending usually means Kubernetes can't schedule them (capacity, taints,
+        AZ constraints); Failed means a container exited and won't be restarted.
+      notes: Requires kube-state-metrics.
+    promQL: |
+      max by (phase, namespace) (
+        sum by (phase, namespace, instance) (
+          kube_pod_status_phase{namespace=~"%%{mzNamespaceList}"}
+        )
+      )
+    instant: true
+  - id: materialize.kubernetes.statefulsets.ready
+    stability: best-effort
+    description:
+      summary: |
+        StatefulSet replicas reporting Ready. environmentd and the cluster pods
+        are StatefulSets.
+      nominal: Matches the configured replica count.
+      degraded: A drop indicates a pod stuck in initialization or hydration.
+      notes: Requires kube-state-metrics.
+    promQL: |
+      max by (namespace) (
+        sum by (namespace, instance) (
+          kube_statefulset_status_replicas_ready{namespace=~"%%{mzNamespaceList}"}
+        )
+      )
+    instant: true
+  - id: materialize.kubernetes.deployments.readiness
+    stability: best-effort
+    description:
+      summary: |
+        Deployment replica health — Ready vs Unavailable. Deployments back
+        stateless services (e.g. the promsql exporter).
+      nominal: All replicas Ready, zero Unavailable.
+      degraded: Unavailable counts indicate failed rollouts or crashing pods.
+      notes: Requires kube-state-metrics.
+    promQL:
+      - |
+        max by (namespace) (
+          sum by (namespace, instance) (
+            kube_deployment_status_replicas_ready{namespace=~"%%{mzNamespaceList}"}
+          )
+        )
+      - |
+        max by (namespace) (
+          sum by (namespace, instance) (
+            kube_deployment_status_replicas_unavailable{namespace=~"%%{mzNamespaceList}"}
+          )
+        )
+    instant: true
+
+  # --- pod resource usage (per-pod timeseries) -----------------------------
+  # Two series each: cluster-replica pods (filtered by the cluster/replica
+  # selectors) and everything else (envd, balancer, exporter — always shown).
+  - id: materialize.kubernetes.pods.cpu_usage
+    stability: best-effort
+    description:
+      summary: |
+        CPU utilization per pod as a fraction of the pod's limit. Split so the
+        cluster/replica selectors filter the cluster pods while envd/balancer/
+        exporter stay visible.
+      degraded: |
+        Sustained near 1.0 for a pod means it's CPU-bound; for the
+        Materialize-level cause see the dataflow elapsed / arrangement rates.
+      notes: Requires cAdvisor + kube-state-metrics.
+    promQL:
+      - |
+        sum by (namespace, pod, container) (
+          rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        ) / sum by (namespace, pod, container) (
+          kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}
+        )
+      - |
+        sum by (namespace, pod, container) (
+          rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        ) / sum by (namespace, pod, container) (
+          kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}
+        )
+  - id: materialize.kubernetes.pods.memory_usage
+    stability: best-effort
+    description:
+      summary: |
+        Memory usage per pod as a fraction of the pod's limit (working-set
+        basis), same cluster/non-cluster split as pod CPU.
+      unhealthy: |
+        A sustained climb toward 1.0 is dangerous — the pod gets OOM-killed, and
+        on a compute replica that triggers a hydration cycle. If a cluster pod
+        is the offender, the arrangement record counts show which arrangements
+        hold the memory.
+      notes: Requires cAdvisor.
+    promQL:
+      - |
+        avg by (namespace, pod, container) (
+          container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}
+        ) / avg by (namespace, pod, container) (
+          container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}
+        )
+      - |
+        avg by (namespace, pod, container) (
+          container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod!~".*-cluster-.*-replica-.*"}
+        ) / avg by (namespace, pod, container) (
+          container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod!~".*-cluster-.*-replica-.*"}
+        )
+
+  # --- pod networking ------------------------------------------------------
+  - id: materialize.kubernetes.pods.network_rx
+    stability: best-effort
+    description:
+      summary: |
+        Network bytes/sec received per pod. For cluster pods, Rx tracks ingest
+        from upstream and inter-pod replication; for envd/balancer it's client
+        SQL traffic. Surges alongside hydration are normal catchup.
+      notes: Requires cAdvisor.
+    promQL:
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_receive_bytes_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_receive_bytes_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        )
+  - id: materialize.kubernetes.pods.network_tx
+    stability: best-effort
+    description:
+      summary: |
+        Network bytes/sec transmitted per pod. For cluster pods Tx covers sink
+        output, inter-pod replication, and query results returning to envd; for
+        envd it's client query responses.
+      notes: Requires cAdvisor.
+    promQL:
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_transmit_bytes_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_transmit_bytes_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        )
+  - id: materialize.kubernetes.pods.network_errors
+    stability: best-effort
+    description:
+      summary: |
+        Network rx + tx errors per pod per second (counted at the NIC/kernel
+        level).
+      nominal: "0 — no NIC/kernel-level errors."
+      unhealthy: |
+        Non-zero is unusual and points at infrastructure (faulty NIC, kernel
+        network stack, container runtime) — not a Materialize-level problem;
+        file an infra ticket.
+      notes: Requires cAdvisor.
+    promQL:
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_receive_errors_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_receive_errors_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_transmit_errors_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_transmit_errors_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        )
+  - id: materialize.kubernetes.pods.network_drops
+    stability: best-effort
+    description:
+      summary: |
+        Network packets dropped (rx + tx) per pod per second — when kernel
+        buffers fill faster than the app reads (rx) or egress rate-limiting
+        kicks in (tx).
+      nominal: 0 (single-digit pps drops are usually harmless background noise).
+      degraded: |
+        Sustained higher rates mean the pod is overwhelmed at the network layer
+        — often paired with elevated pod CPU.
+      notes: Requires cAdvisor.
+    promQL:
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_receive_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_receive_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_transmit_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+        )
+      - |
+        sum by (namespace, pod) (
+          rate(container_network_transmit_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
+        )

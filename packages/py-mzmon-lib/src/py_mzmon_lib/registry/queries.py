@@ -22,6 +22,8 @@ import typing
 
 import yaml
 
+from py_mzmon_lib import enrich
+
 
 @functools.total_ordering
 class Stability(enum.StrEnum):
@@ -381,10 +383,9 @@ class Query:
 # ---------------------------------------------------------------------------
 # PromQL template-engine functions.
 #
-# These implement the `functions:` named in the registry for the PromQL engine.
-# NOTE: the id->name joins here are a simplified form; the dashboards package has
-# a more robust left join (`dashboards.enrich`, tolerant of duplicate/missing
-# info series). The two should converge into a shared helper in this library.
+# `mzClusterName` / `mzObjectName` delegate to the shared `py_mzmon_lib.enrich`
+# left join (the same one the Grafana dashboards use), bound to the context's
+# `mzEnvironmentFilter` so the info-metric join is scoped to the environment.
 # ---------------------------------------------------------------------------
 
 
@@ -393,37 +394,36 @@ def _promql_or_zero(base: str) -> str:
     return f"({base}) or vector(0)"
 
 
-def _promql_with_cluster_name(base: str, id_label: str = "instance_id") -> str:
-    """Attach `cluster_name` from `mz_cluster_info`, keyed on `id_label`."""
-    info = f'label_replace(mz_cluster_info, "{id_label}", "$1", "cluster_id", "(.*)")'
-    info = f'label_replace({info}, "cluster_name", "$1", "name", "(.*)")'
-    return f"{base}\n* on ({id_label}) group_left(cluster_name)\n{info}"
-
-
-def _promql_with_object_name(base: str, id_label: str) -> str:
-    """Attach catalog `name` from `mz_object_info`, keyed on `id_label`."""
-    info = f'label_replace(mz_object_info, "{id_label}", "$1", "global_id", "(.*)")'
-    return f"{base}\n* on ({id_label}) group_left(name)\n{info}"
-
-
-PROMQL_FUNCTIONS: dict[str, TemplateFn] = {
-    "orZero": _promql_or_zero,
-    "mzClusterName": _promql_with_cluster_name,
-    "mzObjectName": _promql_with_object_name,
-}
-"""The template-engine functions implemented for the PromQL query engine."""
-
-
 def promql_context(
     parameters: collections.abc.Mapping[str, str],
     *,
     resolve_query: collections.abc.Callable[[QueryId], Query] | None = None,
 ) -> TemplateContext:
-    """Build a PromQL :class:`TemplateContext` from parameter values."""
+    """Build a PromQL :class:`TemplateContext` from parameter values.
+
+    The id->name enrichment functions are scoped to the environment via the
+    `mzEnvironmentFilter` parameter, so they must be built per context.
+    """
+    params = dict(parameters)
+    env_filter = params.get("mzEnvironmentFilter", "")
+
+    def with_cluster_name(base: str, id_label: str = "instance_id") -> str:
+        return enrich.with_cluster_name(base, id_label, env_filter=env_filter)
+
+    def with_object_name(base: str, id_label: str, extra: str = "") -> str:
+        return enrich.with_object_name(
+            base, id_label, extra=extra, env_filter=env_filter
+        )
+
+    functions: dict[str, TemplateFn] = {
+        "orZero": _promql_or_zero,
+        "mzClusterName": with_cluster_name,
+        "mzObjectName": with_object_name,
+    }
     return TemplateContext(
         engine=QueryEngine.PROMQL,
-        parameters=dict(parameters),
-        functions=PROMQL_FUNCTIONS,
+        parameters=params,
+        functions=functions,
         resolve_query=resolve_query,
     )
 

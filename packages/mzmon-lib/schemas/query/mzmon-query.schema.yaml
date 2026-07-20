@@ -82,6 +82,9 @@ $defs:
       # the label and interpolates the value: instance_id=~"%%{mzClusterList}".
       - "mzClusterList"
       - "mzReplicaList"
+      # Kubernetes namespace selector value (regex) for kube-state-metrics /
+      # cAdvisor panels, e.g. namespace=~"%%{mzNamespaceList}".
+      - "mzNamespaceList"
 
   stability:
     description: |

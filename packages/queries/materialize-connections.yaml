@@ -1,0 +1,159 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Connection and query-activity queries.
+
+description: |
+  Sessions, query activity, and SQL control-plane (adapter) traffic for a
+  Materialize deployment. Adapted from the Overview dashboard's
+  "Connections / Activity" tab.
+
+queries:
+  - id: materialize.connections.sessions.active
+    stability: best-effort
+    description:
+      summary: |
+        Open SQL sessions, split into `system` (Materialize's internal probing —
+        a few are always present) and `user` (client connections).
+      degraded: |
+        A `user` count that climbs and never settles is the classic
+        leaked-connection signal; cross-check whether query activity rose to
+        match, or whether connections are just accumulating idle.
+      notes: Environment-scoped — the cluster/replica selectors don't narrow it.
+    promQL: |
+      sum by (session_type) (mz_active_sessions{%%{mzEnvironmentFilter}})
+  - id: materialize.connections.queries.rate
+    stability: best-effort
+    description:
+      summary: |
+        Queries per second by session type — `user` tracks your client traffic,
+        `system` is the steady single-digit baseline of internal health checks.
+        Bursty is normal.
+      notes: Environment-scoped.
+    promQL: |
+      sum by (session_type) (rate(mz_query_total{%%{mzEnvironmentFilter}}%%{interval}))
+  - id: materialize.connections.adapter.command_rate
+    stability: best-effort
+    description:
+      summary: |
+        Commands per second through the adapter — the SQL protocol layer
+        (parse, execute, prepare, fetch). Normally runs higher than the query
+        rate, since one query is several commands.
+      degraded: |
+        A flat-line on an environment that's usually busy is unusual and can
+        indicate the adapter is in trouble; check per-application command
+        activity and its error column.
+      notes: Environment-scoped.
+    promQL: |
+      sum(rate(mz_adapter_commands{%%{mzEnvironmentFilter}}%%{interval}))
+  - id: materialize.connections.queries.distribution
+    stability: best-effort
+    description:
+      summary: |
+        The mix of query kinds over the selected window — a workload-shape
+        signal, not a rate. Heavy `set_variable`/`fetch` traffic is normal
+        (that's how Postgres clients manage session state); heavy
+        `insert`/`update`/`delete` on something you think of as read-mostly is
+        worth a look.
+      notes: |
+        Idle statement types are filtered out. Environment-scoped.
+    promQL: |
+      sum by (statement_type) (increase(mz_query_total{%%{mzEnvironmentFilter}}%%{range})) > 0
+    instant: true
+  - id: materialize.connections.queries.rate_by_statement
+    stability: best-effort
+    description:
+      summary: |
+        Query rate broken down by statement type and session type, fully
+        time-resolved — the moving picture behind the distribution donut. A
+        spike in `select`/`user` is the thing to line up against peek latency
+        to confirm the system kept pace.
+      notes: |
+        Idle (statement, session) tuples are filtered out. Environment-scoped.
+    promQL: |
+      sum by (statement_type, session_type) (rate(mz_query_total{%%{mzEnvironmentFilter}}%%{interval})) > 0
+  - id: materialize.connections.peek_latency.p50
+    stability: best-effort
+    description:
+      summary: |
+        Median read-query latency — the typical time to look up the current
+        state of an arrangement, which is the operation behind every `SELECT`
+        against an index. Your "what does a normal query feel like" number.
+      nominal: A few milliseconds on a healthy cluster.
+      degraded: |
+        Sustained multi-second p50 means the cluster is overwhelmed — it can't
+        keep up with the read load on it.
+      notes: |
+        Per-cluster: the self-managed metric carries the cluster (instance_id)
+        but not the replica, so the replica selector doesn't split it further.
+    promQL:
+      template: |
+        histogram_quantile(0.50,
+          sum by (le, instance_id) (
+            rate(mz_compute_peek_duration_seconds_bucket{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}"}%%{interval})
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+  - id: materialize.connections.peek_latency.p90
+    stability: best-effort
+    description:
+      summary: |
+        90th-percentile read-query latency — how slow the slowest 10% of
+        queries feel. Catches the contention bursts and cold paths that the
+        median hides.
+      nominal: A small multiple of p50, roughly 2–5×.
+      degraded: |
+        p90 running 10–100× p50 means a bimodal distribution — usually
+        cold-cache effects on infrequently-queried indexes, or contention.
+    promQL:
+      template: |
+        histogram_quantile(0.90,
+          sum by (le, instance_id) (
+            rate(mz_compute_peek_duration_seconds_bucket{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}"}%%{interval})
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+  - id: materialize.connections.peek_latency.p99
+    stability: best-effort
+    description:
+      summary: |
+        Tail read-query latency — the slowest 1% of queries, the ones users
+        complain about.
+      nominal: |
+        A small multiple of p50 (2–10×), with occasional spikes during query
+        plan recompilation or hydration.
+      degraded: |
+        Sustained p99 in the seconds range — especially when p50/p90 are NOT
+        elevated — points at a single bad query or a genuinely
+        tail-sensitive use case. Confirm the latency is on real traffic
+        (against the query rate), not idle scrapes.
+    promQL:
+      template: |
+        histogram_quantile(0.99,
+          sum by (le, instance_id) (
+            rate(mz_compute_peek_duration_seconds_bucket{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}"}%%{interval})
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+  - id: materialize.connections.adapter.commands_by_application
+    stability: best-effort
+    description:
+      summary: |
+        SQL control-plane command totals per client `application_name` over the
+        window, so you can see which clients drive the adapter and which are
+        failing. Most clients set `application_name` in their connection string;
+        those that don't bucket as `unrecognized`/`unspecified` (normal).
+      unhealthy: |
+        Sustained errors against a real application mean that app is
+        consistently failing its commands — correlate with the app's own logs
+        and the `mz_internal` activity-log views for the specific failures.
+      notes: |
+        The presentation layer pivots the `status` label into Success/Errors
+        columns. Environment-scoped.
+    promQL: |
+      sum by (application_name, status) (increase(mz_adapter_commands{%%{mzEnvironmentFilter}}%%{range}))
+    instant: true
