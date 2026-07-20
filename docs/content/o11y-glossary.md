@@ -127,7 +127,7 @@ As with metrics, label [cardinality](#cardinality) is the cost driver — keep v
 
 ##### Dashboard {#dashboard}
 A collection of panels backed by queries, typically laid out in tabs and rows.
-This stack ships dashboards for both [Grafana](#grafana) and [DataDog](#datadog); see [Dashboards](../dashboards/).
+This stack ships dashboards for both [Grafana](#grafana) and [Datadog](#datadog); see [Dashboards](../dashboards/).
 
 ##### Dashboard Panel {#dashboard-panel}
 A single visualization on a dashboard — a time series, table, donut, single-stat, etc.

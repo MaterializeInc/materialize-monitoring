@@ -17,7 +17,7 @@ Currently supported:
 Planned (stubs are acceptable for now):
 
 - **BEST-EFFORT** Grafana 11 (Dashboard v1 schema)
-- **UNSUPPORTED** DataDog
+- **UNSUPPORTED** Datadog
 
 ## Ecosystem state
 
