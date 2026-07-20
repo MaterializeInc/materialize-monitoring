@@ -31,16 +31,35 @@ $defs:
     properties:
       description:
         type: string
-        description: A human-friendly description of the current Query Registry.
-      queries:
-        type: array
-        description: A list of monitoring queries in the current Query Registry.
-        items:
-          $ref: "#/$defs/query"
-    additionalProperties: false
+        description: |
+          A human-friendly description of the current Query Registry.
+    anyOf:
+      - type: object
+        properties:
+          queries:
+            type: array
+            description: |
+              A list of monitoring queries in the current Query Registry.
+            items:
+              $ref: "#/$defs/query"
+        required:
+          - queries
+      - type: object
+        properties:
+          rules:
+            type: array
+            description: |
+              A list of recording and alerting rules in the current Query Registry.
+            items:
+              oneOf:
+                - $ref: "#/$defs/recordingRule"
+                - $ref: "#/$defs/alertRule"
+        required:
+          - rules
+
+    unevaluatedProperties: false
     required:
       - description
-      - queries
 
   knownParameter:
     description: |
@@ -147,6 +166,43 @@ $defs:
               WARNING: These are NOT the functions that are already provided by the query engine.
         additionalProperties: false
 
+  structuredDescription:
+    type: object
+    description: A structured description of a query or rule.
+    properties:
+      summary:
+        type: string
+        description: A brief summary of the query or rule.
+        examples:
+          - "The 99th percentile latency of the compute peek operation."
+      nominal:
+        type: string
+        description: The nominal or expected behavior of the query or rule.
+        examples:
+          - "The query should return results within 100ms under normal load."
+      degraded:
+        type: string
+        description: The degraded behavior of the query or rule and actions to take.
+        examples:
+          - "The query returns results within 500ms under high load."
+      unhealthy:
+        type: string
+        description: The unhealthy behavior of the query or rule and actions to take.
+        examples:
+          - |
+            The query returns results within 1s under high load.
+            This may indicate a problem with the compute cluster.
+            Consult Kubernetes Workloads for general health.
+            Consult Compute Objects for specific object health.
+      notes:
+        type: string
+        description: Additional notes about the query or rule.
+        examples:
+          - "This query is used in the Materialize Health dashboard."
+    required:
+      - summary
+    additionalProperties: false
+
   query:
     description: |
       A single monitoring query.
@@ -158,41 +214,7 @@ $defs:
         examples:
           - compute.peek_latency_p99
       description:
-        type: object
-        description: A structured description of the query.
-        properties:
-          summary:
-            type: string
-            description: A brief summary of the query.
-            examples:
-              - "The 99th percentile latency of the compute peek operation."
-          nominal:
-            type: string
-            description: The nominal or expected behavior of the query.
-            examples:
-              - "The query should return results within 100ms under normal load."
-          degraded:
-            type: string
-            description: The degraded behavior of the query and actions to take.
-            examples:
-              - "The query returns results within 500ms under high load."
-          unhealthy:
-            type: string
-            description: The unhealthy behavior of the query and actions to take.
-            examples:
-              - |
-                The query returns results within 1s under high load.
-                This may indicate a problem with the compute cluster.
-                Consult Kubernetes Workloads for general health.
-                Consult Compute Objects for specific object health.
-          notes:
-            type: string
-            description: Additional notes about the query.
-            examples:
-              - "This query is used in the Materialize Health dashboard."
-        required:
-          - summary
-        additionalProperties: false
+        $ref: "#/$defs/structuredDescription"
       stability:
         $ref: "#/$defs/stability"
       dependencies:
@@ -226,7 +248,8 @@ $defs:
     description: |
       A single dependency that is required for the current context.
     oneOf:
-      - properties:
+      - type: object
+        properties:
           queryId:
             type: string
             description: The ID of the query that this recording rule is for.
@@ -234,7 +257,8 @@ $defs:
               - compute.peek_latency_p99
         required:
           - queryId
-      - properties:
+      - type: object
+        properties:
           query:
             $ref: "#/$defs/query"
         required:
@@ -246,29 +270,42 @@ $defs:
     description: |
       A single monitoring query that is a metrics query.
     type: object
+    anyOf:
+      - type: object
+        properties:
+          promQL:
+            oneOf:
+              - $ref: "#/$defs/templateString"
+                description: The Prometheus query language (PromQL) query.
+              - type: array
+                items:
+                  $ref: "#/$defs/templateString"
+                description: |
+                  A group of PromQL queries.
+                  These are generally shown as distinct series.
+            examples:
+              - "histogram_quantile(0.99, sum(rate(compute_peek_latency_seconds_bucket[$__interval])) by (le))"
+        required:
+          - promQL
+      - type: object
+        properties:
+          datadogSQL:
+            $ref: "#/$defs/templateString"
+            description: The Datadog SQL (DDSQL) query.
+            examples:
+              - "SELECT avg(latency) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
+        required:
+          - datadogSQL
+      - type: object
+        properties:
+          honeycombSQL:
+            $ref: "#/$defs/templateString"
+            description: The Honeycomb SQL query.
+            examples:
+              - "SELECT quantile(latency, 0.99) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
+        required:
+          - honeycombSQL
     properties:
-      promQL:
-        oneOf:
-          - $ref: "#/$defs/templateString"
-            description: The Prometheus query language (PromQL) query.
-          - type: array
-            items:
-              $ref: "#/$defs/templateString"
-            description: |
-              A group of PromQL queries.
-              These are generally shown as distinct series.
-        examples:
-          - "histogram_quantile(0.99, sum(rate(compute_peek_latency_seconds_bucket[$__interval])) by (le))"
-      datadogSQL:
-        $ref: "#/$defs/templateString"
-        description: The Datadog SQL (DDSQL) query.
-        examples:
-          - "SELECT avg(latency) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
-      honeycombSQL:
-        $ref: "#/$defs/templateString"
-        description: The Honeycomb SQL query.
-        examples:
-          - "SELECT quantile(latency, 0.99) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
       instant:
         type: boolean
         description: |
@@ -285,6 +322,8 @@ $defs:
         description: The Loki query language (LogQL) query.
         examples:
           - '{app="environmentd"} |~ "peek latency"'
+    required:
+      - logQL
 
   labelMap:
     description: |
@@ -315,6 +354,8 @@ $defs:
           Groups are defined externally.
         examples:
           - materialize
+      description:
+        $ref: "#/$defs/structuredDescription"
       stability:
         $ref: "#/$defs/stability"
       labels:
@@ -324,6 +365,7 @@ $defs:
     required:
       - record
       - group
+      - description
       - stability
 
   alertRule:
@@ -345,21 +387,23 @@ $defs:
           Groups are defined externally.
         examples:
           - materialize
+      description:
+        $ref: "#/$defs/structuredDescription"
       stability:
         $ref: "#/$defs/stability"
       for:
         type: string
-        format: duration
         description: |
           The duration for which the alert must be firing before it is considered
           active.
+        format: go-duration
         examples:
           - 5m
       keepFiringFor:
         type: string
-        format: duration
         description: |
           How long an alert will continue to fire after it has been resolved.
+        format: go-duration
         examples:
           - 5m
       labels:
@@ -372,4 +416,5 @@ $defs:
       - alert
       - for
       - group
+      - description
       - stability

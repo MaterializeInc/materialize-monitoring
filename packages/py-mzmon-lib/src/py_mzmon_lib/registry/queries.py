@@ -98,6 +98,9 @@ STABILITY_MATURITY_ORDER = [
 This is the normal flow of query development and promotion.
 
 If a dashboard has a minimum stability level, it will use this ordering.
+Note that Best-Effort and Deprecated are approximately the same level,
+but Deprecated is placed higher so `>= BEST_EFFORT` will include Deprecated queries.
+(This avoids implementing a BEST_EFFORT_DEPRECATED and CANONICAL_DEPRECATED separately.)
 """
 
 STABILITY_DEPRECATION_ORDER = [
@@ -126,7 +129,7 @@ class QueryDef(typing.TypedDict):
     """YAML definition from mzmon-query.schema.yaml for a query."""
 
     id: QueryId
-    description: str
+    description: dict[str, str]
     stability: Stability
     dependencies: typing.NotRequired[list[_DEPENDENCY_DEF]]
     promQL: typing.NotRequired[TemplateString]
@@ -137,12 +140,28 @@ class QueryDef(typing.TypedDict):
 
 
 @dataclasses.dataclass(frozen=True)
+class Description:
+    """Structured description for queries and rules."""
+
+    summary: str
+    """A brief summary of the query."""
+    nominal: str | None = None
+    """The nominal or expected behavior of the query."""
+    degraded: str | None = None
+    """The degraded behavior of the query and actions to take."""
+    unhealthy: str | None = None
+    """The unhealthy behavior of the query and actions to take."""
+    notes: str | None = None
+    """Additional notes about the query."""
+
+
+@dataclasses.dataclass(frozen=True)
 class Query:
     """A concrete query definition in the registry."""
 
     id: QueryId
     """Stable identifier for this query."""
-    description: str
+    description: Description
     """Human-readable description of this query."""
     stability: Stability
     """Stability level of this query."""
@@ -250,9 +269,10 @@ class QueryRegistry:
                 raise TypeError(
                     f"Dependency definition {dependency} must be a string or a dict."
                 )
+        description = Description(**query_def["description"])
         self._queries[query_def["id"]] = Query(
             id=query_def["id"],
-            description=query_def["description"],
+            description=description,
             stability=query_def["stability"],
             dependencies=deps,
             promql=query_def.get("promQL"),
@@ -277,5 +297,7 @@ if __name__ == "__main__":
     registry = QueryRegistry.from_directory(pathlib.Path("packages/queries"))
     for query in registry.iter_metric_queries():
         print(f"{query.id}: {query.stability}")  # noqa: T201
+        print(f"   {query.description.summary}")  # noqa: T201
     for query in registry.iter_log_queries():
         print(f"{query.id}: {query.stability}")  # noqa: T201
+        print(f"   {query.description.summary}")  # noqa: T201

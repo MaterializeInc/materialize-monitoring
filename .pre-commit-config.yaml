@@ -112,6 +112,17 @@ repos:
       - id: editorconfig-checker
         alias: ec
 
+  # -- jsonschema checks ────────────────────────────────────────────
+  # Use ajv to validate json/yaml. This uses explicit paths per schema.
+  # TODO: move schema checks into mz-monitoring-check (drop nodejs dep)
+  - repo: local
+    hooks:
+      - id: ajv-validate-query
+        name: ajv validate packages/queries/
+        language: system
+        entry: sh -c 'args=""; for file in $@; do args="$args -d $file"; done && npx ajv validate --validate-formats=false --spec=draft2020 -s packages/mzmon-lib/schemas/query/mzmon-query.schema.yaml $args' _
+        files: ^packages/queries/.+\.yaml$
+
   # ── Rust ───────────────────────────────────────────────────────────────
   # cargo fmt runs on every commit (fast, fixer).
   # cargo clippy runs on pre-push only (slow; would block every commit).
