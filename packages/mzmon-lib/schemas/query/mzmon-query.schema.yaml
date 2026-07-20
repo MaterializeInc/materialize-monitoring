@@ -1,0 +1,375 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for monitoring queries.
+#
+# DESIGN NOTE: typed schemas are strict (additionalProperties: false on each
+# typed block). Undocumented attributes are rejected deliberately.
+#
+# Recommended API:
+# - registry should have a key based getters.
+# - registry should provide a register function for queries.
+#   - register should only accept unique query IDs.
+#   - provide a separate function for overwriting a query if needed.
+# - registration should automatically promote dependencies to top-level.
+# - dependencies should not be checked at registration time (to prevent load order).
+# - it should be possible to get all queries of a given type (metrics, logs, etc)
+# - it should be possible to extract metrics from a query.
+# - all knownParameters must be implemented by template engine.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/query/mzmon-query.schema.yaml"
+title: "Monitoring query schema"
+description: "An opinionated schema of monitoring queries used in materialize-monitoring"
+type: object
+allOf:
+  - $ref: "#/$defs/queryRegistry"
+
+$defs:
+  queryRegistry:
+    description: |
+      A registry of monitoring queries.
+      Each file corresponds to a single query registry.
+    type: object
+    properties:
+      description:
+        type: string
+        description: A human-friendly description of the current Query Registry.
+      queries:
+        type: array
+        description: A list of monitoring queries in the current Query Registry.
+        items:
+          $ref: "#/$defs/query"
+    additionalProperties: false
+    required:
+      - description
+      - queries
+
+  knownParameter:
+    description: |
+      A known parameter that can be used in a template string.
+    type: string
+    enum:
+      - "interval"
+      - "range"
+      - "mzSqlPrefix"
+      - "cAdvisorFilter"
+      - "mzOperatorNamespaceFilter"
+      - "mzEnvironmentNamespaceFilter"
+      - "mzSystemNamespaceFilter"
+
+  stability:
+    description: |
+      The stability of the query.
+
+      The stability of a given query impacts how metrics are collected and may impact
+      how they are stored.
+
+      Main Dashboard queries generally use Best-Effort queries initially
+      which eventually graduate to Canonical definitions.
+      Changes to Canonical or Best-Effort queries are considered breaking changes.
+      Queries marked as Unused, Deprecated, Unsupported are generally warned upon usage.
+
+      Playground and Experimental queries may be used in upcoming dashboards and
+      may graduate in the future.
+
+      Alerts generally should be using Best-Effort or Canonical queries.
+
+      Experimental, Best-Effort, Canonical, and Deprecated queries have user-facing documentation.
+
+      Canonical queries require test suite coverage.
+
+      Recording rules are generally laxer because they allow the underlying
+      query to change while the recording rule remains stable.
+    type: string
+    enum:
+      - "unused"
+      - "playground"
+      - "experimental"
+      - "best-effort"
+      - "canonical"
+      - "deprecated"
+      - "unsupported"
+
+  templateString:
+    description: |
+      A string that is a template for a query.
+      This is used to generate queries with different parameters.
+    oneOf:
+      - type: string
+      - type: object
+        properties:
+          template:
+            type: string
+            description: |
+              The template string.
+              We use %%{} to denote placeholders for parameters.
+          queryId:
+            type: string
+            description: |
+              Alternative to template, use another query as the source.
+          parameters:
+            type: array
+            items:
+              $ref: "#/$defs/knownParameter"
+            description: |
+              A list of parameters that can be used in the template string.
+              These MUST be provided by the template engine.
+
+              For example, %%{interval} will be replaced with $__interval in Grafana
+              but a static value like 5m in Google Cloud Dashboards.
+          functions:
+            type: array
+            items:
+              oneOf:
+                - $ref: "#/$defs/templateString"
+                - type: object
+                  properties:
+                    name:
+                      type: string
+                      description: The name of the function to apply to the template string.
+                      examples:
+                        - exceedsThreshold
+                        - mzClusterName
+                        - mzObjectName
+                    args:
+                      type: array
+                      items:
+                        $ref: "#/$defs/templateString"
+                      description: A list of arguments to pass to the function.
+                    additionalProperties: false
+                  examples:
+                    - name: "exceedsThreshold"
+                      args:
+                        - "50"
+            description: |
+              The name of the function to apply to the template string.
+              This is used to transform the template value before it is used in the query.
+              These MUST be provided by the template engine.
+
+              WARNING: These are NOT the functions that are already provided by the query engine.
+        additionalProperties: false
+
+  query:
+    description: |
+      A single monitoring query.
+    type: object
+    properties:
+      id:
+        type: string
+        description: An identifying slug for the query.
+        examples:
+          - compute.peek_latency_p99
+      description:
+        type: object
+        description: A structured description of the query.
+        properties:
+          summary:
+            type: string
+            description: A brief summary of the query.
+            examples:
+              - "The 99th percentile latency of the compute peek operation."
+          nominal:
+            type: string
+            description: The nominal or expected behavior of the query.
+            examples:
+              - "The query should return results within 100ms under normal load."
+          degraded:
+            type: string
+            description: The degraded behavior of the query and actions to take.
+            examples:
+              - "The query returns results within 500ms under high load."
+          unhealthy:
+            type: string
+            description: The unhealthy behavior of the query and actions to take.
+            examples:
+              - |
+                The query returns results within 1s under high load.
+                This may indicate a problem with the compute cluster.
+                Consult Kubernetes Workloads for general health.
+                Consult Compute Objects for specific object health.
+          notes:
+            type: string
+            description: Additional notes about the query.
+            examples:
+              - "This query is used in the Materialize Health dashboard."
+        required:
+          - summary
+        additionalProperties: false
+      stability:
+        $ref: "#/$defs/stability"
+      dependencies:
+        type: array
+        description: |
+          A list of query IDs that this query depends on.
+          These dependencies are used to determine the order of evaluation.
+        items:
+          $ref: "#/$defs/dependency"
+    anyOf:
+      - $ref: "#/$defs/metricsQuery"
+      - $ref: "#/$defs/logsQuery"
+    unevaluatedProperties: false
+    required:
+      - id
+      - description
+      - stability
+
+  dependency:
+    description: |
+      A dependency on another query.
+      We generally allow for defining dependencies inline.
+    oneOf:
+      - type: string
+        description: The ID of the query that this query depends on.
+      - $ref: "#/$defs/query"
+    examples:
+      - compute.peek_latency_p99
+
+  requiredDependency:
+    description: |
+      A single dependency that is required for the current context.
+    oneOf:
+      - properties:
+          queryId:
+            type: string
+            description: The ID of the query that this recording rule is for.
+            examples:
+              - compute.peek_latency_p99
+        required:
+          - queryId
+      - properties:
+          query:
+            $ref: "#/$defs/query"
+        required:
+          - query
+    examples:
+      - queryId: compute.peek_latency_p99
+
+  metricsQuery:
+    description: |
+      A single monitoring query that is a metrics query.
+    type: object
+    properties:
+      promQL:
+        oneOf:
+          - $ref: "#/$defs/templateString"
+            description: The Prometheus query language (PromQL) query.
+          - type: array
+            items:
+              $ref: "#/$defs/templateString"
+            description: |
+              A group of PromQL queries.
+              These are generally shown as distinct series.
+        examples:
+          - "histogram_quantile(0.99, sum(rate(compute_peek_latency_seconds_bucket[$__interval])) by (le))"
+      datadogSQL:
+        $ref: "#/$defs/templateString"
+        description: The Datadog SQL (DDSQL) query.
+        examples:
+          - "SELECT avg(latency) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
+      honeycombSQL:
+        $ref: "#/$defs/templateString"
+        description: The Honeycomb SQL query.
+        examples:
+          - "SELECT quantile(latency, 0.99) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
+      instant:
+        type: boolean
+        description: |
+          Whether the query is an instant query.
+          This is used to determine whether to use the range or instant query API.
+
+  logsQuery:
+    description: |
+      A single monitoring query that is a logs query.
+    type: object
+    properties:
+      logQL:
+        $ref: "#/$defs/templateString"
+        description: The Loki query language (LogQL) query.
+        examples:
+          - '{app="environmentd"} |~ "peek latency"'
+
+  labelMap:
+    description: |
+      A map of labels to attach to the resulting metric.
+    type: object
+    additionalProperties:
+      $ref: "#/$defs/templateString"
+    examples:
+      - environment: production
+
+  recordingRule:
+    description: |
+      A recording rule for another query.
+    type: object
+    properties:
+      record:
+        type: string
+        description: |
+          The resulting metric name for the recording rule.
+          See https://prometheus.io/docs/practices/rules/ for naming conventions.
+        examples:
+          - mzobject:compute_peek_latency_seconds:p99
+      group:
+        type: string
+        description: |
+          The group name for the recording rule.
+          This is used to group recording rules together in Prometheus.
+          Groups are defined externally.
+        examples:
+          - materialize
+      stability:
+        $ref: "#/$defs/stability"
+      labels:
+        $ref: "#/$defs/labelMap"
+    allOf:
+      - $ref: "#/$defs/requiredDependency"
+    required:
+      - record
+      - group
+      - stability
+
+  alertRule:
+    description: |
+      An alerting rule for another query.
+    type: object
+    properties:
+      alert:
+        type: string
+        description: |
+          The name of the alert.
+        examples:
+          - HighPeekLatency
+      group:
+        type: string
+        description: |
+          The group name for the alert rule.
+          This is used to group alert rules together in Prometheus.
+          Groups are defined externally.
+        examples:
+          - materialize
+      stability:
+        $ref: "#/$defs/stability"
+      for:
+        type: string
+        format: duration
+        description: |
+          The duration for which the alert must be firing before it is considered
+          active.
+        examples:
+          - 5m
+      keepFiringFor:
+        type: string
+        format: duration
+        description: |
+          How long an alert will continue to fire after it has been resolved.
+        examples:
+          - 5m
+      labels:
+        $ref: "#/$defs/labelMap"
+      annotations:
+        $ref: "#/$defs/labelMap"
+    allOf:
+      - $ref: "#/$defs/requiredDependency"
+    required:
+      - alert
+      - for
+      - group
+      - stability

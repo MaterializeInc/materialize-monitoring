@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Health checking queries
+
+description: |
+  Common queries for checking the health of a Materialize deployment.
+
+queries:
+  - id: materialize.scraper.mzmon.environmentd
+    stability: best-effort
+    description:
+      summary: "Check that metrics are being scraped from environmentd pods."
+      notes: |
+        This is moderately unstable because we don't want to require that
+        monitors are installed into the monitoring namespace.
+    promQL: |
+      up{
+        job="monitoring/mzmon-materialize-environmentd",
+        %%{mzEnvironmentNamespaceFilter}
+      } == 1
+  - id: materialize.scraper.mzmon.clusterd
+    stability: best-effort
+    description:
+      summary: "Check that metrics are being scraped from clusterd pods."
+
+      notes: |
+        This is moderately unstable because we don't want to require that
+        monitors are installed into the monitoring namespace.
+    promQL: |
+      up{
+        job="monitoring/mzmon-materialize-clusterd",
+        %%{mzEnvironmentNamespaceFilter}
+      } == 1
+  - id: materialize.scraper.mzmon.orchestratord
+    stability: best-effort
+    description:
+      summary: "Check that metrics are being scraped from orchestratord (materialize-operator) pods."
+    promQL: |
+      up{
+        job="materialize/mzmon-materialize-operator",
+        %%{mzOperatorNamespaceFilter}
+      } == 1
+  - id: materialize.health.clusters.status.percentage
+    stability: best-effort
+    description:
+      summary: "High-level health check for clusters reporting healthy."
+      nominal: "100%"
+      degraded: |
+        Betweeen 80% and 100%
+        This may happen during cluster upgrades or other rollouts.
+        You may want to drill into the status of Clusters and Replicas.
+      unhealthy: |
+        Under 80%
+        Consult the status of Clusters and Replicas.
+    promQL: |
+      count(
+        %%{mzSqlPrefix}compute_cluster_status{
+          %%{mzEnvironmentFilter}
+        } == 1
+      ) / count(
+        %%{mzSqlPrefix}compute_cluster_status{
+          %%{mzEnvironmentFilter}
+        }
+      ) * 100
+  - id: materialize.health.environment.availability.percentage
+    stability: best-effort
+    description:
+      summary: "Fraction of time the environment was healthy over a given time period."
+      nominal: |
+        100.00%
+      degraded: |
+        Under 100.00%
+        May correlate to cluster restarts or outages.
+        Check for Kubernetes events and pod restarts.
+      notes: |
+        4 nines of availability is about the max that can be measured
+        with a scrape resolution of 30s (over a week period).
+    promQL: |
+      avg by (materialize_cloud_organization_namespace) (
+        avg_over_time(
+          %%{mzSqlPrefix}compute_cluster_status{
+            %%{mzEnvironmentFilter}
+          }%%{range}
+        ) * 100
+      )

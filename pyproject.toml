@@ -182,6 +182,10 @@ docstring-code-format = false
 # enabled.
 docstring-code-line-length = "dynamic"
 
+[tool.pyright]
+ignore = [
+    "packages/ref*/**"
+]
 
 [tool.pytest]
 addopts = ["--showlocals", "-v", "--doctest-modules"]
