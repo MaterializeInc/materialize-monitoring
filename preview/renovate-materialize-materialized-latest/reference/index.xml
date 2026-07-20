@@ -24,23 +24,9 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v070-unreleased"&gt;materialize-monitoring Helm Chart v0.7.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="pipelines-v080-unreleased"&gt;Pipelines v0.8.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v080-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v060"&gt;materialize-monitoring Helm Chart v0.6.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v060"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;Allow configuring otlpExporter, googleCloudExporter, datadogExporter
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/106" rel="external" class="github-source-link"&gt;materialize-monitoring#106&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v050"&gt;materialize-monitoring Helm Chart v0.5.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v050"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;CLO-112 Harden Long-Term storage in GCP
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/103" rel="external" class="github-source-link"&gt;materialize-monitoring#103&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="pipelines-v070-unreleased"&gt;Pipelines v0.7.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="prometheus-scrapers-v040-unreleased"&gt;Prometheus Scrapers v0.4.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v070-unreleased"&gt;materialize-monitoring Helm Chart v0.7.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v070-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>
