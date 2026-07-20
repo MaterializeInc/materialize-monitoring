@@ -73,6 +73,15 @@ $defs:
       - "mzOperatorNamespaceFilter"
       - "mzEnvironmentNamespaceFilter"
       - "mzSystemNamespaceFilter"
+      # Environment (org) scope filter fragment, e.g.
+      # materialize_cloud_organization_name=~"$environmentIdList".
+      - "mzEnvironmentFilter"
+      # Selected-cluster / selected-replica value fragments (regexes). The label
+      # NAME varies by metric family (compute_cluster_id / instance_id /
+      # cluster_environmentd_materialize_cloud_cluster_id), so the author writes
+      # the label and interpolates the value: instance_id=~"%%{mzClusterList}".
+      - "mzClusterList"
+      - "mzReplicaList"
 
   stability:
     description: |

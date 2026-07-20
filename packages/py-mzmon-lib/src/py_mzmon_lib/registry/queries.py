@@ -256,6 +256,8 @@ class QueryRegistry:
                 raise ValueError(f"Query ID {query_def.id} is already registered.")
             self._queries[query_def.id] = query_def
             return query_def
+        if query_def["id"] in self._queries:
+            raise ValueError(f"Query ID {query_def['id']} is already registered.")
         deps = []
         for dependency in query_def.get("dependencies", []):
             if isinstance(dependency, str):

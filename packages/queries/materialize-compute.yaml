@@ -1,0 +1,358 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Compute-object queries: catalog counts, freshness, hydration, dataflows,
+# arrangements. Adapted from the Overview dashboard's "Compute Objects" tab.
+
+description: |
+  Queries for the compute side of a Materialize deployment — the indexes,
+  materialized views, and subscribes that run as dataflows on cluster replicas,
+  plus their freshness, hydration, and resource footprint.
+
+queries:
+  # --- catalog counts (environment-scoped) ---------------------------------
+  - id: materialize.compute.materialized_views.count
+    stability: best-effort
+    description:
+      summary: |
+        Materialized views Materialize is actively maintaining. Each one is a
+        query whose result is kept continuously up to date, so this tracks
+        roughly how much standing compute the environment carries.
+      notes: |
+        Environment-scoped — the cluster/replica selectors don't narrow it.
+        Steps on CREATE/DROP MATERIALIZED VIEW; steady otherwise.
+    promQL: |
+      max(%%{mzSqlPrefix}mzd_views_count{%%{mzEnvironmentFilter}})
+  - id: materialize.compute.indexes.count
+    stability: best-effort
+    description:
+      summary: |
+        Indexes in the catalog. An index is an in-memory arrangement that makes
+        reads against its relation effectively instant, in exchange for memory —
+        so growth here is a leading indicator of cluster memory growth.
+      notes: |
+        Environment-scoped. Hardened to read 0 on a fresh environment (the
+        metric is absent until the first index exists).
+    promQL:
+      template: |
+        max(sum by (instance) (%%{mzSqlPrefix}indexes_count{%%{mzEnvironmentFilter}}))
+      functions:
+        - name: orZero
+  - id: materialize.compute.views.count
+    stability: best-effort
+    description:
+      summary: |
+        Non-materialized views — query templates evaluated on demand. They cost
+        nothing until something reads them, so this is a catalog-shape signal
+        rather than a load one.
+      notes: Environment-scoped.
+    promQL: |
+      max(%%{mzSqlPrefix}views_count{%%{mzEnvironmentFilter}})
+  - id: materialize.compute.subscribes.active
+    stability: best-effort
+    description:
+      summary: |
+        Live SUBSCRIBE sessions — long-running queries that stream updates to a
+        client as data changes. A handful of `system` subscribes are
+        Materialize's own internal probes; a persistently climbing `user` count
+        is a classic leaked-connection signal.
+      notes: Environment-scoped.
+    promQL: |
+      sum by (session_type) (mz_active_subscribes{%%{mzEnvironmentFilter}})
+    instant: true
+  - id: materialize.compute.indexes.by_type
+    stability: best-effort
+    description:
+      summary: |
+        Indexes split by the kind of relation they sit on. Workloads normally
+        lean heavily on indexes over views (the standard "keep a query's result
+        hot" pattern); a large share of indexes on base tables is unusual and
+        usually worth a second look.
+      notes: Environment-scoped.
+    promQL: |
+      sum by (relation_type) (%%{mzSqlPrefix}indexes_count{%%{mzEnvironmentFilter}})
+    instant: true
+
+  # --- hydration -----------------------------------------------------------
+  - id: materialize.compute.hydration.currently_hydrating
+    stability: best-effort
+    description:
+      summary: |
+        Collections still rebuilding their in-memory state — a live
+        hydration-queue proxy. After a restart, replica creation, or some DDL, a
+        dataflow has to rebuild from persisted storage before it can serve, and
+        until it does it has no output frontier.
+      nominal: |
+        0, with brief spikes right after a replica restart that drain back to 0
+        as dataflows catch up. Those spikes are healthy re-hydration, not a
+        problem.
+      unhealthy: |
+        A count that stays elevated means something can't finish hydrating — a
+        source whose CREATE never completed, or a wedged dataflow. Confirm what
+        with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
+      notes: |
+        Self-managed has no hydration-state metric; this counts collections
+        parked at the wallclock-lag sentinel, which is the equivalent live signal.
+    promQL:
+      template: |
+        count(
+          max by (instance_id, collection_id) (
+            mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", instance_id!="", quantile="1"} > 1e15
+          )
+        )
+      functions:
+        - name: orZero
+  - id: materialize.compute.hydration.queue_size
+    stability: best-effort
+    description:
+      summary: |
+        Collections waiting in each replica's hydration queue. environmentd
+        schedules hydration in batches; a backlog means work is arriving faster
+        than the replica can rebuild it.
+      nominal: "0 — nothing is waiting to hydrate."
+      unhealthy: |
+        Sustained non-zero means the replica is undersized for its workload, or
+        one slow-hydrating collection is holding up the line behind it.
+    promQL:
+      template: |
+        sum by (instance_id, replica_id) (
+          mz_compute_controller_hydration_queue_size{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}"}
+        ) > 0
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+  - id: materialize.compute.hydration.slowest_collections
+    stability: experimental
+    description:
+      summary: |
+        The 15 collections that took longest to finish hydrating. Hydration time
+        scales with the size of the state being rebuilt, so large materialized
+        views and indexes naturally top the list.
+      notes: |
+        The per-collection hydration-time metric is cloud-only, so this is blank
+        on self-managed. Get it from SQL instead: `SELECT object_id, time_ns/1e9
+        AS seconds FROM mz_internal.mz_compute_hydration_times ORDER BY time_ns
+        DESC`. The live metric-side proxy for what's behind is
+        materialize.compute.freshness.top_collections.
+    promQL:
+      template: |
+        topk(15,
+          %%{mzSqlPrefix}compute_hydration_time_seconds{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", hydrated="1"}
+        )
+      functions:
+        - name: mzObjectName
+          args: ["collection_id"]
+        - name: mzClusterName
+          args: ["instance_id"]
+    instant: true
+
+  # --- freshness (frontier lag vs real time) -------------------------------
+  - id: materialize.compute.freshness.lag_by_cluster
+    stability: best-effort
+    description:
+      summary: |
+        How far behind real time each cluster's most-lagged collection is — the
+        worst-case freshness across every index, materialized view, and source
+        on the cluster.
+      nominal: |
+        Low and flat, sub-second to a few seconds, for a cluster keeping up.
+      degraded: |
+        A sustained climb means a collection can't keep pace with its input — an
+        under-provisioned cluster or an expensive dataflow. A sharp spike that
+        decays on its own is normal re-hydration after a restart or DDL, not a
+        problem.
+      notes: |
+        The catalog cluster (s2) sits a couple seconds back as its baseline.
+        Collections with no established frontier report a sentinel and are
+        excluded here. For which collection is responsible, see
+        materialize.compute.freshness.top_collections.
+    promQL:
+      template: |
+        max by (instance_id) (
+          mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", instance_id!="", quantile="1"} < 1e9
+        )
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+  - id: materialize.compute.freshness.top_collections
+    stability: best-effort
+    description:
+      summary: |
+        The 15 collections whose output frontier is furthest behind real time —
+        the per-collection breakdown behind the per-cluster freshness lag,
+        labeled by object name.
+      notes: |
+        Idle or still-hydrating collections report a sentinel and are filtered
+        out; check hydration state directly in SQL if a collection you expect is
+        missing. Catalog (s2) collections commonly appear with a small,
+        expected baseline lag.
+    promQL:
+      template: |
+        topk(15,
+          max by (instance_id, collection_id) (
+            mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", instance_id!="", replica_id=~"%%{mzReplicaList}", quantile="1"} < 1e9
+          )
+        )
+      functions:
+        - name: mzObjectName
+          args: ["collection_id"]
+        - name: mzClusterName
+          args: ["instance_id"]
+    instant: true
+
+  # --- dataflows -----------------------------------------------------------
+  - id: materialize.compute.dataflows.count
+    stability: best-effort
+    description:
+      summary: |
+        Active dataflows on each replica. Every index, materialized view, and
+        live SUBSCRIBE runs as one or more dataflows, so this count rises with
+        DDL and subscribe activity.
+      nominal: Stable for a steady workload.
+      degraded: |
+        A sharp drop with no matching DDL usually means a replica restarted; a
+        sharp rise usually means bulk object creation.
+    promQL:
+      template: |
+        max by (cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id) (
+          mz_compute_replica_history_dataflow_count{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+  - id: materialize.compute.dataflows.count_by_worker
+    stability: best-effort
+    description:
+      summary: |
+        The dataflow count broken out per worker. Workers in a replica run in
+        lockstep and should see exactly the same dataflows, so their series
+        should overlap perfectly.
+      unhealthy: |
+        Visible divergence between worker series within one (cluster, replica)
+        is a bug-class signal — the workers disagree on what they're running —
+        and worth filing.
+    promQL:
+      template: |
+        max by (cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, worker_id) (
+          mz_compute_replica_history_dataflow_count{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+  - id: materialize.compute.dataflows.elapsed_rate
+    stability: best-effort
+    description:
+      summary: |
+        CPU-cores busy inside dataflows, per cluster — the whole of dataflow
+        work: arrangement maintenance, query evaluation, and hydration. Capped
+        by cluster size (a 400cc cluster can't exceed 400 cores).
+      nominal: Well below the cluster's size.
+      degraded: |
+        Sustained near the size cap means the cluster is CPU-bound and a
+        candidate for upsizing. The catalog cluster (s2) is typically the
+        busiest in any environment.
+      notes: |
+        Reads high if the same clusterd endpoint is scraped by more than one
+        Prometheus job (a known multi-job scrape-config pitfall); fix the scrape
+        config, or collapse duplicate `job` series, at the deployment.
+    promQL:
+      template: |
+        sum by (instance_id) (
+          rate(
+            %%{mzSqlPrefix}dataflow_elapsed_seconds_total{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}"}%%{interval}
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+
+  # --- arrangements --------------------------------------------------------
+  - id: materialize.compute.arrangements.maintenance_rate
+    stability: best-effort
+    description:
+      summary: |
+        CPU-cores spent maintaining arrangements — the in-memory indexed
+        snapshots behind every index and materialized view — summed across a
+        replica's workers, so an N-worker replica can reach N.
+      nominal: Well below the worker count.
+      degraded: |
+        Sustained near the worker count means the replica is bottlenecked on
+        maintenance, usually a high upstream change rate or many heavy indexes.
+        The catalog cluster's baseline runs higher than typical user clusters.
+      notes: |
+        Uses the long-form cluster_environmentd_* id labels. Reads high under
+        the same multi-job scrape pitfall as the dataflow elapsed rate.
+    promQL:
+      template: |
+        sum by (cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id) (
+          rate(
+            mz_arrangement_maintenance_seconds_total{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+  - id: materialize.compute.arrangements.maintenance_rate_by_worker
+    stability: best-effort
+    description:
+      summary: |
+        The same maintenance CPU, split per worker — each worker tops out at 1.0.
+      degraded: |
+        Watch for skew: one worker sitting near 1.0 while its siblings idle near
+        0 means the cluster is bottlenecked on a single worker (a hot key or hot
+        arrangement) — the most common reason an 8-worker cluster performs like a
+        1-worker one. `EXPLAIN PHYSICAL PLAN` on the heavy object is the usual
+        next step.
+    promQL:
+      template: |
+        sum by (cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, worker_id) (
+          rate(
+            mz_arrangement_maintenance_seconds_total{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+  - id: materialize.compute.arrangements.records.system
+    stability: best-effort
+    description:
+      summary: |
+        Row counts of arrangements for Materialize's internal system collections
+        (collection id starts with `s`). These back the catalog and internal
+        probes, not user data, so they shouldn't grow with your workload —
+        unexpected growth here can point at a Materialize bug.
+    promQL: |
+      max by (collection_id) (
+        %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"s.*"}
+      )
+    instant: true
+  - id: materialize.compute.arrangements.records.user
+    stability: best-effort
+    description:
+      summary: |
+        Row counts of arrangements for your compute objects (collection id starts
+        with `u`) — the row count of every user index and materialized view, and
+        the primary driver of cluster memory. Growth on a collection tracks the
+        size of its underlying data.
+    promQL:
+      template: |
+        max by (collection_id) (
+          %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"u.*"}
+        )
+      functions:
+        - name: mzObjectName
+          args: ["collection_id"]
+    instant: true
+  - id: materialize.compute.arrangements.records.transient
+    stability: best-effort
+    description:
+      summary: |
+        Row counts of transient (collection id `t*`) and uncategorized (`none`)
+        arrangements — short-lived intermediates from query optimization and
+        dataflow execution. Normally small and ephemeral.
+      unhealthy: |
+        Sustained non-trivial entries here can mean a stuck or leaked dataflow
+        holding intermediate state it should have released.
+    promQL: |
+      max by (collection_id) (
+        %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"t.*|none"}
+      )
+    instant: true
