@@ -22,11 +22,12 @@ The repo is a polyglot monorepo: a Rust workspace, a `uv`-managed Python workspa
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `grafana-dashboards/`: Grafana dashboards-as-code (Python + `grafana-foundation-sdk`); sources under `dashboards/` (e.g. `mz_environment/`, `render.py`, `palette.py`)
-    * `py-mzmon-lib/`: Python helper library imported by the dashboard packages; not consumed by customers
+    * `py-mzmon-lib/`: Python helper library imported by the dashboard packages; not consumed by customers. Also home to the original query registry (`registry/`), now ported to `mzmon-lib`'s Rust `query` module
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml`) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`)
     * `ref-alloy-pipelines/`: Python reference pipelines being ported into the typed Rust path (`agent_config.py`, `gateway_config.py`, `processor.alloy`, `alloy/`)
-    * `mzmon-lib/`: Rust library — typed Alloy model plus embedded JSONSchemas under `schemas/alloy/`; not consumed by customers
-    * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `main.rs`)
+    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; not consumed by customers
+    * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`)
     * `mz-monitoring-check/`: Rust schema/consistency checks
   * `charts/`
     * `materialize-monitoring/`: umbrella chart

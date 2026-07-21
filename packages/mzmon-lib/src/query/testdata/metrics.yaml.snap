@@ -1,0 +1,425 @@
+- labels:
+  - compute_cluster_id
+  - compute_replica_id
+  - compute_replica_name
+  - materialize_cloud_organization_name
+  name: v2_mz_compute_cluster_status
+  stability: best-effort
+  usage:
+  - materialize.clusters.count
+  - materialize.clusters.info
+  - materialize.clusters.replicas.count
+  - materialize.clusters.replicas.sizes
+  - materialize.health.clusters.status.percentage
+  - materialize.health.environment.availability.percentage
+  - materialize.info.version
+- labels:
+  - materialize_cloud_organization_name
+  - type
+  name: v2_mz_storage_objects
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.by_type
+  - materialize.storage.sinks.count
+  - materialize.storage.sources.by_type
+  - materialize.storage.sources.catalog
+  - materialize.storage.sources.count
+- labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - quantile
+  - replica_id
+  name: mz_dataflow_wallclock_lag_seconds
+  stability: best-effort
+  usage:
+  - materialize.compute.freshness.lag_by_cluster
+  - materialize.compute.freshness.top_collections
+  - materialize.compute.hydration.currently_hydrating
+  - materialize.info.max_lag
+- labels:
+  - container
+  - namespace
+  - pod
+  name: container_cpu_usage_seconds_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.cpu.usage.absolute
+  - materialize.kubernetes.cpu.usage.percent
+  - materialize.kubernetes.pods.cpu_usage
+- labels:
+  - container
+  - namespace
+  - pod
+  name: container_memory_working_set_bytes
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.memory.usage.absolute
+  - materialize.kubernetes.memory.usage.percent
+  - materialize.kubernetes.pods.memory_usage
+- labels:
+  - container
+  - namespace
+  - pod
+  name: container_spec_memory_limit_bytes
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.memory.capacity
+  - materialize.kubernetes.memory.usage.percent
+  - materialize.kubernetes.pods.memory_usage
+- labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  name: mz_compute_peek_duration_seconds_bucket
+  stability: best-effort
+  usage:
+  - materialize.connections.peek_latency.p50
+  - materialize.connections.peek_latency.p90
+  - materialize.connections.peek_latency.p99
+- labels:
+  - materialize_cloud_organization_name
+  name: mz_query_total
+  stability: best-effort
+  usage:
+  - materialize.connections.queries.distribution
+  - materialize.connections.queries.rate
+  - materialize.connections.queries.rate_by_statement
+- labels:
+  - job
+  - namespace
+  name: up
+  stability: best-effort
+  usage:
+  - materialize.scraper.mzmon.clusterd
+  - materialize.scraper.mzmon.environmentd
+  - materialize.scraper.mzmon.orchestratord
+- labels:
+  - collection_id
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: v2_mz_arrangement_record_count
+  stability: best-effort
+  usage:
+  - materialize.compute.arrangements.records.system
+  - materialize.compute.arrangements.records.transient
+  - materialize.compute.arrangements.records.user
+- labels:
+  - namespace
+  - pod
+  - resource
+  name: kube_pod_container_resource_limits
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.cpu.usage.percent
+  - materialize.kubernetes.pods.cpu_usage
+- labels:
+  - materialize_cloud_organization_name
+  name: mz_adapter_commands
+  stability: best-effort
+  usage:
+  - materialize.connections.adapter.command_rate
+  - materialize.connections.adapter.commands_by_application
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_arrangement_maintenance_seconds_total
+  stability: best-effort
+  usage:
+  - materialize.compute.arrangements.maintenance_rate
+  - materialize.compute.arrangements.maintenance_rate_by_worker
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_compute_replica_history_dataflow_count
+  stability: best-effort
+  usage:
+  - materialize.compute.dataflows.count
+  - materialize.compute.dataflows.count_by_worker
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_bytes_committed
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.lag
+  - materialize.storage.sinks.throughput
+- labels:
+  - materialize_cloud_organization_name
+  name: v2_mz_indexes_count
+  stability: best-effort
+  usage:
+  - materialize.compute.indexes.by_type
+  - materialize.compute.indexes.count
+- labels:
+  - namespace
+  - pod
+  name: container_network_receive_bytes_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.network_rx
+- labels:
+  - namespace
+  - pod
+  name: container_network_receive_errors_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.network_errors
+- labels:
+  - namespace
+  - pod
+  name: container_network_receive_packets_dropped_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.network_drops
+- labels:
+  - namespace
+  - pod
+  name: container_network_transmit_bytes_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.network_tx
+- labels:
+  - namespace
+  - pod
+  name: container_network_transmit_errors_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.network_errors
+- labels:
+  - namespace
+  - pod
+  name: container_network_transmit_packets_dropped_total
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.network_drops
+- labels:
+  - container
+  - namespace
+  name: container_spec_cpu_period
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.cpu.capacity
+- labels:
+  - container
+  - namespace
+  name: container_spec_cpu_quota
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.cpu.capacity
+- labels:
+  - container
+  - namespace
+  name: container_start_time_seconds
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.last_restart
+- labels:
+  - namespace
+  name: kube_deployment_status_replicas_ready
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.deployments.readiness
+- labels:
+  - namespace
+  name: kube_deployment_status_replicas_unavailable
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.deployments.readiness
+- labels:
+  - namespace
+  name: kube_pod_status_phase
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.pods.readiness
+- labels:
+  - namespace
+  name: kube_statefulset_status_replicas_ready
+  stability: best-effort
+  usage:
+  - materialize.kubernetes.statefulsets.ready
+- labels:
+  - materialize_cloud_organization_name
+  name: mz_active_sessions
+  stability: best-effort
+  usage:
+  - materialize.connections.sessions.active
+- labels:
+  - materialize_cloud_organization_name
+  name: mz_active_subscribes
+  stability: best-effort
+  usage:
+  - materialize.compute.subscribes.active
+- labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: mz_compute_controller_hydration_queue_size
+  stability: best-effort
+  usage:
+  - materialize.compute.hydration.queue_size
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_bytes_staged
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.lag
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_commit_conflicts
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.iceberg.commit_failures
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_commit_duration_seconds_bucket
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.iceberg.commit_latency
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_commit_failures
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.iceberg.commit_failures
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_data_files_written
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.iceberg.file_rate
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_delete_files_written
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.iceberg.file_rate
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_snapshots_committed
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.iceberg.file_rate
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_connects
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.kafka.connect_rate
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_disconnects
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.kafka.connect_rate
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_outbuf_msg_cnt
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.kafka.output_buffer
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_txerrs
+  stability: best-effort
+  usage:
+  - materialize.storage.sinks.kafka.tx_errors
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_bytes_received
+  stability: best-effort
+  usage:
+  - materialize.storage.sources.bytes_received
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_messages_received
+  stability: best-effort
+  usage:
+  - materialize.storage.sources.ingestion_by_replica
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_commit_failures
+  stability: best-effort
+  usage:
+  - materialize.storage.sources.upstream_errors
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_committed
+  stability: best-effort
+  usage:
+  - materialize.storage.sources.upstream_errors
+- labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_known
+  stability: best-effort
+  usage:
+  - materialize.storage.sources.upstream_errors
+- labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: v2_mz_dataflow_elapsed_seconds_total
+  stability: best-effort
+  usage:
+  - materialize.compute.dataflows.elapsed_rate
+- labels:
+  - materialize_cloud_organization_name
+  name: v2_mz_mzd_views_count
+  stability: best-effort
+  usage:
+  - materialize.compute.materialized_views.count
+- labels:
+  - materialize_cloud_organization_name
+  name: v2_mz_tables_count
+  stability: best-effort
+  usage:
+  - materialize.storage.tables.count
+- labels:
+  - materialize_cloud_organization_name
+  name: v2_mz_views_count
+  stability: best-effort
+  usage:
+  - materialize.compute.views.count
+- labels:
+  - hydrated
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: v2_mz_compute_hydration_time_seconds
+  stability: experimental
+  usage:
+  - materialize.compute.hydration.slowest_collections
