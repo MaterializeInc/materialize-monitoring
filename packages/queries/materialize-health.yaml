@@ -1,0 +1,157 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Health checking queries
+
+description: |
+  Common queries for checking the health of a Materialize deployment.
+
+queries:
+  - id: materialize.scraper.mzmon.environmentd
+    stability: best-effort
+    description:
+      summary: |
+        environmentd metrics are reaching the gateway. If this goes to 0 or
+        disappears, every environmentd-backed panel and alert for the
+        environment is blind — the environment may be perfectly healthy and you
+        simply can't see it, so rule this out first.
+      unhealthy: |
+        The gateway isn't scraping environmentd. Confirm the PodMonitor is
+        installed and the gateway's scrape target is up before trusting (or
+        distrusting) any other environmentd signal.
+      notes: |
+        best-effort rather than canonical: the job label pins the `monitoring`
+        namespace, which we don't want to hard-require of every deployment.
+    promQL: |
+      up{
+        job="monitoring/mzmon-materialize-environmentd",
+        %%{mzEnvironmentNamespaceFilter}
+      } == 1
+  - id: materialize.scraper.mzmon.clusterd
+    stability: best-effort
+    description:
+      summary: |
+        clusterd (compute replica) metrics are reaching the gateway. When this
+        drops, per-cluster compute signals — arrangements, peeks, dataflows —
+        go dark even though the replicas may still be serving.
+      unhealthy: |
+        The gateway isn't scraping clusterd. A replica that was just recreated
+        can take a scrape or two to reappear; a persistent gap points at the
+        PodMonitor or the gateway target.
+      notes: |
+        best-effort rather than canonical: the job label pins the `monitoring`
+        namespace, which we don't want to hard-require of every deployment.
+    promQL: |
+      up{
+        job="monitoring/mzmon-materialize-clusterd",
+        %%{mzEnvironmentNamespaceFilter}
+      } == 1
+  - id: materialize.scraper.mzmon.orchestratord
+    stability: best-effort
+    description:
+      summary: |
+        The Materialize operator (orchestratord) is being scraped. Losing it
+        blinds you to cluster and replica lifecycle — creation, resize, and
+        rollout progress — not to the running workloads themselves.
+    promQL: |
+      up{
+        job="materialize/mzmon-materialize-operator",
+        %%{mzOperatorNamespaceFilter}
+      } == 1
+  - id: materialize.health.clusters.status.percentage
+    stability: best-effort
+    description:
+      summary: |
+        The share of the environment's clusters currently reporting ready —
+        the at-a-glance health headline for the whole environment.
+      nominal: Every cluster is ready.
+      degraded: |
+        Some clusters aren't ready, but most are. Usually a rollout in flight —
+        replicas cycling during an upgrade or resize — rather than a real
+        outage. Find which clusters are affected before reacting; a brief dip
+        during a known change is expected.
+      unhealthy: |
+        A large fraction of clusters are down and not recovering on their own.
+        Check pod restart history and narrow to the specific clusters and
+        replicas involved; this is an outage, not a rollout.
+      notes: |
+        The healthy/degraded/unhealthy bands (100% / 80-100% / <80%) are set by
+        the consuming dashboard, not by this query.
+    promQL: |
+      count(
+        %%{mzSqlPrefix}compute_cluster_status{
+          %%{mzEnvironmentFilter}
+        } == 1
+      ) / count(
+        %%{mzSqlPrefix}compute_cluster_status{
+          %%{mzEnvironmentFilter}
+        }
+      ) * 100
+  - id: materialize.health.environment.availability.percentage
+    stability: best-effort
+    description:
+      summary: |
+        An SLO-style snapshot: how much of the selected window the
+        environment's clusters were ready. Sustained dips are the signal that
+        something restarted or went down while you weren't watching.
+      nominal: |
+        At or near full availability. Watch the decimals — 99.999% is
+        five-nines, a very different story from 100%.
+      degraded: |
+        Availability slipped below target over the window. Correlate the dip
+        with cluster restarts and outages; widen the range to pin down when it
+        happened, then work backwards from there.
+      notes: |
+        Four-nines is about the ceiling this can measure: at a 30s scrape
+        resolution over a week, a single missed scrape already costs a nine, so
+        don't chase phantom sub-nine dips that are really scrape granularity.
+    promQL: |
+      avg by (materialize_cloud_organization_namespace) (
+        avg_over_time(
+          %%{mzSqlPrefix}compute_cluster_status{
+            %%{mzEnvironmentFilter}
+          }%%{range}
+        ) * 100
+      )
+  - id: materialize.info.version
+    stability: best-effort
+    description:
+      summary: |
+        The version of Materialize running in the environment. A single version
+        is the steady state; multiple values appear briefly during a rolling
+        upgrade.
+      notes: |
+        The presentation layer extracts the commit hash from the `mz_version`
+        label (e.g. to link the commit). If the version isn't what you expect,
+        check the environment's manifest in the deployment pipeline.
+    promQL: |
+      group by (mz_version) (
+        %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}}
+      )
+    instant: true
+  # FIXME: `$__range:1m` is a literal Grafana subquery. The `range` param
+  # renders a bracketed range-vector, not a subquery step, so there's no
+  # portable placeholder for this yet — pinned to Grafana (won't render for
+  # GCM/Datadog as written). Repin once a bare-range / subquery-step param lands.
+  - id: materialize.info.max_lag
+    stability: best-effort
+    description:
+      summary: |
+        The worst frontier lag seen anywhere in the environment over the
+        selected window — how far the most-behind collection's output trailed
+        real time. A top-level freshness pointer.
+      degraded: |
+        Climbing toward an hour means some collection is falling behind; drill
+        into per-cluster and per-collection freshness to find which, and into
+        hydration / source health for why.
+      notes: |
+        Not-yet-hydrated collections are excluded (they report the sentinel and
+        surface as "currently hydrating"). This is the peak over the window, so
+        it reflects the worst moment rather than the current value.
+    promQL: |
+      max(
+        max_over_time(
+          (
+            mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id!="", quantile="1"} < 1e9
+          )[1h:1m]
+        )
+      )
+    instant: true

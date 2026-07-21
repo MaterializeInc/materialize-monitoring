@@ -21,6 +21,7 @@ dependencies = [
     "grafana-foundation-sdk==0.0.18",
     "pydantic>=2.13.3",
     "pyyaml>=6.0.3",
+    "promql-parser>=0.10.0",
 ]
 
 [dependency-groups]
@@ -182,6 +183,10 @@ docstring-code-format = false
 # enabled.
 docstring-code-line-length = "dynamic"
 
+[tool.pyright]
+ignore = [
+    "packages/ref*/**"
+]
 
 [tool.pytest]
 addopts = ["--showlocals", "-v", "--doctest-modules"]

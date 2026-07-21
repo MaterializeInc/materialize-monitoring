@@ -23,7 +23,7 @@ Grafana Alloy (gateway) is installed and configured to process metrics and logs.
     Destination: Google Cloud Monitoring
     {{- end }}
     {{- if .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.enabled }}
-    Destination: DataDog
+    Destination: Datadog
     {{- end }}
   {{- end }}
   {{- if .Values.pipeline.logging.gateway.destination.loki.enabled }}

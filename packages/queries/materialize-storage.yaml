@@ -1,0 +1,356 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Storage-object queries: sources, sinks, and their throughput / lag / errors.
+
+description: |
+  Sources and sinks for a Materialize deployment — catalog shape, throughput,
+  lag, and upstream/downstream health. Adapted from the Overview dashboard's
+  "Sources and Sinks" tab.
+
+  The clusterd-side throughput/lag/error metrics (mz_source_* / mz_sink_*) carry
+  the long-form cluster_environmentd_materialize_cloud_* id labels. These queries
+  assume one Prometheus job per clusterd endpoint; if the same endpoint is
+  scraped by several jobs, a plain sum-rate reads N× — dedupe the job at the
+  deployment (fix the scrape config, or wrap the inner rate in `max without
+  (job)`) rather than baking it into the canonical query.
+
+queries:
+  # --- summary counts (environment-scoped) ---------------------------------
+  - id: materialize.storage.sources.count
+    stability: best-effort
+    description:
+      summary: |
+        Active sources in the catalog — each is a continuous ingestion
+        connection from an external system (Kafka, Postgres, MySQL, S3, …), so
+        this is roughly how many upstream feeds the environment maintains.
+        Counts distinct source objects (the hidden per-source `_progress`
+        subsources are excluded), matching `mz_sources`.
+      notes: Environment-scoped — the cluster/replica selectors don't narrow it.
+    promQL:
+      template: |
+        count(group by (id) (%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="source"}))
+      functions:
+        - name: orZero
+  - id: materialize.storage.sinks.count
+    stability: best-effort
+    description:
+      summary: |
+        Active sinks in the catalog — each emits the results of a materialized
+        view or query to an external system (Kafka, Iceberg, …). Counts distinct
+        sink objects (excluding `_progress` subsources), matching `mz_sinks`.
+      notes: Environment-scoped.
+    promQL:
+      template: |
+        count(group by (id) (%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="sink"}))
+      functions:
+        - name: orZero
+  - id: materialize.storage.tables.count
+    stability: best-effort
+    description:
+      summary: |
+        User-created tables in the catalog. Tables are write-once-read-many;
+        `INSERT`s feed dataflows downstream. Mostly a catalog-shape signal — for
+        actual ingest activity look at source throughput.
+      notes: Environment-scoped.
+    promQL:
+      template: |
+        max(sum by (instance) (%%{mzSqlPrefix}tables_count{%%{mzEnvironmentFilter}}))
+      functions:
+        - name: orZero
+
+  # --- sources -------------------------------------------------------------
+  - id: materialize.storage.sources.by_type
+    stability: best-effort
+    description:
+      summary: |
+        Sources by connector type (kafka / postgres / mysql / …) — what flavors
+        of upstream feed make up the ingest workload. Most environments
+        concentrate on one or two.
+      notes: Environment-scoped.
+    promQL: |
+      count by (object_type) (
+        group by (id, object_type) (
+          %%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="source"}
+        )
+      ) > 0
+    instant: true
+  - id: materialize.storage.sources.catalog
+    stability: best-effort
+    description:
+      summary: |
+        A catalog of sources — one row per source (by name) with its connector
+        type, envelope, and the cluster it ingests on. The metric-side "what
+        sources do I have" reference.
+      notes: |
+        Self-managed exposes no source *status* metric, so running/stalled isn't
+        here — check `SELECT name, type, status FROM mz_internal.mz_source_statuses`,
+        and use source throughput to confirm a source is actively ingesting.
+        `_progress` subsources are excluded, so the row count matches the source
+        count. Environment-scoped.
+    promQL:
+      template: |
+        group by (id, object_type, connection_type, envelope_type, cluster_id) (
+          %%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="source"}
+        )
+      functions:
+        - name: mzObjectName
+          args: ["id"]
+    instant: true
+  - id: materialize.storage.sources.bytes_received
+    stability: best-effort
+    description:
+      summary: |
+        Inbound throughput per primary source — bytes/second pulled from
+        upstream. Subsources (e.g. per-table Postgres replication) roll up to
+        their primary, so each line is one logical source.
+      notes: |
+        Idle sources are filtered out. Scoped to the selected clusters/replicas.
+    promQL:
+      template: |
+        sum by (parent_source_id) (
+          rate(mz_source_bytes_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+        ) > 0
+      functions:
+        - name: mzObjectName
+          args: ["parent_source_id"]
+  - id: materialize.storage.sources.ingestion_by_replica
+    stability: best-effort
+    description:
+      summary: |
+        Messages ingested per second, split per source AND replica. Replicas
+        read their upstream independently and should track together.
+      unhealthy: |
+        A replica flat at 0 while its siblings keep ingesting has lost its
+        upstream connection (e.g. restarted and couldn't resume pulling from
+        Kafka). The source still shows `Running` overall and the aggregate
+        throughput hides it, so this per-replica split is where it surfaces —
+        frontier lag will be climbing too; restarting that replica usually
+        clears the stale connection.
+      notes: Scoped to the selected clusters/replicas.
+    promQL:
+      template: |
+        sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
+          rate(mz_source_messages_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+        )
+      functions:
+        - name: mzObjectName
+          args: ["parent_source_id"]
+  - id: materialize.storage.sources.upstream_errors
+    stability: best-effort
+    description:
+      summary: |
+        Per-source upstream health, with two complementary signals — both
+        nominal at 0, so an empty panel is healthy and any series means a source
+        needs attention.
+      unhealthy: |
+        Commit failures fire when the upstream is reachable but rejects the
+        offset/replication-slot commit (auth/ACL, broker rejecting). The
+        disconnected indicator flips to 1 when the source has lost sight of its
+        upstream (`offset_known` fell below `offset_committed`) — the
+        broker/DB-unreachable case (BrokerTransportFailure, severed security
+        group, DNS) that commit-failures can't catch, because the source never
+        reaches the commit step. When disconnected is 1, throughput flat-lines
+        and frontier lag climbs. Read the exact error via `SELECT name, status,
+        error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.
+      notes: |
+        Data-decode errors are separate (`mz_source_error_inserts`). Scoped to
+        the selected clusters/replicas.
+    promQL:
+      - |
+        sum by (source_id) (
+          rate(mz_source_offset_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+        ) > 0
+      - |
+        (
+          max by (source_id) (mz_source_offset_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
+          > bool max by (source_id) (mz_source_offset_known{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
+        ) > 0
+
+  # --- sinks ---------------------------------------------------------------
+  - id: materialize.storage.sinks.by_type
+    stability: best-effort
+    description:
+      summary: |
+        Sinks by (type, envelope) — e.g. `kafka / upsert`, `kafka / debezium`,
+        `iceberg / upsert`. The envelope is how Materialize encodes changes:
+        `upsert` writes the latest value per key, `debezium` writes change
+        events with old+new values.
+      notes: Environment-scoped.
+    promQL: |
+      count by (object_type, envelope_type) (
+        group by (id, object_type, envelope_type) (
+          %%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="sink"}
+        )
+      ) > 0
+    instant: true
+  - id: materialize.storage.sinks.throughput
+    stability: best-effort
+    description:
+      summary: |
+        Outbound throughput per sink — bytes/second successfully committed to
+        the downstream system (Kafka broker, Iceberg catalog, …).
+      notes: |
+        Idle sinks are filtered out. Scoped to the selected clusters/replicas.
+    promQL:
+      template: |
+        sum by (sink_id) (
+          rate(mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+        ) > 0
+      functions:
+        - name: mzObjectName
+          args: ["sink_id"]
+  - id: materialize.storage.sinks.lag
+    stability: best-effort
+    description:
+      summary: |
+        Bytes staged for a sink but not yet committed downstream — an in-flight
+        queue depth in bytes. Oscillates around a small value in normal
+        operation as commits happen periodically.
+      unhealthy: |
+        Sustained growth means the sink can't keep up — usually downstream
+        back-pressure (broker overloaded, Iceberg catalog slow) or repeated
+        commit failures (see the Iceberg/Kafka sink error panels).
+      notes: |
+        Clamped at 0 (brief negatives come from scrape skew between the staged
+        and committed counters). Scoped to the selected clusters/replicas.
+    promQL:
+      template: |
+        clamp_min(
+          sum by (sink_id) (mz_sink_bytes_staged{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
+          - sum by (sink_id) (mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}),
+          0
+        )
+      functions:
+        - name: mzObjectName
+          args: ["sink_id"]
+
+  # --- iceberg sinks -------------------------------------------------------
+  - id: materialize.storage.sinks.iceberg.commit_latency
+    stability: best-effort
+    description:
+      summary: |
+        Iceberg commit-duration percentiles (p50/p90/p99) — how long each
+        `COMMIT` against the Iceberg catalog takes (write a snapshot manifest,
+        ask the catalog to atomically swap it in).
+      nominal: p50 sub-second to low seconds; p99 a few seconds even when healthy.
+      degraded: |
+        Sustained p99 in the tens of seconds points at a slow Iceberg catalog
+        (REST catalog under load, Glue API throttling); sink lag will be growing
+        at the same time.
+      notes: Scoped to the selected clusters/replicas.
+    promQL:
+      - |
+        histogram_quantile(0.50, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+      - |
+        histogram_quantile(0.90, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+      - |
+        histogram_quantile(0.99, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+  - id: materialize.storage.sinks.iceberg.commit_failures
+    stability: best-effort
+    description:
+      summary: |
+        Per-sink rate of failed and conflicting Iceberg commits. Conflicts
+        (concurrent-writer races on the snapshot pointer) are recoverable —
+        Materialize retries — but a high rate means something else is writing
+        the same Iceberg table; failures are commit-side errors (network, auth,
+        schema).
+      unhealthy: |
+        Non-zero in either dimension is worth investigating; climbing failures
+        drag sink lag up with them.
+      notes: Scoped to the selected clusters/replicas.
+    promQL:
+      - template: |
+          sum by (sink_id) (rate(mz_sink_iceberg_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]
+      - template: |
+          sum by (sink_id) (rate(mz_sink_iceberg_commit_conflicts{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]
+  - id: materialize.storage.sinks.iceberg.file_rate
+    stability: best-effort
+    description:
+      summary: |
+        Per-sink rate of files and snapshots written to Iceberg. Each commit
+        produces one snapshot with data files (new rows) and delete files
+        (tombstones for upserts). The data:delete ratio reflects your workload —
+        pure-insert sinks produce ~0 deletes; upsert-heavy ones roughly 1:1.
+      notes: |
+        Sustained delete-file rate with no data files means the sink is mostly
+        deleting (data evaporating upstream). Scoped to the selected clusters/replicas.
+    promQL:
+      - template: |
+          sum by (sink_id) (rate(mz_sink_iceberg_data_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]
+      - template: |
+          sum by (sink_id) (rate(mz_sink_iceberg_delete_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]
+      - template: |
+          sum by (sink_id) (rate(mz_sink_iceberg_snapshots_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]
+
+  # --- kafka sinks ---------------------------------------------------------
+  - id: materialize.storage.sinks.kafka.tx_errors
+    stability: best-effort
+    description:
+      summary: |
+        Per-sink rate of TX errors from the librdkafka client — each is one
+        failed produce-request against the broker.
+      unhealthy: |
+        Non-zero is a problem: broker outages, ACL changes, topic
+        deletion/recreation, or partition rebalancing. Sustained errors grow
+        sink lag and can fill the output buffer.
+      notes: Scoped to the selected clusters/replicas.
+    promQL:
+      template: |
+        sum by (sink_id) (rate(mz_sink_rdkafka_txerrs{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+      functions:
+        - name: mzObjectName
+          args: ["sink_id"]
+  - id: materialize.storage.sinks.kafka.output_buffer
+    stability: best-effort
+    description:
+      summary: |
+        Messages sitting in the librdkafka output buffer, waiting to be sent to
+        the broker. Normal buffer fluctuates briefly as messages flow through.
+      unhealthy: |
+        Sustained high values mean Materialize is producing faster than the
+        broker accepts (often paired with TX errors); if the buffer hits its
+        bound the sink stalls and lag climbs.
+      notes: Scoped to the selected clusters/replicas.
+    promQL:
+      template: |
+        sum by (sink_id) (mz_sink_rdkafka_outbuf_msg_cnt{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
+      functions:
+        - name: mzObjectName
+          args: ["sink_id"]
+  - id: materialize.storage.sinks.kafka.connect_rate
+    stability: best-effort
+    description:
+      summary: |
+        Connect and disconnect events per sink against the Kafka broker. Healthy
+        connections are persistent — a couple of connects at startup and zero
+        disconnects afterward.
+      unhealthy: |
+        A sustained non-zero disconnect rate signals unhealthy connectivity
+        (network flakiness, broker restarting, auth tokens expiring); pairs with
+        TX errors when the issue is broker-side rather than purely network.
+      notes: Scoped to the selected clusters/replicas.
+    promQL:
+      - template: |
+          sum by (sink_id) (rate(mz_sink_rdkafka_connects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]
+      - template: |
+          sum by (sink_id) (rate(mz_sink_rdkafka_disconnects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        functions:
+          - name: mzObjectName
+            args: ["sink_id"]

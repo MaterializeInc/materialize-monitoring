@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Cluster and replica inventory / sizing queries.
+
+description: |
+  Inventory and sizing of a Materialize deployment's clusters and replicas.
+  Adapted from the Overview dashboard's "Cluster Objects / Replicas" tab.
+
+queries:
+  - id: materialize.clusters.count
+    stability: best-effort
+    description:
+      summary: |
+        How many clusters exist, split into the Materialize-managed system
+        clusters (mz_catalog_server, mz_system, mz_probe, …) that every
+        environment has and the user clusters you created. The gap between the
+        two is your own footprint.
+      notes: |
+        Steady in normal operation; steps up and down on CREATE CLUSTER / DROP
+        CLUSTER. Sustained drift with no DDL you recognize points at automation
+        creating clusters.
+    promQL:
+      - |
+        count(
+          group by (compute_cluster_id) (
+            %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}"}
+          )
+        )
+      - |
+        count(
+          group by (compute_cluster_id) (
+            %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_cluster_id=~"^s.*"}
+          )
+        )
+  - id: materialize.clusters.replicas.count
+    stability: best-effort
+    description:
+      summary: |
+        How many replicas back the selected clusters, and how many of those are
+        redundancy beyond the first. Every cluster needs one replica to run;
+        anything above that is capacity or availability headroom you've opted
+        into, so a non-zero "additional" count is the quick check that HA is
+        actually configured where you expect it.
+      notes: |
+        Steps on CREATE/DROP CLUSTER REPLICA. The "additional" line is hardened
+        to read 0 rather than "no data" on clusters with a single replica.
+    promQL:
+      - |
+        count(
+          group by (compute_cluster_id, compute_replica_id) (
+            %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
+          )
+        )
+      - template: |
+          count(
+            group by (compute_cluster_id, compute_replica_id) (
+              %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}", compute_replica_name!="r1"}
+            )
+          )
+        functions:
+          - name: orZero
+  - id: materialize.clusters.replicas.sizes
+    stability: best-effort
+    description:
+      summary: |
+        The replica fleet grouped by configured size. Most deployments settle
+        on a handful of sizes; a long tail of one-off sizes usually means an
+        experiment or a half-finished migration. The total agrees with the
+        replica count.
+    promQL: |
+      count by (size) (
+        %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
+      )
+    instant: true
+  - id: materialize.clusters.info
+    stability: best-effort
+    description:
+      summary: |
+        A reference row per (cluster, replica): ids, names, size, version, and
+        scheduling metadata. The "what does my fleet actually look like" lookup
+        — most useful for grabbing a cluster or replica id to scope the rest of
+        a dashboard to.
+      notes: |
+        A catalog snapshot, not a health signal. The presentation layer projects
+        the metric's labels (compute_cluster_name, size, mz_version, region, …)
+        into table columns; this query just selects the underlying series.
+    promQL: |
+      %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
+    instant: true

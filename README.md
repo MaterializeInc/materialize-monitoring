@@ -50,7 +50,7 @@ Targets:
     * source (Python SDK): `packages/grafana-dashboards/dashboards/`
 * (TODO) Grafana 12
 * (TODO) Grafana 10-11
-* (TODO) DataDog
+* (TODO) Datadog
 * (TODO) Google Cloud Operations
 
 ### Materialize Fleet View

@@ -59,6 +59,7 @@ components:
       # Only grafana dashboard supported for now
       - packages/grafana-dashboards/pyproject.toml
     content_paths:
+      - packages/queries/
       - packages/grafana-dashboards/
       # Generated dashboard output bundled into the chart.
       - charts/materialize-monitoring/pre-rendered/dashboards/
