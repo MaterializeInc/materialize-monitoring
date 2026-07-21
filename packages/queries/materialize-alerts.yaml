@@ -1,0 +1,874 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Alerting rules for Materialize itself (environmentd, clusterd, persist,
+# console, auth). Alerts for the surrounding infrastructure live in
+# infra-alerts.yaml.
+
+description: |
+  Alerting rules for Materialize.
+
+  Each alert carries its firing expression as an inline query, is graded by a
+  `severity` label (critical > warning > notice), and is tagged with a
+  `component` label. Per-environment alerts group abstractly and attach the
+  environment name via the `mzEnvironmentName` template function; the optional
+  `%%{excludeEnvironmentFilter}` fragment lets a deployment exclude environments
+  (e.g. internal test environments). Alerts that only apply to Materialize Cloud
+  carry `deploymentMode: cloud-only`.
+
+metricImportanceHint: essential
+
+alerts:
+  # --- environmentd availability -------------------------------------------
+  - alert: env-uptime-sla
+    group: environmentd
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: critical
+      component: environmentd
+    description:
+      summary: environmentd is not accepting basic connections and may be unreachable.
+      unhealthy: |
+        The environment has been failing basic connection checks for 5m (past the
+        grace period after pod start). Check environmentd health and reachability,
+        and network path to the environment.
+    query:
+      id: materialize.environmentd.uptime_sla
+      stability: best-effort
+      description:
+        summary: Environments whose connection-success rate has fallen to 0.1 or below.
+      promQL:
+        template: |
+          avg by (namespace, pod) (
+            v2_mz_can_connect{%%{excludeEnvironmentFilter}}
+          ) <= 0.1
+          and on (namespace, pod) (
+            time() - kube_pod_start_time > 5 * 60
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: env-uptime-slo
+    group: environmentd
+    stability: best-effort
+    for: 3m
+    labels:
+      severity: warning
+      component: environmentd
+    description:
+      summary: environmentd is not accepting basic connections and may be unreachable.
+      degraded: |
+        Early warning of the same condition as env-uptime-sla, at a shorter
+        duration. If it persists it will escalate to critical.
+    query:
+      id: materialize.environmentd.uptime_slo
+      stability: best-effort
+      description:
+        summary: Environments whose connection-success rate has fallen to 0.1 or below.
+      promQL:
+        template: |
+          avg by (namespace, pod) (
+            v2_mz_can_connect{%%{excludeEnvironmentFilter}}
+          ) <= 0.1
+          and on (namespace, pod) (
+            time() - kube_pod_start_time > 5 * 60
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: envd-simplest-query
+    group: environmentd
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: critical
+      component: environmentd
+    description:
+      summary: environmentd is not responding to a SELECT 1 and may be unhealthy.
+      unhealthy: |
+        The engine is failing the most basic query path. Inspect environmentd
+        logs for crashes, stalls, or resource exhaustion.
+    query:
+      id: materialize.environmentd.simplest_query
+      stability: best-effort
+      description:
+        summary: Environments whose SELECT 1 success rate has fallen to 0.1 or below.
+      promQL:
+        template: |
+          avg by (namespace) (
+            v2_mz_envd_up{%%{excludeEnvironmentFilter}}
+          ) <= 0.1
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: env-query-views-critical
+    group: environmentd
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: critical
+      component: environmentd
+    description:
+      summary: environmentd is not answering a simple query that reads from object storage.
+      unhealthy: |
+        A query that touches object storage has been failing for 15m — the engine
+        may be unhealthy or unable to reach its storage backend. Check environmentd
+        logs and object-storage connectivity.
+    query:
+      id: materialize.environmentd.query_views_critical
+      stability: best-effort
+      description:
+        summary: Environments whose object-storage query success rate has fallen to 0.1 or below.
+      promQL:
+        template: |
+          avg by (namespace) (
+            v2_mz_views_query_successful{%%{excludeEnvironmentFilter}}
+          ) <= 0.1
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: env-query-views-warning
+    group: environmentd
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: environmentd
+    description:
+      summary: environmentd is not answering a simple query that reads from object storage.
+      degraded: |
+        Early warning of the same condition as env-query-views-critical, at a
+        shorter duration.
+    query:
+      id: materialize.environmentd.query_views_warning
+      stability: best-effort
+      description:
+        summary: Environments whose object-storage query success rate has fallen to 0.1 or below.
+      promQL:
+        template: |
+          avg by (namespace) (
+            v2_mz_views_query_successful{%%{excludeEnvironmentFilter}}
+          ) <= 0.1
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: clusterd-not-receiving-commands
+    group: environmentd
+    stability: best-effort
+    for: 2m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A clusterd has not received commands from environmentd for 5m — the replica may be stalled or disconnected.
+      degraded: |
+        environmentd may have failed to connect to the replica, or the replica is
+        stuck. Check the environmentd↔clusterd connection and the replica's health.
+    query:
+      id: materialize.clusterd.not_receiving_commands
+      stability: best-effort
+      description:
+        summary: Compute replicas whose last-command-received rate is zero past the pod-start grace period.
+      promQL:
+        template: |
+          max by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+            rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", %%{excludeEnvironmentFilter}}[5m:1m])
+          ) == 0
+          and on (pod) (
+            time() - kube_pod_start_time > 5 * 60
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: storage-collection-finalization-stuck
+    group: environmentd
+    stability: best-effort
+    for: 60m
+    labels:
+      severity: notice
+      component: storage
+    description:
+      summary: Storage shards have been stuck finalizing for 60m.
+      degraded: |
+        Shard finalization is a background cleanup step; a sustained outstanding
+        count suggests it is not making progress. Check storage controller logs.
+    query:
+      id: materialize.storage.collection_finalization_stuck
+      stability: best-effort
+      description:
+        summary: Outstanding shard finalizations per environment.
+      promQL:
+        template: |
+          max by (namespace) (
+            mz_shard_finalization_outstanding
+          ) > 0
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+
+  # --- auth ----------------------------------------------------------------
+  - alert: auth-errors
+    group: auth
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: warning
+      component: auth
+    description:
+      summary: An elevated rate of unexpected authentication errors.
+      degraded: |
+        A high rate of non-2xx/401 auth responses usually points at the auth
+        provider or the network path to it. Users may see dropped or reset
+        connections.
+    query:
+      id: materialize.auth.errors
+      stability: best-effort
+      description:
+        summary: Rate of auth requests failing with unexpected (non-2xx, non-401) status, by status.
+      promQL:
+        template: |
+          avg by (namespace, status) (
+            rate(mz_auth_request_count{status!~"(2|401).*"}[30m])
+          ) > 0.01
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: auth-refresh-failures
+    group: auth
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: auth
+    description:
+      summary: An elevated rate of failed auth-token refreshes.
+      degraded: |
+        Token refreshes are returning 401s, which can surface to users as sessions
+        being dropped. Check the auth provider and the refresh path.
+    query:
+      id: materialize.auth.refresh_failures
+      stability: best-effort
+      description:
+        summary: Rate of 401 responses on the refresh_token path.
+      promQL: |
+        avg(
+          rate(mz_auth_request_count{status=~"401.*", path="refresh_token"}[15m])
+        ) > 0.002
+
+  # --- console -------------------------------------------------------------
+  - alert: console-errors
+    group: console
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: warning
+      component: console
+    description:
+      summary: The web console has returned an error for 2% or more of commands for 30m, across more than one environment.
+      degraded: |
+        A sustained console error rate above 2% affecting multiple environments
+        suggests a platform-wide issue rather than a single environment. Check
+        console and environmentd health.
+    query:
+      id: materialize.console.errors
+      stability: best-effort
+      description:
+        summary: Web-console command error rate above 2% and affecting more than one environment.
+      promQL: |
+        (
+          sum by (application_name) (
+            rate(mz_adapter_commands{application_name="web_console", status="error", %%{excludeEnvironmentFilter}}[5m])
+          )
+          / sum by (application_name) (
+            rate(mz_adapter_commands{application_name="web_console", %%{excludeEnvironmentFilter}}[5m])
+          )
+        ) * 100 > 2
+        and
+        count by (application_name) (
+          (
+            sum by (application_name, namespace) (
+              rate(mz_adapter_commands{application_name="web_console", status="error", %%{excludeEnvironmentFilter}}[5m])
+            )
+            / sum by (application_name, namespace) (
+              rate(mz_adapter_commands{application_name="web_console", %%{excludeEnvironmentFilter}}[5m])
+            )
+          ) * 100 > 2
+        ) > 1
+
+  # --- persist -------------------------------------------------------------
+  - alert: persist-failures
+    group: persist
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: notice
+      component: persist
+    description:
+      summary: Failures in Persist that should be rare are happening frequently.
+      degraded: |
+        Persist retries most transient errors, so a sustained failure rate points
+        at object storage or consensus (CockroachDB) trouble. The `metric` label
+        names the specific failure counter.
+    query:
+      id: materialize.persist.failures
+      stability: best-effort
+      description:
+        summary: Rate of any of several Persist failure counters exceeding its threshold, by metric.
+      promQL: |
+        sum by (metric) (rate(label_replace(mz_persist_blob_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_consensus_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_lease_timeout_read, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
+        or sum by (metric) (rate(label_replace(mz_persist_compaction_noop, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
+        or sum by (metric) (rate(label_replace(mz_persist_compaction_failed, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_external_blob_delete_noop_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_external_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_cmd_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_compaction_dropped, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_pushdown_parts_mismatched_stats_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_columnar_validation_count{result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_txn_placeholder_schema_apply, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_columnar_op_count{op="validation", result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_schema_cache_fetch_state_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (metric) (rate(label_replace(mz_persist_shard_unconsolidated_snapshot, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+
+  # --- environmentd / clusterd lifecycle -----------------------------------
+  # Exit code 166 is Materialize's clean-shutdown sentinel; other non-graceful
+  # exits are treated as unexpected terminations.
+  - alert: envd-terminated
+    group: environmentd
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: environmentd
+    description:
+      summary: An environmentd was unexpectedly terminated — this should not happen.
+      unhealthy: |
+        Restarts interrupt availability and repeated terminations can indicate a
+        deterministic crashing query or an engine bug. Pull the environment's
+        environmentd logs around the termination (look for stack-overflow
+        signatures) and correlate with recent query activity.
+    query:
+      id: materialize.environmentd.terminated
+      stability: best-effort
+      description:
+        summary: environmentd containers whose last termination exit code was not the graceful sentinel.
+      promQL:
+        template: |
+          kube_pod_container_status_last_terminated_exitcode{container="environmentd"} != 166
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: environmentd-high-cpu
+    group: environmentd
+    stability: best-effort
+    for: 90m
+    labels:
+      severity: warning
+      component: environmentd
+    description:
+      summary: An environmentd has been above 80% CPU usage for 90m.
+      degraded: |
+        Sustained high CPU can slow query planning and coordination. Look for
+        heavy or runaway workloads; consider resizing if the load is legitimate.
+    query:
+      id: materialize.environmentd.high_cpu
+      stability: best-effort
+      description:
+        summary: environmentd CPU usage as a percentage of its quota, by pod.
+      promQL:
+        template: |
+          100 * sum by (namespace, pod) (
+            rate(container_cpu_usage_seconds_total{pod=~".*environmentd.+", container!=""}[30m])
+          )
+          / sum by (namespace, pod) (
+            container_spec_cpu_quota{pod=~".*environmentd.+", container!=""}
+            / container_spec_cpu_period{pod=~".*environmentd.+", container!=""}
+          ) > 80
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: environmentd-high-memory
+    group: environmentd
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: warning
+      component: environmentd
+    description:
+      summary: An environmentd has been above 80% memory usage for 30m.
+      degraded: |
+        Approaching the memory limit risks an OOM kill. If the usage is legitimate
+        the pod's memory request/limit may need raising; otherwise investigate the
+        workload driving it.
+    query:
+      id: materialize.environmentd.high_memory
+      stability: best-effort
+      description:
+        summary: environmentd working-set memory as a percentage of its limit, by pod.
+      promQL:
+        template: |
+          100 * (
+            sum by (namespace, pod, container) (
+              container_memory_working_set_bytes{pod=~".*environmentd.+", container!=""}
+            )
+            / sum by (namespace, pod, container) (
+              container_spec_memory_limit_bytes{pod=~".*environmentd.+", container!=""} != 0
+            )
+          ) > 80
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: environmentd-cpu-throttled
+    group: environmentd
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: notice
+      component: environmentd
+    description:
+      summary: An environmentd container is being CPU throttled more than 50% of the time.
+    query:
+      id: materialize.environmentd.cpu_throttled
+      stability: best-effort
+      description:
+        summary: Fraction of CFS periods in which environmentd was throttled, as a percentage.
+      promQL:
+        template: |
+          100 * avg by (instance, container, namespace) (
+            rate(container_cpu_cfs_throttled_periods_total{container=~"environmentd"}[30m])
+            / rate(container_cpu_cfs_periods_total{container=~"environmentd"}[30m])
+          ) > 50
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: environmentd-memory-elevated
+    group: environmentd
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: notice
+      component: environmentd
+    description:
+      summary: An environmentd is above 80% memory usage (lower-severity companion to environmentd-high-memory).
+    query:
+      id: materialize.environmentd.memory_elevated
+      stability: best-effort
+      description:
+        summary: environmentd working-set memory as a percentage of its limit, by pod.
+      promQL:
+        template: |
+          100 * (
+            sum by (namespace, pod, container) (
+              container_memory_working_set_bytes{container!="POD", container!="", container=~"environmentd"}
+            )
+            / sum by (namespace, pod, container) (
+              container_spec_memory_limit_bytes{container!="POD", container!="", container=~"environmentd"}
+            )
+          ) > 80
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: clusterd-error-kill
+    group: environment_health
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A clusterd was terminated with an unexpected exit code — this should not happen.
+      unhealthy: |
+        Exit codes 135/137/166/167 are expected (OOM/graceful/sentinel); any other
+        code on a restarted clusterd points at a crash. Check the clusterd logs.
+    query:
+      id: materialize.clusterd.error_kill
+      stability: best-effort
+      description:
+        summary: Restarted clusterd pods whose last exit code is none of the expected values.
+      promQL:
+        template: |
+          max by (namespace, pod) (
+            increase(kube_pod_container_status_restarts_total{namespace=~"environment.+", container="clusterd"}[1h])
+          ) > 0
+          and max by (namespace, pod) (kube_pod_container_status_last_terminated_exitcode) != 137
+          and max by (namespace, pod) (kube_pod_container_status_last_terminated_exitcode) != 135
+          and max by (namespace, pod) (kube_pod_container_status_last_terminated_exitcode) != 166
+          and max by (namespace, pod) (kube_pod_container_status_last_terminated_exitcode) != 167
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: system-cluster-terminated
+    group: environment_health
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A system cluster was unexpectedly terminated — this should not happen.
+    query:
+      id: materialize.clusterd.system_cluster_terminated
+      stability: best-effort
+      description:
+        summary: System-cluster pods whose last termination exit code was not the graceful sentinel.
+      promQL:
+        template: |
+          kube_pod_container_status_last_terminated_exitcode{pod=~".*cluster-s.*"} != 166
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: system-cluster-high-memory
+    group: environment_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A system cluster is above 80% memory usage — this should not happen for system clusters.
+    query:
+      id: materialize.clusterd.system_cluster_high_memory
+      stability: best-effort
+      description:
+        summary: System-cluster memory usage as a percentage of its limit, by pod.
+      promQL:
+        template: |
+          100 * (
+            sum by (namespace, pod) (
+              mz_memory_limiter_memory_usage_bytes{pod=~".*cluster-s.+"}
+            )
+            / sum by (namespace, pod) (
+              mz_memory_limiter_memory_limit_bytes{pod=~".*cluster-s.+"} != 0
+            )
+          ) > 80
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: clusterd-expiration-7d
+    group: environment_health
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster replica will expire in less than a week.
+      degraded: |
+        Replica expiration is a bounded lease; let it lapse and the replica is torn
+        down. Renew or reconfigure the replica before it expires.
+    query:
+      id: materialize.clusterd.expiration_7d
+      stability: best-effort
+      description:
+        summary: Cluster replicas with less than 7 days of expiration remaining.
+      promQL:
+        template: |
+          mz_dataflow_replica_expiration_remaining_seconds{pod=~".*cluster.+", %%{excludeEnvironmentFilter}} > 0
+          < 60 * 60 * 24 * 7
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: swap-cluster-oom
+    group: environment_health
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: notice
+      component: clusterd
+    description:
+      summary: A swap-enabled cluster was OOMKilled while below 80% swap usage.
+      degraded: |
+        An OOM kill despite swap headroom suggests a sharp allocation spike rather
+        than gradual growth. Check the workload that ran just before the kill.
+    query:
+      id: materialize.clusterd.swap_cluster_oom
+      stability: best-effort
+      description:
+        summary: Swap-enabled environment pods OOMKilled and restarted while swap usage was under 80%.
+      promQL: |
+        increase(
+          (
+            max by (namespace, pod) (
+              kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"environment.*"}
+            )
+            or on (namespace, pod) count by (namespace, pod) (
+              container_last_seen{materialize_cloud_swap="true", %%{excludeEnvironmentFilter}}
+            ) * 0
+          )[10m:1m]
+        ) > 0
+        and on (namespace, pod) (
+          max_over_time(
+            (
+              max by (namespace, pod) (container_memory_swap)
+              / max by (namespace, pod) (container_spec_memory_swap_limit_bytes)
+            )[10m:1m]
+          ) < 0.8
+        )
+        and on (namespace, pod) (
+          increase(
+            max by (namespace, pod) (kube_pod_container_status_restarts_total)[10m:1m]
+          ) > 0
+        )
+
+  # --- environment scheduling / readiness ----------------------------------
+  - alert: environment-pod-pending-critical
+    group: environment_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: critical
+      component: environmentd
+    description:
+      summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
+      unhealthy: |
+        Kubernetes cannot schedule the pod. Usually insufficient node capacity or
+        an unsatisfiable scheduling constraint; describe the pod to see the reason.
+    query:
+      id: materialize.environmentd.pod_pending_critical
+      stability: best-effort
+      description:
+        summary: Environment pods (deduplicated across generations) stuck in Pending.
+      promQL:
+        template: |
+          min by (namespace, pod_base) (
+            label_replace(
+              kube_pod_status_phase{namespace=~"environment.*", phase="Pending", %%{excludeEnvironmentFilter}},
+              "pod_base", "$1", "pod", "(.*?)(?:-gen-[0-9]+-[0-9]+|([0-9]+)-[0-9]+)?"
+            )
+          ) > 0
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: environment-pod-pending
+    group: environment_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: environmentd
+    description:
+      summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
+    query:
+      id: materialize.environmentd.pod_pending
+      stability: best-effort
+      description:
+        summary: Environment pods stuck in Pending.
+      promQL:
+        template: |
+          max by (namespace, pod) (
+            kube_pod_status_phase{namespace=~"environment.*", phase="Pending", %%{excludeEnvironmentFilter}}
+          ) > 0
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: certificate-not-ready
+    group: environment_health
+    stability: best-effort
+    for: 20m
+    labels:
+      severity: notice
+      component: environmentd
+    description:
+      summary: A certificate has not become ready in 20m, which can prevent an environment from coming up.
+      degraded: |
+        The environment cannot serve TLS until its certificate is ready. Check the
+        certificate's issuer and the cert-manager logs for the blocking condition.
+    query:
+      id: materialize.environmentd.certificate_not_ready
+      stability: best-effort
+      description:
+        summary: Certificates reporting a not-Ready condition.
+      promQL:
+        template: |
+          max by (name, namespace, condition) (
+            certmanager_certificate_ready_status{condition!="True", %%{excludeEnvironmentFilter}} == 1
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: console-query-latency
+    group: environment_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: console
+    description:
+      summary: Web-console query p95 latency has exceeded 10s for 15m.
+      degraded: |
+        The catalog cluster (s2) is answering console queries slowly. Check the
+        catalog cluster's load and health.
+    query:
+      id: materialize.console.query_latency
+      stability: best-effort
+      description:
+        summary: p95 time-to-first-row for web-console queries on the catalog cluster, per environment.
+      promQL:
+        template: |
+          sum by (namespace) (
+            histogram_quantile(0.95,
+              sum by (le, namespace) (
+                rate(mz_time_to_first_row_seconds_bucket{instance_id=~"s2", application_name="web_console", %%{excludeEnvironmentFilter}}[2m])
+              )
+            )
+          ) > 10
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+
+  # --- release health ------------------------------------------------------
+  - alert: new-clusterd-restarts
+    group: release_health
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A previously healthy clusterd is restarting during a release.
+      degraded: |
+        A clusterd generation that had been stable for over a day started
+        restarting after a new generation rolled out — a sign the release may be
+        unhealthy. Compare the new and previous generations.
+    query:
+      id: materialize.clusterd.new_restarts_during_release
+      stability: best-effort
+      description:
+        summary: New clusterd generations restarting while the prior generation had been stable for over a day.
+      promQL: |
+        label_replace(
+          max by (namespace, pod) (kube_pod_container_status_restarts_total{container="clusterd"}) > 0
+          and on (namespace, pod) (
+            min by (namespace, pod) (time() - kube_pod_created)
+          ) < 60 * 60 * 24,
+          "pod_base", "$1", "pod", ".*-(cluster-.*)-gen-([0-9]+)-[0-9]+$"
+        )
+        and on (namespace, pod_base) label_replace(
+          max by (namespace, pod) (increase(kube_pod_container_status_restarts_total{container="clusterd"}[12h:1m])) == 0
+          and on (namespace, pod) (
+            min by (namespace, pod) (time() - kube_pod_created)
+          ) > 60 * 60 * 24,
+          "pod_base", "$1", "pod", ".*-(cluster-.*)-gen-([0-9]+)-[0-9]+$"
+        )
+
+  # --- Materialize Cloud only ----------------------------------------------
+  # These watch cloud-platform components (the external uptime checker, the
+  # LaunchDarkly parameter sync) that self-managed deployments do not run, so
+  # they carry deploymentMode: cloud-only and are excluded there.
+  - alert: external-env-uptime
+    group: external_uptime
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: critical
+      component: external-uptime
+      deploymentMode: cloud-only
+    description:
+      summary: environmentd is unreachable from outside the network by the external uptime checker.
+      unhealthy: |
+        The external prober cannot reach the environment even though internal
+        checks may pass — points at ingress, DNS, or network-path problems.
+    query:
+      id: materialize.external_uptime.envd_unreachable
+      stability: best-effort
+      description:
+        summary: Environments the external uptime checker reports as down.
+      promQL:
+        template: |
+          avg by (namespace) (
+            mz_external_envd_up
+          ) < 1
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: external-env-uptime-failed
+    group: external_uptime
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: external-uptime
+      deploymentMode: cloud-only
+    description:
+      summary: New external connections to environmentd are failing, per the external uptime checker.
+    query:
+      id: materialize.external_uptime.connections_failing
+      stability: best-effort
+      description:
+        summary: Rate of failed external connection attempts, by connection type.
+      promQL:
+        template: |
+          sum by (connection_type, namespace) (
+            rate(mz_external_calls_count{status="failed"}[2m])
+          ) > 0
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: external-uptime-checker-not-calling
+    group: external_uptime
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: external-uptime
+      deploymentMode: cloud-only
+    description:
+      summary: The external uptime checker has stopped making calls — the checker itself may be down.
+    query:
+      id: materialize.external_uptime.checker_not_calling
+      stability: best-effort
+      description:
+        summary: Connection types for which the external checker made no attempts.
+      promQL: |
+        sum by (connection_type, namespace) (
+          increase(mz_external_calls_count{status="attempted"}[2m])
+        ) == 0
+  - alert: launchdarkly-stale-sse
+    group: launchdarkly
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: launchdarkly
+      deploymentMode: cloud-only
+    description:
+      summary: The last LaunchDarkly server-side event is more than 40 minutes old — flag updates may not be reaching environmentd.
+    query:
+      id: materialize.launchdarkly.stale_sse
+      stability: best-effort
+      description:
+        summary: Environments whose most recent LaunchDarkly server-side event is over 40 minutes old.
+      promQL:
+        template: |
+          sum by (namespace) (
+            timestamp(mz_parameter_frontend_last_sse_time_seconds{%%{excludeEnvironmentFilter}})
+            - mz_parameter_frontend_last_sse_time_seconds{%%{excludeEnvironmentFilter}}
+          ) >= 40 * 60
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+  - alert: launchdarkly-stale-cse
+    group: launchdarkly
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: notice
+      component: launchdarkly
+      deploymentMode: cloud-only
+    description:
+      summary: The last LaunchDarkly client-side event is more than 40 minutes old — client analytics may be stale.
+    query:
+      id: materialize.launchdarkly.stale_cse
+      stability: best-effort
+      description:
+        summary: Environments whose most recent LaunchDarkly client-side event is over 40 minutes old.
+      promQL:
+        template: |
+          sum by (namespace) (
+            timestamp(mz_parameter_frontend_last_cse_time_seconds{%%{excludeEnvironmentFilter}})
+            - mz_parameter_frontend_last_cse_time_seconds{%%{excludeEnvironmentFilter}}
+          ) >= 40 * 60
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]

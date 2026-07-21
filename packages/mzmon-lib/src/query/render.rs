@@ -211,6 +211,10 @@ fn extraction_context<'a>(
             "cAdvisorFilter",
             r#"container!="POD", container!="", namespace=~"materialize-environment""#,
         ),
+        // Empty for extraction: an environment-exclusion fragment would only add
+        // spurious label matchers to the parsed selectors. A real deployment
+        // fills this in (e.g. mz_context_org_type!="e2e_test").
+        ("excludeEnvironmentFilter", ""),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -218,15 +222,15 @@ fn extraction_context<'a>(
 
     let mut functions: HashMap<String, TemplateFn> = HashMap::new();
     functions.insert("orZero".to_string(), Box::new(promql_or_zero));
-    // Identity: extraction sees the raw metric, not the enrichment join.
-    functions.insert(
-        "mzClusterName".to_string(),
-        Box::new(|base: &str, _args: &[String]| base.to_string()),
-    );
-    functions.insert(
-        "mzObjectName".to_string(),
-        Box::new(|base: &str, _args: &[String]| base.to_string()),
-    );
+    // Identity: extraction sees the raw metric, not the enrichment join. The
+    // real per-engine implementations (id->name joins, per-environment grouping)
+    // live in the rendering context that targets that engine.
+    for name in ["mzClusterName", "mzObjectName", "mzEnvironmentName"] {
+        functions.insert(
+            name.to_string(),
+            Box::new(|base: &str, _args: &[String]| base.to_string()),
+        );
+    }
 
     TemplateContext {
         engine,
