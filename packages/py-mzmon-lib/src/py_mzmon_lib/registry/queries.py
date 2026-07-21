@@ -145,6 +145,7 @@ If it is not removed, it can be marked as unsupported.
 """
 
 QueryId = str
+RuleGroup = str
 _DEPENDENCY_DEF = str | dict[str, "QueryDef"]
 
 
@@ -443,6 +444,33 @@ class Query:
             yield from ExtractedMetric.extract_from_promql(rendered)
 
 
+@dataclasses.dataclass(frozen=True)
+class Rule:
+    """A concrete recording rule in the registry."""
+
+    record: str
+    description: Description
+    group: RuleGroup
+    stability: Stability
+    query_id: QueryId
+    labels: dict[str, str] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass(frozen=True)
+class Alert:
+    """A concrete alerting rule in the registry."""
+
+    alert: str
+    description: Description
+    group: RuleGroup
+    stability: Stability
+    query_id: QueryId
+    for_: str
+    keep_firing_for: str | None = None
+    labels: dict[str, str] = dataclasses.field(default_factory=dict)
+    annotations: dict[str, str] = dataclasses.field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # PromQL template-engine functions.
 #
@@ -497,10 +525,14 @@ class QueryRegistry:
     class _RegistryDef(typing.TypedDict):
         description: str
         queries: list[QueryDef]
+        rules: list[dict[str, typing.Any]]  # RuleDef
+        alerts: list[dict[str, typing.Any]]  # AlertDef
 
     def __init__(self) -> None:
         """Initialize the query registry."""
         self._queries: dict[QueryId, Query] = {}
+        self._rules: dict[str, Rule] = {}
+        self._alerts: dict[str, Alert] = {}
 
     def get(self, query_id: QueryId) -> Query:
         """Get the query definition for a given query ID."""
@@ -532,8 +564,12 @@ class QueryRegistry:
 
     def load(self, registry_data: _RegistryDef):
         """Load query definitions from a list of QueryDef dictionaries."""
-        for query_def in registry_data["queries"]:
+        for query_def in registry_data.get("queries", []):
             self.register_query(query_def)
+        for rule_def in registry_data.get("rules", []):
+            self.register_rule(rule_def)
+        for alert_def in registry_data.get("alerts", []):
+            self.register_alert(alert_def)
 
     @classmethod
     def from_directory(
@@ -588,10 +624,52 @@ class QueryRegistry:
         """Overwrite an existing query definition."""
         self._queries[query_def.id] = query_def
 
-    def register_rule(self, rule_def):
+    def register_rule(self, rule_def: dict[str, typing.Any]) -> Rule:
         """Load a rule definition."""
-        _ = rule_def
-        raise NotImplementedError("TODO")
+        assert rule_def["record"] not in self._rules, (
+            f"Rule {rule_def['record']} is already registered."
+        )
+        if "query" in rule_def:
+            query_id = self.register_query(
+                typing.cast("QueryDef", rule_def["query"])
+            ).id
+        else:
+            query_id = rule_def["queryId"]
+        rule = Rule(
+            record=rule_def["record"],
+            description=Description(**rule_def["description"]),
+            group=rule_def["group"],
+            stability=Stability(rule_def["stability"]),
+            query_id=query_id,
+            labels=rule_def.get("labels", {}),
+        )
+        self._rules[rule.record] = rule
+        return rule
+
+    def register_alert(self, alert_def: dict[str, typing.Any]) -> Alert:
+        """Load an alert definition."""
+        assert alert_def["alert"] not in self._alerts, (
+            f"Alert {alert_def['alert']} is already registered."
+        )
+        if "query" in alert_def:
+            query_id = self.register_query(
+                typing.cast("QueryDef", alert_def["query"])
+            ).id
+        else:
+            query_id = alert_def["queryId"]
+        alert = Alert(
+            alert=alert_def["alert"],
+            description=Description(**alert_def["description"]),
+            group=alert_def["group"],
+            stability=Stability(alert_def["stability"]),
+            for_=alert_def["for"],
+            keep_firing_for=alert_def.get("keepFiringFor"),
+            query_id=query_id,
+            labels=alert_def.get("labels", {}),
+            annotations=alert_def.get("annotations", {}),
+        )
+        self._alerts[alert.alert] = alert
+        return alert
 
 
 if __name__ == "__main__":

@@ -49,13 +49,21 @@ $defs:
           rules:
             type: array
             description: |
-              A list of recording and alerting rules in the current Query Registry.
+              A list of recording rules in the current Query Registry.
             items:
-              oneOf:
-                - $ref: "#/$defs/recordingRule"
-                - $ref: "#/$defs/alertRule"
+              $ref: "#/$defs/recordingRule"
         required:
           - rules
+      - type: object
+        properties:
+          alerts:
+            type: array
+            description: |
+              A list of alerting rules in the current Query Registry.
+            items:
+              $ref: "#/$defs/alertRule"
+        required:
+          - alerts
 
     unevaluatedProperties: false
     required:

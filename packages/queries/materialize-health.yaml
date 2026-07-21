@@ -151,7 +151,7 @@ queries:
         max_over_time(
           (
             mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id!="", quantile="1"} < 1e9
-          )[$__range:1m]
+          )[1h:1m]
         )
       )
     instant: true
