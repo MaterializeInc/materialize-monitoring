@@ -62,6 +62,11 @@
       "description": "Do not upgrade grafana-foundation-sdk to v10+. Only 0.0.x versions are valid",
       "matchPackageNames": ["grafana-foundation-sdk"],
       "maxMajorIncrement": 1
+    },
+    {
+      "description": "helm-docs is pinned to a commit pseudo-version; do not flag it as abandoned",
+      "matchPackageNames": ["github.com/norwoodj/helm-docs"],
+      "abandonmentThreshold": null
     }
   ],
   "customManagers": [
