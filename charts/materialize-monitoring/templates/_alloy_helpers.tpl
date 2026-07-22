@@ -218,6 +218,9 @@ Usage:
   {{- /* Output main snippet */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway.alloy" }}
 
+  {{- /* Metric processors */}}
+  {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
+
   {{- /* Output rendered destination */}}
   {{- include "mzmon.alloyGateway.pipeline.destination" $ }}
 {{- end }}

@@ -1,0 +1,17 @@
+// This pipeline defines the flow of metrics through the Alloy gateway, from
+// ingestion to their final destination.
+
+otelcol.processor.filter "inputMetricProcessor" {
+	metric_conditions {
+		context = "metric"
+		conditions = [
+			"not IsMatch(metric.name, \"^(?:" + coalesce(sys.env("GATEWAY_UNFILTERED_METRICS"), ".*") + ")$\")",
+		]
+	}
+
+	output {
+		metrics = [
+			otelcol.processor.memory_limiter.outputMemoryLimiter.input,
+		]
+	}
+}

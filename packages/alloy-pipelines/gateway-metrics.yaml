@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway metric pipeline.
+# This is the flow for metrics coming into the gateway to leaving it for its destination.
+
+description: |
+  This pipeline defines the flow of metrics through the Alloy gateway, from
+  ingestion to their final destination.
+
+blocks:
+  # Metrics processing choke point, otelcol side (the analog of loki.process
+  # .inputProcessor for logs).
+  - otelcol.processor.filter:
+      label: inputMetricProcessor
+      blocks:
+        - metric_conditions:
+            # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/contexts/ottlmetric/README.md
+            context: metric
+            # each condition is OR'd. If any condition evaluates to true, this metric is dropped
+            conditions:
+              # Drop metrics NOT in the allowlist. Assembled at config load into
+              # a single OTTL string: not IsMatch(metric.name, "^(?:<allow>)$").
+              # Fails open (".*" matches everything) if the env var is unset.
+              - operator: "+"
+                arguments:
+                  - 'not IsMatch(metric.name, "^(?:'
+                  - function: coalesce
+                    arguments:
+                      - env: "GATEWAY_UNFILTERED_METRICS"
+                      - ".*"
+                  - ')$")'
+        - output:
+            metrics:
+              # return to gateway.yaml
+              - otelcol.processor.memory_limiter.outputMemoryLimiter.input

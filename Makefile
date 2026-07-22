@@ -18,7 +18,7 @@ SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
 SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway gateway-dest-stub agent
+ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -141,7 +141,7 @@ charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materia
 PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
 alloy-pipelines-validate:
 	alloy validate "$(PIPELINES_DIR)/agent.alloy"
-	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
+	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
 .PHONY: alloy-pipelines-validate
 
 ### SCRAPER SYNC ###

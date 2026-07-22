@@ -108,6 +108,7 @@ blocks:
             logs:
               - ref: otelcol.exporter.loki.bridge.input
             metrics:
+              # switches to gateway-metrics.yaml
               - ref: otelcol.processor.filter.inputMetricProcessor.input
 
   - prometheus.receive_http:
@@ -192,6 +193,7 @@ blocks:
         - component: output
           attributes:
             metrics:
+              # switches to gateway-metrics.yaml
               - ref: otelcol.processor.filter.inputMetricProcessor.input
 
   # --- main processing pipeline -----------
@@ -859,19 +861,6 @@ blocks:
               namespace: namespace
               app: app
               container: container
-
-  # Metrics processing choke point, otelcol side (the analog of loki.process
-  # .inputProcessor for logs). Rule-free passthrough today; the metric
-  # filter/transform work (cardinality tiers) lands here. Feeds the outbound
-  # memory_limiter → batch chain below, which forwards to the
-  # otelcol.processor.filter.egress swap seam defined downstream (gateway-dest
-  # -stub.yaml at build time, the chart's _alloy_helpers.tpl at deploy).
-  - otelcol.processor.filter:
-      label: inputMetricProcessor
-      blocks:
-        - output:
-            metrics:
-              - otelcol.processor.memory_limiter.outputMemoryLimiter.input
 
   # Outbound resource management: cap memory (refuse at 75% to backpressure the
   # receivers) then batch before handing off to the egress seam.

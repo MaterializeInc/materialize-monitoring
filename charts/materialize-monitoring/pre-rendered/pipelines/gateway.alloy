@@ -1676,14 +1676,6 @@ loki.process "inputProcessor" {
 	}
 }
 
-otelcol.processor.filter "inputMetricProcessor" {
-	output {
-		metrics = [
-			otelcol.processor.memory_limiter.outputMemoryLimiter.input,
-		]
-	}
-}
-
 otelcol.processor.memory_limiter "outputMemoryLimiter" {
 	check_interval         = "5s"
 	limit_percentage       = 75
