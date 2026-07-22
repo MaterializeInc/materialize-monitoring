@@ -1113,6 +1113,12 @@ dependencies = [
 [[package]]
 name = "mz-monitoring-check"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "mzmon-lib",
+ "tempfile",
+]
 
 [[package]]
 name = "mzmon-lib"
