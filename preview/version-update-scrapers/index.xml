@@ -335,6 +335,21 @@ reference/internal/releasing.md.
 &lt;ul&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
 &lt;ul&gt;
+&lt;li&gt;Update Rust crate regex to v1.13.1
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/133" rel="external" class="github-source-link"&gt;materialize-monitoring#133&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;CLO-152 Support importance axis for extracted metrics
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/132" rel="external" class="github-source-link"&gt;materialize-monitoring#132&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Update Rust crate tokio to v1.52.4
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/131" rel="external" class="github-source-link"&gt;materialize-monitoring#131&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;Port metric registry to rust
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/129" rel="external" class="github-source-link"&gt;materialize-monitoring#129&lt;/a&gt;&lt;/li&gt;
