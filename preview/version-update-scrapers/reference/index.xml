@@ -33,6 +33,11 @@ reference/internal/releasing.md.
 &lt;ul&gt;
 &lt;li&gt;Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
 &lt;ul&gt;
+&lt;li&gt;Port metric registry to rust
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/129" rel="external" class="github-source-link"&gt;materialize-monitoring#129&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;li&gt;Implement a Query Registry for reducing total metric set
 &lt;ul&gt;
 &lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/125" rel="external" class="github-source-link"&gt;materialize-monitoring#125&lt;/a&gt;&lt;/li&gt;
