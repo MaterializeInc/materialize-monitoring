@@ -21,11 +21,12 @@ If it disagrees with what is actually in the tree, trust the repo and update thi
 &lt;li&gt;&lt;code&gt;packages/&lt;/code&gt;: hand-authored, contributor-facing inputs
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;grafana-dashboards/&lt;/code&gt;: Grafana dashboards-as-code (Python + &lt;code&gt;grafana-foundation-sdk&lt;/code&gt;); sources under &lt;code&gt;dashboards/&lt;/code&gt; (e.g. &lt;code&gt;mz_environment/&lt;/code&gt;, &lt;code&gt;render.py&lt;/code&gt;, &lt;code&gt;palette.py&lt;/code&gt;)&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;py-mzmon-lib/&lt;/code&gt;: Python helper library imported by the dashboard packages; not consumed by customers&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;py-mzmon-lib/&lt;/code&gt;: Python helper library imported by the dashboard packages; not consumed by customers. Also home to the original query registry (&lt;code&gt;registry/&lt;/code&gt;), now ported to &lt;code&gt;mzmon-lib&lt;/code&gt;&amp;rsquo;s Rust &lt;code&gt;query&lt;/code&gt; module&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;queries/&lt;/code&gt;: query-registry YAML inputs (&lt;code&gt;materialize-*.yaml&lt;/code&gt;) — the metric/log/alert query definitions, validated against &lt;code&gt;mzmon-lib/schemas/query/mzmon-query.schema.yaml&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;alloy-pipelines/&lt;/code&gt;: Alloy pipeline YAML inputs (&lt;code&gt;agent.yaml&lt;/code&gt;, &lt;code&gt;gateway.yaml&lt;/code&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ref-alloy-pipelines/&lt;/code&gt;: Python reference pipelines being ported into the typed Rust path (&lt;code&gt;agent_config.py&lt;/code&gt;, &lt;code&gt;gateway_config.py&lt;/code&gt;, &lt;code&gt;processor.alloy&lt;/code&gt;, &lt;code&gt;alloy/&lt;/code&gt;)&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;mzmon-lib/&lt;/code&gt;: Rust library — typed Alloy model plus embedded JSONSchemas under &lt;code&gt;schemas/alloy/&lt;/code&gt;; not consumed by customers&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;mz-monitoring-build/&lt;/code&gt;: Rust CLI for artifact generation (&lt;code&gt;gen_pipelines.rs&lt;/code&gt;, &lt;code&gt;main.rs&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mzmon-lib/&lt;/code&gt;: Rust library — typed Alloy model, the &lt;code&gt;scrape&lt;/code&gt; transpiler, and the &lt;code&gt;query&lt;/code&gt; registry (model + rendering + metric extraction); embedded JSONSchemas under &lt;code&gt;schemas/{alloy,scrape,query}/&lt;/code&gt;; not consumed by customers&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-build/&lt;/code&gt;: Rust CLI for artifact generation (&lt;code&gt;gen_pipelines.rs&lt;/code&gt;, &lt;code&gt;gen_scrape_configs.rs&lt;/code&gt;, &lt;code&gt;extract_metrics.rs&lt;/code&gt;, &lt;code&gt;main.rs&lt;/code&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;mz-monitoring-check/&lt;/code&gt;: Rust schema/consistency checks&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
