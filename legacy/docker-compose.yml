@@ -91,7 +91,7 @@ services:
 
   # Datadog Agent - Collects metrics via OpenMetrics for Datadog
   datadog-agent:
-    image: gcr.io/datadoghq/agent:latest@sha256:14371987f2d7153861c8db7b4b9a6743dd573e5ea9deb5ef5b2e6c7890190c73
+    image: gcr.io/datadoghq/agent:latest@sha256:44bfe2c475d9467e78e73e4327148d7e3902da5a48cbb1b0f6b84b01283e89d5
     container_name: datadog-agent
     ports:
       - "8125:8125/udp"  # DogStatsD
