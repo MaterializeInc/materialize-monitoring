@@ -40,6 +40,11 @@
       "pinDigests": false
     },
     {
+      "description": "Bump Chart.yaml subchart ranges (e.g. ^1.8.0 -> ^1.11.0) so in-range releases still open PRs; helmUpdateSubChartArchives then refreshes Chart.lock",
+      "matchManagers": ["helmv3"],
+      "rangeStrategy": "bump"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["!devDependencies"],
       "matchCurrentVersion": "!/^0/",
