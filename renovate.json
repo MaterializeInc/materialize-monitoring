@@ -29,6 +29,17 @@
   },
   "packageRules": [
     {
+      "description": "Do not manage the legacy/ directory",
+      "matchFileNames": ["legacy/**"],
+      "enabled": false
+    },
+    {
+      "description": "Do not pin digests for Docker image tags referenced in Helm charts",
+      "matchManagers": ["helm-values"],
+      "matchDatasources": ["docker"],
+      "pinDigests": false
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["!devDependencies"],
       "matchCurrentVersion": "!/^0/",
