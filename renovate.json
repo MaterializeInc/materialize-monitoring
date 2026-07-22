@@ -29,6 +29,22 @@
   },
   "packageRules": [
     {
+      "description": "Do not manage the legacy/ directory",
+      "matchFileNames": ["legacy/**"],
+      "enabled": false
+    },
+    {
+      "description": "Do not pin digests for Docker image tags referenced in Helm charts",
+      "matchManagers": ["helm-values"],
+      "matchDatasources": ["docker"],
+      "pinDigests": false
+    },
+    {
+      "description": "Bump Chart.yaml subchart ranges (e.g. ^1.8.0 -> ^1.11.0) so in-range releases still open PRs; helmUpdateSubChartArchives then refreshes Chart.lock",
+      "matchManagers": ["helmv3"],
+      "rangeStrategy": "bump"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["!devDependencies"],
       "matchCurrentVersion": "!/^0/",
@@ -51,6 +67,11 @@
       "description": "Do not upgrade grafana-foundation-sdk to v10+. Only 0.0.x versions are valid",
       "matchPackageNames": ["grafana-foundation-sdk"],
       "maxMajorIncrement": 1
+    },
+    {
+      "description": "helm-docs is pinned to a commit pseudo-version; do not flag it as abandoned",
+      "matchPackageNames": ["github.com/norwoodj/helm-docs"],
+      "abandonmentThreshold": null
     }
   ],
   "customManagers": [

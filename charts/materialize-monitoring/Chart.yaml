@@ -42,12 +42,6 @@ annotations:
 #   oci://ghcr.io/prometheus-community/charts  → alertmanager, kube-state-metrics, prometheus-operator-crds
 #   https://kubernetes-sigs.github.io/metrics-server → metrics-server (TODO: switch to OCI when upstream publishes one)
 #
-# Versions below are scaffolding placeholders that point at recent stable
-# releases; "prefer latest" is enforced at lockfile time. Before the first
-# real `helm dep update`, bump each `version:` to the current latest from
-# its registry and let Chart.lock pin the resolved set. Bumps thereafter
-# are routine maintenance.
-#
 # Alloy is declared twice via `alias` so the same upstream chart powers
 # both the agent (scrape / collection / pre-egress shaping) and the
 # gateway (cardinality reduction / egress to backends). `helm dep update`
