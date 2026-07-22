@@ -9,6 +9,7 @@
 
 use clap::{Parser, Subcommand};
 
+mod extract_metrics;
 mod gen_pipelines;
 mod gen_scrape_configs;
 mod github;
@@ -32,6 +33,8 @@ enum Command {
     GenPipelines(gen_pipelines::GenPipelinesArgs),
     /// Transpile prometheus-operator Monitors into a classic scrape_configs file.
     GenScrapeConfigs(gen_scrape_configs::GenScrapeConfigsArgs),
+    /// Extract the metrics referenced by the query registry into a metrics.yaml.
+    ExtractMetrics(extract_metrics::ExtractMetricsArgs),
     /// Report which merged PRs each component changelog would collect.
     Changelog(versioning::ChangelogArgs),
     /// Generate a version-update PR's changelog + version bumps for a component.
@@ -46,6 +49,7 @@ fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::GenPipelines(args) => gen_pipelines::gen_pipelines(args),
         Command::GenScrapeConfigs(args) => gen_scrape_configs::gen_scrape_configs(args),
+        Command::ExtractMetrics(args) => extract_metrics::extract_metrics(args),
         Command::Changelog(args) => versioning::changelog(args),
         Command::Release(args) => versioning::release(args),
         Command::ProposeBumps(args) => propose::propose_bumps(args),

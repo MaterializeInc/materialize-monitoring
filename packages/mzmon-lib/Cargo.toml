@@ -9,6 +9,11 @@ publish = false
 indexmap = { version = "2.14.0", features = ["serde"] }
 itertools = "0.15.0"
 jsonschema = { version = "0.47.0", default-features = false }
+# PromQL AST parser, used by the query registry's metric extraction to walk
+# rendered PromQL and collect the metric names + label matchers each query
+# touches. Mirrors the `promql_parser` Python binding the registry was ported
+# from (same GreptimeTeam parser under the hood).
+promql-parser = "0.10.0"
 serde = { version = "1.0.228", features = ["derive"] }
 # preserve_order keeps map key order from the source YAML through the
 # serde_json::Value intermediate (Value uses indexmap instead of BTreeMap).
