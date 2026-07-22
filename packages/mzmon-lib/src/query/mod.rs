@@ -35,6 +35,7 @@ pub mod def;
 pub mod docgen;
 pub mod error;
 pub mod extract;
+pub mod importance;
 pub mod model;
 pub mod registry;
 pub mod render;
@@ -45,7 +46,8 @@ pub mod validate;
 pub(crate) mod test_support;
 
 pub use error::{Error, Result};
+pub use importance::Importance;
 pub use model::{Alert, Description, Query, QueryEngine, Rule, TemplateExpr, TemplateFunction};
-pub use registry::QueryRegistry;
+pub use registry::{MetricOverride, QueryRegistry};
 pub use render::TemplateContext;
 pub use stability::Stability;

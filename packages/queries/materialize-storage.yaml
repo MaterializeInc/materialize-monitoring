@@ -13,6 +13,8 @@ description: |
   deployment (fix the scrape config, or wrap the inner rate in `max without
   (job)`) rather than baking it into the canonical query.
 
+metricImportanceHint: recommended
+
 queries:
   # --- summary counts (environment-scoped) ---------------------------------
   - id: materialize.storage.sources.count

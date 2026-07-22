@@ -23,19 +23,73 @@
 use std::path::Path;
 
 use indexmap::IndexMap;
+use regex::Regex;
 
 use crate::query::def::{
-    AlertDef, DependencyDef, QueryDef, RegistryDoc, RuleDef, template_exprs_from_value,
+    AlertDef, DependencyDef, MetricOverrideDef, QueryDef, RegistryDoc, RuleDef,
+    template_exprs_from_value,
 };
 use crate::query::error::{Error, Result};
+use crate::query::importance::Importance;
 use crate::query::model::{Alert, Query, QueryId, Rule};
 
-/// A registry of monitoring queries (plus recording rules and alerts).
+/// A compiled metric-importance override: set every metric whose name matches
+/// `pattern` to `importance` outright. `pattern` is anchored (the whole name must
+/// match), mirroring Prometheus regex semantics.
+#[derive(Debug, Clone)]
+pub struct MetricOverride {
+    pattern: Regex,
+    raw_pattern: String,
+    importance: Importance,
+    priority: i64,
+}
+
+impl MetricOverride {
+    /// Compile a raw override definition, anchoring its pattern.
+    pub fn compile(def: MetricOverrideDef) -> Result<Self> {
+        let pattern = Regex::new(&format!("^(?:{})$", def.metric_pattern)).map_err(|err| {
+            Error::InvalidPattern {
+                pattern: def.metric_pattern.clone(),
+                message: err.to_string(),
+            }
+        })?;
+        Ok(MetricOverride {
+            pattern,
+            raw_pattern: def.metric_pattern,
+            importance: def.importance,
+            priority: def.priority,
+        })
+    }
+
+    /// The importance this override assigns.
+    pub fn importance(&self) -> Importance {
+        self.importance
+    }
+
+    /// The override's priority; higher wins when several overrides match.
+    pub fn priority(&self) -> i64 {
+        self.priority
+    }
+
+    /// The original (unanchored) pattern text.
+    pub fn pattern(&self) -> &str {
+        &self.raw_pattern
+    }
+
+    /// Whether this override matches `metric_name`.
+    pub fn matches(&self, metric_name: &str) -> bool {
+        self.pattern.is_match(metric_name)
+    }
+}
+
+/// A registry of monitoring queries (plus recording rules, alerts, and
+/// metric-importance overrides).
 #[derive(Debug, Clone, Default)]
 pub struct QueryRegistry {
     queries: IndexMap<QueryId, Query>,
     rules: IndexMap<String, Rule>,
     alerts: IndexMap<String, Alert>,
+    metric_overrides: Vec<MetricOverride>,
 }
 
 impl QueryRegistry {
@@ -88,6 +142,24 @@ impl QueryRegistry {
         self.alerts.values()
     }
 
+    /// The compiled metric-importance overrides, in load order.
+    pub fn metric_overrides(&self) -> &[MetricOverride] {
+        &self.metric_overrides
+    }
+
+    /// The override-assigned importance for `metric_name`, if any override
+    /// matches. Among matches the highest [`priority`](MetricOverride::priority)
+    /// wins; equal priorities resolve in load order (the later declaration wins).
+    pub fn override_importance(&self, metric_name: &str) -> Option<Importance> {
+        self.metric_overrides
+            .iter()
+            .filter(|ov| ov.matches(metric_name))
+            // `max_by_key` returns the last maximal element, so a later
+            // declaration wins a priority tie.
+            .max_by_key(|ov| ov.priority)
+            .map(|ov| ov.importance)
+    }
+
     /// Iterate over queries that carry a metric (PromQL/Datadog/Honeycomb)
     /// definition.
     pub fn iter_metric_queries(&self) -> impl Iterator<Item = &Query> {
@@ -104,16 +176,22 @@ impl QueryRegistry {
 
     // -- loading -----------------------------------------------------------
 
-    /// Load every query/rule/alert from a parsed registry document.
+    /// Load every query/rule/alert/override from a parsed registry document.
+    /// Each metric query is stamped with the file's `metricImportanceHint`.
     pub fn load(&mut self, doc: RegistryDoc) -> Result<()> {
+        let hint = doc.metric_importance_hint;
         for query in doc.queries {
-            self.register_query(query)?;
+            self.register_query(query, hint)?;
         }
         for rule in doc.rules {
-            self.register_rule(rule)?;
+            self.register_rule(rule, hint)?;
         }
         for alert in doc.alerts {
-            self.register_alert(alert)?;
+            self.register_alert(alert, hint)?;
+        }
+        for override_def in doc.metric_overrides {
+            self.metric_overrides
+                .push(MetricOverride::compile(override_def)?);
         }
         Ok(())
     }
@@ -146,9 +224,11 @@ impl QueryRegistry {
 
     // -- registration ------------------------------------------------------
 
-    /// Register a query, promoting any inline dependencies to top-level entries.
-    /// Returns the registered query's id. Errors on a duplicate id.
-    pub fn register_query(&mut self, def: QueryDef) -> Result<QueryId> {
+    /// Register a query, stamping `importance` from the source file's hint and
+    /// promoting any inline dependencies (which inherit the same hint) to
+    /// top-level entries. Returns the registered query's id; errors on a
+    /// duplicate id.
+    pub fn register_query(&mut self, def: QueryDef, importance: Importance) -> Result<QueryId> {
         let id = def.id.clone();
         if self.queries.contains_key(&id) {
             return Err(Error::DuplicateQuery(id));
@@ -162,7 +242,7 @@ impl QueryRegistry {
             match dep {
                 DependencyDef::Id(dep_id) => dependencies.push(dep_id),
                 DependencyDef::Inline(dep_def) => {
-                    dependencies.push(self.register_query(*dep_def)?);
+                    dependencies.push(self.register_query(*dep_def, importance)?);
                 }
             }
         }
@@ -171,6 +251,7 @@ impl QueryRegistry {
             id: id.clone(),
             description: def.description.into(),
             stability: def.stability,
+            importance,
             dependencies,
             promql: template_exprs_from_value(def.promql.as_ref())?,
             datadog_sql: template_exprs_from_value(def.datadog_sql.as_ref())?,
@@ -188,12 +269,14 @@ impl QueryRegistry {
         self.queries.insert(query.id.clone(), query);
     }
 
-    /// Register a recording rule, promoting an inline `query` if present.
-    pub fn register_rule(&mut self, def: RuleDef) -> Result<()> {
+    /// Register a recording rule, promoting an inline `query` (which inherits the
+    /// file `importance` hint) if present.
+    pub fn register_rule(&mut self, def: RuleDef, importance: Importance) -> Result<()> {
         if self.rules.contains_key(&def.record) {
             return Err(Error::DuplicateRule(def.record));
         }
-        let query_id = self.resolve_required_dependency(def.query, def.query_id, &def.record)?;
+        let query_id =
+            self.resolve_required_dependency(def.query, def.query_id, &def.record, importance)?;
         let rule = Rule {
             record: def.record.clone(),
             description: def.description.into(),
@@ -206,12 +289,14 @@ impl QueryRegistry {
         Ok(())
     }
 
-    /// Register an alert, promoting an inline `query` if present.
-    pub fn register_alert(&mut self, def: AlertDef) -> Result<()> {
+    /// Register an alert, promoting an inline `query` (which inherits the file
+    /// `importance` hint) if present.
+    pub fn register_alert(&mut self, def: AlertDef, importance: Importance) -> Result<()> {
         if self.alerts.contains_key(&def.alert) {
             return Err(Error::DuplicateAlert(def.alert));
         }
-        let query_id = self.resolve_required_dependency(def.query, def.query_id, &def.alert)?;
+        let query_id =
+            self.resolve_required_dependency(def.query, def.query_id, &def.alert, importance)?;
         let alert = Alert {
             alert: def.alert.clone(),
             description: def.description.into(),
@@ -234,9 +319,10 @@ impl QueryRegistry {
         query: Option<Box<QueryDef>>,
         query_id: Option<String>,
         owner: &str,
+        importance: Importance,
     ) -> Result<QueryId> {
         match (query, query_id) {
-            (Some(def), _) => self.register_query(*def),
+            (Some(def), _) => self.register_query(*def, importance),
             (None, Some(id)) => Ok(id),
             (None, None) => Err(Error::Schema {
                 path: owner.to_string(),

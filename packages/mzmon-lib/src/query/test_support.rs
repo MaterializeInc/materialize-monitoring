@@ -10,15 +10,17 @@
 //! Test-only helpers and fixtures for the query registry.
 //!
 //! The real query files under `packages/queries/` are embedded so tests run
-//! hermetically (cf. `scrape::test_support`). The golden `metrics.yaml.snap` is
-//! the Python `query_cli docgen` output for those same files; the parity test
-//! compares the Rust `extract-metrics` output against it **structurally** (parsed
-//! to a value), so YAML formatting differences between the two serializers don't
-//! matter.
+//! hermetically (cf. `scrape::test_support`). `metrics.yaml.snap` is a snapshot
+//! of the Rust `extract-metrics` output for those files; the snapshot test
+//! compares against it **structurally** (parsed to a value), so YAML formatting
+//! doesn't matter. It is a Rust snapshot rather than a Python golden because the
+//! `importance` column is Rust-only — Python's `docgen` emits `stability`.
+//! (Extraction — names, labels, usage — still matches Python; that parity is
+//! checked out-of-band, not committed, since the Python tool is being retired.)
 //!
-//! Keep both in sync with `packages/queries/`: when a query file changes,
-//! regenerate the golden with
-//! `python3 -m py_mzmon_lib.registry.query_cli docgen --source-dir packages/queries --out-dir packages/mzmon-lib/src/query/testdata`
+//! Keep the snapshot in sync with `packages/queries/`: when a query file changes,
+//! regenerate it with
+//! `mz-monitoring-build extract-metrics --source-dir packages/queries --out-dir packages/mzmon-lib/src/query/testdata`
 //! then rename `metrics.yaml` to `metrics.yaml.snap`.
 
 use serde_json::Value;
@@ -48,10 +50,6 @@ pub(crate) const FIXTURES: &[(&str, &str)] = &[
     (
         "materialize-kubernetes",
         include_str!("../../../queries/materialize-kubernetes.yaml"),
-    ),
-    (
-        "materialize-perf",
-        include_str!("../../../queries/materialize-perf.yaml"),
     ),
     (
         "materialize-storage",
@@ -88,12 +86,33 @@ mod tests {
     #[test]
     fn corpus_loads_all_queries() {
         let registry = corpus_registry();
-        // 71 queries across the seven files, matching the Python loader.
+        // 71 queries across the six files, matching the Python loader.
         assert_eq!(registry.len(), 71);
         // A representative spread of engines / shapes is present.
         assert!(registry.get("materialize.clusters.count").is_some());
         assert_eq!(registry.iter_metric_queries().count(), 71);
         assert_eq!(registry.iter_log_queries(false).count(), 0);
+    }
+
+    #[test]
+    fn importance_is_stamped_from_the_file_hint() {
+        let registry = corpus_registry();
+        // materialize-kubernetes.yaml is hinted `essential`; the others
+        // `recommended`. Spot-check one query from each.
+        assert_eq!(
+            registry
+                .get("materialize.kubernetes.pods.readiness")
+                .unwrap()
+                .importance,
+            crate::query::importance::Importance::Essential
+        );
+        assert_eq!(
+            registry
+                .get("materialize.clusters.count")
+                .unwrap()
+                .importance,
+            crate::query::importance::Importance::Recommended
+        );
     }
 
     #[test]
@@ -107,10 +126,12 @@ mod tests {
         }
     }
 
-    /// The headline parity test: the Rust `extract-metrics` output equals the
-    /// Python `docgen` golden, compared as structured data.
+    /// The headline snapshot test: the Rust `extract-metrics` output equals the
+    /// recorded `metrics.yaml.snap`, compared as structured data. Guards the
+    /// whole pipeline (extraction + importance roll-up + overrides) against
+    /// regressions.
     #[test]
-    fn extract_metrics_matches_python_golden() {
+    fn extract_metrics_matches_snapshot() {
         let registry = corpus_registry();
         let ctx = doc_context(&registry, QueryEngine::PromQl);
         let outcome = extract_metric_docs(&registry, &ctx);
@@ -123,12 +144,12 @@ mod tests {
         let produced: Value =
             serde_json::to_value(&outcome.metrics).expect("serialize produced metrics");
         let expected: Value =
-            serde_yaml_ng::from_str(GOLDEN_METRICS).expect("parse golden metrics.yaml.snap");
+            serde_yaml_ng::from_str(GOLDEN_METRICS).expect("parse metrics.yaml.snap");
 
         assert_eq!(
             produced,
             expected,
-            "extract-metrics output diverged from the Python golden\n\
+            "extract-metrics output diverged from the snapshot\n\
              --- produced ({} metrics) ---\n{}",
             outcome.metrics.len(),
             outcome.to_yaml().unwrap()

@@ -230,6 +230,7 @@ pub fn doc_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> Temp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query::importance::Importance;
     use crate::query::model::{Description, TemplateFunction};
     use crate::query::stability::Stability;
 
@@ -278,6 +279,7 @@ mod tests {
             id: "q".to_string(),
             description: Description::default(),
             stability: Stability::BestEffort,
+            importance: Importance::Recommended,
             dependencies: vec![],
             promql: vec![TemplateExpr {
                 template: Some("m{}".to_string()),
@@ -303,6 +305,7 @@ mod tests {
             id: "q".to_string(),
             description: Description::default(),
             stability: Stability::BestEffort,
+            importance: Importance::Recommended,
             dependencies: vec![],
             promql: vec![TemplateExpr::template("m{}")],
             datadog_sql: vec![],
@@ -324,6 +327,7 @@ mod tests {
             id: "base".to_string(),
             description: Description::default(),
             stability: Stability::BestEffort,
+            importance: Importance::Recommended,
             dependencies: vec![],
             promql: vec![TemplateExpr::template("inner{}")],
             datadog_sql: vec![],
@@ -335,6 +339,7 @@ mod tests {
             id: "wrapper".to_string(),
             description: Description::default(),
             stability: Stability::BestEffort,
+            importance: Importance::Recommended,
             dependencies: vec![],
             promql: vec![TemplateExpr {
                 template: None,

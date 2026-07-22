@@ -5,6 +5,8 @@ description: |
   Inventory and sizing of a Materialize deployment's clusters and replicas.
   Adapted from the Overview dashboard's "Cluster Objects / Replicas" tab.
 
+metricImportanceHint: recommended
+
 queries:
   - id: materialize.clusters.count
     stability: best-effort

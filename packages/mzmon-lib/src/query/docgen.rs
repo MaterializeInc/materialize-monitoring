@@ -9,15 +9,21 @@
 
 //! Aggregating extracted metrics into the `metrics.yaml` documentation model.
 //!
-//! Ported from `query_cli.docgen`. Each metric query is rendered and its metrics
+//! Descended from `query_cli.docgen`, but the per-metric column is now
+//! **importance**, not stability: each metric query is rendered and its metrics
 //! extracted; occurrences of the same metric across queries are merged (labels
-//! and `usage` unioned, stability promoted to the most mature). The result is
-//! sorted most-mature-then-most-used-then-name and serialized to YAML.
+//! and `usage` unioned, importance rolled up **greatest-wins** — if any query is
+//! `essential`, the metric is `essential`). `metricOverrides` then set a metric's
+//! importance outright. The result is sorted most-important-then-most-used-then-
+//! name and serialized to YAML.
+//!
+//! Importance is the axis Python's `docgen` does not have, so this output
+//! intentionally diverges from it — the Rust tool is authoritative. Extraction
+//! (metric names, labels, usage) is unchanged and still matches Python.
 //!
 //! The output is a pure function of the registry content: labels and usage are
-//! sorted, stability is a commutative max, and the final order is total — so it
-//! does not depend on query registration/iteration order. That is what lets the
-//! Rust `extract-metrics` reproduce the Python `docgen` output structurally.
+//! sorted, importance is a commutative max plus deterministic overrides, and the
+//! final order is total — so it does not depend on query registration order.
 
 use std::collections::BTreeSet;
 use std::str::FromStr;
@@ -26,21 +32,21 @@ use indexmap::IndexMap;
 use serde::Serialize;
 
 use crate::query::error::{Error, Result};
+use crate::query::importance::Importance;
 use crate::query::registry::QueryRegistry;
 use crate::query::render::TemplateContext;
-use crate::query::stability::Stability;
 
-/// Documentation for a single metric. Field order matches the Python
-/// `yaml.safe_dump` output (keys sorted: `labels`, `name`, `stability`,
-/// `usage`), so the serialized YAML lines up.
+/// Documentation for a single metric. Field order is alphabetical (`importance`,
+/// `labels`, `name`, `usage`) so the serialized YAML keys stay sorted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MetricDoc {
+    /// The metric's importance: the greatest-wins roll-up across the queries that
+    /// reference it, or an override's value if one matches.
+    pub importance: String,
     /// The distinct label names any query matches on this metric, sorted.
     pub labels: Vec<String>,
     /// The metric name.
     pub name: String,
-    /// The most mature stability across the queries that use this metric.
-    pub stability: String,
     /// The ids of the queries that reference this metric, sorted.
     pub usage: Vec<String>,
 }
@@ -61,16 +67,18 @@ impl DocgenOutcome {
     }
 }
 
-/// Prometheus infra metrics documented as best-effort regardless of the using
-/// query's stability (they are upstream contracts, not ours to grade).
-fn infra_best_effort(name: &str) -> bool {
-    name.starts_with("kube_") || name.starts_with("container_")
+/// Per-metric aggregation accumulator: label/usage sets plus the running
+/// greatest-wins importance across the queries that reference the metric.
+struct Aggregate {
+    labels: BTreeSet<String>,
+    usage: BTreeSet<String>,
+    importance: Importance,
 }
 
 /// Extract and aggregate the documented metrics for every metric query in
 /// `registry`, rendered through `ctx`.
 pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> DocgenOutcome {
-    let mut metrics: IndexMap<String, MetricDoc> = IndexMap::new();
+    let mut aggregates: IndexMap<String, Aggregate> = IndexMap::new();
     let mut errors = Vec::new();
 
     for query in registry.iter_metric_queries() {
@@ -83,57 +91,44 @@ pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> D
         };
 
         for metric in extracted {
-            let stability = if infra_best_effort(&metric.name) {
-                Stability::BestEffort
-            } else {
-                query.stability
-            };
-
-            match metrics.get_mut(&metric.name) {
-                None => {
-                    let mut labels: Vec<String> = metric.labels;
-                    labels.sort();
-                    labels.dedup();
-                    metrics.insert(
-                        metric.name.clone(),
-                        MetricDoc {
-                            labels,
-                            name: metric.name,
-                            stability: stability.to_string(),
-                            usage: vec![query.id.clone()],
-                        },
-                    );
-                }
-                Some(doc) => {
-                    let labels: BTreeSet<String> =
-                        doc.labels.drain(..).chain(metric.labels).collect();
-                    doc.labels = labels.into_iter().collect();
-
-                    let mut usage: BTreeSet<String> = doc.usage.drain(..).collect();
-                    usage.insert(query.id.clone());
-                    doc.usage = usage.into_iter().collect();
-
-                    // Keep the more mature stability.
-                    let existing = Stability::from_str(&doc.stability)
-                        .expect("stability strings are written by us");
-                    if stability > existing {
-                        doc.stability = stability.to_string();
-                    }
-                }
-            }
+            let entry = aggregates.entry(metric.name).or_insert_with(|| Aggregate {
+                labels: BTreeSet::new(),
+                usage: BTreeSet::new(),
+                importance: query.importance,
+            });
+            entry.labels.extend(metric.labels);
+            entry.usage.insert(query.id.clone());
+            // Greatest-wins: the metric is as important as its most important
+            // referencing query.
+            entry.importance = entry.importance.max(query.importance);
         }
     }
 
-    let mut docs: Vec<MetricDoc> = metrics.into_values().collect();
+    let mut docs: Vec<MetricDoc> = aggregates
+        .into_iter()
+        .map(|(name, aggregate)| {
+            // A matching override replaces the rolled-up importance outright.
+            let importance = registry
+                .override_importance(&name)
+                .unwrap_or(aggregate.importance);
+            MetricDoc {
+                importance: importance.to_string(),
+                labels: aggregate.labels.into_iter().collect(),
+                name,
+                usage: aggregate.usage.into_iter().collect(),
+            }
+        })
+        .collect();
+
     docs.sort_by(|a, b| {
-        let maturity = |doc: &MetricDoc| {
-            Stability::from_str(&doc.stability)
-                .expect("stability strings are written by us")
-                .maturity()
+        let rank = |doc: &MetricDoc| {
+            Importance::from_str(&doc.importance)
+                .expect("importance strings are written by us")
+                .rank()
         };
-        // Most mature first, then most used, then name ascending.
-        maturity(b)
-            .cmp(&maturity(a))
+        // Most important first, then most used, then name ascending.
+        rank(b)
+            .cmp(&rank(a))
             .then_with(|| b.usage.len().cmp(&a.usage.len()))
             .then_with(|| a.name.cmp(&b.name))
     });
@@ -150,12 +145,13 @@ mod tests {
     use crate::query::model::QueryEngine;
     use crate::query::render::doc_context;
 
-    /// Build a registry from a single PromQL query definition (YAML fragment).
-    fn registry_with(queries_yaml: &str) -> QueryRegistry {
-        let doc = format!("description: test\nqueries:\n{queries_yaml}");
-        let parsed: crate::query::def::RegistryDoc = serde_yaml_ng::from_str(&doc).unwrap();
+    /// Load a registry from one or more full registry-file YAML documents.
+    fn load_docs(docs: &[&str]) -> QueryRegistry {
         let mut registry = QueryRegistry::new();
-        registry.load(parsed).unwrap();
+        for doc in docs {
+            let parsed: crate::query::def::RegistryDoc = serde_yaml_ng::from_str(doc).unwrap();
+            registry.load(parsed).unwrap();
+        }
         registry
     }
 
@@ -170,20 +166,36 @@ mod tests {
         outcome.metrics
     }
 
+    fn by_name<'a>(docs: &'a [MetricDoc], name: &str) -> &'a MetricDoc {
+        docs.iter()
+            .find(|d| d.name == name)
+            .unwrap_or_else(|| panic!("no metric named {name}"))
+    }
+
     #[test]
-    fn merges_labels_usage_and_promotes_stability() {
-        let registry = registry_with(
+    fn merges_labels_usage_and_rolls_up_importance_greatest_wins() {
+        // `shared` is referenced by a diagnostic-hinted file and an
+        // essential-hinted file; the more important wins.
+        let registry = load_docs(&[
             r#"
-  - id: q.experimental
-    stability: experimental
+description: low
+metricImportanceHint: diagnostic
+queries:
+  - id: q.diagnostic
+    stability: best-effort
     description: {summary: s}
     promQL: 'shared{a="1"}'
-  - id: q.canonical
-    stability: canonical
+"#,
+            r#"
+description: high
+metricImportanceHint: essential
+queries:
+  - id: q.essential
+    stability: best-effort
     description: {summary: s}
     promQL: 'shared{b="2"}'
 "#,
-        );
+        ]);
         let docs = run(&registry);
         assert_eq!(docs.len(), 1);
         let doc = &docs[0];
@@ -191,40 +203,91 @@ mod tests {
         assert_eq!(doc.labels, vec!["a".to_string(), "b".to_string()]);
         assert_eq!(
             doc.usage,
-            vec!["q.canonical".to_string(), "q.experimental".to_string()]
+            vec!["q.diagnostic".to_string(), "q.essential".to_string()]
         );
-        // Canonical is more mature than experimental.
-        assert_eq!(doc.stability, "canonical");
+        assert_eq!(doc.importance, "essential");
     }
 
     #[test]
-    fn kube_and_container_metrics_are_forced_best_effort() {
-        let registry = registry_with(
-            r#"
-  - id: q.playground
-    stability: playground
+    fn overrides_set_importance_absolutely_both_directions() {
+        // One override raises an `_info` metric; another lowers a `noisy_` metric
+        // even though its query is recommended. A metric matching nothing keeps
+        // the rolled-up hint.
+        let registry = load_docs(&[r#"
+description: test
+metricImportanceHint: recommended
+queries:
+  - id: q
+    stability: best-effort
     description: {summary: s}
     promQL:
-      - 'kube_pod_status_phase{a="1"}'
-      - 'container_cpu_usage_seconds_total{b="2"}'
-      - 'mz_regular_metric{c="3"}'
-"#,
-        );
+      - 'mz_object_info{a="1"}'
+      - 'noisy_metric{b="2"}'
+      - 'normal_metric{c="3"}'
+metricOverrides:
+  - metricPattern: ".*_info"
+    importance: essential
+  - metricPattern: "noisy_.*"
+    importance: diagnostic
+"#]);
         let docs = run(&registry);
-        let by_name = |n: &str| docs.iter().find(|d| d.name == n).unwrap();
-        assert_eq!(by_name("kube_pod_status_phase").stability, "best-effort");
-        assert_eq!(
-            by_name("container_cpu_usage_seconds_total").stability,
-            "best-effort"
-        );
-        // A non-infra metric keeps the query's stability.
-        assert_eq!(by_name("mz_regular_metric").stability, "playground");
+        assert_eq!(by_name(&docs, "mz_object_info").importance, "essential");
+        assert_eq!(by_name(&docs, "noisy_metric").importance, "diagnostic");
+        assert_eq!(by_name(&docs, "normal_metric").importance, "recommended");
     }
 
     #[test]
-    fn sorts_by_maturity_then_usage_then_name() {
-        let registry = registry_with(
+    fn override_priority_breaks_overlaps() {
+        // Two overrides match `mz_object_info`; the higher priority wins.
+        let registry = load_docs(&[r#"
+description: test
+metricImportanceHint: recommended
+queries:
+  - id: q
+    stability: best-effort
+    description: {summary: s}
+    promQL: 'mz_object_info{a="1"}'
+metricOverrides:
+  - metricPattern: "mz_.*"
+    importance: extended
+    priority: 1
+  - metricPattern: ".*_info"
+    importance: essential
+    priority: 5
+"#]);
+        let docs = run(&registry);
+        assert_eq!(by_name(&docs, "mz_object_info").importance, "essential");
+    }
+
+    #[test]
+    fn anchored_pattern_does_not_match_substrings() {
+        // `mz_foo` is anchored, so it must match the whole name.
+        let registry = load_docs(&[r#"
+description: test
+metricImportanceHint: recommended
+queries:
+  - id: q
+    stability: best-effort
+    description: {summary: s}
+    promQL: 'mz_foo_extra{a="1"}'
+metricOverrides:
+  - metricPattern: "mz_foo"
+    importance: essential
+"#]);
+        // The override pattern `mz_foo` must not match `mz_foo_extra`.
+        assert_eq!(
+            by_name(&run(&registry), "mz_foo_extra").importance,
+            "recommended"
+        );
+    }
+
+    #[test]
+    fn sorts_by_importance_then_usage_then_name() {
+        let registry = load_docs(&[
             r#"
+description: recommended file
+metricImportanceHint: recommended
+queries:
   - id: q1
     stability: best-effort
     description: {summary: s}
@@ -237,15 +300,20 @@ mod tests {
     promQL:
       - 'used_twice{b="2"}'
       - 'used_once_b{b="2"}'
-  - id: q3
-    stability: experimental
-    description: {summary: s}
-    promQL: 'experimental_metric{c="3"}'
 "#,
-        );
+            r#"
+description: diagnostic file
+metricImportanceHint: diagnostic
+queries:
+  - id: q3
+    stability: best-effort
+    description: {summary: s}
+    promQL: 'diagnostic_metric{c="3"}'
+"#,
+        ]);
         let docs = run(&registry);
         let names: Vec<&str> = docs.iter().map(|d| d.name.as_str()).collect();
-        // best-effort (more mature) before experimental; within best-effort,
+        // recommended (more important) before diagnostic; within recommended,
         // used_twice (2 uses) first, then the single-use pair alphabetically.
         assert_eq!(
             names,
@@ -253,7 +321,7 @@ mod tests {
                 "used_twice",
                 "used_once_a",
                 "used_once_b",
-                "experimental_metric",
+                "diagnostic_metric",
             ]
         );
     }

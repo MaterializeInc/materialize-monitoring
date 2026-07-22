@@ -4,6 +4,8 @@
 description: |
   Common queries for checking the health of a Materialize deployment.
 
+metricImportanceHint: recommended
+
 queries:
   - id: materialize.scraper.mzmon.environmentd
     stability: best-effort
