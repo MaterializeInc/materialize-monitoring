@@ -39,8 +39,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | ^1.8.0 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | ^1.8.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | ^1.10.1 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | ^1.10.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | ^3.13.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | ^12.3.3 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | ^15.0.0 |
