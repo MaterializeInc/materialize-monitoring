@@ -14,6 +14,9 @@ jsonschema = { version = "0.47.0", default-features = false }
 # touches. Mirrors the `promql_parser` Python binding the registry was ported
 # from (same GreptimeTeam parser under the hood).
 promql-parser = "0.10.0"
+# Compiles `metricPattern` override globs into anchored regexes matched against
+# metric names during importance roll-up.
+regex = "1.11.4"
 serde = { version = "1.0.228", features = ["derive"] }
 # preserve_order keeps map key order from the source YAML through the
 # serde_json::Value intermediate (Value uses indexmap instead of BTreeMap).

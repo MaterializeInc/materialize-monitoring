@@ -98,6 +98,7 @@ mod tests {
 
     const VALID: &str = r#"
 description: test
+metricImportanceHint: recommended
 queries:
   - id: q
     stability: best-effort
@@ -105,8 +106,10 @@ queries:
     promQL: 'up{}'
 "#;
 
+    // Missing the required `id`.
     const INVALID: &str = r#"
 description: test
+metricImportanceHint: recommended
 queries:
   - stability: best-effort
     description: {summary: s}

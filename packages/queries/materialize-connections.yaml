@@ -6,6 +6,8 @@ description: |
   Materialize deployment. Adapted from the Overview dashboard's
   "Connections / Activity" tab.
 
+metricImportanceHint: recommended
+
 queries:
   - id: materialize.connections.sessions.active
     stability: best-effort

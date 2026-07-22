@@ -19,6 +19,7 @@ use std::fmt;
 
 use indexmap::IndexMap;
 
+use crate::query::importance::Importance;
 use crate::query::stability::Stability;
 
 /// A stable identifier for a query, e.g. `materialize.compute.peek_latency.p99`.
@@ -127,6 +128,9 @@ pub struct Query {
     pub description: Description,
     /// Stability level of this query.
     pub stability: Stability,
+    /// Importance stamped from the source file's `metricImportanceHint` at load
+    /// time. Rolls up (greatest-wins) to each metric this query references.
+    pub importance: Importance,
     /// Query ids this query depends on (dependencies are promoted to top-level
     /// registry entries at load time; this records the edge).
     pub dependencies: Vec<QueryId>,

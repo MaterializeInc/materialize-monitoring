@@ -7,6 +7,8 @@ description: |
   materialized views, and subscribes that run as dataflows on cluster replicas,
   plus their freshness, hydration, and resource footprint.
 
+metricImportanceHint: recommended
+
 queries:
   # --- catalog counts (environment-scoped) ---------------------------------
   - id: materialize.compute.materialized_views.count

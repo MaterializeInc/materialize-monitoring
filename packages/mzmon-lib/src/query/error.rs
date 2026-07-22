@@ -84,6 +84,10 @@ pub enum Error {
     #[error("failed to parse PromQL: {message}\n--- expression ---\n{expr}")]
     PromQlParse { expr: String, message: String },
 
+    /// A `metricPattern` on a metric override was not a valid regex.
+    #[error("invalid metricPattern {pattern:?}: {message}")]
+    InvalidPattern { pattern: String, message: String },
+
     /// A JSONSchema violation (used by [`crate::query::validate`]).
     #[error("schema violation at `{path}`: {message}")]
     Schema { path: String, message: String },

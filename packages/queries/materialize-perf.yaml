@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
-# Performance queries for Materialize.
-
-description: |
-  Common queries for checking the performance of a Materialize deployment.
-
-queries: []

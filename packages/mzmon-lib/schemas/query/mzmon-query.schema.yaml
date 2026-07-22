@@ -33,6 +33,8 @@ $defs:
         type: string
         description: |
           A human-friendly description of the current Query Registry.
+      metricImportanceHint:
+        $ref: "#/$defs/metricImportance"
     anyOf:
       - type: object
         properties:
@@ -64,10 +66,21 @@ $defs:
               $ref: "#/$defs/alertRule"
         required:
           - alerts
+      - type: object
+        properties:
+          metricOverrides:
+            type: array
+            description: |
+              A list of metric overrides in the current Query Registry.
+            items:
+              $ref: "#/$defs/metricOverride"
+        required:
+          - metricOverrides
 
     unevaluatedProperties: false
     required:
       - description
+      - metricImportanceHint
 
   knownParameter:
     description: |
@@ -93,6 +106,23 @@ $defs:
       # Kubernetes namespace selector value (regex) for kube-state-metrics /
       # cAdvisor panels, e.g. namespace=~"%%{mzNamespaceList}".
       - "mzNamespaceList"
+
+  metricImportance:
+    description: |
+      How important a given metric is.
+
+      This is used when collecting the non-full set of metrics for a given stack.
+
+      Essential metrics are always expected (they power alerts).
+      Recommended metrics are generally expected and power dashboards.
+      Extended metrics are optional and may be used for more experimental queries/dashboards.
+      Diagnostic metrics are primarily used for debugging and in-depth analysis.
+    type: string
+    enum:
+      - "essential"
+      - "recommended"
+      - "extended"
+      - "diagnostic"
 
   stability:
     description: |
@@ -429,3 +459,35 @@ $defs:
       - group
       - description
       - stability
+
+  metricOverride:
+    description: |
+      An override for a specific metric.
+
+      Overrides are absolute: a matching override sets the metric's importance
+      outright — raising or lowering it — independent of the greatest-wins
+      roll-up from the queries that reference it. Lowering is intentional, e.g.
+      demoting a metric kept only for backwards compatibility even though a
+      live query still selects it.
+    type: object
+    properties:
+      metricPattern:
+        type: string
+        description: |
+          A regular expression matched against the metric name. Anchored like
+          Prometheus: the whole name must match.
+        examples:
+          - "mz_compute_.*"
+          - ".*_info"
+      importance:
+        $ref: "#/$defs/metricImportance"
+      priority:
+        type: integer
+        default: 0
+        description: |
+          Tie-breaker when several overrides match one metric: the highest
+          priority wins. Equal priorities resolve in load order.
+    required:
+      - metricPattern
+      - importance
+    additionalProperties: false

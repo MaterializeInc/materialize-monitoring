@@ -16,6 +16,8 @@ description: |
   whose metrics source (e.g. GKE's managed cAdvisor/KSM) doesn't expose resource
   limits; the dashboard picks whichever fits the environment.
 
+metricImportanceHint: essential
+
 queries:
   # --- capacity ------------------------------------------------------------
   - id: materialize.kubernetes.cpu.capacity

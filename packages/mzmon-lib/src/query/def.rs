@@ -27,22 +27,41 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::query::error::{Error, Result};
+use crate::query::importance::Importance;
 use crate::query::model::{Description, TemplateExpr, TemplateFunction};
 use crate::query::stability::Stability;
 
-/// A whole registry file: a description plus any of queries / rules / alerts.
-/// (The schema requires at least one of the three; the loader does not, matching
-/// the Python `load()` which simply iterates whichever keys are present.)
+/// A whole registry file: a description, a metric-importance hint, and any of
+/// queries / rules / alerts / metric overrides. (The schema requires the hint and
+/// at least one content branch; the loader does not, matching the Python `load()`
+/// which simply iterates whichever keys are present.)
 #[derive(Debug, Clone, Deserialize)]
 pub struct RegistryDoc {
     #[serde(default)]
     pub description: String,
+    /// Default importance for every metric this file's queries reference. The
+    /// schema requires it; a missing hint defaults to [`Importance::default`].
+    #[serde(default, rename = "metricImportanceHint")]
+    pub metric_importance_hint: Importance,
     #[serde(default)]
     pub queries: Vec<QueryDef>,
     #[serde(default)]
     pub rules: Vec<RuleDef>,
     #[serde(default)]
     pub alerts: Vec<AlertDef>,
+    #[serde(default, rename = "metricOverrides")]
+    pub metric_overrides: Vec<MetricOverrideDef>,
+}
+
+/// A metric-importance override: set every metric matching `metric_pattern` to
+/// `importance` outright. See [`crate::query::registry::MetricOverride`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct MetricOverrideDef {
+    #[serde(rename = "metricPattern")]
+    pub metric_pattern: String,
+    pub importance: Importance,
+    #[serde(default)]
+    pub priority: i64,
 }
 
 impl RegistryDoc {
