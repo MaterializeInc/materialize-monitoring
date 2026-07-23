@@ -35,6 +35,7 @@ data:
     {{- end }}
   {{- end }}
   {{- /* </lokiDest> */}}
+
   {{- $promDest := .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite }}
   {{- if $promDest.enabled }}
   GATEWAY_PROM_DEST: {{ tpl $promDest.url $ | quote }}
@@ -59,8 +60,14 @@ data:
     {{- if $promDest.tls.enabled }}
       {{- fail "TLS is not supported for the alloy-gateway prometheus destination yet" }}
     {{- end }}
+
+  {{ $promDest.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
+      "context" $
+      "minMetricImportance" $promDest.minMetricImportance
+    ) | quote }}
   {{- end }}
   {{- /* </promDest> */}}
+
   {{- $tenancy := $.Values.pipeline.logging.tenancy | required "pipeline.logging.tenancy is required" }}
   GATEWAY_STATIC_TENANT: {{ $tenancy.staticTenant | quote }}
   {{- if hasPrefix $tenancy.tenantLabel "__meta_kubernetes" }}
@@ -71,4 +78,31 @@ data:
   GATEWAY_TENANT_MAP_INFRA: {{ $tenancy.tenantMap.infra | quote }}
   GATEWAY_TENANT_MAP_AUDIT: {{ $tenancy.tenantMap.audit | quote }}
   GATEWAY_TENANT_MAP_ENVIRONMENT: {{ $tenancy.tenantMap.environment | quote }}
+
+  {{- if .Values.pipeline.metrics.gateway.denyMetrics }}
+  GATEWAY_DENY_METRICS: {{ .Values.pipeline.metrics.gateway.denyMetrics | join "|" | quote }}
+  {{- end }}
+
+  {{- $otelDestValues := $.Values.pipeline.metrics.gateway.destination.otel }}
+  {{- if ( include "mzmon.alloyGateway.otelDest.enabled" $ ) }}
+    {{- if $otelDestValues.otlpExporter.enabled }}
+  {{ $otelDestValues.otlpExporter.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
+      "context" $
+      "minMetricImportance" $otelDestValues.otlpExporter.minMetricImportance
+    ) | quote }}
+    {{- end }}
+    {{- if $otelDestValues.googleCloudExporter.enabled }}
+  {{ $otelDestValues.googleCloudExporter.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
+      "context" $
+      "minMetricImportance" $otelDestValues.googleCloudExporter.minMetricImportance
+    ) | quote }}
+    {{- end }}
+    {{- if $otelDestValues.datadogExporter.enabled }}
+  {{ $otelDestValues.datadogExporter.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
+      "context" $
+      "minMetricImportance" $otelDestValues.datadogExporter.minMetricImportance
+    ) | quote }}
+    {{- end }}
+  {{- end }}
+  {{/* </otelDestValues> */}}
 {{- end }}

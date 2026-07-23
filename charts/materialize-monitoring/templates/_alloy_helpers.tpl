@@ -389,6 +389,46 @@ Usage:
 
 
 {{/*
+Render the alloy-gateway metric egress filter.
+
+Use otelcol.processor.filter.$processorName.input as the fanout chained input.
+
+Args:
+  forwardTo: list of destinations to forward metrics to
+  processorName: name of the processor
+  unfilteredMetricsEnv: environment variable containing unfiltered metrics
+
+Usage:
+  {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
+    "forwardTo" $otelDestValues.otlpExporter.handlers
+    "processorName" "otlpMetricEgressFilter"
+    "unfilteredMetricsEnv" $otelDestValues.otlpExporter.unfilteredMetricsEnv
+  ) }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.egressFilter" }}
+  {{- $forwardTo := .forwardTo | required "at least one destination is required" }}
+  {{- $unfilteredMetricsEnv := .unfilteredMetricsEnv | required "unfilteredMetricsEnv is required" }}
+  {{- $processorName := .processorName | required "processorName is required" -}}
+
+otelcol.processor.filter "{{ $processorName }}" {
+    metric_conditions {
+        context = "metric"
+        conditions = [
+            "not IsMatch(metric.name, \"^(?:" + coalesce(sys.env({{ $unfilteredMetricsEnv | quote }}), ".*") + ")$\")",
+        ]
+    }
+
+	  output {
+		    metrics = [
+{{- range $forwardTo }}
+            {{ . }},
+{{- end }}
+		    ]
+    }
+}
+{{- end }}
+
+{{/*
 Render the alloy-gateway OpenTelemetry destination blocks.
 
 Usage:
@@ -401,17 +441,32 @@ Usage:
 
   {{- if $otelDestValues.otlpExporter.enabled }}
     {{- $blocks = append $blocks ( tpl $otelDestValues.otlpExporter.config $ ) }}
-    {{- $forwardTo = concat $forwardTo $otelDestValues.otlpExporter.handlers -}}
+    {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
+      "forwardTo" $otelDestValues.otlpExporter.handlers
+      "processorName" "otlpMetricEgressFilter"
+      "unfilteredMetricsEnv" $otelDestValues.otlpExporter.unfilteredMetricsEnv
+    ) | nindent 0 }}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.otlpMetricEgressFilter.input" -}}
   {{- end }}
 
   {{- if $otelDestValues.googleCloudExporter.enabled }}
     {{- $blocks = append $blocks ( tpl $otelDestValues.googleCloudExporter.config $ ) }}
-    {{- $forwardTo = concat $forwardTo $otelDestValues.googleCloudExporter.handlers -}}
+    {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
+      "forwardTo" $otelDestValues.googleCloudExporter.handlers
+      "processorName" "googleCloudMetricEgressFilter"
+      "unfilteredMetricsEnv" $otelDestValues.googleCloudExporter.unfilteredMetricsEnv
+    ) | nindent 0 }}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.googleCloudMetricEgressFilter.input" -}}
   {{- end }}
 
   {{- if $otelDestValues.datadogExporter.enabled }}
     {{- $blocks = append $blocks ( tpl $otelDestValues.datadogExporter.config $ ) }}
-    {{- $forwardTo = concat $forwardTo $otelDestValues.datadogExporter.handlers -}}
+    {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
+      "forwardTo" $otelDestValues.datadogExporter.handlers
+      "processorName" "datadogMetricEgressFilter"
+      "unfilteredMetricsEnv" $otelDestValues.datadogExporter.unfilteredMetricsEnv
+    ) | nindent 0 }}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.datadogMetricEgressFilter.input" -}}
   {{- end }}
 
   {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
@@ -512,6 +567,58 @@ Usage:
   {{- else }}
     {{- printf "Unsupported authType (%s)" $otelDestValues.auth.authType | fail }}
   {{- end }}
+{{- end }}
+
+
+{{/*
+Generate metric filter for a given metric exporter.
+
+Filters are regex joined by `|` (most metrics are single named).
+This is not anchored by ^$ (that's handled in the pipeline).
+
+Args:
+  context: The context object, typically `$`.
+  minMetricImportance: The minimum metric importance level to filter by.
+    Valid values are "essential", "recommended", "extended", "diagnostic"
+
+Usage:
+  {{ $otlpExporter.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
+      "context" $
+      "minMetricImportance" $otlpExporter.minMetricImportance
+    ) | quote }}
+*/}}
+{{- define "mzmon.alloyGateway.metricFilter" }}
+  {{- $context := .context | required "context is required" }}
+  {{- $minMetricImportance := .minMetricImportance | required "minMetricImportance is required" }}
+  {{- $metricTiers := $context.Files.Get "pre-rendered/metrics/metric-tiers.yaml" | required "metrics-tiers.yaml cannot be missing/empty" | fromYaml }}
+  {{- $metricPatterns := list }}
+
+  {{- if eq $minMetricImportance "all" }}
+    {{- $metricPatterns = list ".*" }}
+  {{- end }}
+  {{- /* Each tier includes the subsequent metrics (unless .* is already present) */}}
+  {{- if eq $minMetricImportance "diagnostic" }}
+    {{- $metricPatterns = concat $metricPatterns $metricTiers.diagnostic }}
+    {{- $minMetricImportance = "extended" }}
+  {{- end }}
+  {{- if eq $minMetricImportance "extended" }}
+    {{- $metricPatterns = concat $metricPatterns $metricTiers.extended }}
+    {{- $minMetricImportance = "recommended" }}
+  {{- end }}
+  {{- if eq $minMetricImportance "recommended" }}
+    {{- $metricPatterns = concat $metricPatterns $metricTiers.recommended }}
+    {{- $minMetricImportance = "essential" }}
+  {{- end }}
+  {{- if eq $minMetricImportance "essential" }}
+    {{- $metricPatterns = concat $metricPatterns $metricTiers.essential }}
+  {{- end }}
+
+  {{- if not $metricPatterns }}
+    {{- printf "No metrics patterns found for %s" .minMetricImportance | fail }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- join "|" $metricPatterns }}
 {{- end }}
 
 {{/*

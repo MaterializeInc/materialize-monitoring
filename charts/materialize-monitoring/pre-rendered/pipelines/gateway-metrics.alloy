@@ -117,7 +117,7 @@ otelcol.processor.filter "inputMetricProcessor" {
 	metric_conditions {
 		context = "metric"
 		conditions = [
-			"IsMatch(metric.name, \"^(?:" + coalesce(sys.env("GATEWAY_DROP_METRICS"), "") + ")$\")",
+			"IsMatch(metric.name, \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")",
 		]
 	}
 

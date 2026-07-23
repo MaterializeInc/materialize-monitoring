@@ -94,10 +94,7 @@ blocks:
               - operator: "+"
                 arguments:
                   - 'IsMatch(metric.name, "^(?:'
-                  - function: coalesce
-                    arguments:
-                      - env: "GATEWAY_DROP_METRICS"
-                      - ""
+                  - env: "GATEWAY_DENY_METRICS"
                   - ')$")'
         - output:
             metrics:

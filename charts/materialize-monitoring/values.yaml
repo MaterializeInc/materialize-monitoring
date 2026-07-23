@@ -341,6 +341,9 @@ pipeline:
   # @notationType -- (sectionstart) Metrics configuration
   metrics:
     gateway:
+      # -- Denylist of metrics that are excluded from being exported
+      # These are |'d in a regex pattern
+      denyMetrics: []
       destination:
         prometheusRemoteWrite:
           # -- Enable writing to a Prometheus remote write destination.
@@ -349,6 +352,12 @@ pipeline:
 
           # -- Prometheus remote write endpoint URL.
           url: 'http://thanos-receive.{{ include "mzmon.thanos.namespace" $ }}.svc:10908/api/v1/receive'
+
+          # -- Only export metrics with the specified importance level.
+          # Values are "essential", "recommended", "extended", "diagnostic", "all"
+          minMetricImportance: "all"
+
+          unfilteredMetricsEnv: GATEWAY_UNFILTERED_PROM_METRICS
 
           # -- Type of authentication to use with the loki endpoint.
           # Use none if no authentication is required.
@@ -423,6 +432,12 @@ pipeline:
             # Only gzip is supported for Google Cloud Monitoring / Logging.
             compression: gzip
 
+            # -- Only export metrics with the specified importance level.
+            # Values are "essential", "recommended", "extended", "diagnostic", "all"
+            minMetricImportance: "recommended"
+
+            unfilteredMetricsEnv: GATEWAY_UNFILTERED_GCM_METRICS
+
             instrumentation_library_labels: false
             skip_create_descriptor: true
             service_resource_labels: false
@@ -456,6 +471,12 @@ pipeline:
             # -- Compression for logs/metrics
             # Only gzip is supported for Datadog.
             compression: gzip
+
+            # -- Only export metrics with the specified importance level.
+            # Values are "essential", "recommended", "extended", "diagnostic", "all"
+            minMetricImportance: "recommended"
+
+            unfilteredMetricsEnv: GATEWAY_UNFILTERED_DATADOG_METRICS
 
             url: "datadoghq.com"
             metricEndpoint: "https://api.datadoghq.com"
@@ -506,6 +527,13 @@ pipeline:
             # Use gzip for better compatibility.
             # Use snappy for better performance.
             compression: snappy
+
+            # -- Only export metrics with the specified importance level.
+            # Values are "essential", "recommended", "extended", "diagnostic", "all"
+            minMetricImportance: "all"
+
+            unfilteredMetricsEnv: GATEWAY_UNFILTERED_OTLP_METRICS
+
             # -- Handlers to use for the OTLP exporter.
             # @default -- ["otelcol.exporter.otlp[http].destination.input"]
             # Update this if your config was customized.
