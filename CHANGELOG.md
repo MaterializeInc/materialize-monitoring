@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.3.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.8.0 (Unreleased)
 
 _Changes Pending_
@@ -96,9 +100,14 @@ _Changes Pending_
     * Implement Gateway Pipeline for Logs
         * [materialize-monitoring#79](https://github.com/MaterializeInc/materialize-monitoring/pull/79)
 
-## Container Images v0.2.0 (Unreleased)
+## Container Images v0.2.0
 
-_Changes Pending_
+* Update gcr.io/distroless/base-debian13 Docker digest to f4a335c
+    * [materialize-monitoring#102](https://github.com/MaterializeInc/materialize-monitoring/pull/102)
+* Update gcr.io/distroless/base-debian13 Docker digest to 7c4468d
+    * [materialize-monitoring#85](https://github.com/MaterializeInc/materialize-monitoring/pull/85)
+* Update dependency grafana/alloy to v1.17.1
+    * [materialize-monitoring#77](https://github.com/MaterializeInc/materialize-monitoring/pull/77)
 
 ## mzmon-lib (shared library) v0.8.0
 
