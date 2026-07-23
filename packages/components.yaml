@@ -76,8 +76,13 @@ components:
     version_paths: []
     content_paths:
       - packages/alloy-pipelines/
+      - packages/queries/
       # Generated pipeline output bundled into the chart.
       - charts/materialize-monitoring/pre-rendered/pipelines/
+      - charts/materialize-monitoring/pre-rendered/metrics/
+    artifacts:
+      - charts/materialize-monitoring/pre-rendered/metrics/**/*.yaml
+      - charts/materialize-monitoring/pre-rendered/pipelines/**/*.alloy
     dependencies:
       - mzmon-lib
       - repo-common

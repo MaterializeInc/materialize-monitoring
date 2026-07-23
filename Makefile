@@ -83,7 +83,10 @@ prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers docs/as
 scrapers: prometheus-scrapers
 .PHONY: scrapers
 
-synced: dashboards charts pipelines scrapers
+metric-tiers: charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml
+.PHONY: metric-tiers
+
+synced: dashboards charts pipelines scrapers metric-tiers
 .PHONY: synced
 
 all: synced
@@ -172,6 +175,14 @@ docs/assets/prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scra
 	mkdir -p "$@"
 	cp -r charts/materialize-monitoring/pre-rendered/scrapers/* "$@"
 	touch "$@"
+
+# Group the query registry's metrics by importance for the gateway's
+# per-destination allowlists (charts consume this via $.Files).
+charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
+	mkdir -p "$(@D)"
+	target/debug/mz-monitoring-build gen-metric-tiers \
+		--source-dir packages/queries \
+		--out "$@"
 
 # Re-extract the prometheus-operator CRD JSONSchemas from the vendored
 # materialize-monitoring-crds chart. Output is checked in; re-run on version bump.
