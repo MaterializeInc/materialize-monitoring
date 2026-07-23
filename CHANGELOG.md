@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring Helm Chart v0.8.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.8.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,35 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring Helm Chart v0.7.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.7.0
 
-_Changes Pending_
+* Drop renovate on legacy/; tune helm updates
+    * [materialize-monitoring#135](https://github.com/MaterializeInc/materialize-monitoring/pull/135)
+* Implement a Query Registry for reducing total metric set
+    * [materialize-monitoring#125](https://github.com/MaterializeInc/materialize-monitoring/pull/125)
+* Enable MZ podmonitors by default
+    * [materialize-monitoring#116](https://github.com/MaterializeInc/materialize-monitoring/pull/116)
+* CLO-152 Replace prometheus-style pipeline with otelcol for processing
+    * [materialize-monitoring#115](https://github.com/MaterializeInc/materialize-monitoring/pull/115)
+* CLO-152 add schema support for otelcol pipeline blocks
+    * [materialize-monitoring#110](https://github.com/MaterializeInc/materialize-monitoring/pull/110)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+    * CLO-152 Support importance axis for extracted metrics
+        * [materialize-monitoring#132](https://github.com/MaterializeInc/materialize-monitoring/pull/132)
+* Included Pipelines @ v0.7.0..v0.8.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * Update Rust crate regex to v1.13.1
+        * [materialize-monitoring#133](https://github.com/MaterializeInc/materialize-monitoring/pull/133)
+    * Update Rust crate tokio to v1.52.4
+        * [materialize-monitoring#131](https://github.com/MaterializeInc/materialize-monitoring/pull/131)
+    * Port metric registry to rust
+        * [materialize-monitoring#129](https://github.com/MaterializeInc/materialize-monitoring/pull/129)
+    * Update Rust crate clap to v4.6.2
+        * [materialize-monitoring#124](https://github.com/MaterializeInc/materialize-monitoring/pull/124)
 
 ## materialize-monitoring Helm Chart v0.6.0
 
