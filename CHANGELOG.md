@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.13.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.8.0 (Unreleased)
 
 _Changes Pending_
@@ -161,9 +165,62 @@ _Changes Pending_
     * Update Rust crate itertools to 0.15.0
         * [materialize-monitoring#60](https://github.com/MaterializeInc/materialize-monitoring/pull/60)
 
-## Dashboards v0.12.0 (Unreleased)
+## Dashboards v0.12.0
 
-_Changes Pending_
+* CLO-152 Support importance axis for extracted metrics
+    * [materialize-monitoring#132](https://github.com/MaterializeInc/materialize-monitoring/pull/132)
+* Implement a Query Registry for reducing total metric set
+    * [materialize-monitoring#125](https://github.com/MaterializeInc/materialize-monitoring/pull/125)
+* Update dependency grafana-foundation-sdk to v0.0.18
+    * [materialize-monitoring#51](https://github.com/MaterializeInc/materialize-monitoring/pull/51)
+* Implement Loki with Production Configuration
+    * [materialize-monitoring#48](https://github.com/MaterializeInc/materialize-monitoring/pull/48)
+* Add annotations to distinguish dashboards; roadmapping
+    * [materialize-monitoring#45](https://github.com/MaterializeInc/materialize-monitoring/pull/45)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * Update Rust crate regex to v1.13.1
+        * [materialize-monitoring#133](https://github.com/MaterializeInc/materialize-monitoring/pull/133)
+    * Update Rust crate tokio to v1.52.4
+        * [materialize-monitoring#131](https://github.com/MaterializeInc/materialize-monitoring/pull/131)
+    * Port metric registry to rust
+        * [materialize-monitoring#129](https://github.com/MaterializeInc/materialize-monitoring/pull/129)
+    * Update Rust crate clap to v4.6.2
+        * [materialize-monitoring#124](https://github.com/MaterializeInc/materialize-monitoring/pull/124)
+    * Enable MZ podmonitors by default
+        * [materialize-monitoring#116](https://github.com/MaterializeInc/materialize-monitoring/pull/116)
+    * CLO-152 add schema support for otelcol pipeline blocks
+        * [materialize-monitoring#110](https://github.com/MaterializeInc/materialize-monitoring/pull/110)
+    * Release mzmon-lib (shared library) v0.8.0
+        * [materialize-monitoring#75](https://github.com/MaterializeInc/materialize-monitoring/pull/75)
+    * Update Rust crate jsonschema to 0.47.0
+        * [materialize-monitoring#98](https://github.com/MaterializeInc/materialize-monitoring/pull/98)
+    * Implement alloy metrics pipelines
+        * [materialize-monitoring#96](https://github.com/MaterializeInc/materialize-monitoring/pull/96)
+    * Update Rust crate jsonschema to v0.46.10
+        * [materialize-monitoring#91](https://github.com/MaterializeInc/materialize-monitoring/pull/91)
+    * Enable alloy pipelines in materialize-monitoring
+        * [materialize-monitoring#89](https://github.com/MaterializeInc/materialize-monitoring/pull/89)
+    * Implement Gateway Pipeline for Logs
+        * [materialize-monitoring#79](https://github.com/MaterializeInc/materialize-monitoring/pull/79)
+    * Update Rust crate reqwest to 0.13
+        * [materialize-monitoring#61](https://github.com/MaterializeInc/materialize-monitoring/pull/61)
+    * Release mzmon-lib (shared library) v0.7.0
+        * [materialize-monitoring#28](https://github.com/MaterializeInc/materialize-monitoring/pull/28)
+    * Update dependency pydantic-settings to v2.14.2 [SECURITY]
+        * [materialize-monitoring#64](https://github.com/MaterializeInc/materialize-monitoring/pull/64)
+    * Update python Docker tag to v3.14
+        * [materialize-monitoring#59](https://github.com/MaterializeInc/materialize-monitoring/pull/59)
+    * Update Rust crate jsonschema to v0.46.9
+        * [materialize-monitoring#56](https://github.com/MaterializeInc/materialize-monitoring/pull/56)
+    * Update Rust crate anyhow to v1.0.103
+        * [materialize-monitoring#55](https://github.com/MaterializeInc/materialize-monitoring/pull/55)
+    * Update Rust crate itertools to 0.15.0
+        * [materialize-monitoring#60](https://github.com/MaterializeInc/materialize-monitoring/pull/60)
+    * MaterializeInc/jun/add-auth-to-compute-sql-endpoint
+        * [materialize-monitoring#47](https://github.com/MaterializeInc/materialize-monitoring/pull/47)
 
 ## Dashboards v0.11.0
 
