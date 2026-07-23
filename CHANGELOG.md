@@ -8,13 +8,31 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Prometheus Scrapers v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.8.0 (Unreleased)
 
 _Changes Pending_
 
-## Prometheus Scrapers v0.4.0 (Unreleased)
+## Prometheus Scrapers v0.4.0
 
-_Changes Pending_
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * Update Rust crate regex to v1.13.1
+        * [materialize-monitoring#133](https://github.com/MaterializeInc/materialize-monitoring/pull/133)
+    * CLO-152 Support importance axis for extracted metrics
+        * [materialize-monitoring#132](https://github.com/MaterializeInc/materialize-monitoring/pull/132)
+    * Update Rust crate tokio to v1.52.4
+        * [materialize-monitoring#131](https://github.com/MaterializeInc/materialize-monitoring/pull/131)
+    * Port metric registry to rust
+        * [materialize-monitoring#129](https://github.com/MaterializeInc/materialize-monitoring/pull/129)
+    * Implement a Query Registry for reducing total metric set
+        * [materialize-monitoring#125](https://github.com/MaterializeInc/materialize-monitoring/pull/125)
+    * Update Rust crate clap to v4.6.2
+        * [materialize-monitoring#124](https://github.com/MaterializeInc/materialize-monitoring/pull/124)
 
 ## materialize-monitoring Helm Chart v0.7.0 (Unreleased)
 
