@@ -83,128 +83,16 @@ otelcol.receiver.otlp "gateway" {
 	}
 }
 
-prometheus.receive_http "gateway" {
-	forward_to = [
-		otelcol.receiver.prometheus.inputBridge.receiver,
-	]
-
-	http {
-		listen_port = 9090
-	}
-}
-
 loki.source.kubernetes_events "k8sEvents" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,
 	]
 }
 
-prometheus.operator.podmonitors "default" {
-	forward_to = [
-		otelcol.receiver.prometheus.inputBridge.receiver,
-	]
-
-	clustering {
-		enabled = true
-	}
-
-	scrape {
-		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
-		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
-	}
-
-	rule {
-		action = "drop"
-		source_labels = [
-			"__meta_kubernetes_pod_phase",
-		]
-		regex = "Pending|Succeeded|Failed"
-	}
-
-	rule {
-		source_labels = [
-			"__meta_kubernetes_pod_label_k8s_app",
-		]
-		target_label = "app"
-		regex = "(.+)"
-	}
-
-	rule {
-		source_labels = [
-			"__meta_kubernetes_pod_label_app",
-		]
-		target_label = "app"
-		regex = "(.+)"
-	}
-
-	rule {
-		source_labels = [
-			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
-		]
-		target_label = "app"
-		regex = "(.+)"
-	}
-}
-
-prometheus.operator.servicemonitors "default" {
-	forward_to = [
-		otelcol.receiver.prometheus.inputBridge.receiver,
-	]
-
-	clustering {
-		enabled = true
-	}
-
-	scrape {
-		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
-		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
-	}
-
-	rule {
-		action = "drop"
-		source_labels = [
-			"__meta_kubernetes_pod_phase",
-		]
-		regex = "Pending|Succeeded|Failed"
-	}
-
-	rule {
-		source_labels = [
-			"__meta_kubernetes_pod_label_k8s_app",
-		]
-		target_label = "app"
-		regex = "(.+)"
-	}
-
-	rule {
-		source_labels = [
-			"__meta_kubernetes_pod_label_app",
-		]
-		target_label = "app"
-		regex = "(.+)"
-	}
-
-	rule {
-		source_labels = [
-			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
-		]
-		target_label = "app"
-		regex = "(.+)"
-	}
-}
-
 otelcol.exporter.loki "bridge" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,
 	]
-}
-
-otelcol.receiver.prometheus "inputBridge" {
-	output {
-		metrics = [
-			otelcol.processor.filter.inputMetricProcessor.input,
-		]
-	}
 }
 
 loki.process "inputProcessor" {
@@ -1732,10 +1620,3 @@ loki.process "sampleDebug" {
 }
 
 loki.echo "stub" { }
-
-otelcol.exporter.prometheus "outputBridge" {
-	forward_to = [
-		prometheus.relabel.egress.receiver,
-	]
-	add_metric_suffixes = false
-}

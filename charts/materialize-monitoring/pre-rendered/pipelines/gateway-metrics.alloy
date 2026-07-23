@@ -1,11 +1,123 @@
 // This pipeline defines the flow of metrics through the Alloy gateway, from
 // ingestion to their final destination.
 
+prometheus.receive_http "gateway" {
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+
+	http {
+		listen_port = 9090
+	}
+}
+
+otelcol.receiver.prometheus "inputBridge" {
+	output {
+		metrics = [
+			otelcol.processor.filter.inputMetricProcessor.input,
+		]
+	}
+}
+
+prometheus.operator.podmonitors "default" {
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+
+	clustering {
+		enabled = true
+	}
+
+	scrape {
+		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
+		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_k8s_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+}
+
+prometheus.operator.servicemonitors "default" {
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+
+	clustering {
+		enabled = true
+	}
+
+	scrape {
+		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
+		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_k8s_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+
+	rule {
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		target_label = "app"
+		regex = "(.+)"
+	}
+}
+
 otelcol.processor.filter "inputMetricProcessor" {
 	metric_conditions {
 		context = "metric"
 		conditions = [
-			"not IsMatch(metric.name, \"^(?:" + coalesce(sys.env("GATEWAY_UNFILTERED_METRICS"), ".*") + ")$\")",
+			"IsMatch(metric.name, \"^(?:" + coalesce(sys.env("GATEWAY_DROP_METRICS"), "") + ")$\")",
 		]
 	}
 
@@ -14,4 +126,11 @@ otelcol.processor.filter "inputMetricProcessor" {
 			otelcol.processor.memory_limiter.outputMemoryLimiter.input,
 		]
 	}
+}
+
+otelcol.exporter.prometheus "outputBridge" {
+	forward_to = [
+		prometheus.relabel.egress.receiver,
+	]
+	add_metric_suffixes = false
 }

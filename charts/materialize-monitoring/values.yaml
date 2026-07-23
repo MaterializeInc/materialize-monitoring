@@ -207,6 +207,8 @@ pipeline:
   env:
     # -- Name of the cluster to discriminate workloads from different sources.
     CLUSTER_NAME: "default"
+    # -- Level for the gateway logs.
+    GATEWAY_LOG_LEVEL: "info"
   # -- (h4) Configuration for log behavior
   # @notationType -- (sectionstart) Log configuration
   logging:

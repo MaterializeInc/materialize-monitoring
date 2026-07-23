@@ -242,6 +242,7 @@ Usage:
   {{- end }}
   {{- if $pipelineValues.metrics.gateway.destination.prometheusRemoteWrite.enabled }}
     {{- $metricsPromForward = append $metricsPromForward "prometheus.remote_write.destination.receiver" }}
+    {{- $metricsForward = append $metricsForward "otelcol.exporter.prometheus.outputBridge.input" }}
     {{- include "mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest" $ }}
   {{- end }}
   {{- if ( include "mzmon.alloyGateway.otelDest.enabled" $ ) }}

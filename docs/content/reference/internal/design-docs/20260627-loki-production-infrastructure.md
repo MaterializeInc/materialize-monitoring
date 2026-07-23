@@ -4,8 +4,8 @@ weight: 20260627
 # draft=false makes it render as a page
 # params.status=Draft is to indicate that the design is not final
 draft: false
-publishdate: 2024-06-27
-lastmod: 2024-06-28
+publishdate: 2026-06-27
+lastmod: 2026-06-28
 # custom parameters
 params:
   author: Heather Lapointe

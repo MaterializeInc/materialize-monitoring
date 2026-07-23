@@ -526,6 +526,12 @@ release instances.
       <td class="helm-value-default"><code>"default"</code></td>
       <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.</td>
     </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.env<wbr>.GATEWAY_LOG_LEVEL</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"info"</code></td>
+      <td class="helm-value-desc">Level for the gateway logs.</td>
+    </tr>
   </tbody>
 </table>
 
