@@ -108,15 +108,8 @@ blocks:
             logs:
               - ref: otelcol.exporter.loki.bridge.input
             metrics:
+              # switches to gateway-metrics.yaml
               - ref: otelcol.processor.filter.inputMetricProcessor.input
-
-  - prometheus.receive_http:
-      label: gateway
-      forward_to:
-        - "otelcol.receiver.prometheus.inputBridge.receiver"
-      blocks:
-        - http:
-            listen_port: 9090
 
   # --- collectors ---------------------------------------------------
 
@@ -128,52 +121,6 @@ blocks:
         forward_to:
           - ref: loki.process.inputProcessor.receiver
 
-  - prometheus.operator.podmonitors:
-      label: default
-      forward_to:
-        - otelcol.receiver.prometheus.inputBridge.receiver
-      blocks: &operatorBlocks
-        - clustering:
-            enabled: true
-        - scrape:
-            default_scrape_interval:
-              function: coalesce
-              arguments:
-                - env: GATEWAY_SCRAPE_INTERVAL
-                - "30s"
-            default_scrape_timeout:
-              function: coalesce
-              arguments:
-                - env: GATEWAY_SCRAPE_TIMEOUT
-                - "10s"
-        - rule:
-            # defensively ignore up{} metrics from pods that are not running
-            action: drop
-            source_labels:
-              - __meta_kubernetes_pod_phase
-            regex: "Pending|Succeeded|Failed"
-        # Coalesce app identity into a standard `app` label.
-        # Standardize on a single app label
-        # Priority: app.kubernetes.io/name > app > k8s_app  (last non-empty wins).
-        - rule:
-            source_labels: ["__meta_kubernetes_pod_label_k8s_app"]
-            regex: "(.+)"
-            target_label: app
-        - rule:
-            source_labels: ["__meta_kubernetes_pod_label_app"]
-            regex: "(.+)"
-            target_label: app
-        - rule:
-            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
-            regex: "(.+)"
-            target_label: app
-
-  - prometheus.operator.servicemonitors:
-      label: default
-      forward_to:
-        - otelcol.receiver.prometheus.inputBridge.receiver
-      blocks: *operatorBlocks
-
   # --- input bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
@@ -183,16 +130,6 @@ blocks:
       attributes:
         forward_to:
           - ref: loki.process.inputProcessor.receiver
-
-  # Bridge: turns Prometheus metrics into OTLP metrics and feeds the main processor.
-  - raw:
-      component: otelcol.receiver.prometheus
-      label: inputBridge
-      blocks:
-        - component: output
-          attributes:
-            metrics:
-              - ref: otelcol.processor.filter.inputMetricProcessor.input
 
   # --- main processing pipeline -----------
 
@@ -860,19 +797,6 @@ blocks:
               app: app
               container: container
 
-  # Metrics processing choke point, otelcol side (the analog of loki.process
-  # .inputProcessor for logs). Rule-free passthrough today; the metric
-  # filter/transform work (cardinality tiers) lands here. Feeds the outbound
-  # memory_limiter → batch chain below, which forwards to the
-  # otelcol.processor.filter.egress swap seam defined downstream (gateway-dest
-  # -stub.yaml at build time, the chart's _alloy_helpers.tpl at deploy).
-  - otelcol.processor.filter:
-      label: inputMetricProcessor
-      blocks:
-        - output:
-            metrics:
-              - otelcol.processor.memory_limiter.outputMemoryLimiter.input
-
   # Outbound resource management: cap memory (refuse at 75% to backpressure the
   # receivers) then batch before handing off to the egress seam.
   - otelcol.processor.memory_limiter:
@@ -921,20 +845,6 @@ blocks:
 
   - loki.echo:
       label: stub
-
-  # --- output bridges -------------------------------------------------
-
-  # Bridge: converts processed OTLP metrics back into Prometheus and feeds the
-  # prometheus.relabel.egress seam. add_metric_suffixes=false keeps names stable
-  # across the OTLP round-trip (no _total/_ratio/unit suffixes appended), so
-  # dashboards and alerts keep matching the original metric names.
-  - raw:
-      component: otelcol.exporter.prometheus
-      label: outputBridge
-      attributes:
-        forward_to:
-          - ref: prometheus.relabel.egress.receiver
-        add_metric_suffixes: false
 
   # --- egress ----------------------------------------------------------------
   # The egress seam and write destination live in gateway-dest-stub.yaml so the

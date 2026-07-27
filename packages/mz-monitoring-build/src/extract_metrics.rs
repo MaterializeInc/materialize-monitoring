@@ -29,6 +29,10 @@ pub struct ExtractMetricsArgs {
     #[arg(long, default_value = "packages/queries")]
     source_dir: PathBuf,
 
+    /// SQL Metric Prefix
+    #[arg(long, default_value = "mz_")]
+    sql_metric_prefix: String,
+
     /// Output directory for the generated `metrics.yaml`.
     #[arg(long)]
     out_dir: PathBuf,
@@ -69,7 +73,7 @@ pub fn extract_metrics(args: ExtractMetricsArgs) -> anyhow::Result<()> {
         args.source_dir.display()
     );
 
-    let ctx = doc_context(&registry, args.engine.to_engine());
+    let ctx = doc_context(&registry, args.engine.to_engine(), &args.sql_metric_prefix);
     let outcome = extract_metric_docs(&registry, &ctx);
 
     // A bad query is skipped, not fatal (mirrors the Python docgen try/except).

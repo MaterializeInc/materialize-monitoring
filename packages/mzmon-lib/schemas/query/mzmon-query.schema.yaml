@@ -97,6 +97,11 @@ $defs:
       # Environment (org) scope filter fragment, e.g.
       # materialize_cloud_organization_name=~"$environmentIdList".
       - "mzEnvironmentFilter"
+      # Optional environment-exclusion filter fragment, appended to a selector to
+      # drop environments a deployment does not want to alert on (e.g. internal
+      # test environments): mz_context_org_type!="e2e_test". Empty by default, so
+      # nothing is excluded unless a deployment configures it.
+      - "excludeEnvironmentFilter"
       # Selected-cluster / selected-replica value fragments (regexes). The label
       # NAME varies by metric family (compute_cluster_id / instance_id /
       # cluster_environmentd_materialize_cloud_cluster_id), so the author writes

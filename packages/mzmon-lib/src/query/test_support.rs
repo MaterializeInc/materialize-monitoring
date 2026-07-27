@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn corpus_renders_without_errors_under_doc_context() {
         let registry = corpus_registry();
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         for query in registry.iter_metric_queries() {
             query
                 .render(&ctx)
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn extract_metrics_matches_snapshot() {
         let registry = corpus_registry();
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         let outcome = extract_metric_docs(&registry, &ctx);
         assert!(
             outcome.errors.is_empty(),

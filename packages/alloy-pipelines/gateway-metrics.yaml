@@ -1,0 +1,116 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway metric pipeline.
+# This is the flow for metrics coming into the gateway to leaving it for its destination.
+
+description: |
+  This pipeline defines the flow of metrics through the Alloy gateway, from
+  ingestion to their final destination.
+
+blocks:
+  # --- metric ingress -------
+
+  - prometheus.receive_http:
+      label: gateway
+      forward_to:
+        - "otelcol.receiver.prometheus.inputBridge.receiver"
+      blocks:
+        - http:
+            listen_port: 9090
+
+  # Bridge: turns Prometheus metrics into OTLP metrics and feeds the main processor.
+  - raw:
+      component: otelcol.receiver.prometheus
+      label: inputBridge
+      blocks:
+        - component: output
+          attributes:
+            metrics:
+              # switches to gateway-metrics.yaml
+              - ref: otelcol.processor.filter.inputMetricProcessor.input
+
+  # --- collectors ---
+
+  - prometheus.operator.podmonitors:
+      label: default
+      forward_to:
+        - otelcol.receiver.prometheus.inputBridge.receiver
+      blocks: &operatorBlocks
+        - clustering:
+            enabled: true
+        - scrape:
+            default_scrape_interval:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_SCRAPE_INTERVAL
+                - "30s"
+            default_scrape_timeout:
+              function: coalesce
+              arguments:
+                - env: GATEWAY_SCRAPE_TIMEOUT
+                - "10s"
+        - rule:
+            # defensively ignore up{} metrics from pods that are not running
+            action: drop
+            source_labels:
+              - __meta_kubernetes_pod_phase
+            regex: "Pending|Succeeded|Failed"
+        # Coalesce app identity into a standard `app` label.
+        # Standardize on a single app label
+        # Priority: app.kubernetes.io/name > app > k8s_app  (last non-empty wins).
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_k8s_app"]
+            regex: "(.+)"
+            target_label: app
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_app"]
+            regex: "(.+)"
+            target_label: app
+        - rule:
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            regex: "(.+)"
+            target_label: app
+
+  - prometheus.operator.servicemonitors:
+      label: default
+      forward_to:
+        - otelcol.receiver.prometheus.inputBridge.receiver
+      blocks: *operatorBlocks
+
+  # --- main processing pipeline -----------
+
+  # Metrics processing choke point, otelcol side (the analog of loki.process
+  # .inputProcessor for logs).
+  # These are applied to ALL metrics.
+  - otelcol.processor.filter:
+      label: inputMetricProcessor
+      blocks:
+        - metric_conditions:
+            # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/contexts/ottlmetric/README.md
+            context: metric
+            # each condition is OR'd. If any condition evaluates to true, this metric is dropped
+            conditions:
+              # Drop metrics in the denylist. Assembled at config load into
+              # a single OTTL string: IsMatch(metric.name, "^(?:<deny>)$")
+              - operator: "+"
+                arguments:
+                  - 'IsMatch(metric.name, "^(?:'
+                  - env: "GATEWAY_DENY_METRICS"
+                  - ')$")'
+        - output:
+            metrics:
+              # return to gateway.yaml
+              - otelcol.processor.memory_limiter.outputMemoryLimiter.input
+
+  # --- output bridges -------------------------------------------------
+
+  # Bridge: converts processed OTLP metrics back into Prometheus and feeds the
+  # prometheus.relabel.egress seam. add_metric_suffixes=false keeps names stable
+  # across the OTLP round-trip (no _total/_ratio/unit suffixes appended), so
+  # dashboards and alerts keep matching the original metric names.
+  - raw:
+      component: otelcol.exporter.prometheus
+      label: outputBridge
+      attributes:
+        forward_to:
+          - ref: prometheus.relabel.egress.receiver
+        add_metric_suffixes: false

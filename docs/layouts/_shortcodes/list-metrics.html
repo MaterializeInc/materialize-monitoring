@@ -1,0 +1,34 @@
+{{/*
+  list-metrics: renders a list of available metrics.
+
+  Reads metrics from assets/metrics/metrics.yaml and displays them
+  based on the filtered importance.
+
+  Params (optional):
+    importance    The importance level of metrics to display.
+
+  Usage:
+    {{< list-metrics importance="essential" >}}
+*/}}
+{{- $importance := .Get "importance" }}
+{{- $allMetrics := resources.Get "metrics/metrics.yaml" | transform.Unmarshal }}
+<ul>
+{{- range $allMetrics }}
+  {{- if eq .importance $importance }}
+    <li id="{{ .name }}">{{ .name }}
+        <details>
+        {{- if .labels }}
+            Used labels: {{ delimit .labels ", " }}
+        {{- end }}
+            <br />
+            Example queries:
+            <ul>
+        {{- range .usage }}
+                <li><a href="../common-queries#{{ . }}">{{ . }}</a></li>
+        {{- end }}
+            </ul>
+        </details>
+    </li>
+  {{- end }}
+{{- end }}
+</ul>

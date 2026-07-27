@@ -18,7 +18,7 @@ SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
 SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway gateway-dest-stub agent
+ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -83,7 +83,13 @@ prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers docs/as
 scrapers: prometheus-scrapers
 .PHONY: scrapers
 
-synced: dashboards charts pipelines scrapers
+metrics: metric-tiers docs/assets/metrics/metrics.yaml
+.PHONY: metrics
+
+metric-tiers: charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml
+.PHONY: metric-tiers
+
+synced: dashboards charts pipelines scrapers metric-tiers
 .PHONY: synced
 
 all: synced
@@ -141,7 +147,7 @@ charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materia
 PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
 alloy-pipelines-validate:
 	alloy validate "$(PIPELINES_DIR)/agent.alloy"
-	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
+	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
 .PHONY: alloy-pipelines-validate
 
 ### SCRAPER SYNC ###
@@ -172,6 +178,18 @@ docs/assets/prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scra
 	mkdir -p "$@"
 	cp -r charts/materialize-monitoring/pre-rendered/scrapers/* "$@"
 	touch "$@"
+
+# Group the query registry's metrics by importance for the gateway's
+# per-destination allowlists (charts consume this via $.Files).
+charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
+	mkdir -p "$(@D)"
+	target/debug/mz-monitoring-build gen-metric-tiers \
+		--source-dir packages/queries \
+		--out "$@"
+
+docs/assets/metrics/metrics.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
+	mkdir -p "$(@D)"
+	target/debug/mz-monitoring-build extract-metrics --out-dir docs/assets/metrics/
 
 # Re-extract the prometheus-operator CRD JSONSchemas from the vendored
 # materialize-monitoring-crds chart. Output is checked in; re-run on version bump.

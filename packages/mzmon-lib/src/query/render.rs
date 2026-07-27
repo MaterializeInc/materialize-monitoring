@@ -173,19 +173,28 @@ pub fn promql_or_zero(base: &str, _args: &[String]) -> String {
     format!("({base}) or vector(0)")
 }
 
-/// The documentation [`TemplateContext`], matching `query_cli.doc_context`.
-///
-/// Parameters use deliberately recognizable sentinel values (`interval` ->
-/// `[51m]`, `mzSqlPrefix` -> `v2_mz_`, …) so rendered docs are obviously
-/// examples. Crucially for extraction, the id->name enrichment functions
-/// (`mzClusterName` / `mzObjectName`) are the identity here — the docs show the
-/// raw metric, not the `mz_object_info` / `mz_cluster_info` left joins — so the
-/// extracted metric set is exactly the metrics the queries name directly.
-pub fn doc_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> TemplateContext<'a> {
+/// Placeholder rendered for `%%{mzSqlPrefix}` by [`tier_context`]. It is a valid
+/// PromQL name prefix (so extraction parses cleanly) that never collides with a
+/// real metric; [`crate::query::tiers`] rewrites it to [`SQL_PREFIX_REGEX`] in
+/// the emitted allowlist so the SQL-exporter metrics match under either prefix.
+pub const SQL_PREFIX_SENTINEL: &str = "__mz_sql_prefix__";
+
+/// The anchored-regex fragment the [`SQL_PREFIX_SENTINEL`] rewrites to: matches
+/// both the converged (`mz_`) and legacy (`v2_mz_`) prefixes.
+pub const SQL_PREFIX_REGEX: &str = "(?:v2_)?mz_";
+
+/// Shared builder for the extraction contexts. Only `mz_sql_prefix` varies: it
+/// is the sole parameter that affects extracted *metric names* (every other
+/// parameter fills label matchers / ranges, which extraction ignores).
+fn extraction_context<'a>(
+    registry: &'a QueryRegistry,
+    engine: QueryEngine,
+    mz_sql_prefix: &str,
+) -> TemplateContext<'a> {
     let parameters = [
         ("interval", "[51m]"),
         ("range", "[42m]"),
-        ("mzSqlPrefix", "v2_mz_"),
+        ("mzSqlPrefix", mz_sql_prefix),
         (
             "mzEnvironmentFilter",
             r#"materialize_cloud_organization_name=~"your-env-name""#,
@@ -202,6 +211,10 @@ pub fn doc_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> Temp
             "cAdvisorFilter",
             r#"container!="POD", container!="", namespace=~"materialize-environment""#,
         ),
+        // Empty for extraction: an environment-exclusion fragment would only add
+        // spurious label matchers to the parsed selectors. A real deployment
+        // fills this in (e.g. mz_context_org_type!="e2e_test").
+        ("excludeEnvironmentFilter", ""),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -209,15 +222,15 @@ pub fn doc_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> Temp
 
     let mut functions: HashMap<String, TemplateFn> = HashMap::new();
     functions.insert("orZero".to_string(), Box::new(promql_or_zero));
-    // Identity: docs render the raw metric, not the enrichment join.
-    functions.insert(
-        "mzClusterName".to_string(),
-        Box::new(|base: &str, _args: &[String]| base.to_string()),
-    );
-    functions.insert(
-        "mzObjectName".to_string(),
-        Box::new(|base: &str, _args: &[String]| base.to_string()),
-    );
+    // Identity: extraction sees the raw metric, not the enrichment join. The
+    // real per-engine implementations (id->name joins, per-environment grouping)
+    // live in the rendering context that targets that engine.
+    for name in ["mzClusterName", "mzObjectName", "mzEnvironmentName"] {
+        functions.insert(
+            name.to_string(),
+            Box::new(|base: &str, _args: &[String]| base.to_string()),
+        );
+    }
 
     TemplateContext {
         engine,
@@ -225,6 +238,35 @@ pub fn doc_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> Temp
         functions,
         registry: Some(registry),
     }
+}
+
+/// The documentation [`TemplateContext`], matching `query_cli.doc_context`.
+///
+/// Parameters use deliberately recognizable sentinel values (`interval` ->
+/// `[51m]`, `mzSqlPrefix` -> `v2_mz_`, …) so rendered docs are obviously
+/// examples. Crucially for extraction, the id->name enrichment functions
+/// (`mzClusterName` / `mzObjectName`) are the identity here — the docs show the
+/// raw metric, not the `mz_object_info` / `mz_cluster_info` left joins — so the
+/// extracted metric set is exactly the metrics the queries name directly.
+pub fn doc_context<'a>(
+    registry: &'a QueryRegistry,
+    engine: QueryEngine,
+    sql_metric_prefix: &str,
+) -> TemplateContext<'a> {
+    extraction_context(registry, engine, sql_metric_prefix)
+}
+
+/// The metric-tiers [`TemplateContext`], used by [`crate::query::tiers`] to build
+/// per-destination allowlists.
+///
+/// Identical to [`doc_context`] except `%%{mzSqlPrefix}` renders to
+/// [`SQL_PREFIX_SENTINEL`] rather than a concrete prefix. The sentinel is a valid
+/// PromQL name (extraction parses it) that the tiers projection later rewrites to
+/// [`SQL_PREFIX_REGEX`] — so a SQL-exporter metric lands in the allowlist as a
+/// fragment matching both `mz_…` (converged) and `v2_mz_…` (legacy), and works
+/// regardless of which endpoint a deployment scrapes.
+pub fn tier_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> TemplateContext<'a> {
+    extraction_context(registry, engine, SQL_PREFIX_SENTINEL)
 }
 
 #[cfg(test)]
@@ -295,7 +337,7 @@ mod tests {
             instant: None,
         };
         let registry = QueryRegistry::new();
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         assert_eq!(query.render(&ctx).unwrap(), vec!["(m{}) or vector(0)"]);
     }
 
@@ -354,7 +396,7 @@ mod tests {
             logql: vec![],
             instant: None,
         });
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         let wrapper = registry.get("wrapper").unwrap();
         assert_eq!(
             wrapper.render(&ctx).unwrap(),

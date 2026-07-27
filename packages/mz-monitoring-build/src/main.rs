@@ -10,6 +10,7 @@
 use clap::{Parser, Subcommand};
 
 mod extract_metrics;
+mod gen_metric_tiers;
 mod gen_pipelines;
 mod gen_scrape_configs;
 mod github;
@@ -35,6 +36,8 @@ enum Command {
     GenScrapeConfigs(gen_scrape_configs::GenScrapeConfigsArgs),
     /// Extract the metrics referenced by the query registry into a metrics.yaml.
     ExtractMetrics(extract_metrics::ExtractMetricsArgs),
+    /// Group registry metrics by importance into a metric-tiers.yaml.
+    GenMetricTiers(gen_metric_tiers::GenMetricTiersArgs),
     /// Report which merged PRs each component changelog would collect.
     Changelog(versioning::ChangelogArgs),
     /// Generate a version-update PR's changelog + version bumps for a component.
@@ -50,6 +53,7 @@ fn main() -> anyhow::Result<()> {
         Command::GenPipelines(args) => gen_pipelines::gen_pipelines(args),
         Command::GenScrapeConfigs(args) => gen_scrape_configs::gen_scrape_configs(args),
         Command::ExtractMetrics(args) => extract_metrics::extract_metrics(args),
+        Command::GenMetricTiers(args) => gen_metric_tiers::gen_metric_tiers(args),
         Command::Changelog(args) => versioning::changelog(args),
         Command::Release(args) => versioning::release(args),
         Command::ProposeBumps(args) => propose::propose_bumps(args),

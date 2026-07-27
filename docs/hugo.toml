@@ -27,6 +27,10 @@ baseURL = 'https://materializeinc.github.io/materialize-monitoring/'
     source = "../"
     files = ["CHANGELOG.md"]
     target = "assets/repo/"
+  [[module.mounts]]
+    disableWatch = true
+    source = "../packages/queries"
+    target = "assets/queries/"
 
 [params]
   BookTheme = 'auto'

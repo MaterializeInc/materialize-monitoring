@@ -74,6 +74,20 @@ jobs:
             git status --porcelain -- "$dir"
             exit 1
           fi
+      # metric-tiers.yaml is generated from the query registry and checked in, the
+      # same freshness contract as the pipelines above.
+      - name: make metrics
+        run: |
+          rm -f charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml
+          make metrics
+      - name: generated metric-tiers.yaml is up to date
+        run: |
+          dir=charts/materialize-monitoring/pre-rendered/metrics
+          if [ -n "$(git status --porcelain -- "$dir")" ]; then
+            echo "::error::Generated metric-tiers.yaml is stale or uncommitted. Run 'make metrics' locally and commit."
+            git status --porcelain -- "$dir"
+            exit 1
+          fi
 
   helm-tests:
     name: helm unittest

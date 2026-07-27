@@ -20,25 +20,6 @@
   - materialize.kubernetes.pods.memory_usage
 - importance: essential
   labels:
-  - container
-  - namespace
-  - pod
-  name: container_spec_memory_limit_bytes
-  usage:
-  - materialize.kubernetes.memory.capacity
-  - materialize.kubernetes.memory.usage.percent
-  - materialize.kubernetes.pods.memory_usage
-- importance: essential
-  labels:
-  - namespace
-  - pod
-  - resource
-  name: kube_pod_container_resource_limits
-  usage:
-  - materialize.kubernetes.cpu.usage.percent
-  - materialize.kubernetes.pods.cpu_usage
-- importance: essential
-  labels:
   - namespace
   - pod
   name: container_network_receive_bytes_total
@@ -97,6 +78,16 @@
   labels:
   - container
   - namespace
+  - pod
+  name: container_spec_memory_limit_bytes
+  usage:
+  - materialize.kubernetes.memory.capacity
+  - materialize.kubernetes.memory.usage.percent
+  - materialize.kubernetes.pods.memory_usage
+- importance: essential
+  labels:
+  - container
+  - namespace
   name: container_start_time_seconds
   usage:
   - materialize.kubernetes.last_restart
@@ -115,6 +106,15 @@
 - importance: essential
   labels:
   - namespace
+  - pod
+  - resource
+  name: kube_pod_container_resource_limits
+  usage:
+  - materialize.kubernetes.cpu.usage.percent
+  - materialize.kubernetes.pods.cpu_usage
+- importance: essential
+  labels:
+  - namespace
   name: kube_pod_status_phase
   usage:
   - materialize.kubernetes.pods.readiness
@@ -126,79 +126,16 @@
   - materialize.kubernetes.statefulsets.ready
 - importance: recommended
   labels:
-  - compute_cluster_id
-  - compute_replica_id
-  - compute_replica_name
   - materialize_cloud_organization_name
-  name: v2_mz_compute_cluster_status
+  name: mz_active_sessions
   usage:
-  - materialize.clusters.count
-  - materialize.clusters.info
-  - materialize.clusters.replicas.count
-  - materialize.clusters.replicas.sizes
-  - materialize.health.clusters.status.percentage
-  - materialize.health.environment.availability.percentage
-  - materialize.info.version
+  - materialize.connections.sessions.active
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
-  - type
-  name: v2_mz_storage_objects
+  name: mz_active_subscribes
   usage:
-  - materialize.storage.sinks.by_type
-  - materialize.storage.sinks.count
-  - materialize.storage.sources.by_type
-  - materialize.storage.sources.catalog
-  - materialize.storage.sources.count
-- importance: recommended
-  labels:
-  - instance_id
-  - materialize_cloud_organization_name
-  - quantile
-  - replica_id
-  name: mz_dataflow_wallclock_lag_seconds
-  usage:
-  - materialize.compute.freshness.lag_by_cluster
-  - materialize.compute.freshness.top_collections
-  - materialize.compute.hydration.currently_hydrating
-  - materialize.info.max_lag
-- importance: recommended
-  labels:
-  - instance_id
-  - materialize_cloud_organization_name
-  name: mz_compute_peek_duration_seconds_bucket
-  usage:
-  - materialize.connections.peek_latency.p50
-  - materialize.connections.peek_latency.p90
-  - materialize.connections.peek_latency.p99
-- importance: recommended
-  labels:
-  - materialize_cloud_organization_name
-  name: mz_query_total
-  usage:
-  - materialize.connections.queries.distribution
-  - materialize.connections.queries.rate
-  - materialize.connections.queries.rate_by_statement
-- importance: recommended
-  labels:
-  - job
-  - namespace
-  name: up
-  usage:
-  - materialize.scraper.mzmon.clusterd
-  - materialize.scraper.mzmon.environmentd
-  - materialize.scraper.mzmon.orchestratord
-- importance: recommended
-  labels:
-  - collection_id
-  - instance_id
-  - materialize_cloud_organization_name
-  - replica_id
-  name: v2_mz_arrangement_record_count
-  usage:
-  - materialize.compute.arrangements.records.system
-  - materialize.compute.arrangements.records.transient
-  - materialize.compute.arrangements.records.user
+  - materialize.compute.subscribes.active
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
@@ -217,6 +154,23 @@
   - materialize.compute.arrangements.maintenance_rate_by_worker
 - importance: recommended
   labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: mz_compute_controller_hydration_queue_size
+  usage:
+  - materialize.compute.hydration.queue_size
+- importance: recommended
+  labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  name: mz_compute_peek_duration_seconds_bucket
+  usage:
+  - materialize.connections.peek_latency.p50
+  - materialize.connections.peek_latency.p90
+  - materialize.connections.peek_latency.p99
+- importance: recommended
+  labels:
   - cluster_environmentd_materialize_cloud_cluster_id
   - cluster_environmentd_materialize_cloud_replica_id
   - materialize_cloud_organization_name
@@ -226,6 +180,26 @@
   - materialize.compute.dataflows.count_by_worker
 - importance: recommended
   labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - quantile
+  - replica_id
+  name: mz_dataflow_wallclock_lag_seconds
+  usage:
+  - materialize.compute.freshness.lag_by_cluster
+  - materialize.compute.freshness.top_collections
+  - materialize.compute.hydration.currently_hydrating
+  - materialize.info.max_lag
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_query_total
+  usage:
+  - materialize.connections.queries.distribution
+  - materialize.connections.queries.rate
+  - materialize.connections.queries.rate_by_statement
+- importance: recommended
+  labels:
   - cluster_environmentd_materialize_cloud_cluster_id
   - cluster_environmentd_materialize_cloud_replica_id
   - materialize_cloud_organization_name
@@ -233,33 +207,6 @@
   usage:
   - materialize.storage.sinks.lag
   - materialize.storage.sinks.throughput
-- importance: recommended
-  labels:
-  - materialize_cloud_organization_name
-  name: v2_mz_indexes_count
-  usage:
-  - materialize.compute.indexes.by_type
-  - materialize.compute.indexes.count
-- importance: recommended
-  labels:
-  - materialize_cloud_organization_name
-  name: mz_active_sessions
-  usage:
-  - materialize.connections.sessions.active
-- importance: recommended
-  labels:
-  - materialize_cloud_organization_name
-  name: mz_active_subscribes
-  usage:
-  - materialize.compute.subscribes.active
-- importance: recommended
-  labels:
-  - instance_id
-  - materialize_cloud_organization_name
-  - replica_id
-  name: mz_compute_controller_hydration_queue_size
-  usage:
-  - materialize.compute.hydration.queue_size
 - importance: recommended
   labels:
   - cluster_environmentd_materialize_cloud_cluster_id
@@ -390,6 +337,41 @@
   - materialize.storage.sources.upstream_errors
 - importance: recommended
   labels:
+  - job
+  - namespace
+  name: up
+  usage:
+  - materialize.scraper.mzmon.clusterd
+  - materialize.scraper.mzmon.environmentd
+  - materialize.scraper.mzmon.orchestratord
+- importance: recommended
+  labels:
+  - collection_id
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: v2_mz_arrangement_record_count
+  usage:
+  - materialize.compute.arrangements.records.system
+  - materialize.compute.arrangements.records.transient
+  - materialize.compute.arrangements.records.user
+- importance: recommended
+  labels:
+  - compute_cluster_id
+  - compute_replica_id
+  - compute_replica_name
+  - materialize_cloud_organization_name
+  name: v2_mz_compute_cluster_status
+  usage:
+  - materialize.clusters.count
+  - materialize.clusters.info
+  - materialize.clusters.replicas.count
+  - materialize.clusters.replicas.sizes
+  - materialize.health.clusters.status.percentage
+  - materialize.health.environment.availability.percentage
+  - materialize.info.version
+- importance: recommended
+  labels:
   - hydrated
   - instance_id
   - materialize_cloud_organization_name
@@ -408,9 +390,27 @@
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
+  name: v2_mz_indexes_count
+  usage:
+  - materialize.compute.indexes.by_type
+  - materialize.compute.indexes.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
   name: v2_mz_mzd_views_count
   usage:
   - materialize.compute.materialized_views.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - type
+  name: v2_mz_storage_objects
+  usage:
+  - materialize.storage.sinks.by_type
+  - materialize.storage.sinks.count
+  - materialize.storage.sources.by_type
+  - materialize.storage.sources.catalog
+  - materialize.storage.sources.count
 - importance: recommended
   labels:
   - materialize_cloud_organization_name

@@ -1,0 +1,1254 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Alerting rules for the infrastructure Materialize runs on (CockroachDB,
+# Kubernetes, Cilium, Loki, the egress gateway, …). Materialize product alerts
+# live in materialize-alerts.yaml.
+
+description: |
+  Alerting rules for the infrastructure Materialize depends on.
+
+  Each alert carries its firing expression as an inline query, is graded by a
+  `severity` label (critical > warning > notice), and is tagged with a `component`
+  label naming the subsystem it watches.
+
+metricImportanceHint: essential
+
+alerts:
+  # --- CockroachDB ---------------------------------------------------------
+  # Materialize stores its catalog and timestamp state in CockroachDB; CRDB
+  # health directly bounds Materialize availability and latency.
+  - alert: crdb-disk-usage-critical
+    group: crdb
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: critical
+      component: cockroachdb
+    description:
+      summary: CockroachDB disk usage is above 90% and likely to impact Materialize.
+      degraded: |
+        Above ~70% used, plan a capacity increase and pace or cancel heavy write
+        workloads (large materialized views, sinks, bulk inserts/deletes).
+      unhealthy: |
+        Near capacity the cluster can go read-only or nodes can crash. Cancel the
+        offending workload first (immediate; scaling takes minutes), then increase
+        the cluster's storage capacity.
+    query:
+      id: infra.cockroachdb.disk_usage_critical
+      stability: best-effort
+      description:
+        summary: Fraction of CockroachDB disk capacity used, as a percentage.
+      promQL: |
+        max(
+          crdb_dedicated_capacity_used / crdb_dedicated_capacity
+        ) * 100 > 90
+  - alert: crdb-disk-usage-high
+    group: crdb
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB disk usage is above 70% and may need a capacity increase.
+      degraded: |
+        Pace or cancel heavy write workloads and plan a capacity increase before
+        utilization climbs further. Keep steady-state utilization below ~60%.
+    query:
+      id: infra.cockroachdb.disk_usage_high
+      stability: best-effort
+      description:
+        summary: Fraction of CockroachDB disk capacity used, as a percentage.
+      promQL: |
+        max(
+          crdb_dedicated_capacity_used / crdb_dedicated_capacity
+        ) * 100 > 70
+  - alert: crdb-disk-usage-elevated
+    group: crdb
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: notice
+      component: cockroachdb
+    description:
+      summary: CockroachDB disk usage is above 30% and worth keeping an eye on.
+    query:
+      id: infra.cockroachdb.disk_usage_elevated
+      stability: best-effort
+      description:
+        summary: Fraction of CockroachDB disk capacity used, as a percentage.
+      promQL: |
+        max(
+          crdb_dedicated_capacity_used / crdb_dedicated_capacity
+        ) * 100 > 30
+  - alert: crdb-cpu-usage-critical
+    group: crdb
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB CPU usage is critically high (>89%) and likely to impact Materialize.
+      unhealthy: |
+        Sustained CPU saturation spikes query latency and triggers admission
+        control, which throttles lower-priority work. Identify and cancel or pace
+        the heaviest workloads; increase node size if saturation persists.
+    query:
+      id: infra.cockroachdb.cpu_usage_critical
+      stability: best-effort
+      description:
+        summary: 30m average normalized CPU across CockroachDB, as a percentage.
+      promQL: |
+        max(
+          avg_over_time(crdb_dedicated_sys_cpu_combined_percent_normalized[30m]) * 100
+        ) > 89
+  - alert: crdb-cpu-usage-high
+    group: crdb
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB CPU usage is above 85% over 2h and may impact Materialize.
+      degraded: |
+        Look for heavy or runaway queries; consider node resizing if the load is
+        legitimate and sustained.
+    query:
+      id: infra.cockroachdb.cpu_usage_high
+      stability: best-effort
+      description:
+        summary: 2h average normalized CPU across CockroachDB, as a percentage.
+      promQL: |
+        max(
+          avg_over_time(crdb_dedicated_sys_cpu_combined_percent_normalized[2h]) * 100
+        ) > 85
+  - alert: crdb-query-latency
+    group: crdb
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB p95 SQL service latency has been above 250ms for an extended period.
+      degraded: |
+        Elevated CRDB latency propagates to Materialize catalog and timestamp
+        operations. Check for CPU saturation, disk stalls, or LSM read
+        amplification as the underlying cause.
+    query:
+      id: infra.cockroachdb.query_latency
+      stability: best-effort
+      description:
+        summary: p95 CockroachDB SQL service latency (nanoseconds), by node.
+      promQL: |
+        histogram_quantile(0.95,
+          sum by (le, node) (
+            rate(crdb_dedicated_sql_service_latency_bucket[20m])
+          )
+        ) > 250 * 1000 * 1000
+  - alert: crdb-lsm-read-amplification-critical
+    group: crdb
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB LSM read amplification is critically high (>150), indicating severe I/O overload.
+      unhealthy: |
+        Heavy writes (materialized views, Iceberg sinks) are outpacing compaction
+        and reads slow dramatically. Cancel or throttle the heavy write workload;
+        setting heavy jobs to background QoS lets compaction catch up.
+    query:
+      id: infra.cockroachdb.lsm_read_amplification_critical
+      stability: best-effort
+      description:
+        summary: CockroachDB storage-engine read amplification.
+      promQL: |
+        max(crdb_dedicated_rocksdb_read_amplification) > 150
+  - alert: crdb-lsm-read-amplification-high
+    group: crdb
+    stability: best-effort
+    for: 1h
+    labels:
+      severity: notice
+      component: cockroachdb
+    description:
+      summary: CockroachDB LSM read amplification is elevated (>50), a sign writes may be outpacing compaction.
+    query:
+      id: infra.cockroachdb.lsm_read_amplification_high
+      stability: best-effort
+      description:
+        summary: CockroachDB storage-engine read amplification.
+      promQL: |
+        max(crdb_dedicated_rocksdb_read_amplification) > 50
+  - alert: crdb-ranges-unavailable
+    group: crdb
+    stability: best-effort
+    for: 1h
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB has unavailable ranges, which may indicate node failures or replication issues.
+      unhealthy: |
+        Unavailable ranges mean some data cannot be served. Check for dead or
+        flapping nodes and disk stalls; a persistently impaired node may need
+        replacement.
+    query:
+      id: infra.cockroachdb.ranges_unavailable
+      stability: best-effort
+      description:
+        summary: Count of unavailable CockroachDB ranges.
+      promQL: |
+        max(crdb_dedicated_ranges_unavailable) > 0
+  - alert: crdb-ranges-underreplicated
+    group: crdb
+    stability: best-effort
+    for: 1h
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB has under-replicated ranges, which may indicate node failures or replication issues.
+      degraded: |
+        Under-replication reduces fault tolerance. It often self-heals as nodes
+        recover; if it persists, investigate node health.
+    query:
+      id: infra.cockroachdb.ranges_underreplicated
+      stability: best-effort
+      description:
+        summary: Count of under-replicated CockroachDB ranges.
+      promQL: |
+        max(crdb_dedicated_ranges_underreplicated) > 0
+  - alert: crdb-sql-memory-rapid-growth
+    group: crdb
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB SQL memory is growing faster than 8 MB/s, a sign of a runaway query heading toward OOM.
+      unhealthy: |
+        Find and cancel the runaway session before nodes OOM (an OOM cascade can
+        crash-loop the cluster). Scale up node size if memory pressure is legitimate.
+    query:
+      id: infra.cockroachdb.sql_memory_rapid_growth
+      stability: best-effort
+      description:
+        summary: Rate of change of CockroachDB distsql memory (bytes/s), by node.
+      promQL: |
+        max by (node_id) (
+          deriv(crdb_dedicated_sql_mem_distsql_current[5m])
+        ) > 8 * 1000 * 1000
+  - alert: crdb-sql-memory-pressure-high
+    group: crdb
+    stability: best-effort
+    for: 3m
+    labels:
+      severity: notice
+      component: cockroachdb
+    description:
+      summary: CockroachDB distsql memory exceeds 18% of node RAM, indicating high user-query memory pressure.
+    query:
+      id: infra.cockroachdb.sql_memory_pressure_high
+      stability: best-effort
+      description:
+        summary: CockroachDB distsql memory as a fraction of total node memory, by node.
+      promQL: |
+        max by (node_id) (
+          crdb_dedicated_sql_mem_distsql_current
+        )
+        / on (node_id) max by (node_id) (
+          crdb_dedicated_sys_totalmem
+        )
+        > 0.18
+  - alert: crdb-write-intent-accumulation-critical
+    group: crdb
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: warning
+      component: cockroachdb
+    description:
+      summary: CockroachDB write-intent count has exceeded 10M for 10m, indicating large transactions holding locks.
+      unhealthy: |
+        Large-scope transactions are holding locks too long and causing contention.
+        Find and cancel the offending transaction; break bulk operations into
+        smaller batches to avoid accumulating intents.
+    query:
+      id: infra.cockroachdb.write_intent_accumulation_critical
+      stability: best-effort
+      description:
+        summary: CockroachDB write-intent count.
+      promQL: |
+        max(crdb_dedicated_intentcount) > 10 * 1000 * 1000
+  - alert: crdb-write-intent-accumulation-high
+    group: crdb
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: notice
+      component: cockroachdb
+    description:
+      summary: CockroachDB write-intent count has exceeded 10M, a sign of large transactions accumulating locks.
+    query:
+      id: infra.cockroachdb.write_intent_accumulation_high
+      stability: best-effort
+      description:
+        summary: CockroachDB write-intent count.
+      promQL: |
+        max(crdb_dedicated_intentcount) > 10 * 1000 * 1000
+  - alert: crdb-backup-missing
+    group: crdb
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: notice
+      component: cockroachdb
+    description:
+      summary: A CockroachDB backup may be missing — the last completed backup is more than 80 minutes old.
+      degraded: |
+        Confirm the backup schedule exists and its recent jobs are succeeding;
+        investigate backup job errors if they are failing.
+    query:
+      id: infra.cockroachdb.backup_missing
+      stability: best-effort
+      description:
+        summary: Minutes since the most recent completed CockroachDB backup.
+      promQL: |
+        (
+          time() - max(max_over_time(crdb_dedicated_schedules_backup_last_completed_time[60m]))
+        ) / 60 > 80
+
+  # --- Cilium (pod networking) ---------------------------------------------
+  - alert: cilium-bpf-map-pressure
+    group: cilium
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: cilium
+    description:
+      summary: A Cilium BPF map is filling up, which will cause networking issues if left unaddressed.
+    query:
+      id: infra.cilium.bpf_map_pressure
+      stability: best-effort
+      description:
+        summary: Fullness of a Cilium BPF map, by map and instance.
+      promQL: |
+        max by (map_name, instance) (
+          cilium_bpf_map_pressure
+        ) > 0.7
+  - alert: cilium-drop-rate-elevated
+    group: cilium
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: notice
+      component: cilium
+    description:
+      summary: Cilium is dropping more packets than expected, which can indicate networking issues.
+    query:
+      id: infra.cilium.drop_rate_elevated
+      stability: best-effort
+      description:
+        summary: Cilium packet drop rate, by direction and reason.
+      promQL: |
+        max by (direction, reason, pod) (
+          rate(cilium_drop_count_total[5m:1m])
+        ) > 10
+
+  # --- CoreDNS (cluster DNS) -----------------------------------------------
+  - alert: coredns-slow-queries
+    group: coredns
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: notice
+      component: coredns
+    description:
+      summary: CoreDNS p99 request latency is above 500ms, which can cause or accompany broader outages.
+    query:
+      id: infra.coredns.slow_queries
+      stability: best-effort
+      description:
+        summary: p99 CoreDNS request duration (seconds), by service.
+      promQL: |
+        histogram_quantile(0.99,
+          sum by (le, service) (
+            rate(coredns_dns_request_duration_seconds_bucket{zone="."}[5m])
+          )
+        ) > 0.5
+
+  # --- Kubernetes nodes / scheduling ---------------------------------------
+  - alert: node-unreachable
+    group: node_unreachable
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A Kubernetes node is marked unreachable, which may indicate a node or network problem.
+    query:
+      id: infra.kubernetes.node_unreachable
+      stability: best-effort
+      description:
+        summary: Presence of the node.kubernetes.io/unreachable taint on a node.
+      promQL: |
+        kube_node_spec_taint{key="node.kubernetes.io/unreachable"}
+  - alert: k8s-horizontalpodautoscaler-replicas-critical
+    group: hpa
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: critical
+      component: kubernetes
+    description:
+      summary: A HorizontalPodAutoscaler is above 90% of its maximum replicas — nearly out of headroom to scale.
+      unhealthy: |
+        Once an HPA is pinned at max replicas it can no longer absorb load. Raise
+        the maximum, or address the workload driving the scale-up.
+    query:
+      id: infra.kubernetes.hpa_replicas_critical
+      stability: best-effort
+      description:
+        summary: Current HPA replicas as a fraction of the configured maximum.
+      promQL: |
+        (
+          kube_horizontalpodautoscaler_status_current_replicas{namespace!~"alloy|loki"}
+          / kube_horizontalpodautoscaler_spec_max_replicas{namespace!~"alloy|loki"}
+        ) > 0.9
+  - alert: k8s-horizontalpodautoscaler-replicas-high
+    group: hpa
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A HorizontalPodAutoscaler is above 70% of its maximum replicas.
+    query:
+      id: infra.kubernetes.hpa_replicas_high
+      stability: best-effort
+      description:
+        summary: Current HPA replicas as a fraction of the configured maximum.
+      promQL: |
+        (
+          kube_horizontalpodautoscaler_status_current_replicas
+          / kube_horizontalpodautoscaler_spec_max_replicas
+        ) > 0.7
+
+  # --- Kubernetes disk / volumes -------------------------------------------
+  - alert: k8s-container-disk-usage
+    group: k8s_disk
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A container filesystem is above 70% usage and should be cleaned up or resized.
+    query:
+      id: infra.kubernetes.container_disk_usage
+      stability: best-effort
+      description:
+        summary: Container filesystem usage as a percentage of its limit, by host.
+      promQL: |
+        100 * (
+          max by (kubernetes_io_hostname) (container_fs_usage_bytes)
+          / max by (kubernetes_io_hostname) (container_fs_limit_bytes)
+        ) > 70
+  - alert: k8s-node-disk-pressure
+    group: k8s_disk
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A Kubernetes node is under disk pressure, which can cause pods to fail scheduling or be evicted.
+    query:
+      id: infra.kubernetes.node_disk_pressure
+      stability: best-effort
+      description:
+        summary: Nodes reporting the DiskPressure condition.
+      promQL: |
+        max by (node) (
+          kube_node_status_condition{condition="DiskPressure", status="true"}
+        ) > 0
+  - alert: k8s-volume-usage
+    group: k8s_disk
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A Kubernetes persistent volume is above 70% usage and should be cleaned up or resized.
+    query:
+      id: infra.kubernetes.volume_usage
+      stability: best-effort
+      description:
+        summary: PersistentVolumeClaim usage as a percentage of capacity.
+      promQL: |
+        100 * (
+          max by (namespace, persistentvolumeclaim) (
+            kubelet_volume_stats_used_bytes{persistentvolumeclaim!~".*cluster-s2-.*|.*cluster-u.*"}
+          )
+          / max by (namespace, persistentvolumeclaim) (
+            kubelet_volume_stats_capacity_bytes{persistentvolumeclaim!~".*cluster-s2-.*|.*cluster-u.*"}
+          )
+        ) > 70
+
+  # --- Loki (log storage) --------------------------------------------------
+  - alert: alloy-log-drops
+    group: loki
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: loki
+    description:
+      summary: Alloy is dropping log entries — logs are being lost right now.
+      degraded: |
+        Check the drop `reason`: deadline_exceeded / rate_limited / stream_limit_exceeded
+        all point at Loki being unable to accept the write volume. Check the
+        alloy-gateway autoscaler and Loki ingestion health.
+    query:
+      id: infra.loki.alloy_log_drops
+      stability: best-effort
+      description:
+        summary: Rate of log entries dropped by Alloy, by reason.
+      promQL: |
+        sum by (namespace, job, reason) (
+          rate(loki_write_dropped_entries_total[2m])
+        ) > 0
+  - alert: loki-push-err-high
+    group: loki
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: loki
+    description:
+      summary: Loki's push endpoint is returning 10%+ write errors, so logs are being rejected.
+      degraded: |
+        429s indicate ingestion rate limits; 5xx indicate a Loki component failure.
+        Inspect distributor logs and pod health.
+    query:
+      id: infra.loki.push_err_high
+      stability: best-effort
+      description:
+        summary: Percentage of Loki push requests returning 4xx/5xx.
+      promQL: |
+        100 * (
+          sum by (namespace, app_kubernetes_io_component) (
+            rate(loki_request_duration_seconds_count{status_code=~"4.*|5.*", route=~".*push.*"}[2m])
+          )
+          / sum by (namespace, app_kubernetes_io_component) (
+            rate(loki_request_duration_seconds_count{route=~".*push.*"}[2m])
+          )
+        ) > 10
+  - alert: loki-panics
+    group: loki
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: notice
+      component: loki
+    description:
+      summary: A Loki component has panicked.
+    query:
+      id: infra.loki.panics
+      stability: best-effort
+      description:
+        summary: Rate of Loki panics, by component.
+      promQL: |
+        sum by (namespace, job, app_kubernetes_io_component) (
+          increase(loki_panic_total[10m])
+        ) > 0
+  - alert: loki-req-duration-high
+    group: loki
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: notice
+      component: loki
+    description:
+      summary: Loki p95 request duration is above 1s (excluding tail/long-poll routes).
+    query:
+      id: infra.loki.req_duration_high
+      stability: best-effort
+      description:
+        summary: p95 Loki request duration (seconds), by component.
+      promQL: |
+        histogram_quantile(0.95,
+          sum by (le, app_kubernetes_io_component) (
+            rate(loki_request_duration_seconds_bucket{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"}[5m])
+          )
+        ) > 1
+  - alert: loki-req-err-high
+    group: loki
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: notice
+      component: loki
+    description:
+      summary: Loki read requests are returning 10%+ 5xx errors.
+    query:
+      id: infra.loki.req_err_high
+      stability: best-effort
+      description:
+        summary: Percentage of Loki requests returning 5xx, by route.
+      promQL: |
+        100 * (
+          sum by (namespace, app_kubernetes_io_component, route) (
+            rate(loki_request_duration_seconds_count{status_code=~"5.*"}[2m])
+          )
+          / sum by (namespace, app_kubernetes_io_component, route) (
+            rate(loki_request_duration_seconds_count[2m])
+          )
+        ) > 10
+  - alert: loki-writer-err-high
+    group: loki
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: notice
+      component: loki
+    description:
+      summary: Loki write requests are erroring for 10%+ of requests.
+    query:
+      id: infra.loki.writer_err_high
+      stability: best-effort
+      description:
+        summary: Percentage of Loki requests recording a write error, by route.
+      promQL: |
+        100 * (
+          sum by (namespace, app_kubernetes_io_component, route) (
+            rate(loki_request_duration_seconds_count{status_code="error"}[2m])
+          )
+          / sum by (namespace, app_kubernetes_io_component, route) (
+            rate(loki_request_duration_seconds_count[2m])
+          )
+        ) > 10
+
+  # --- Observability collection --------------------------------------------
+  - alert: clusterd-metrics-missing
+    group: metric_collection
+    stability: best-effort
+    for: 60m
+    labels:
+      severity: warning
+      component: monitoring
+    description:
+      summary: All metrics for a Materialize pod have been missing for 60m — the scrape target is likely down.
+    query:
+      id: infra.monitoring.clusterd_metrics_missing
+      stability: best-effort
+      description:
+        summary: Materialize scrape targets reporting up == 0, by pod.
+      promQL: |
+        max by (pod, namespace) (
+          up{job=~"materialize", cluster_environmentd_materialize_cloud_cluster_id!="s5"}
+        ) == 0
+  - alert: critical-metrics-missing
+    group: metric_collection
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: warning
+      component: monitoring
+    description:
+      summary: More than 30% of a critical scrape job's targets have been down for 30m.
+    query:
+      id: infra.monitoring.critical_metrics_missing
+      stability: best-effort
+      description:
+        summary: Percentage of a critical scrape job's targets reporting up == 0.
+      promQL: |
+        (
+          count by (job, app) (
+            up{job=~"cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller"} == 0
+          )
+          / count by (job, app) (
+            up{job=~"cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller"}
+          )
+        ) * 100 > 30
+  - alert: logging-collection-down
+    group: metric_collection
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: monitoring
+    description:
+      summary: Loki has received no logs for 15m — log collection is down.
+    query:
+      id: infra.monitoring.logging_collection_down
+      stability: best-effort
+      description:
+        summary: Rate of bytes received by the Loki distributor.
+      promQL: |
+        sum(rate(loki_distributor_bytes_received_total{namespace="loki"}[5m])) == 0
+
+  # --- Kubernetes deployments ----------------------------------------------
+  # Split by criticality of the workload (via the deployment name allowlist):
+  # tier-1 core control plane, tier-2 important supporting services, tier-3
+  # everything else. The allowlists are inherited from the cloud environment and
+  # will be pared to the self-managed set over time.
+  - alert: k8s-deployment-unavailable-critical
+    group: deployment
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: critical
+      component: kubernetes
+    description:
+      summary: A core control-plane deployment is unavailable.
+      unhealthy: |
+        The deployment has no available replicas. Describe it and inspect its
+        pods for scheduling, image, or crash-loop problems.
+    query:
+      id: infra.kubernetes.deployment_unavailable_critical
+      stability: best-effort
+      description:
+        summary: Core control-plane deployments reporting no Available replicas.
+      promQL: |
+        group by (deployment, namespace) (
+          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller", %%{excludeEnvironmentFilter}} == 0
+        )
+  - alert: k8s-deployment-unavailable-warning
+    group: deployment
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: An important supporting deployment is unavailable.
+    query:
+      id: infra.kubernetes.deployment_unavailable_warning
+      stability: best-effort
+      description:
+        summary: Important supporting deployments reporting no Available replicas.
+      promQL: |
+        group by (deployment, namespace) (
+          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy", %%{excludeEnvironmentFilter}} == 0
+        )
+  - alert: k8s-deployment-unavailable-notice
+    group: deployment
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A non-essential deployment is unavailable.
+    query:
+      id: infra.kubernetes.deployment_unavailable_notice
+      stability: best-effort
+      description:
+        summary: Non-essential deployments reporting no Available replicas.
+      promQL: |
+        group by (deployment, namespace) (
+          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"backend|egress-check.*|egress-noop.*|exporter|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector", %%{excludeEnvironmentFilter}} == 0
+        )
+
+  # --- Kubernetes daemonsets -----------------------------------------------
+  # Node-local daemonsets reserve CPU/memory that is then unavailable to
+  # clusterd. The alert fires as the headroom left after daemonset requests
+  # shrinks toward zero. (The per-node budgets 1.77 cores / 10730942464 bytes are
+  # inherited node sizings and will be parameterized for self-managed later.)
+  - alert: k8s-daemonset-saturating-cpu
+    group: daemonset
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: Daemonsets are requesting nearly all the CPU reserved for them, squeezing clusterd headroom.
+    query:
+      id: infra.kubernetes.daemonset_saturating_cpu
+      stability: best-effort
+      description:
+        summary: CPU cores of per-node daemonset budget still unreserved.
+      promQL: |
+        (
+          1.77 - sum(
+            max by (container) (
+              kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="core", resource="cpu"}
+            )
+          )
+        ) < 0.01
+  - alert: k8s-daemonset-saturating-mem
+    group: daemonset
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: Daemonsets are requesting nearly all the memory reserved for them, squeezing clusterd headroom.
+    query:
+      id: infra.kubernetes.daemonset_saturating_mem
+      stability: best-effort
+      description:
+        summary: Bytes of per-node daemonset memory budget still unreserved.
+      promQL: |
+        (
+          10730942464 - sum(
+            max by (container) (
+              kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="byte", resource="memory"}
+            )
+          )
+        ) < 5243000
+  - alert: k8s-daemonset-high-cpu
+    group: daemonset
+    stability: best-effort
+    for: 60m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: Daemonsets are approaching the CPU budget reserved for them.
+    query:
+      id: infra.kubernetes.daemonset_high_cpu
+      stability: best-effort
+      description:
+        summary: CPU cores of per-node daemonset budget still unreserved.
+      promQL: |
+        (
+          1.77 - sum(
+            max by (container) (
+              kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="core", resource="cpu"}
+            )
+          )
+        ) < 0.1
+
+  # --- File descriptors ----------------------------------------------------
+  - alert: container-file-descriptors-critical
+    group: file_descriptors
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: critical
+      component: kubernetes
+    description:
+      summary: A core container's open file descriptors are above 70% of its limit and it may be killed.
+    query:
+      id: infra.kubernetes.file_descriptors_critical
+      stability: best-effort
+      description:
+        summary: Open file descriptors as a percentage of the soft limit, for core containers.
+      promQL: |
+        100 * (
+          sum by (pod, namespace, container) (
+            container_file_descriptors{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          )
+          / min by (pod, namespace, container) (
+            container_ulimits_soft{ulimit="max_open_files"}
+          )
+        ) > 70
+  - alert: container-file-descriptors-warning
+    group: file_descriptors
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A non-core container's open file descriptors are above 70% of its limit and it may be killed.
+    query:
+      id: infra.kubernetes.file_descriptors_warning
+      stability: best-effort
+      description:
+        summary: Open file descriptors as a percentage of the soft limit, for non-core containers.
+      promQL: |
+        100 * (
+          sum by (pod, namespace, container) (
+            container_file_descriptors{container!~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          )
+          / min by (pod, namespace, container) (
+            container_ulimits_soft{ulimit="max_open_files"}
+          )
+        ) > 70
+  - alert: container-file-descriptors-elevated
+    group: file_descriptors
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A container's open file descriptors are above 20% of its limit.
+    query:
+      id: infra.kubernetes.file_descriptors_elevated
+      stability: best-effort
+      description:
+        summary: Open file descriptors as a percentage of the soft limit.
+      promQL: |
+        100 * (
+          sum by (pod, namespace, container) (container_file_descriptors)
+          / min by (pod, namespace, container) (
+            container_ulimits_soft{ulimit="max_open_files"}
+          )
+        ) > 20
+
+  # --- Infra pod CPU / memory ----------------------------------------------
+  - alert: infra-pod-high-cpu-ratio
+    group: infra_cpu
+    stability: best-effort
+    for: 6h
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A vector pod has used more than its full CPU request for 6h and may be throttled.
+    query:
+      id: infra.kubernetes.vector_high_cpu_ratio
+      stability: best-effort
+      description:
+        summary: Vector CPU usage as a ratio of its CPU request.
+      promQL: |
+        (
+          sum by (pod, namespace, container) (
+            rate(container_cpu_usage_seconds_total{container!="", pod=~"vector-.*"}[5m])
+          )
+          / max by (pod, namespace, container) (
+            kube_pod_container_resource_requests{resource="cpu", container!="", pod=~"vector-.*"}
+          )
+        ) > 1
+  - alert: infra-pods-high-cpu-ratio
+    group: infra_cpu
+    stability: best-effort
+    for: 30m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: An infra pod is using more than its full CPU request and may be throttled.
+    query:
+      id: infra.kubernetes.pods_high_cpu_ratio
+      stability: best-effort
+      description:
+        summary: Infra-pod CPU usage as a ratio of its CPU request.
+      promQL: |
+        (
+          sum by (pod, namespace, container) (
+            rate(container_cpu_usage_seconds_total{namespace!~"environment.*", container!="", pod!~"parca-agent-.*|vector-.*|cilium-egress-.*"}[5m])
+          )
+          / max by (pod, namespace, container) (
+            kube_pod_container_resource_requests{namespace!~"environment.*", resource="cpu", container!="", pod!~"parca-agent-.*|vector-.*|cilium-egress-.*"}
+          )
+        ) > 1
+  - alert: infra-memory-high
+    group: infra_memory
+    stability: best-effort
+    for: 10m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: An important infra container is above 80% memory usage.
+    query:
+      id: infra.kubernetes.memory_high
+      stability: best-effort
+      description:
+        summary: Working-set memory as a percentage of the limit, for core/important infra containers.
+      promQL: |
+        100 * (
+          sum by (namespace, pod, container) (
+            container_memory_working_set_bytes{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          )
+          / sum by (namespace, pod, container) (
+            container_spec_memory_limit_bytes{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          )
+        ) > 80
+  - alert: infra-memory-elevated
+    group: infra_memory
+    stability: best-effort
+    for: 60m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A supporting infra container is above 80% memory usage.
+    query:
+      id: infra.kubernetes.memory_elevated
+      stability: best-effort
+      description:
+        summary: Working-set memory as a percentage of the limit, for supporting infra containers.
+      promQL: |
+        100 * (
+          sum by (namespace, pod, container) (
+            container_memory_working_set_bytes{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+          )
+          / sum by (namespace, pod, container) (
+            container_spec_memory_limit_bytes{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+          )
+        ) > 80
+  - alert: infra-oomkill-core-systems
+    group: infra_memory
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A core infra container has been OOMKilled.
+      unhealthy: |
+        The container was killed for exceeding its memory limit within the last
+        3h. Repeated OOM kills indicate an under-provisioned limit or a leak.
+    query:
+      id: infra.kubernetes.oomkill_core_systems
+      stability: best-effort
+      description:
+        summary: Core infra containers that restarted with an OOMKilled last-termination reason in the last 3h.
+      promQL: |
+        sum by (container, namespace, pod) (
+          kube_pod_container_status_restarts_total{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          - kube_pod_container_status_restarts_total{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"} offset 3h > 1
+          and ignoring(reason)
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+        ) > 0
+  - alert: infra-oomkill-important-systems
+    group: infra_memory
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: An important infra container has been OOMKilled.
+    query:
+      id: infra.kubernetes.oomkill_important_systems
+      stability: best-effort
+      description:
+        summary: Important infra containers that restarted with an OOMKilled last-termination reason in the last 3h.
+      promQL: |
+        sum by (container, namespace, pod) (
+          kube_pod_container_status_restarts_total{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+          - kube_pod_container_status_restarts_total{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"} offset 3h > 1
+          and ignoring(reason)
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+        ) > 0
+  - alert: infra-oomkill-nonessential-systems
+    group: infra_memory
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A non-essential infra container has been OOMKilled.
+    query:
+      id: infra.kubernetes.oomkill_nonessential_systems
+      stability: best-effort
+      description:
+        summary: Non-essential infra containers that restarted with an OOMKilled last-termination reason in the last 3h.
+      promQL: |
+        sum by (container, namespace, pod) (
+          kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}
+          - kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"} offset 3h > 1
+          and ignoring(reason)
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}
+        ) > 0
+
+  # --- Infra pod health ----------------------------------------------------
+  - alert: k8s-infra-pod-pending-too-long
+    group: infra_pod_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: An infra pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
+    query:
+      id: infra.kubernetes.infra_pod_pending
+      stability: best-effort
+      description:
+        summary: Non-environment pods stuck in Pending.
+      promQL: |
+        max by (namespace, pod) (
+          kube_pod_status_phase{namespace!~"environment.*", phase="Pending"}
+        ) > 0
+  - alert: pod-restart-rate-high
+    group: infra_pod_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: An important infra container is restarting frequently, which may indicate a crash loop.
+    query:
+      id: infra.kubernetes.pod_restart_rate_high
+      stability: best-effort
+      description:
+        summary: Restart rate of important infra containers.
+      promQL: |
+        avg by (container, namespace) (
+          rate(kube_pod_container_status_restarts_total{namespace!~"environment.*", container!~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}[10m])
+        ) * 100 > 0
+  - alert: pod-restart-rate-high-nonessential
+    group: infra_pod_health
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A non-essential infra container is restarting frequently, which may indicate a crash loop.
+    query:
+      id: infra.kubernetes.pod_restart_rate_high_nonessential
+      stability: best-effort
+      description:
+        summary: Restart rate of non-essential infra containers.
+      promQL: |
+        avg by (container, namespace) (
+          rate(kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}[10m])
+        ) * 100 > 0
+  - alert: pods-stuck-in-waiting
+    group: infra_pod_health
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A pod has been stuck in Waiting for over 10m, which can indicate a scheduling or resource problem.
+    query:
+      id: infra.kubernetes.pods_stuck_in_waiting
+      stability: best-effort
+      description:
+        summary: Pods in a Waiting state for longer than 10 minutes.
+      promQL: |
+        sum by (namespace, pod) (
+          kube_pod_container_status_waiting == 1
+          and time() - kube_pod_start_time > 10 * 60
+        ) > 0
+
+  # --- Egress gateway ------------------------------------------------------
+  # Each expression restricts node network throughput to egress-gateway nodes via
+  # a join against the materialize-egress workload. The `^ 0` normalizes that
+  # join series to 1 so it acts purely as a node filter + workload-label attach,
+  # not a multiplier.
+  - alert: egress-traffic-missing-metrics
+    group: egress_gateway
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: egress-gateway
+    description:
+      summary: Egress-gateway node throughput metrics are missing, which may indicate an egress-gateway problem.
+    query:
+      id: infra.egress_gateway.traffic_missing_metrics
+      stability: best-effort
+      description:
+        summary: Absence of receive-throughput series for egress-gateway nodes.
+      promQL: |
+        absent(
+          sum by (node) (
+            rate(node_network_receive_bytes_total{device="eth0"}[2m])
+          )
+          * on (node) group_left (workload) sum by (node, workload) (
+            label_replace(container_network_receive_bytes_total{workload="materialize-egress"}, "node", "$1", "instance", "(.+)")
+          ) ^ 0
+        )
+  - alert: excessive-egress-traffic
+    group: egress_gateway
+    stability: best-effort
+    for: 20m
+    labels:
+      severity: warning
+      component: egress-gateway
+    description:
+      summary: An egress-gateway node has very high traffic, which may indicate traffic is not routing through the internet gateway.
+    query:
+      id: infra.egress_gateway.excessive_traffic
+      stability: best-effort
+      description:
+        summary: Receive throughput (bytes/s) on egress-gateway nodes, above 5.5 Gbit/s.
+      promQL: |
+        sum by (node) (
+          rate(node_network_receive_bytes_total{device="eth0"}[2m])
+        )
+        * on (node) group_left (workload) sum by (node, workload) (
+          label_replace(container_network_receive_bytes_total{workload="materialize-egress"}, "node", "$1", "instance", "(.+)")
+        ) ^ 0
+        > 5.5 * 1000 * 1000 * 1000 / 8
+  - alert: high-egress-traffic
+    group: egress_gateway
+    stability: best-effort
+    for: 20m
+    labels:
+      severity: notice
+      component: egress-gateway
+    description:
+      summary: An egress-gateway node is above 90% of its allowed traffic and may soon exceed capacity.
+    query:
+      id: infra.egress_gateway.high_traffic
+      stability: best-effort
+      description:
+        summary: Receive throughput (bytes/s) on egress-gateway nodes, above 4.5 Gbit/s.
+      promQL: |
+        sum by (node) (
+          rate(node_network_receive_bytes_total{device="eth0"}[2m])
+        )
+        * on (node) group_left (workload) sum by (node, workload) (
+          label_replace(container_network_receive_bytes_total{workload="materialize-egress"}, "node", "$1", "instance", "(.+)")
+        ) ^ 0
+        > 4.5 * 1000 * 1000 * 1000 / 8
+  - alert: low-egress-traffic
+    group: egress_gateway
+    stability: best-effort
+    for: 2m
+    labels:
+      severity: warning
+      component: egress-gateway
+    description:
+      summary: An egress-gateway node has unusually low traffic, which may indicate the gateway is unhealthy.
+    query:
+      id: infra.egress_gateway.low_traffic
+      stability: best-effort
+      description:
+        summary: Receive throughput (bytes/s) on egress-gateway nodes, below 100 bytes/s.
+      promQL: |
+        sum by (node) (
+          rate(node_network_receive_bytes_total{device="eth0"}[2m])
+        )
+        * on (node) group_left (workload) sum by (node, workload) (
+          label_replace(container_network_receive_bytes_total{workload="materialize-egress"}, "node", "$1", "instance", "(.+)")
+        ) ^ 0
+        < 100
+  - alert: no-egress-traffic
+    group: egress_gateway
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: egress-gateway
+    description:
+      summary: An egress-gateway node has had no traffic for 5m, which may indicate external traffic is blocked.
+    query:
+      id: infra.egress_gateway.no_traffic
+      stability: best-effort
+      description:
+        summary: Egress-gateway nodes with zero receive/transmit throughput.
+      promQL: |
+        (
+          min by (node) (
+            rate(node_network_receive_bytes_total{device="eth0"}[5m:1m])
+            or rate(node_network_transmit_bytes_total{device="eth0"}[5m:1m])
+          )
+          and on (node) kubelet_node_name{workload="materialize-egress"}
+        ) == 0

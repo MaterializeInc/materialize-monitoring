@@ -526,6 +526,12 @@ release instances.
       <td class="helm-value-default"><code>"default"</code></td>
       <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.</td>
     </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.env<wbr>.GATEWAY_LOG_LEVEL</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"info"</code></td>
+      <td class="helm-value-desc">Level for the gateway logs.</td>
+    </tr>
   </tbody>
 </table>
 
@@ -766,6 +772,14 @@ Configuration for metrics behavior
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.denyMetrics</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Denylist of metrics that are excluded from being exported These are |'d in a regex pattern</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -776,6 +790,12 @@ Configuration for metrics behavior
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"http://thanos-receive.{{ include \"mzmon.thanos.namespace\" $ }}.svc:10908/api/v1/receive"</code></td>
       <td class="helm-value-desc">Prometheus remote write endpoint URL.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.minMetricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"all"</code></td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.authType</td>
@@ -909,6 +929,12 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.minMetricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"recommended"</code></td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.handlers</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -935,6 +961,12 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
       <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Datadog.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.minMetricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"recommended"</code></td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.hostMetadata<wbr>.enabled</td>
@@ -981,6 +1013,12 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"snappy"</code></td>
       <td class="helm-value-desc">Compression to use Use gzip for better compatibility. Use snappy for better performance.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.minMetricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"all"</code></td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.handlers</td>

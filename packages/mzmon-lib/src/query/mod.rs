@@ -40,6 +40,7 @@ pub mod model;
 pub mod registry;
 pub mod render;
 pub mod stability;
+pub mod tiers;
 pub mod validate;
 
 #[cfg(test)]
@@ -51,3 +52,4 @@ pub use model::{Alert, Description, Query, QueryEngine, Rule, TemplateExpr, Temp
 pub use registry::{MetricOverride, QueryRegistry};
 pub use render::TemplateContext;
 pub use stability::Stability;
+pub use tiers::MetricTiers;
