@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Design Docs on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/</link><description>Recent content in Design Docs on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Fri, 28 Jun 2024 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/index.xml" rel="self" type="application/rss+xml"/><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Thu, 27 Jun 2024 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Design Docs on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/</link><description>Recent content in Design Docs on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 28 Jun 2026 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/index.xml" rel="self" type="application/rss+xml"/><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
  &lt;tbody&gt;
@@ -8,15 +8,15 @@
  &lt;/tr&gt;
  &lt;tr&gt;
  &lt;th&gt;lastmod&lt;/th&gt;
- &lt;td&gt;2024-06-28 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;td&gt;2026-06-28 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
  &lt;/tr&gt;
  &lt;tr&gt;
  &lt;th&gt;publishdate&lt;/th&gt;
- &lt;td&gt;2024-06-27 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;td&gt;2026-06-27 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
  &lt;/tr&gt;
  &lt;tr&gt;
  &lt;th&gt;status&lt;/th&gt;
- &lt;td&gt;Draft&lt;/td&gt;
+ &lt;td&gt;Preview&lt;/td&gt;
  &lt;/tr&gt;
  &lt;/tbody&gt;
 &lt;/table&gt;
