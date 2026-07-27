@@ -70,6 +70,11 @@ a[href]:visited {
   color: var(--color-link);
 }
 
+.book-menu a[href].active,
+.book-toc a[href].active {
+  font-weight: 700;
+}
+
 .book-menu a[role="button"] {
   color: inherit;
   font-weight: 500;

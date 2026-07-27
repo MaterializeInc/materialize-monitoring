@@ -1,0 +1,52 @@
+{{/*
+  list-queries: renders a list of available queries.
+
+  Reads queries from assets/queries/*.yaml.
+
+  Usage:
+    {{< list-queries >}}
+*/}}
+{{- $found := resources.Match "queries/*.yaml" -}}
+{{- if not $found }}
+  <p>No query registries found.</p>
+{{- else }}
+  {{- range $found }}
+    {{- $queryRegistry := .Content | transform.Unmarshal }}
+
+    {{- if $queryRegistry.queries }}
+
+## {{ path.BaseName .Name }}
+
+{{ $queryRegistry.description | markdownify }}
+
+      {{- range $queryRegistry.queries }}
+<h4 id="{{ .id }}">{{ .id }}
+  <a class="anchor" href="#{{ .id }}">#</a>
+</h4>
+{{ .description.summary | markdownify }}
+        {{- $promQL := slice }}
+        {{- if reflect.IsSlice .promQL }}
+          {{- $promQL = .promQL }}
+        {{- else }}
+          {{- $promQL = slice .promQL }}
+        {{- end }}
+        {{- range $promQL }}
+          {{ $query := . }}
+          {{- if reflect.IsMap $query }}
+            {{- $query = $query.template}}
+          {{- end }}
+          {{- $query = $query | replaceRE "%%\\{([^}]+)\\}" "$${$1}"}}
+          {{- $highlight := transform.Highlight $query "promql" }}
+          {{- $highlight3 := $highlight | replaceRE
+            `<span[^>]+>([^<&]*)&lt;&lt;</span>([^>+<]+)<span[^>]+>&gt;&gt;</span>`
+            "$1<span class='replaceable' data-replace='$2'>$${$2}</span>"
+            | replaceRE
+            `<span[^>]+>&lt;&lt;([^>+<]+)&gt;&gt;</span>`
+            "<span class='replaceable' data-replace='$1'>$${$1}</span>"
+          }}
+{{ $highlight | safe.HTML }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

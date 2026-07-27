@@ -9,7 +9,7 @@ lastmod: 2026-06-28
 # custom parameters
 params:
   author: Heather Lapointe
-  status: "Draft"
+  status: "Preview"
 ---
 
 # First-Class Production Loki Infrastructure

@@ -1,0 +1,929 @@
+- importance: essential
+  labels:
+  - condition
+  name: certmanager_certificate_ready_status
+  usage:
+  - materialize.environmentd.certificate_not_ready
+- importance: essential
+  labels: []
+  name: cilium_bpf_map_pressure
+  usage:
+  - infra.cilium.bpf_map_pressure
+- importance: essential
+  labels: []
+  name: cilium_drop_count_total
+  usage:
+  - infra.cilium.drop_rate_elevated
+- importance: essential
+  labels:
+  - container
+  name: container_cpu_cfs_periods_total
+  usage:
+  - materialize.environmentd.cpu_throttled
+- importance: essential
+  labels:
+  - container
+  name: container_cpu_cfs_throttled_periods_total
+  usage:
+  - materialize.environmentd.cpu_throttled
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - pod
+  name: container_cpu_usage_seconds_total
+  usage:
+  - infra.kubernetes.pods_high_cpu_ratio
+  - infra.kubernetes.vector_high_cpu_ratio
+  - materialize.environmentd.high_cpu
+  - materialize.kubernetes.cpu.usage.absolute
+  - materialize.kubernetes.cpu.usage.percent
+  - materialize.kubernetes.pods.cpu_usage
+- importance: essential
+  labels:
+  - container
+  name: container_file_descriptors
+  usage:
+  - infra.kubernetes.file_descriptors_critical
+  - infra.kubernetes.file_descriptors_elevated
+  - infra.kubernetes.file_descriptors_warning
+- importance: essential
+  labels: []
+  name: container_fs_limit_bytes
+  usage:
+  - infra.kubernetes.container_disk_usage
+- importance: essential
+  labels: []
+  name: container_fs_usage_bytes
+  usage:
+  - infra.kubernetes.container_disk_usage
+- importance: essential
+  labels:
+  - materialize_cloud_swap
+  name: container_last_seen
+  usage:
+  - materialize.clusterd.swap_cluster_oom
+- importance: essential
+  labels: []
+  name: container_memory_swap
+  usage:
+  - materialize.clusterd.swap_cluster_oom
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - pod
+  name: container_memory_working_set_bytes
+  usage:
+  - infra.kubernetes.memory_elevated
+  - infra.kubernetes.memory_high
+  - materialize.environmentd.high_memory
+  - materialize.environmentd.memory_elevated
+  - materialize.kubernetes.memory.usage.absolute
+  - materialize.kubernetes.memory.usage.percent
+  - materialize.kubernetes.pods.memory_usage
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  - workload
+  name: container_network_receive_bytes_total
+  usage:
+  - infra.egress_gateway.excessive_traffic
+  - infra.egress_gateway.high_traffic
+  - infra.egress_gateway.low_traffic
+  - infra.egress_gateway.traffic_missing_metrics
+  - materialize.kubernetes.pods.network_rx
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  name: container_network_receive_errors_total
+  usage:
+  - materialize.kubernetes.pods.network_errors
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  name: container_network_receive_packets_dropped_total
+  usage:
+  - materialize.kubernetes.pods.network_drops
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  name: container_network_transmit_bytes_total
+  usage:
+  - materialize.kubernetes.pods.network_tx
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  name: container_network_transmit_errors_total
+  usage:
+  - materialize.kubernetes.pods.network_errors
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  name: container_network_transmit_packets_dropped_total
+  usage:
+  - materialize.kubernetes.pods.network_drops
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - pod
+  name: container_spec_cpu_period
+  usage:
+  - materialize.environmentd.high_cpu
+  - materialize.kubernetes.cpu.capacity
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - pod
+  name: container_spec_cpu_quota
+  usage:
+  - materialize.environmentd.high_cpu
+  - materialize.kubernetes.cpu.capacity
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - pod
+  name: container_spec_memory_limit_bytes
+  usage:
+  - infra.kubernetes.memory_elevated
+  - infra.kubernetes.memory_high
+  - materialize.environmentd.high_memory
+  - materialize.environmentd.memory_elevated
+  - materialize.kubernetes.memory.capacity
+  - materialize.kubernetes.memory.usage.percent
+  - materialize.kubernetes.pods.memory_usage
+- importance: essential
+  labels: []
+  name: container_spec_memory_swap_limit_bytes
+  usage:
+  - materialize.clusterd.swap_cluster_oom
+- importance: essential
+  labels:
+  - container
+  - namespace
+  name: container_start_time_seconds
+  usage:
+  - materialize.kubernetes.last_restart
+- importance: essential
+  labels:
+  - ulimit
+  name: container_ulimits_soft
+  usage:
+  - infra.kubernetes.file_descriptors_critical
+  - infra.kubernetes.file_descriptors_elevated
+  - infra.kubernetes.file_descriptors_warning
+- importance: essential
+  labels:
+  - zone
+  name: coredns_dns_request_duration_seconds_bucket
+  usage:
+  - infra.coredns.slow_queries
+- importance: essential
+  labels: []
+  name: crdb_dedicated_capacity
+  usage:
+  - infra.cockroachdb.disk_usage_critical
+  - infra.cockroachdb.disk_usage_elevated
+  - infra.cockroachdb.disk_usage_high
+- importance: essential
+  labels: []
+  name: crdb_dedicated_capacity_used
+  usage:
+  - infra.cockroachdb.disk_usage_critical
+  - infra.cockroachdb.disk_usage_elevated
+  - infra.cockroachdb.disk_usage_high
+- importance: essential
+  labels: []
+  name: crdb_dedicated_intentcount
+  usage:
+  - infra.cockroachdb.write_intent_accumulation_critical
+  - infra.cockroachdb.write_intent_accumulation_high
+- importance: essential
+  labels: []
+  name: crdb_dedicated_ranges_unavailable
+  usage:
+  - infra.cockroachdb.ranges_unavailable
+- importance: essential
+  labels: []
+  name: crdb_dedicated_ranges_underreplicated
+  usage:
+  - infra.cockroachdb.ranges_underreplicated
+- importance: essential
+  labels: []
+  name: crdb_dedicated_rocksdb_read_amplification
+  usage:
+  - infra.cockroachdb.lsm_read_amplification_critical
+  - infra.cockroachdb.lsm_read_amplification_high
+- importance: essential
+  labels: []
+  name: crdb_dedicated_schedules_backup_last_completed_time
+  usage:
+  - infra.cockroachdb.backup_missing
+- importance: essential
+  labels: []
+  name: crdb_dedicated_sql_mem_distsql_current
+  usage:
+  - infra.cockroachdb.sql_memory_pressure_high
+  - infra.cockroachdb.sql_memory_rapid_growth
+- importance: essential
+  labels: []
+  name: crdb_dedicated_sql_service_latency_bucket
+  usage:
+  - infra.cockroachdb.query_latency
+- importance: essential
+  labels: []
+  name: crdb_dedicated_sys_cpu_combined_percent_normalized
+  usage:
+  - infra.cockroachdb.cpu_usage_critical
+  - infra.cockroachdb.cpu_usage_high
+- importance: essential
+  labels: []
+  name: crdb_dedicated_sys_totalmem
+  usage:
+  - infra.cockroachdb.sql_memory_pressure_high
+- importance: essential
+  labels:
+  - condition
+  - deployment
+  - status
+  name: kube_deployment_status_condition
+  usage:
+  - infra.kubernetes.deployment_unavailable_critical
+  - infra.kubernetes.deployment_unavailable_notice
+  - infra.kubernetes.deployment_unavailable_warning
+- importance: essential
+  labels:
+  - namespace
+  name: kube_deployment_status_replicas_ready
+  usage:
+  - materialize.kubernetes.deployments.readiness
+- importance: essential
+  labels:
+  - namespace
+  name: kube_deployment_status_replicas_unavailable
+  usage:
+  - materialize.kubernetes.deployments.readiness
+- importance: essential
+  labels:
+  - namespace
+  name: kube_horizontalpodautoscaler_spec_max_replicas
+  usage:
+  - infra.kubernetes.hpa_replicas_critical
+  - infra.kubernetes.hpa_replicas_high
+- importance: essential
+  labels:
+  - namespace
+  name: kube_horizontalpodautoscaler_status_current_replicas
+  usage:
+  - infra.kubernetes.hpa_replicas_critical
+  - infra.kubernetes.hpa_replicas_high
+- importance: essential
+  labels:
+  - key
+  name: kube_node_spec_taint
+  usage:
+  - infra.kubernetes.node_unreachable
+- importance: essential
+  labels:
+  - condition
+  - status
+  name: kube_node_status_condition
+  usage:
+  - infra.kubernetes.node_disk_pressure
+- importance: essential
+  labels:
+  - namespace
+  - pod
+  - resource
+  name: kube_pod_container_resource_limits
+  usage:
+  - materialize.kubernetes.cpu.usage.percent
+  - materialize.kubernetes.pods.cpu_usage
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - pod
+  - resource
+  - unit
+  name: kube_pod_container_resource_requests
+  usage:
+  - infra.kubernetes.daemonset_high_cpu
+  - infra.kubernetes.daemonset_saturating_cpu
+  - infra.kubernetes.daemonset_saturating_mem
+  - infra.kubernetes.pods_high_cpu_ratio
+  - infra.kubernetes.vector_high_cpu_ratio
+- importance: essential
+  labels:
+  - container
+  - pod
+  name: kube_pod_container_status_last_terminated_exitcode
+  usage:
+  - materialize.clusterd.error_kill
+  - materialize.clusterd.system_cluster_terminated
+  - materialize.environmentd.terminated
+- importance: essential
+  labels:
+  - container
+  - namespace
+  - reason
+  name: kube_pod_container_status_last_terminated_reason
+  usage:
+  - infra.kubernetes.oomkill_core_systems
+  - infra.kubernetes.oomkill_important_systems
+  - infra.kubernetes.oomkill_nonessential_systems
+  - materialize.clusterd.swap_cluster_oom
+- importance: essential
+  labels:
+  - container
+  - namespace
+  name: kube_pod_container_status_restarts_total
+  usage:
+  - infra.kubernetes.oomkill_core_systems
+  - infra.kubernetes.oomkill_important_systems
+  - infra.kubernetes.oomkill_nonessential_systems
+  - infra.kubernetes.pod_restart_rate_high
+  - infra.kubernetes.pod_restart_rate_high_nonessential
+  - materialize.clusterd.error_kill
+  - materialize.clusterd.new_restarts_during_release
+  - materialize.clusterd.swap_cluster_oom
+- importance: essential
+  labels: []
+  name: kube_pod_container_status_waiting
+  usage:
+  - infra.kubernetes.pods_stuck_in_waiting
+- importance: essential
+  labels: []
+  name: kube_pod_created
+  usage:
+  - materialize.clusterd.new_restarts_during_release
+- importance: essential
+  labels: []
+  name: kube_pod_start_time
+  usage:
+  - infra.kubernetes.pods_stuck_in_waiting
+  - materialize.clusterd.not_receiving_commands
+  - materialize.environmentd.uptime_sla
+  - materialize.environmentd.uptime_slo
+- importance: essential
+  labels:
+  - namespace
+  - phase
+  name: kube_pod_status_phase
+  usage:
+  - infra.kubernetes.infra_pod_pending
+  - materialize.environmentd.pod_pending
+  - materialize.environmentd.pod_pending_critical
+  - materialize.kubernetes.pods.readiness
+- importance: essential
+  labels:
+  - namespace
+  name: kube_statefulset_status_replicas_ready
+  usage:
+  - materialize.kubernetes.statefulsets.ready
+- importance: essential
+  labels:
+  - workload
+  name: kubelet_node_name
+  usage:
+  - infra.egress_gateway.no_traffic
+- importance: essential
+  labels:
+  - persistentvolumeclaim
+  name: kubelet_volume_stats_capacity_bytes
+  usage:
+  - infra.kubernetes.volume_usage
+- importance: essential
+  labels:
+  - persistentvolumeclaim
+  name: kubelet_volume_stats_used_bytes
+  usage:
+  - infra.kubernetes.volume_usage
+- importance: essential
+  labels:
+  - namespace
+  name: loki_distributor_bytes_received_total
+  usage:
+  - infra.monitoring.logging_collection_down
+- importance: essential
+  labels: []
+  name: loki_panic_total
+  usage:
+  - infra.loki.panics
+- importance: essential
+  labels:
+  - route
+  name: loki_request_duration_seconds_bucket
+  usage:
+  - infra.loki.req_duration_high
+- importance: essential
+  labels:
+  - route
+  - status_code
+  name: loki_request_duration_seconds_count
+  usage:
+  - infra.loki.push_err_high
+  - infra.loki.req_err_high
+  - infra.loki.writer_err_high
+- importance: essential
+  labels: []
+  name: loki_write_dropped_entries_total
+  usage:
+  - infra.loki.alloy_log_drops
+- importance: essential
+  labels:
+  - application_name
+  - materialize_cloud_organization_name
+  - status
+  name: mz_adapter_commands
+  usage:
+  - materialize.connections.adapter.command_rate
+  - materialize.connections.adapter.commands_by_application
+  - materialize.console.errors
+- importance: essential
+  labels:
+  - path
+  - status
+  name: mz_auth_request_count
+  usage:
+  - materialize.auth.errors
+  - materialize.auth.refresh_failures
+- importance: essential
+  labels:
+  - pod
+  - server_name
+  name: mz_cluster_server_last_command_received
+  usage:
+  - materialize.clusterd.not_receiving_commands
+- importance: essential
+  labels:
+  - pod
+  name: mz_dataflow_replica_expiration_remaining_seconds
+  usage:
+  - materialize.clusterd.expiration_7d
+- importance: essential
+  labels:
+  - status
+  name: mz_external_calls_count
+  usage:
+  - materialize.external_uptime.checker_not_calling
+  - materialize.external_uptime.connections_failing
+- importance: essential
+  labels: []
+  name: mz_external_envd_up
+  usage:
+  - materialize.external_uptime.envd_unreachable
+- importance: essential
+  labels:
+  - pod
+  name: mz_memory_limiter_memory_limit_bytes
+  usage:
+  - materialize.clusterd.system_cluster_high_memory
+- importance: essential
+  labels:
+  - pod
+  name: mz_memory_limiter_memory_usage_bytes
+  usage:
+  - materialize.clusterd.system_cluster_high_memory
+- importance: essential
+  labels: []
+  name: mz_parameter_frontend_last_cse_time_seconds
+  usage:
+  - materialize.launchdarkly.stale_cse
+- importance: essential
+  labels: []
+  name: mz_parameter_frontend_last_sse_time_seconds
+  usage:
+  - materialize.launchdarkly.stale_sse
+- importance: essential
+  labels: []
+  name: mz_persist_blob_failures
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_cmd_failed_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels:
+  - op
+  - result
+  name: mz_persist_columnar_op_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels:
+  - result
+  name: mz_persist_columnar_validation_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_compaction_dropped
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_compaction_failed
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_compaction_noop
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_consensus_failures
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_external_blob_delete_noop_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_external_failed_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_lease_timeout_read
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_pushdown_parts_mismatched_stats_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_schema_cache_fetch_state_count
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_shard_unconsolidated_snapshot
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_persist_state_update_state_slow_path
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_shard_finalization_outstanding
+  usage:
+  - materialize.storage.collection_finalization_stuck
+- importance: essential
+  labels:
+  - application_name
+  - instance_id
+  name: mz_time_to_first_row_seconds_bucket
+  usage:
+  - materialize.console.query_latency
+- importance: essential
+  labels: []
+  name: mz_txn_placeholder_schema_apply
+  usage:
+  - materialize.persist.failures
+- importance: essential
+  labels:
+  - device
+  name: node_network_receive_bytes_total
+  usage:
+  - infra.egress_gateway.excessive_traffic
+  - infra.egress_gateway.high_traffic
+  - infra.egress_gateway.low_traffic
+  - infra.egress_gateway.no_traffic
+  - infra.egress_gateway.traffic_missing_metrics
+- importance: essential
+  labels:
+  - device
+  name: node_network_transmit_bytes_total
+  usage:
+  - infra.egress_gateway.no_traffic
+- importance: essential
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - job
+  - namespace
+  name: up
+  usage:
+  - infra.monitoring.clusterd_metrics_missing
+  - infra.monitoring.critical_metrics_missing
+  - materialize.scraper.mzmon.clusterd
+  - materialize.scraper.mzmon.environmentd
+  - materialize.scraper.mzmon.orchestratord
+- importance: essential
+  labels: []
+  name: v2_mz_can_connect
+  usage:
+  - materialize.environmentd.uptime_sla
+  - materialize.environmentd.uptime_slo
+- importance: essential
+  labels: []
+  name: v2_mz_envd_up
+  usage:
+  - materialize.environmentd.simplest_query
+- importance: essential
+  labels: []
+  name: v2_mz_views_query_successful
+  usage:
+  - materialize.environmentd.query_views_critical
+  - materialize.environmentd.query_views_warning
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_active_sessions
+  usage:
+  - materialize.connections.sessions.active
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_active_subscribes
+  usage:
+  - materialize.compute.subscribes.active
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_arrangement_maintenance_seconds_total
+  usage:
+  - materialize.compute.arrangements.maintenance_rate
+  - materialize.compute.arrangements.maintenance_rate_by_worker
+- importance: recommended
+  labels:
+  - collection_id
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: mz_arrangement_record_count
+  usage:
+  - materialize.compute.arrangements.records.system
+  - materialize.compute.arrangements.records.transient
+  - materialize.compute.arrangements.records.user
+- importance: recommended
+  labels:
+  - compute_cluster_id
+  - compute_replica_id
+  - compute_replica_name
+  - materialize_cloud_organization_name
+  name: mz_compute_cluster_status
+  usage:
+  - materialize.clusters.count
+  - materialize.clusters.info
+  - materialize.clusters.replicas.count
+  - materialize.clusters.replicas.sizes
+  - materialize.health.clusters.status.percentage
+  - materialize.health.environment.availability.percentage
+  - materialize.info.version
+- importance: recommended
+  labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: mz_compute_controller_hydration_queue_size
+  usage:
+  - materialize.compute.hydration.queue_size
+- importance: recommended
+  labels:
+  - hydrated
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: mz_compute_hydration_time_seconds
+  usage:
+  - materialize.compute.hydration.slowest_collections
+- importance: recommended
+  labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  name: mz_compute_peek_duration_seconds_bucket
+  usage:
+  - materialize.connections.peek_latency.p50
+  - materialize.connections.peek_latency.p90
+  - materialize.connections.peek_latency.p99
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_compute_replica_history_dataflow_count
+  usage:
+  - materialize.compute.dataflows.count
+  - materialize.compute.dataflows.count_by_worker
+- importance: recommended
+  labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - replica_id
+  name: mz_dataflow_elapsed_seconds_total
+  usage:
+  - materialize.compute.dataflows.elapsed_rate
+- importance: recommended
+  labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - quantile
+  - replica_id
+  name: mz_dataflow_wallclock_lag_seconds
+  usage:
+  - materialize.compute.freshness.lag_by_cluster
+  - materialize.compute.freshness.top_collections
+  - materialize.compute.hydration.currently_hydrating
+  - materialize.info.max_lag
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_indexes_count
+  usage:
+  - materialize.compute.indexes.by_type
+  - materialize.compute.indexes.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_mzd_views_count
+  usage:
+  - materialize.compute.materialized_views.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_query_total
+  usage:
+  - materialize.connections.queries.distribution
+  - materialize.connections.queries.rate
+  - materialize.connections.queries.rate_by_statement
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_bytes_committed
+  usage:
+  - materialize.storage.sinks.lag
+  - materialize.storage.sinks.throughput
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_bytes_staged
+  usage:
+  - materialize.storage.sinks.lag
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_commit_conflicts
+  usage:
+  - materialize.storage.sinks.iceberg.commit_failures
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_commit_duration_seconds_bucket
+  usage:
+  - materialize.storage.sinks.iceberg.commit_latency
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_commit_failures
+  usage:
+  - materialize.storage.sinks.iceberg.commit_failures
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_data_files_written
+  usage:
+  - materialize.storage.sinks.iceberg.file_rate
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_delete_files_written
+  usage:
+  - materialize.storage.sinks.iceberg.file_rate
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_iceberg_snapshots_committed
+  usage:
+  - materialize.storage.sinks.iceberg.file_rate
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_connects
+  usage:
+  - materialize.storage.sinks.kafka.connect_rate
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_disconnects
+  usage:
+  - materialize.storage.sinks.kafka.connect_rate
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_outbuf_msg_cnt
+  usage:
+  - materialize.storage.sinks.kafka.output_buffer
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_sink_rdkafka_txerrs
+  usage:
+  - materialize.storage.sinks.kafka.tx_errors
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_bytes_received
+  usage:
+  - materialize.storage.sources.bytes_received
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_messages_received
+  usage:
+  - materialize.storage.sources.ingestion_by_replica
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_commit_failures
+  usage:
+  - materialize.storage.sources.upstream_errors
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_committed
+  usage:
+  - materialize.storage.sources.upstream_errors
+- importance: recommended
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_known
+  usage:
+  - materialize.storage.sources.upstream_errors
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - type
+  name: mz_storage_objects
+  usage:
+  - materialize.storage.sinks.by_type
+  - materialize.storage.sinks.count
+  - materialize.storage.sources.by_type
+  - materialize.storage.sources.catalog
+  - materialize.storage.sources.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_tables_count
+  usage:
+  - materialize.storage.tables.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_views_count
+  usage:
+  - materialize.compute.views.count

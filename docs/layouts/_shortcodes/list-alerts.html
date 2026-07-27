@@ -1,0 +1,58 @@
+{{/*
+  list-alerts: renders a list of available alerts.
+
+  Reads alerts from assets/queries/*.yaml.
+
+  Usage:
+    {{< list-alerts >}}
+*/}}
+{{- $found := resources.Match "queries/*.yaml" -}}
+{{- if not $found }}
+  <p>No query registries found.</p>
+{{- else }}
+  {{- range $found }}
+    {{- $queryRegistry := .Content | transform.Unmarshal }}
+
+    {{- if $queryRegistry.alerts }}
+
+## {{ path.BaseName .Name }}
+
+{{ $queryRegistry.description | markdownify }}
+
+      {{- range $queryRegistry.alerts }}
+<h4 id="{{ .alert }}">{{ .alert }}
+  <a class="anchor" href="#{{ .alert }}">#</a>
+</h4>
+{{ .description.summary | markdownify }}
+Labels:
+<ul>
+      {{- range $key, $value := .labels }}
+        <li><strong>{{ $key }}:</strong> {{ $value }}</li>
+      {{- end }}
+</ul>
+        {{- $promQL := slice }}
+        {{- if reflect.IsSlice .query.promQL }}
+          {{- $promQL = .query.promQL }}
+        {{- else }}
+          {{- $promQL = slice .query.promQL }}
+        {{- end }}
+        {{- range $promQL }}
+          {{ $query := . }}
+          {{- if reflect.IsMap $query }}
+            {{- $query = $query.template}}
+          {{- end }}
+          {{- $query = $query | replaceRE "%%\\{([^}]+)\\}" "$${$1}"}}
+          {{- $highlight := transform.Highlight $query "promql" }}
+          {{- $highlight3 := $highlight | replaceRE
+            `<span[^>]+>([^<&]*)&lt;&lt;</span>([^>+<]+)<span[^>]+>&gt;&gt;</span>`
+            "$1<span class='replaceable' data-replace='$2'>$${$2}</span>"
+            | replaceRE
+            `<span[^>]+>&lt;&lt;([^>+<]+)&gt;&gt;</span>`
+            "<span class='replaceable' data-replace='$1'>$${$1}</span>"
+          }}
+{{ $highlight | safe.HTML }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

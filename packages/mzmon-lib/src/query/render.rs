@@ -248,8 +248,12 @@ fn extraction_context<'a>(
 /// (`mzClusterName` / `mzObjectName`) are the identity here — the docs show the
 /// raw metric, not the `mz_object_info` / `mz_cluster_info` left joins — so the
 /// extracted metric set is exactly the metrics the queries name directly.
-pub fn doc_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> TemplateContext<'a> {
-    extraction_context(registry, engine, "v2_mz_")
+pub fn doc_context<'a>(
+    registry: &'a QueryRegistry,
+    engine: QueryEngine,
+    sql_metric_prefix: &str,
+) -> TemplateContext<'a> {
+    extraction_context(registry, engine, sql_metric_prefix)
 }
 
 /// The metric-tiers [`TemplateContext`], used by [`crate::query::tiers`] to build
@@ -333,7 +337,7 @@ mod tests {
             instant: None,
         };
         let registry = QueryRegistry::new();
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         assert_eq!(query.render(&ctx).unwrap(), vec!["(m{}) or vector(0)"]);
     }
 
@@ -392,7 +396,7 @@ mod tests {
             logql: vec![],
             instant: None,
         });
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         let wrapper = registry.get("wrapper").unwrap();
         assert_eq!(
             wrapper.render(&ctx).unwrap(),

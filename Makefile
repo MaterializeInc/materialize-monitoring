@@ -83,6 +83,9 @@ prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers docs/as
 scrapers: prometheus-scrapers
 .PHONY: scrapers
 
+metrics: metric-tiers docs/assets/metrics/metrics.yaml
+.PHONY: metrics
+
 metric-tiers: charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml
 .PHONY: metric-tiers
 
@@ -183,6 +186,10 @@ charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml: $(wildcard
 	target/debug/mz-monitoring-build gen-metric-tiers \
 		--source-dir packages/queries \
 		--out "$@"
+
+docs/assets/metrics/metrics.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
+	mkdir -p "$(@D)"
+	target/debug/mz-monitoring-build extract-metrics --out-dir docs/assets/metrics/
 
 # Re-extract the prometheus-operator CRD JSONSchemas from the vendored
 # materialize-monitoring-crds chart. Output is checked in; re-run on version bump.

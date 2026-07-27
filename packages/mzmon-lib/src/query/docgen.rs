@@ -14,8 +14,8 @@
 //! extracted; occurrences of the same metric across queries are merged (labels
 //! and `usage` unioned, importance rolled up **greatest-wins** — if any query is
 //! `essential`, the metric is `essential`). `metricOverrides` then set a metric's
-//! importance outright. The result is sorted most-important-then-most-used-then-
-//! name and serialized to YAML.
+//! importance outright. The result is sorted most-important-then-name (the order
+//! the docs metrics list uses) and serialized to YAML.
 //!
 //! Importance is the axis Python's `docgen` does not have, so this output
 //! intentionally diverges from it — the Rust tool is authoritative. Extraction
@@ -126,11 +126,8 @@ pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> D
                 .expect("importance strings are written by us")
                 .rank()
         };
-        // Most important first, then most used, then name ascending.
-        rank(b)
-            .cmp(&rank(a))
-            .then_with(|| b.usage.len().cmp(&a.usage.len()))
-            .then_with(|| a.name.cmp(&b.name))
+        // Most important first, then name ascending (the order the docs list uses).
+        rank(b).cmp(&rank(a)).then_with(|| a.name.cmp(&b.name))
     });
 
     DocgenOutcome {
@@ -156,7 +153,7 @@ mod tests {
     }
 
     fn run(registry: &QueryRegistry) -> Vec<MetricDoc> {
-        let ctx = doc_context(registry, QueryEngine::PromQl);
+        let ctx = doc_context(registry, QueryEngine::PromQl, "v2_mz_");
         let outcome = extract_metric_docs(registry, &ctx);
         assert!(
             outcome.errors.is_empty(),
@@ -282,7 +279,7 @@ metricOverrides:
     }
 
     #[test]
-    fn sorts_by_importance_then_usage_then_name() {
+    fn sorts_by_importance_then_name() {
         let registry = load_docs(&[
             r#"
 description: recommended file
@@ -314,13 +311,13 @@ queries:
         let docs = run(&registry);
         let names: Vec<&str> = docs.iter().map(|d| d.name.as_str()).collect();
         // recommended (more important) before diagnostic; within recommended,
-        // used_twice (2 uses) first, then the single-use pair alphabetically.
+        // purely alphabetical (usage count is not a tiebreaker).
         assert_eq!(
             names,
             vec![
-                "used_twice",
                 "used_once_a",
                 "used_once_b",
+                "used_twice",
                 "diagnostic_metric",
             ]
         );
@@ -329,7 +326,7 @@ queries:
     #[test]
     fn empty_registry_yields_no_metrics() {
         let registry = QueryRegistry::new();
-        let ctx = doc_context(&registry, QueryEngine::PromQl);
+        let ctx = doc_context(&registry, QueryEngine::PromQl, "v2_mz_");
         assert!(extract_metric_docs(&registry, &ctx).metrics.is_empty());
     }
 }
