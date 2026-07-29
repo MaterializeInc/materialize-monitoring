@@ -526,7 +526,7 @@ pipeline:
             # -- Compression to use
             # Use gzip for better compatibility.
             # Use snappy for better performance.
-            compression: snappy
+            compression: gzip
 
             # -- Only export metrics with the specified importance level.
             # Values are "essential", "recommended", "extended", "diagnostic", "all"
@@ -538,17 +538,17 @@ pipeline:
             # @default -- ["otelcol.exporter.otlp[http].destination.input"]
             # Update this if your config was customized.
             handlers:
-              - 'otelcol.exporter.{{ ternary ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) "otlp" "otlphttp" }}.destination.input'
+              - 'otelcol.exporter.{{ ternary "otlp" "otlphttp" ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) }}.destination.input'
             # -- Raw configuration for an otelcol.exporter.otlp block.
             # Use this if you need to configure multiple destinations or use an alternative endpoint entirely.
             config: |
-              {{- $exporterType := ternary ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) "otlp" "otlphttp" }}
+              {{- $exporterType := ternary "otlp" "otlphttp" ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) }}
               otelcol.exporter.{{ $exporterType }} "destination" {
                   client {
                       endpoint = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.url | required "destination.otlp.url must be set" | quote }}
                       compression = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.compression | quote }}
               {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
-                      auth = {{ include "mzmon.alloyGateway.otelDest.authHandler" $ | quote }}
+                      auth = {{ include "mzmon.alloyGateway.otelDest.authHandler" $ }}
               {{- end }}
                   }
               }

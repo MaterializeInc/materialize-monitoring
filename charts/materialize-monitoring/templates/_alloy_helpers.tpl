@@ -408,7 +408,8 @@ Usage:
 {{- define "mzmon.alloyGateway.otelDest.egressFilter" }}
   {{- $forwardTo := .forwardTo | required "at least one destination is required" }}
   {{- $unfilteredMetricsEnv := .unfilteredMetricsEnv | required "unfilteredMetricsEnv is required" }}
-  {{- $processorName := .processorName | required "processorName is required" -}}
+  {{- $processorName := .processorName | required "processorName is required" }}
+  {{- $root := .root | required "root context is required" -}}
 
 otelcol.processor.filter "{{ $processorName }}" {
     metric_conditions {
@@ -421,7 +422,7 @@ otelcol.processor.filter "{{ $processorName }}" {
 	  output {
 		    metrics = [
 {{- range $forwardTo }}
-            {{ . }},
+            {{ tpl . $root }},
 {{- end }}
 		    ]
     }
@@ -438,6 +439,10 @@ Usage:
   {{- $otelDestValues := $.Values.pipeline.metrics.gateway.destination.otel }}
   {{- $blocks := list }}
   {{- $forwardTo := list }}
+  {{- /* Logs are forwarded only to logs-capable exporters (otlp/datadog), by
+         their exporter input — never through the metric egress filters, and
+         never to the metrics-only googlecloud exporter. */}}
+  {{- $logsForwardTo := list }}
 
   {{- if $otelDestValues.otlpExporter.enabled }}
     {{- $blocks = append $blocks ( tpl $otelDestValues.otlpExporter.config $ ) }}
@@ -445,8 +450,12 @@ Usage:
       "forwardTo" $otelDestValues.otlpExporter.handlers
       "processorName" "otlpMetricEgressFilter"
       "unfilteredMetricsEnv" $otelDestValues.otlpExporter.unfilteredMetricsEnv
+      "root" $
     ) | nindent 0 }}
-    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.otlpMetricEgressFilter.input" -}}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.otlpMetricEgressFilter.input" }}
+    {{- range $otelDestValues.otlpExporter.handlers }}
+      {{- $logsForwardTo = append $logsForwardTo (tpl . $) }}
+    {{- end }}
   {{- end }}
 
   {{- if $otelDestValues.googleCloudExporter.enabled }}
@@ -455,6 +464,7 @@ Usage:
       "forwardTo" $otelDestValues.googleCloudExporter.handlers
       "processorName" "googleCloudMetricEgressFilter"
       "unfilteredMetricsEnv" $otelDestValues.googleCloudExporter.unfilteredMetricsEnv
+      "root" $
     ) | nindent 0 }}
     {{- $forwardTo = append $forwardTo "otelcol.processor.filter.googleCloudMetricEgressFilter.input" -}}
   {{- end }}
@@ -465,8 +475,12 @@ Usage:
       "forwardTo" $otelDestValues.datadogExporter.handlers
       "processorName" "datadogMetricEgressFilter"
       "unfilteredMetricsEnv" $otelDestValues.datadogExporter.unfilteredMetricsEnv
+      "root" $
     ) | nindent 0 }}
-    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.datadogMetricEgressFilter.input" -}}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.datadogMetricEgressFilter.input" }}
+    {{- range $otelDestValues.datadogExporter.handlers }}
+      {{- $logsForwardTo = append $logsForwardTo (tpl . $) }}
+    {{- end }}
   {{- end }}
 
   {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
@@ -486,11 +500,14 @@ otelcol.processor.filter "egressFanOut" {
 }
   {{- end }}
   {{- if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
+    {{- if not $logsForwardTo }}
+      {{- fail "pipeline.logging.gateway.destination.otel is enabled, but no logs-capable otel exporter (otlpExporter or datadogExporter) is enabled to receive them (the googlecloud exporter is metrics-only)." }}
+    {{- end }}
 
 otelcol.receiver.loki "outputBridge" {
     output {
         logs = [
-            otelcol.processor.batch.outputLogsBatch.receiver,
+            otelcol.processor.batch.outputLogsBatch.input,
         ]
     }
 }
@@ -498,7 +515,7 @@ otelcol.receiver.loki "outputBridge" {
 otelcol.processor.batch "outputLogsBatch" {
     output {
         logs = [
-    {{- range $forwardTo }}
+    {{- range $logsForwardTo }}
             {{ . }},
     {{- end }}
         ]

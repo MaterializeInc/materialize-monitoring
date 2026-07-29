@@ -1018,7 +1018,7 @@ Multiple exporters can be enabled at once.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"snappy"</code></td>
+      <td class="helm-value-default"><code>"gzip"</code></td>
       <td class="helm-value-desc">Compression to use Use gzip for better compatibility. Use snappy for better performance.</td>
     </tr>
     <tr>
@@ -1040,13 +1040,13 @@ Multiple exporters can be enabled at once.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.config</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><pre>{{- $exporterType := ternary ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) "otlp" "otlphttp" }}
+      <td class="helm-value-default"><pre>{{- $exporterType := ternary "otlp" "otlphttp" ( eq .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.protocol "grpc" ) }}
 otelcol.exporter.{{ $exporterType }} "destination" {
     client {
         endpoint = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.url | required "destination.otlp.url must be set" | quote }}
         compression = {{ .Values.pipeline.metrics.gateway.destination.otel.otlpExporter.compression | quote }}
 {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
-        auth = {{ include "mzmon.alloyGateway.otelDest.authHandler" $ | quote }}
+        auth = {{ include "mzmon.alloyGateway.otelDest.authHandler" $ }}
 {{- end }}
     }
 }
