@@ -1,40 +1,62 @@
 name: pipelines
 
 # Render the Alloy pipelines + metric-tiers and validate them (schema + `alloy
-# validate`), then assert the checked-in outputs are fresh. Split out of `test`
-# and path-gated because it is one of the slower jobs (downloads the alloy
-# binary, builds the Rust renderer) and only its inputs can change its output:
-# the pipeline/query sources, the renderer (mzmon-lib / mz-monitoring-build), or
-# the committed outputs themselves. Unrelated changes (docs, dashboards,
-# scrapers, chart templates) can't affect it, so they skip it entirely.
+# validate`), then assert the checked-in outputs are fresh. This is one of the
+# slower jobs (downloads the alloy binary, builds the Rust renderer), so the
+# expensive `pipelines` job only runs when its inputs change — but the path
+# filter lives at the JOB level (via the `changes` job below), not on the
+# workflow trigger. That is deliberate: `pipelines-gate` is meant to be a
+# required check, and a workflow skipped by a trigger-level `paths:` filter never
+# reports its checks, which would leave a required check pending and block every
+# unrelated PR. Running the workflow always (and skipping the work inside) keeps
+# the gate reporting on every PR.
 on:
   push:
     branches: [main]
-    paths: &pipeline-paths
-      - packages/alloy-pipelines/**
-      - packages/queries/**
-      - packages/mzmon-lib/**
-      - packages/mz-monitoring-build/**
-      - charts/materialize-monitoring/pre-rendered/pipelines/**
-      - charts/materialize-monitoring/pre-rendered/metrics/**
-      - Cargo.toml
-      - Cargo.lock
-      - Makefile
-      - .github/workflows/pipelines.yaml
   pull_request:
-    paths: *pipeline-paths
 
 permissions:
   contents: read
+  # dorny/paths-filter lists a PR's changed files via the API.
+  pull-requests: read
 
 jobs:
+  # Detect whether anything that can change the rendered pipelines/metric-tiers
+  # was touched. Everything downstream keys off this instead of a trigger-level
+  # `paths:` filter, so the workflow still runs (and the gate still reports) on
+  # PRs that don't touch these paths.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      pipelines: ${{ steps.filter.outputs.pipelines }}
+    steps:
+      # Checkout is needed for push events (paths-filter diffs against the base
+      # commit); pull_request events resolve changed files via the API.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            pipelines:
+              - packages/alloy-pipelines/**
+              - packages/queries/**
+              - packages/mzmon-lib/**
+              - packages/mz-monitoring-build/**
+              - charts/materialize-monitoring/pre-rendered/pipelines/**
+              - charts/materialize-monitoring/pre-rendered/metrics/**
+              - Cargo.toml
+              - Cargo.lock
+              - Makefile
+              - .github/workflows/pipelines.yaml
+
   pipelines:
     name: pipelines (render + alloy validate)
-    # version-update/* PRs only bump versions/changelog; a Cargo.toml/Cargo.lock
-    # version bump can match the paths above but never changes the render, and
-    # the merge re-runs this on main. Skip them (renovate dep bumps use a
-    # different branch prefix, so those still run here).
-    if: ${{ !startsWith(github.head_ref, 'version-update/') }}
+    needs: changes
+    # Only run the expensive render/validate when a relevant input changed, and
+    # not on version-update/* PRs (a Cargo.toml/Cargo.lock version bump can match
+    # the paths above but never changes the render, and the merge re-runs this on
+    # main). Renovate dep bumps use a different branch prefix, so those still run.
+    if: ${{ needs.changes.outputs.pipelines == 'true' && !startsWith(github.head_ref, 'version-update/') }}
     runs-on: ubuntu-24.04
     env:
       # renovate: datasource=github-releases packageName=grafana/alloy
@@ -91,3 +113,29 @@ jobs:
             git status --porcelain -- "$dir"
             exit 1
           fi
+
+  # Rollup gate — the single check to require in branch protection for this
+  # workflow. Always runs (the workflow is not path-gated), and passes iff every
+  # job above finished `success` or `skipped`, so on PRs that don't touch the
+  # pipeline inputs the skipped `pipelines` job still counts as a pass.
+  pipelines-gate:
+    name: pipelines-gate
+    needs: [changes, pipelines]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success | skipped) ;;
+              *)
+                echo "::error::a required job did not pass (result: $r)"
+                exit 1
+                ;;
+            esac
+          done
+          echo "All pipeline jobs passed."
