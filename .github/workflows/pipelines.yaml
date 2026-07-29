@@ -1,0 +1,93 @@
+name: pipelines
+
+# Render the Alloy pipelines + metric-tiers and validate them (schema + `alloy
+# validate`), then assert the checked-in outputs are fresh. Split out of `test`
+# and path-gated because it is one of the slower jobs (downloads the alloy
+# binary, builds the Rust renderer) and only its inputs can change its output:
+# the pipeline/query sources, the renderer (mzmon-lib / mz-monitoring-build), or
+# the committed outputs themselves. Unrelated changes (docs, dashboards,
+# scrapers, chart templates) can't affect it, so they skip it entirely.
+on:
+  push:
+    branches: [main]
+    paths: &pipeline-paths
+      - packages/alloy-pipelines/**
+      - packages/queries/**
+      - packages/mzmon-lib/**
+      - packages/mz-monitoring-build/**
+      - charts/materialize-monitoring/pre-rendered/pipelines/**
+      - charts/materialize-monitoring/pre-rendered/metrics/**
+      - Cargo.toml
+      - Cargo.lock
+      - Makefile
+      - .github/workflows/pipelines.yaml
+  pull_request:
+    paths: *pipeline-paths
+
+permissions:
+  contents: read
+
+jobs:
+  pipelines:
+    name: pipelines (render + alloy validate)
+    # version-update/* PRs only bump versions/changelog; a Cargo.toml/Cargo.lock
+    # version bump can match the paths above but never changes the render, and
+    # the merge re-runs this on main. Skip them (renovate dep bumps use a
+    # different branch prefix, so those still run here).
+    if: ${{ !startsWith(github.head_ref, 'version-update/') }}
+    runs-on: ubuntu-24.04
+    env:
+      # renovate: datasource=github-releases packageName=grafana/alloy
+      ALLOY_VERSION: v1.18.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Install alloy
+        # Pinned release binary (NOT `go install` — alloy needs build tags and
+        # is a heavy build). Assets follow the `alloy-<os>-<arch>.zip` naming;
+        # the runner is linux/amd64. ALLOY_VERSION (job env, above) is renovate-
+        # managed; keep it in step with the alloy used locally for `make
+        # pipelines` and with packages/alloy/Dockerfile's ARG ALLOY_VERSION.
+        run: |
+          curl -sSL \
+            "https://github.com/grafana/alloy/releases/download/${ALLOY_VERSION}/alloy-linux-amd64.zip" \
+            -o /tmp/alloy.zip
+          unzip -q /tmp/alloy.zip -d /tmp
+          sudo install -m 0755 /tmp/alloy-linux-amd64 /usr/local/bin/alloy
+      # Renders every packages/alloy-pipelines/*.yaml to .alloy and runs
+      # `alloy validate` on each (second-layer sanity check beyond the schema).
+      # Remove existing outputs first: the Makefile rule is timestamp-driven and
+      # a fresh checkout's mtimes are arbitrary, so without this `make` could
+      # consider the committed .alloy up to date and skip rendering — which would
+      # make the freshness check below vacuous.
+      - name: make pipelines
+        run: |
+          rm -f charts/materialize-monitoring/pre-rendered/pipelines/*.alloy
+          make pipelines
+      # The rendered .alloy files are checked in; assert they match a fresh
+      # render so a YAML/schema/renderer change can't merge with stale output.
+      # Uses `git status` (not `git diff`) so a new-but-uncommitted render is
+      # caught too, not just modifications to already-tracked files.
+      - name: rendered pipelines are up to date
+        run: |
+          dir=charts/materialize-monitoring/pre-rendered/pipelines
+          if [ -n "$(git status --porcelain -- "$dir")" ]; then
+            echo "::error::Rendered .alloy output is stale or uncommitted. Run 'make pipelines' locally and commit."
+            git status --porcelain -- "$dir"
+            exit 1
+          fi
+      # metric-tiers.yaml is generated from the query registry and checked in, the
+      # same freshness contract as the pipelines above.
+      - name: make metrics
+        run: |
+          rm -f charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml
+          make metrics
+      - name: generated metric-tiers.yaml is up to date
+        run: |
+          dir=charts/materialize-monitoring/pre-rendered/metrics
+          if [ -n "$(git status --porcelain -- "$dir")" ]; then
+            echo "::error::Generated metric-tiers.yaml is stale or uncommitted. Run 'make metrics' locally and commit."
+            git status --porcelain -- "$dir"
+            exit 1
+          fi

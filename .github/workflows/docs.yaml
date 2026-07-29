@@ -3,8 +3,19 @@ name: docs
 on:
   push:
     branches: [main]
+  # PR previews only make sense when the rendered site can actually change, so
+  # gate them on the docs sources (and packages/, liberally, since generated
+  # assets originate there). This also keeps the version-update/* swarm — which
+  # only touches Chart.yaml/CHANGELOG/lockfiles — from each deploying a preview.
+  # The main-branch deploy above stays unconditional so the live site is always
+  # fresh. Cleanup on `closed` gates on the same paths: a PR that never matched
+  # never created a preview, so there is nothing to clean.
   pull_request:
     types: [opened, synchronize, reopened, closed]
+    paths:
+      - docs/**
+      - packages/**
+      - .github/workflows/docs.yaml
 
 permissions:
   contents: write
@@ -105,6 +116,16 @@ jobs:
             preview
           commit-message: |
             Deploy ${{ github.sha }} -> ${{ steps.paths.outputs.target-folder }}
+          # The per-PR concurrency group above only serializes a single PR's own
+          # runs; it does nothing across different PRs. When propose-bumps pushes
+          # a swarm of version-update/* branches at once, their deploys all race
+          # to push gh-pages and fail with "cannot lock ref". Rebase-and-retry
+          # instead of force-pushing so those pushes serialize on the remote.
+          # Each deploy writes a disjoint path (main → root, each PR → its own
+          # preview/<slug>), so the rebase is always conflict-free; attempt-limit
+          # is raised well above the default 3 to absorb a full release swarm.
+          force: false
+          attempt-limit: 10
 
       # Sticky comment: one comment per PR (matched via `header`), updated in
       # place on every push. The cleanup job removes it when the PR closes.
