@@ -122,6 +122,7 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | Generated chart README (values.yaml → README via `helm-docs`) | M2 | ✅ |
 | Distroless Alloy image (FIPS boringcrypto, multi-arch, non-root, GHCR-published) | M2 | ✅ |
 | Pre-install/pre-upgrade `alloy validate` validation hook | M2 | ✅ |
+| Charts published to GHCR as OCI artifacts (`oci://ghcr.io/materializeinc/helm-charts`) + `.tgz` attached to each release | M3 | ✅ |
 | Terraform wrapper module (pins a chart version, own cadence) | M4 | ⬜ |
 
 ### Rules & alerts

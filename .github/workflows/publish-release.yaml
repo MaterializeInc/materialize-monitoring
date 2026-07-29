@@ -53,13 +53,30 @@ jobs:
           # The merged state on the default branch, whose CHANGELOG carries the
           # just-released section.
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+          # Hydrate LFS-tracked subchart tarballs (charts/*/charts/*.tgz) so
+          # `helm package` bundles the real subcharts, not LFS pointer files.
+          lfs: true
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      # Build any build-output artifacts (e.g. the packaged chart .tgz, which is
-      # gitignored) before publishing so the component's `artifacts` globs can
-      # resolve them. Committed artifacts (pre-rendered dashboards, docs/assets)
-      # need no build. Add the toolchain (uv/helm/go) the chosen targets require.
-      # - run: make charts dashboards
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      # Build the packaged chart .tgz — a gitignored build output — for chart
+      # components, so the component's `artifacts` glob resolves for the release
+      # and the tarball can be pushed to GHCR below. We package the committed
+      # chart directly rather than `make charts`: its pre-rendered inputs are
+      # already committed and LFS-hydrated, so this reproduces exactly what is on
+      # the release commit without pulling in the generation toolchain
+      # (uv/alloy/rust). Non-chart components skip this — their committed
+      # artifacts (pre-rendered dashboards, docs/assets) need no build.
+      - name: package chart
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          component="${HEAD_REF#version-update/}"
+          if [ -f "charts/$component/Chart.yaml" ]; then
+            helm package "charts/$component" --destination charts/
+          else
+            echo "component $component is not a chart; skipping helm package"
+          fi
       - name: publish release
         # Pass the branch/sha via env (never interpolate untrusted refs into the
         # shell). The component is the branch name minus the version-update/ prefix.
@@ -72,3 +89,22 @@ jobs:
           cargo run -p mz-monitoring-build -- publish-release \
             --component "$component" \
             --sha "$MERGE_SHA"
+      # Publish chart components to GitHub Packages as OCI artifacts, so they can
+      # be pulled with e.g. `helm pull oci://ghcr.io/materializeinc/helm-charts/<chart>`.
+      # GitHub Packages only speaks OCI (no classic index.yaml HTTP repo), which
+      # matches how this chart already sources its own subcharts. Runs after the
+      # GitHub Release so a registry hiccup can't block it; re-running the job
+      # retries the push (the release step no-ops once its tag exists).
+      - name: push chart to GHCR (OCI)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          component="${HEAD_REF#version-update/}"
+          if [ ! -f "charts/$component/Chart.yaml" ]; then
+            echo "component $component is not a chart; skipping OCI push"
+            exit 0
+          fi
+          version="$(yq e '.version' "charts/$component/Chart.yaml")"
+          echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm push "charts/${component}-${version}.tgz" oci://ghcr.io/materializeinc/helm-charts
