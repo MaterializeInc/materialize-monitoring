@@ -24,3 +24,29 @@ jobs:
       - name: Build Dashboards
         run: >
           make -j4 dashboards
+
+  # Rollup gate — the single check to require in branch protection for this
+  # workflow. Passes iff every job above finished `success` or `skipped`; any
+  # failure or cancellation fails it. Requiring just this one check stays correct
+  # if the dashboards build is later split into multiple jobs.
+  dashboards-gate:
+    name: dashboards-gate
+    needs: [dashboards]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success | skipped) ;;
+              *)
+                echo "::error::a required job did not pass (result: $r)"
+                exit 1
+                ;;
+            esac
+          done
+          echo "All dashboards jobs passed."

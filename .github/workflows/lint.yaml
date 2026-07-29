@@ -156,3 +156,30 @@ jobs:
             echo "::error::helm-docs output is stale. Run 'make helm-docs' locally and commit."
             exit 1
           fi
+
+  # Rollup gate — the single check to require in branch protection for this
+  # workflow. Passes iff every job above finished `success` or `skipped`, so
+  # requiring just this one check stays correct as jobs are added or removed.
+  # `!cancelled()` lets it run even when some needs skipped; any failure or
+  # cancellation fails it. (test/pipelines/dashboards carry the same gate.)
+  lint-gate:
+    name: lint-gate
+    needs: [editorconfig, python, rust, shell, yaml, helm]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success | skipped) ;;
+              *)
+                echo "::error::a required job did not pass (result: $r)"
+                exit 1
+                ;;
+            esac
+          done
+          echo "All lint jobs passed."

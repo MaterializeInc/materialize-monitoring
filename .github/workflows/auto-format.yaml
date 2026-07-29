@@ -8,8 +8,17 @@ name: auto-format
 # NOTE: this fires on PR events from the actor that created/updated the PR. The
 # default GITHUB_TOKEN does NOT trigger downstream workflows, so the producer
 # (e.g. `propose-bumps`) must authenticate with a PAT or GitHub App token for
-# this to run. The push below uses GITHUB_TOKEN, which intentionally does not
-# re-trigger this workflow (no loop).
+# this to run. The push below likewise uses that token (MATERIALIZE_BOT_TOKEN)
+# so the formatting commit triggers the PR's required checks (lint/test) and lets
+# auto-merge proceed. If the token is unset the push falls back to GITHUB_TOKEN,
+# restoring the old no-re-trigger behavior.
+#
+# Because that push uses a real token, it re-triggers this workflow. The `check`
+# job below breaks the loop: if the PR head is already one of our own "apply
+# auto-formatters" commits there is nothing left to reformat, so it stops the
+# run before any toolchain installs. (Idempotent formatters are the backstop —
+# a run that did proceed would find no diff and not push — but the guard avoids
+# paying for it.)
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
@@ -22,14 +31,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  auto-format:
+  # Gate the expensive formatting job on two things: the opt-in label, and that
+  # the PR head is not already one of this workflow's own auto-format commits.
+  # Runs a shallow checkout only, so a re-triggered loop run stops here in a few
+  # seconds instead of installing the whole toolchain to reformat nothing.
+  check:
     if: contains(github.event.pull_request.labels.*.name, 'auto-format')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      proceed: ${{ steps.guard.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Skip the workflow's own auto-format commit
+        id: guard
+        env:
+          # Must match the commit subject the push step writes below.
+          MARKER: apply auto-formatters
+        run: |
+          subject="$(git log -1 --pretty=%s)"
+          if printf '%s' "$subject" | grep -qF "$MARKER"; then
+            echo "Head is an auto-format commit ($subject); skipping to break the re-trigger loop."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  auto-format:
+    needs: check
+    if: ${{ needs.check.outputs.proceed == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          # Persist this token (persist-credentials is on by default) so the
+          # `git push` below authenticates as the bot, making the commit trigger
+          # required checks. Falls back to GITHUB_TOKEN when the secret is unset.
+          token: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           lfs: true
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
@@ -55,5 +97,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          # The `check` job keys the loop guard on this subject — keep MARKER there
+          # in sync if you change it.
           git commit -m "style: apply auto-formatters"
           git push
