@@ -8,8 +8,12 @@ name: auto-format
 # NOTE: this fires on PR events from the actor that created/updated the PR. The
 # default GITHUB_TOKEN does NOT trigger downstream workflows, so the producer
 # (e.g. `propose-bumps`) must authenticate with a PAT or GitHub App token for
-# this to run. The push below uses GITHUB_TOKEN, which intentionally does not
-# re-trigger this workflow (no loop).
+# this to run. The push below likewise uses that token (MATERIALIZE_BOT_TOKEN)
+# so the formatting commit triggers the PR's required checks (lint/test) and lets
+# auto-merge proceed. That push re-triggers this workflow once, but the formatters
+# are idempotent, so the second run finds no diff and exits without pushing — the
+# loop is bounded to a single no-op run. If the token is unset the push falls back
+# to GITHUB_TOKEN, restoring the old no-re-trigger behavior.
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
@@ -30,6 +34,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          # Persist this token (persist-credentials is on by default) so the
+          # `git push` below authenticates as the bot, making the commit trigger
+          # required checks. Falls back to GITHUB_TOKEN when the secret is unset.
+          token: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           lfs: true
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable

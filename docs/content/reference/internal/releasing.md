@@ -119,7 +119,11 @@ Newly created GHCR packages are **private** by default — set the package visib
 
 `propose-bumps` builds branches via the GitHub API, so it cannot run formatters; the bump commit therefore leaves generated artifacts stale (e.g. the `helm-docs` chart README badge after a Chart.yaml version bump). Rather than install a toolchain in `propose-bumps`, the [`auto-format`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/auto-format.yaml) workflow runs the repo's formatters (`make helm-docs`, `cargo fmt`, `ruff`) on any PR labeled `auto-format` and pushes a single `style:` commit if anything changed. The same mechanism covers GitHub UI edits and renovate PRs — just apply the label.
 
-**Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention). For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token**, not the default `GITHUB_TOKEN`. The auto-format commit itself is pushed with the default `GITHUB_TOKEN`, which conveniently does not re-trigger the workflow.
+**Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention).
+For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token** (`MATERIALIZE_BOT_TOKEN`), not the default `GITHUB_TOKEN`.
+The auto-format commit is likewise pushed with `MATERIALIZE_BOT_TOKEN` so it triggers the PR's required checks (lint/test) and lets auto-merge proceed.
+That push re-triggers `auto-format` once, but the formatters are idempotent, so the second run finds nothing to commit and exits — the loop is bounded to a single no-op run.
+If the token is unset the push falls back to the default `GITHUB_TOKEN`, restoring the old no-re-trigger behavior (and leaving required checks unrun on the style commit).
 
 `propose-bumps` still syncs `uv.lock` inline for now; once auto-format reliably handles lockfiles that inline logic can be dropped (deferred — only generated docs were stale in practice).
 
