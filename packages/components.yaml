@@ -51,6 +51,8 @@ components:
       - tools/chartlib/
     dependencies:
       - repo-common
+    artifacts:
+      - charts/materialize-monitoring-crds-*.tgz
 
   dashboards:
     changelog: true

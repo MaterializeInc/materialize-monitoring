@@ -90,9 +90,30 @@ jobs:
 
 It runs off the PR *merge* (not pushes to the default branch), via the [`publish-release`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/publish-release.yaml) workflow gated on `version-update/*` head branches; the component is the branch name minus the `version-update/` prefix and the tag target is the merge commit. The default `GITHUB_TOKEN` is sufficient — nothing needs to chain off the tag or release. Same env contract as `propose-bumps` minus `pull-requests` (it only needs `contents: write`); `--dry-run` prints the tag, notes, and resolved assets without calling GitHub.
 
-A component's `artifacts` globs (in `components.yaml`) are attached to the release as assets. They resolve against the checked-out tree, so **committed** artifacts (e.g. `pre-rendered/` dashboards, `docs/assets/`) work as-is, but **build-output** artifacts (e.g. the packaged chart `.tgz`, which is gitignored) must be built earlier in the workflow — add the relevant `make` step before `publish-release`. A glob matching nothing only warns.
+A component's `artifacts` globs (in `components.yaml`) are attached to the release as assets.
+They resolve against the checked-out tree, so **committed** artifacts (e.g. `pre-rendered/` dashboards, `docs/assets/`) work as-is.
+**Build-output** artifacts (e.g. the packaged chart `.tgz`, which is gitignored) are built earlier in the workflow: for chart components the job checks out with LFS, sets up Helm, and runs `helm package charts/<component>` before the release step so the `.tgz` resolves.
+We package the committed chart directly rather than `make charts` — its pre-rendered inputs are already committed and LFS-hydrated, so packaging reproduces exactly what is on the release commit without pulling in the generation toolchain (uv/alloy/rust).
+A glob matching nothing only warns.
 
 When there are assets the release is created as a **draft**, the assets are uploaded, then it is published (repos with *immutable releases* reject uploads to an already-published release; the tag is created when the draft is published). Idempotency keys on the tag, so to re-publish after a failure you must delete the leftover tag/release first — and a run that died between creating the draft and publishing leaves an orphan draft (no tag) to clean up by hand.
+
+## Chart publishing (OCI, GHCR)
+
+Chart components are additionally published to GitHub Packages as **OCI artifacts**, after the GitHub Release.
+The same `helm package` output is pushed with `helm push charts/<component>-<version>.tgz oci://ghcr.io/materializeinc/helm-charts`, landing at `ghcr.io/materializeinc/helm-charts/<component>` (the chart name becomes the repository, the chart version the OCI tag).
+GitHub Packages speaks **only** the OCI distribution protocol — there is no classic HTTP (`index.yaml`) Helm repository — which is consistent with how this chart already sources its own subcharts over `oci://ghcr.io/...`.
+
+Consumers install directly from the registry, no `helm repo add` needed:
+
+```console
+helm install my-monitoring oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --version X.Y.Z
+```
+
+Login uses the workflow's default `GITHUB_TOKEN` (the `publish-release` workflow grants `packages: write`).
+The push runs *after* the release so a registry hiccup never blocks it; re-running the job retries the push while the release step no-ops on the existing tag.
+The push overwrites an existing version tag, so a retry is safe.
+Newly created GHCR packages are **private** by default — set the package visibility to public (once) so external consumers can pull.
 
 ## Auto-format
 
