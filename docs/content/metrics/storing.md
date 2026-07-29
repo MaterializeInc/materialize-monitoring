@@ -5,12 +5,20 @@ weight: 20
 
 # Storing Metrics
 
-Metrics collected by `alloy-gateway` are forwarded to an **OTLP** or **Prometheus remote-write** backend.
-Out of the box that is an in-cluster **Thanos Receive**; you can point it at any remote-write-compatible store (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …) through chart values.
-The destination values below live under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`.
-If you keep the bundled Thanos, it in turn persists blocks to object storage — see [Thanos object storage](#thanos-object-storage) for the S3/GCS/Azure setup.
+`alloy-gateway` forwards the metrics it collects to one or more storage backends.
+Out of the box that is an in-cluster **Thanos Receive**, but you can send metrics to any Prometheus remote-write store (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …), to an **OpenTelemetry (OTLP)** endpoint, or to several at once — each enabled destination receives its own copy.
+
+This page walks through the three decisions that setup involves:
+
+- **Where** metrics go — the default [remote-write destination](#the-remote-write-destination) and the [other backends](#other-metric-storage-backends) (generic OTLP, Google Cloud Monitoring, Datadog, Amazon Managed Prometheus).
+- **How** the gateway authenticates — [authentication](#authentication) and the [gateway Secret](#supplying-credentials-the-gateway-secret) that holds the credentials.
+- **What** each backend stores — the [importance tiers and denylist](#controlling-what-each-destination-stores) that decide which metrics reach each destination.
+
+If you keep the bundled Thanos, it persists blocks to object storage — see [Thanos object storage](#thanos-object-storage) for the S3/GCS/Azure setup.
 
 ## The remote-write destination
+
+These values live under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`:
 
 | Value | Purpose |
 |---|---|
@@ -47,7 +55,151 @@ Set `authType` and fill in the matching block:
 - **`none`** — no auth (the in-cluster Thanos default).
 - **`basicAuth`** — username / password from env.
 - **`bearer`** — bearer token from env.
-- **`sigv4`** — AWS SigV4 signing (below).
+- **`oauth2`** — OAuth2 client credentials from env.
+- **`sigv4`** — AWS SigV4 signing, derived from IRSA (see [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa) below).
+
+The OpenTelemetry destinations have their own auth block, `destination.otel.auth`, whose `authType` is one of `none`, `basic`, `bearer`, `awsSigv4`, or `custom`.
+
+Whichever destination and method you choose, the gateway reads the actual secret from an environment variable at runtime (`sys.env(...)`).
+There are two ways to populate that variable:
+
+- **Inline in `values`** — the Prometheus remote-write and Loki destinations accept the credential directly (`basicAuth.password`, `bearer.token`, …). When set, the value is baked into the gateway ConfigMap in plaintext, so this is convenient for a quick start but weaker for production.
+- **From a Secret** — leave the inline field blank and provide the same env var through a Secret. This is the preferred path, and the only option for the OpenTelemetry and Datadog destinations, which have no inline field.
+
+Both are described next.
+
+### Supplying credentials (the gateway Secret)
+
+The gateway loads its environment from two objects that share one name — `mzmon-alloy-gateway-env` (that is `<fullnameOverride>-alloy-gateway-env`, `mzmon` by default) — in the release namespace:
+
+- a **ConfigMap** the chart generates — non-secret env such as the per-destination allowlists and tenant map, plus any credentials you chose to set inline in `values`;
+- a **Secret** *you* create — the credential values in the table below, kept out of the rendered manifests.
+
+The chart does **not** create the Secret; it is mounted `optional: true`, so you populate it out-of-band with only the keys your enabled destinations need.
+A bearer-authenticated OTLP endpoint plus a Datadog API key — the pairing in the reference `mzmon-gcp` install — is just two keys:
+
+```bash
+kubectl create secret generic mzmon-alloy-gateway-env \
+  --namespace monitoring \
+  --from-literal=GATEWAY_OTEL_DEST_BEARER_TOKEN='<token>' \
+  --from-literal=GATEWAY_OTEL_DEST_DATADOG_API_KEY='<api-key>'
+```
+
+The Secret's keys are injected as environment variables next to the ConfigMap's, so the key names **are** the env-var names in the table below.
+
+> [!WARNING]
+>   The Secret name must match the release: with the default `fullnameOverride: mzmon` it is `mzmon-alloy-gateway-env`, and it must live in the namespace the gateway runs in (`monitoring` above).
+>   Because the mount is optional, a mismatched name or namespace is silently ignored — the destination then authenticates with empty credentials instead of failing loudly.
+
+> [!INFO]
+>   `kubectl create secret` is fine for a first install, but in production source the Secret from Sealed Secrets, External Secrets, or SOPS rather than committing raw credentials.
+
+### Credential environment variables
+
+Populate only the rows for the destinations and auth methods you enable:
+
+| Destination · method | `values` block | Secret keys (env vars) |
+|---|---|---|
+| Prometheus remote-write · `basicAuth` | `…destination.prometheusRemoteWrite.basicAuth` | `GATEWAY_PROMETHEUS_DEST_USERNAME`, `GATEWAY_PROMETHEUS_DEST_PASSWORD` |
+| Prometheus remote-write · `bearer` | `…prometheusRemoteWrite.bearer` | `GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN` |
+| Prometheus remote-write · `oauth2` | `…prometheusRemoteWrite.oauth2` | `GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID`, `…_CLIENT_SECRET`, `…_TOKEN_URL` |
+| Prometheus remote-write · client TLS | `…prometheusRemoteWrite.tls` | `GATEWAY_PROMETHEUS_DEST_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
+| OTLP · `basic` | `…otel.auth.basic` | `GATEWAY_OTEL_DEST_USERNAME`, `GATEWAY_OTEL_DEST_PASSWORD` |
+| OTLP · `bearer` | `…otel.auth.bearer` | `GATEWAY_OTEL_DEST_BEARER_TOKEN` |
+| Datadog | `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_DATADOG_API_KEY` |
+| SigV4 — AMP or OTLP `awsSigv4` | `…prometheusRemoteWrite.sigv4` / `…otel.auth.awsSigv4` | — none; uses the pod's IRSA identity |
+
+SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
+
+## Controlling what each destination stores
+
+Not every backend should receive every metric.
+`alloy-gateway` gives you two independent controls: a global **denylist** that drops metrics before they reach any destination, and a per-destination **importance filter** that keeps only metrics at or above a chosen tier.
+
+### The importance tiers
+
+Every metric in the registry is classified by *importance* — how likely you are to want it — independent of which backend you use.
+The levels, from most to least important, are **essential**, **recommended**, **extended**, and **diagnostic**.
+A fifth value, **all**, is a firehose meaning "everything scraped, including metrics the registry has not classified."
+The tier definitions and the full membership of each tier live in [the metric list](../../reference/stable-metrics/list-metrics/).
+
+<!-- The tier *definitions* live in reference/stable-metrics/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
+
+Each destination picks a floor with `minMetricImportance`.
+The filter is cumulative — a floor keeps that tier **and every tier more important than it**:
+
+| `minMetricImportance` | Metrics kept |
+|---|---|
+| `essential` | essential |
+| `recommended` | essential + recommended |
+| `extended` | essential + recommended + extended |
+| `diagnostic` | essential + recommended + extended + diagnostic |
+| `all` | everything scraped, classified or not (`.*`) |
+
+The defaults lean permissive for cheap local storage and frugal for metered SaaS backends:
+
+| Destination | Default `minMetricImportance` |
+|---|---|
+| `prometheusRemoteWrite` (bundled Thanos) | `all` |
+| `otlpExporter` (generic OTLP) | `all` |
+| `googleCloudExporter` (GCM) | `recommended` |
+| `datadogExporter` | `recommended` |
+
+Set it per destination:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        otel:
+          datadogExporter:
+            minMetricImportance: essential   # ship only alerting metrics to Datadog
+```
+
+> [!NOTE]
+>   The **extended** and **diagnostic** tiers are still being populated — today they are empty.
+>   Until they fill in, `extended` and `diagnostic` resolve to the same set as `recommended`.
+>   If you want *everything* that is scraped, use `all`, not `diagnostic`.
+
+### How the allowlist is built
+
+Tier membership is generated from the query registry into `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml` (via `mz-monitoring-build gen-metric-tiers`, or `make metric-tiers`).
+At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_UNFILTERED_PROM_METRICS`.
+`all` skips the file entirely and uses `.*`.
+Do not edit `metric-tiers.yaml` by hand: reclassify metrics in the registry and regenerate.
+
+### The denylist
+
+`denyMetrics` drops metrics for **every** destination, at the gateway input, before the per-destination fan-out:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      denyMetrics:
+        - some_noisy_metric
+        - another_expensive_.*        # entries are regex fragments, OR-joined
+```
+
+Reach for the denylist to shed a metric everywhere (cost, cardinality, noise); reach for `minMetricImportance` to tune what an *individual* backend receives.
+
+### Operational notes
+
+> [!NOTE]
+>   **The filter fails open.**
+>   If a destination's allowlist environment variable is empty or unset, the gateway falls back to `.*`.
+>   A misconfiguration therefore ships *everything* to that backend rather than nothing — safe for visibility, but watch cost on metered backends.
+
+> [!WARNING]
+>   **The gateway shards scrape targets across replicas.**
+>   Scraping runs with clustering enabled, so targets are distributed over the gateway pods.
+>   During a partial rollout a metric can look "missing" simply because its target is being scraped by a pod that has not yet picked up the new config — roll out **all** gateway replicas before concluding a metric is filtered out.
+
+> [!INFO]
+>   **Backend schema browsers are historical.**
+>   A metric appearing in a backend's schema or column list (Honeycomb, Datadog, …) is not proof it is arriving *now* — those views are cumulative and can show columns from before a filter change.
+>   Query for recent samples to confirm what is currently flowing.
 
 ## Thanos object storage
 
@@ -228,7 +380,81 @@ The bundled Thanos runs as a small set of roles over the shared bucket:
 
 ## Other Metric Storage Backends
 
+Two families of backend sit alongside the default Thanos remote-write sink: **OpenTelemetry (OTLP)** destinations, configured under the `otel` block, and remote-write variants such as **Amazon Managed Prometheus**, which reuse `prometheusRemoteWrite` with SigV4 auth.
+
+Enable the OTLP path with `pipeline.metrics.gateway.destination.otel.enabled: true`, then turn on one or more exporters — `otlpExporter` (generic), `googleCloudExporter`, and `datadogExporter` can all run at once, each with its own `minMetricImportance`.
+
+> [!WARNING]
+>   The `otel` block is shared with the logs pipeline.
+>   If you enable the OTLP *logs* destination, this block is still used for exporter configuration even when `otel.enabled` is `false` for metrics.
+
+### Generic OTLP (Honeycomb, Grafana Cloud, collectors) {#otlp}
+
+`otlpExporter` is the generic OTLP push exporter — point it at any OTLP-compatible endpoint, whether a vendor (Honeycomb, Grafana Cloud) or your own OpenTelemetry Collector:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        otel:
+          enabled: true
+          otlpExporter:
+            enabled: true
+            url: <host>:4317        # host[:port], no http:// or https:// prefix
+            protocol: grpc          # grpc → otlp, http → otlphttp
+            compression: gzip       # gzip for compatibility, snappy for speed
+          auth:
+            authType: bearer        # none | basic | bearer | awsSigv4 | custom
+```
+
+`url` takes a `host[:port]` with no scheme; `protocol: grpc` selects the OTLP/gRPC exporter and `protocol: http` selects OTLP/HTTP.
+Authentication is configured once under `otel.auth` (shared by the OTLP exporter): pick `authType` and fill the matching block.
+The credential values themselves come from the gateway Secret — see [Supplying credentials](#supplying-credentials-the-gateway-secret) for the env-var keys.
+
 ### Google Cloud Monitoring (GCM) {#gcm}
+
+`googleCloudExporter` writes to Google Cloud Monitoring under the metric prefix `workload.googleapis.com/mzmon`:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        otel:
+          enabled: true
+          googleCloudExporter:
+            enabled: true
+            minMetricImportance: recommended
+```
+
+Authentication uses **Workload Identity** — annotate the `alloy-gateway` ServiceAccount with the target Google service account and leave credentials out of the config, so the SDK's default chain uses the ambient identity.
+The token-exchange mechanics are the same as [Thanos on GCS](#granting-object-storage-access-workload-identity) above, but on the gateway's ServiceAccount rather than Thanos's.
+Grant that identity `roles/monitoring.metricWriter` on the project.
+GCM supports only `gzip` compression.
+
+Because GCM is metered, it defaults to `minMetricImportance: recommended`; raise it to `essential` to write even less, or lower the floor if you want more history there.
+
+### Datadog {#datadog}
+
+`datadogExporter` writes metrics (and logs) to Datadog:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        otel:
+          enabled: true
+          datadogExporter:
+            enabled: true
+            url: datadoghq.com          # your Datadog site
+            minMetricImportance: recommended
+```
+
+The API key is read from the `GATEWAY_OTEL_DEST_DATADOG_API_KEY` environment variable — source it from a Secret; never inline it in values.
+Set `url` to your Datadog site (for example `datadoghq.com` or `datadoghq.eu`); `metricEndpoint` and `logsEndpoint` default to the matching intake URLs.
+Like GCM, it defaults to `minMetricImportance: recommended`.
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)
 
