@@ -29,11 +29,12 @@ It is built for Dashboards-as-Code workflows and AI agent usage.
 2. If you are not logged in via `gcx`, run `gcx login --server YOUR_GRAFANA` to authenticate with your Grafana instance.
 3. Run `gcx dashboards create -f DOWNLOADED_FILE.json` to import the dashboard to your Grafana instance.
 
-<!--
 ## Importing Dashboards via Grafana Operator
 
+This is the recommended path when the dashboards are installed by the `materialize-monitoring` Helm chart, since it keeps them in sync rather than importing a point-in-time copy.
 Refer to the [Grafana Operator documentation](./grafana-operator).
--->
+
+For how the chart wires Grafana, the Grafana Operator, and the datasources together, see [Grafana Structure](./structure).
 
 ## Download Dashboards
 
