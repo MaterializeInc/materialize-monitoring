@@ -162,6 +162,8 @@ pipeline:
 >   Until they fill in, `extended` and `diagnostic` resolve to the same set as `recommended`.
 >   If you want *everything* that is scraped, use `all`, not `diagnostic`.
 
+For a worked example that keeps full fidelity in Thanos while sending a smaller, cheaper slice to Google Cloud Monitoring and Datadog, see the annotated [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile.
+
 ### How the allowlist is built
 
 Tier membership is generated from the query registry into `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml` (via `mz-monitoring-build gen-metric-tiers`, or `make metric-tiers`).
@@ -412,6 +414,8 @@ pipeline:
 Authentication is configured once under `otel.auth` (shared by the OTLP exporter): pick `authType` and fill the matching block.
 The credential values themselves come from the gateway Secret — see [Supplying credentials](#supplying-credentials-the-gateway-secret) for the env-var keys.
 
+For a ready-made starting point — generic OTLP to Honeycomb, including the header-auth block above — copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
+
 ### Google Cloud Monitoring (GCM) {#gcm}
 
 `googleCloudExporter` writes to Google Cloud Monitoring under the metric prefix `workload.googleapis.com/mzmon`:
@@ -455,6 +459,7 @@ pipeline:
 The API key is read from the `GATEWAY_OTEL_DEST_DATADOG_API_KEY` environment variable — source it from a Secret; never inline it in values.
 Set `url` to your Datadog site (for example `datadoghq.com` or `datadoghq.eu`); `metricEndpoint` and `logsEndpoint` default to the matching intake URLs.
 Like GCM, it defaults to `minMetricImportance: recommended`.
+The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and GCM enabled together, each on its own tier.
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)
 

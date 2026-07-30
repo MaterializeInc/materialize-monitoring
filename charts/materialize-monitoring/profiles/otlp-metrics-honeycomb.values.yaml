@@ -1,0 +1,61 @@
+# Send gateway metrics to a generic OTLP backend (Honeycomb shown).
+#
+# Pairs with the docs: "Metrics > Storing > Generic OTLP".
+# Combine with your platform profile (e.g. gcp-example / aws-example) as needed.
+#
+# Honeycomb authenticates with an `x-honeycomb-team` API-key header rather than a
+# bearer token, so this uses the `custom` auth escape hatch with
+# `otelcol.auth.headers`. The key is read at runtime from the
+# GATEWAY_OTEL_DEST_BEARER_TOKEN environment variable, which you supply through
+# the gateway Secret (the chart does NOT create it):
+#
+#   kubectl create secret generic mzmon-alloy-gateway-env \
+#     --namespace monitoring \
+#     --from-literal=GATEWAY_OTEL_DEST_BEARER_TOKEN='<honeycomb-api-key>'
+#
+# The Secret name must match <fullnameOverride>-alloy-gateway-env (mzmon by
+# default) and live in the gateway's namespace.
+
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        # Keep the default in-cluster Thanos remote-write sink on if you also want
+        # cheap, full-fidelity local storage; set enabled: false to send metrics
+        # only to OTLP.
+        prometheusRemoteWrite:
+          enabled: true
+
+        otel:
+          enabled: true
+
+          otlpExporter:
+            enabled: true
+            # Host[:port], with no http:// or https:// prefix.
+            url: "api.honeycomb.io"
+            # grpc -> otlp exporter, http -> otlphttp exporter.
+            protocol: grpc
+            # Honeycomb is metered, so ship only the metrics you use. "recommended"
+            # keeps essentials + dashboard metrics; use "all" for everything
+            # scraped, or "essential" for alerting metrics only. (extended and
+            # diagnostic currently resolve to the same set as recommended.)
+            minMetricImportance: recommended
+
+          auth:
+            # `custom` is the escape hatch for auth the built-in types don't cover
+            # (here, Honeycomb's API-key header).
+            authType: custom
+            custom:
+              handler: otelcol.auth.headers.oteldest.handler
+              config: |
+                otelcol.auth.headers "oteldest" {
+                  header {
+                    key   = "x-honeycomb-team"
+                    value = sys.env("GATEWAY_OTEL_DEST_BEARER_TOKEN")
+                  }
+                  header {
+                    # The target Honeycomb dataset for these metrics.
+                    key   = "x-honeycomb-dataset"
+                    value = "mzmon"
+                  }
+                }

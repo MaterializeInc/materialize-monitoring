@@ -1,0 +1,50 @@
+# Fan metrics out to several backends at once, each with its own importance tier.
+#
+# Pairs with the docs: "Metrics > Storing > Controlling what each destination stores".
+# Every enabled destination gets its own filtered copy, so you can keep full
+# fidelity locally while sending a smaller, cheaper slice to metered SaaS backends.
+#
+# Credentials come from the gateway Secret (the chart does NOT create it). For the
+# Datadog exporter below:
+#
+#   kubectl create secret generic mzmon-alloy-gateway-env \
+#     --namespace monitoring \
+#     --from-literal=GATEWAY_OTEL_DEST_DATADOG_API_KEY='<datadog-api-key>'
+#
+# Google Cloud Monitoring authenticates with the gateway pod's Workload Identity
+# instead of a Secret key — annotate the alloy-gateway ServiceAccount (below) and
+# grant that identity roles/monitoring.metricWriter.
+
+# GCM uses the gateway's ambient GCP identity. See gcp-example.values.yaml for the
+# ServiceAccount annotation, reused here.
+alloy-gateway:
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: "<REPLACE-ME>"
+
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        # Cheap, full-fidelity local storage: keep everything.
+        prometheusRemoteWrite:
+          enabled: true
+          minMetricImportance: all
+
+        otel:
+          enabled: true
+
+          # Google Cloud Monitoring: essentials + dashboard metrics.
+          googleCloudExporter:
+            enabled: true
+            minMetricImportance: recommended
+
+          # Datadog: alerting metrics only, to keep custom-metric cost down.
+          datadogExporter:
+            enabled: true
+            # Your Datadog site (datadoghq.com, datadoghq.eu, ...).
+            url: "datadoghq.com"
+            minMetricImportance: essential
+
+          # To also push to a generic OTLP backend (e.g. Honeycomb), enable
+          # otlpExporter and set otel.auth — see otlp-metrics-honeycomb.values.yaml.
