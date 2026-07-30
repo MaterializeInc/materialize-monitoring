@@ -44,7 +44,7 @@ If it disagrees with what is actually in the tree, trust the repo and update thi
 &lt;li&gt;&lt;code&gt;rules/&lt;/code&gt;: &lt;code&gt;prometheus/&lt;/code&gt;, &lt;code&gt;loki/&lt;/code&gt;, &lt;code&gt;thanos/&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;code&gt;templates/&lt;/code&gt;: provided resources — &lt;code&gt;alerts/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;scrapers/&lt;/code&gt;, plus &lt;code&gt;grafana-grafana.yaml&lt;/code&gt; and &lt;code&gt;_helpers.tpl&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;templates/&lt;/code&gt;: provided resources — &lt;code&gt;alerts/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;scrapers/&lt;/code&gt;, plus &lt;code&gt;grafana-grafana.yaml&lt;/code&gt; (the &lt;code&gt;Grafana&lt;/code&gt; instance), &lt;code&gt;grafana-datasources.yaml&lt;/code&gt; (the Thanos / Loki &lt;code&gt;GrafanaDatasource&lt;/code&gt;s), and the &lt;code&gt;_*.tpl&lt;/code&gt; helper files (&lt;code&gt;_helpers.tpl&lt;/code&gt;, &lt;code&gt;_grafana_helpers.tpl&lt;/code&gt;, &lt;code&gt;_loki_helpers.tpl&lt;/code&gt;, &lt;code&gt;_thanos_helpers.tpl&lt;/code&gt;, &lt;code&gt;_alloy_helpers.tpl&lt;/code&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;examples/&lt;/code&gt;: example values overlays (e.g. existing-grafana, IRSA/S3)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;profiles/&lt;/code&gt;: profile value sets (still being defined)&lt;/li&gt;
 &lt;/ul&gt;
