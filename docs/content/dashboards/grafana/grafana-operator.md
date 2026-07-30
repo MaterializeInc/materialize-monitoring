@@ -76,8 +76,6 @@ connections:
   grafana:
     # bundled | external | operator
     mode: external
-    labels:
-      dashboards.materialize.com/instance: mzmon
     external:
       url: https://grafana.example.com
       apiKey:
@@ -85,8 +83,8 @@ connections:
         key: apiKey
 ```
 
-The `labels` field does double duty: it labels the `Grafana` resource *and* becomes the default `instanceSelector` for every dashboard the chart ships.
-Setting it is strongly recommended — the empty default matches every Grafana instance the operator can see.
+The resource always carries a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is also the default `instanceSelector` for every dashboard the chart ships.
+`connections.grafana.labels` merges over it and applies to both sides at once, so use it to narrow the selector rather than to re-state it.
 
 Credentials are secret references only.
 Create the Secret before installing:
@@ -151,6 +149,9 @@ dashboards:
         instanceSelector:
           matchLabels:
             dashboards.materialize.com/instance: platform-grafana
+        # Required if that instance lives in another namespace — the chart only
+        # infers this for instances it creates itself.
+        allowCrossNamespaceImport: true
 ```
 
 ### Dashboard schema version

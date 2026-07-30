@@ -641,9 +641,20 @@ dashboards:
       manifest:
         # -- Time to sync the dashboard from the manifest
         resyncPeriod: 5m
-        # -- Non-default label selector for a Grafana-operator Grafana instance
+        # -- Non-default label selector for a Grafana-operator Grafana instance.
+        # Defaults to the labels on the `Grafana` instance this chart creates
+        # (see `connections.grafana.labels`), so the two cannot drift.
         # @default -- `{}`
         instanceSelector: {}
+        # -- Allow dashboards to match a Grafana instance outside their own
+        # namespace. Left unset, this is inferred — it turns on only when the
+        # `Grafana` resource lands in a different namespace than the dashboards,
+        # as it does under the `split-namespace` profile. Set it explicitly when
+        # pointing `instanceSelector` at an instance this chart does not create.
+        # Note that the CRDs forbid turning this back off in place; the resource
+        # has to be recreated.
+        # @default -- inferred
+        allowCrossNamespaceImport: null
         # -- Dashboard API Version (v2 or v2beta1)
         apiTarget: "dashboard.grafana.app/v2"
     datadog:
@@ -684,10 +695,23 @@ connections:
   # -- (h4) How to talk to a grafana instance
   # @notationType -- (sectionstart) Grafana connection configuration
   grafana:
-    # -- How this establishes its connection to Grafana. `bundled` means it uses the grafana provisioning chart.
+    # -- How this establishes its connection to Grafana.
+    # `bundled` (default) targets the Grafana deployed by the bundled `grafana`
+    # subchart; the URL and admin-credential Secret are derived from it.
+    # `external` targets a Grafana you already run — Grafana Cloud, a shared
+    # platform Grafana, another cluster — and requires `external.url` plus
+    # either `external.apiKey` or `external.adminUser` + `external.adminPassword`.
+    # `operator` hands the instance lifecycle to grafana-operator itself, which
+    # builds it from the operator's own defaults and is not yet production-ready.
     mode: bundled
 
-    # -- Labels applied to Grafana instance
+    # -- Additional labels applied to the Grafana instance, and to the
+    # `instanceSelector` of every Grafana resource this chart targets at it.
+    # Merged over a static `monitoring.materialize.cloud/grafana-instance: mzmon`
+    # label, which is what keeps the selector non-empty — grafana-operator reads
+    # an empty `matchLabels` as *every* instance, not none.
+    # Add to this to narrow the selector further, e.g. to scope per release when
+    # two `materialize-monitoring` releases share a cluster.
     # @default -- `{}`
     labels: {}
 
@@ -1537,6 +1561,11 @@ thanos:
 grafana-operator:
   # Circuit breaker (precedence over `tags.default`, `tags.managed-grafana`, and `tags.grafana-operator`):
   # enabled:
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "grafana-operator"
+  # -- Namespace override.
+  namespaceOverride: null
   # -- CRD behavior.
   # The Grafana Operator CRDs are owned by the `materialize-monitoring-crds`
   # chart, which vendors a deflated copy of them. The operator chart offers no
@@ -1561,6 +1590,14 @@ grafana-operator:
 grafana:
   # Circuit breaker (precedence over `tags.default`, `tags.managed-grafana`, and `tags.grafana-standalone`):
   # enabled: true
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  # `connections.grafana.mode: bundled` derives the URL it hands
+  # grafana-operator from this, so a release-name-derived name would leave the
+  # operator dialing a host that does not resolve.
+  fullnameOverride: "grafana"
+  # -- Namespace override.
+  namespaceOverride: null
   replicas: 1
 
   grafana.ini: {}

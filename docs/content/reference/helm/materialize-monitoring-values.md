@@ -1151,7 +1151,13 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance</td>
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.allowCrossNamespaceImport</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>inferred</code></td>
+      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
@@ -1253,7 +1259,7 @@ How to talk to a grafana instance
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
-      <td class="helm-value-desc">How this establishes its connection to Grafana. `bundled` means it uses the grafana provisioning chart.</td>
+      <td class="helm-value-desc">How this establishes its connection to Grafana. `bundled` (default) targets the Grafana deployed by the bundled `grafana` subchart; the URL and admin-credential Secret are derived from it. `external` targets a Grafana you already run — Grafana Cloud, a shared platform Grafana, another cluster — and requires `external.url` plus either `external.apiKey` or `external.adminUser` + `external.adminPassword`. `operator` hands the instance lifecycle to grafana-operator itself, which builds it from the operator's own defaults and is not yet production-ready.</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.labels</td>
@@ -1261,7 +1267,7 @@ How to talk to a grafana instance
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Labels applied to Grafana instance</td>
+      <td class="helm-value-desc">Additional labels applied to the Grafana instance, and to the `instanceSelector` of every Grafana resource this chart targets at it. Merged over a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is what keeps the selector non-empty — grafana-operator reads an empty `matchLabels` as *every* instance, not none. Add to this to narrow the selector further, e.g. to scope per release when two `materialize-monitoring` releases share a cluster.</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.url</td>
@@ -2406,6 +2412,18 @@ Upstream references:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grafana-operator"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -2424,6 +2442,25 @@ Bundled Grafana for dashboard rendering.
 
 Upstream reference:
   * https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">grafana<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grafana"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations. `connections.grafana.mode: bundled` derives the URL it hands grafana-operator from this, so a release-name-derived name would leave the operator dialing a host that does not resolve.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+  </tbody>
+</table>
 
 #### Alertmanager
 

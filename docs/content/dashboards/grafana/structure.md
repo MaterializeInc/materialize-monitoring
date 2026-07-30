@@ -57,7 +57,10 @@ connections:
 ```
 
 Nothing else is required.
-The chart derives the in-cluster URL from the release name and namespace, and reads admin credentials from the Secret the `grafana` subchart creates.
+The chart derives the in-cluster URL and the admin-credential Secret reference from the `grafana` subchart's own values, so the two always agree.
+Both subcharts pin a static `fullnameOverride` — `grafana` and `grafana-operator` — the same way `loki` and `thanos` do, so the Deployment, Service, and Secret are all just `grafana` regardless of what the release is called.
+
+The derivation reads `grafana.service.port` (80 by default, routed to the container's 3000) and `grafana.namespaceOverride`, so overriding either keeps the operator pointed at the right place.
 
 > [!WARNING]
 > The bundled Grafana ships **no persistence** — the `grafana` subchart mounts `emptyDir` for `/var/lib/grafana` by default.
@@ -110,15 +113,15 @@ Lets the Grafana Operator own the server lifecycle.
 flowchart TB
   subgraph release["Helm release — materialize-monitoring"]
     subgraph chart_grafana["grafana subchart"]
-      gdep["Deployment: &lt;release&gt;-grafana"]
-      gsvc["Service: &lt;release&gt;-grafana<br/>port 80 → container 3000"]
-      gsec["Secret: &lt;release&gt;-grafana<br/>admin-user · admin-password"]
+      gdep["Deployment: grafana"]
+      gsvc["Service: grafana<br/>port 80 → container 3000"]
+      gsec["Secret: grafana<br/>admin-user · admin-password"]
       gdep --- gsvc
       gdep --- gsec
     end
 
     subgraph chart_op["grafana-operator subchart"]
-      opdep["Deployment: &lt;release&gt;-grafana-operator<br/>WATCH_NAMESPACE=&quot;&quot; (cluster-wide)"]
+      opdep["Deployment: grafana-operator<br/>WATCH_NAMESPACE=&quot;&quot; (cluster-wide)"]
     end
 
     subgraph provided["templates/ — provided by this chart"]
@@ -176,21 +179,31 @@ Currently one dashboard ships: **Materialize Environment Overview** (`env-top` �
 ### Instance selection
 
 `instanceSelector` decides which `Grafana` resources a dashboard is pushed to.
-When `dashboards.config.grafana.manifest.instanceSelector` is unset, it falls back to `matchLabels: connections.grafana.labels`.
+When `dashboards.config.grafana.manifest.instanceSelector` is unset, it falls back to the labels on the `Grafana` resource this chart creates, so the two sides are rendered from one source and cannot drift.
+
+That label set is a static `monitoring.materialize.cloud/grafana-instance: mzmon`, plus anything in `connections.grafana.labels` merged over it.
+The static label is load-bearing: grafana-operator reads an **empty `matchLabels` as every `Grafana` resource**, not none, and it watches all namespaces by default.
+An empty selector would push the Materialize dashboards into every Grafana in the cluster.
+
+Add to `connections.grafana.labels` to narrow the selector further — for example, to scope per release when two `materialize-monitoring` releases share a cluster:
+
+```yaml
+connections:
+  grafana:
+    labels:
+      dashboards.materialize.com/release: team-a
+```
+
+Both the `Grafana` resource and the selector pick the addition up.
+
+### Cross-namespace matching
+
+A `GrafanaManifest` only matches a `Grafana` in its **own namespace** unless `allowCrossNamespaceImport` is set.
+The chart infers it: the flag is emitted only when the `Grafana` resource lands somewhere other than the release namespace, which is what happens under `split-namespace`.
+Set `dashboards.config.grafana.manifest.allowCrossNamespaceImport` explicitly when pointing `instanceSelector` at an instance the chart did not create.
 
 > [!WARNING]
-> `connections.grafana.labels` defaults to `{}`, which makes the selector `matchLabels: {}` — an **empty selector matches every `Grafana` resource**, not none.
-> Combined with the operator's default cluster-wide watch (`WATCH_NAMESPACE=""`), the Materialize dashboards are pushed into every Grafana instance in the cluster.
-> On a cluster with any other Grafana, set a distinguishing label:
->
-> ```yaml
-> connections:
->   grafana:
->     labels:
->       dashboards.materialize.com/instance: mzmon
-> ```
->
-> The label is applied to the `Grafana` resource and used as the selector, so both sides stay in sync.
+> The CRDs forbid turning `allowCrossNamespaceImport` back off in place — the resource has to be recreated.
 
 ## Datasources
 
@@ -241,9 +254,11 @@ Do not point a datasource at a `loki-gateway` service; it does not exist.
 The `split-namespace` profile moves each subchart into its own namespace, including `grafana` and `grafana-operator`.
 Datasource URLs must then use the backend's own namespace (`thanos-query.thanos`, `loki-query-frontend.loki`) rather than the release namespace, and cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
 
-> [!WARNING]
-> `mode: bundled` does not currently work under `split-namespace` — see [Known gaps](#known-gaps).
-> Use `mode: external` with an explicit `connections.grafana.external.url` instead.
+Two things shift automatically under this profile:
+
+* The `Grafana` resource is created in Grafana's namespace rather than the release namespace.
+  It has to be: the admin credentials are a `SecretKeySelector`, which carries no namespace and cannot reach across one, so the resource must sit beside the Secret the `grafana` subchart owns.
+* The dashboards stay in the release namespace and gain `allowCrossNamespaceImport: true` so they can still match that instance.
 
 ## Known gaps
 
@@ -251,13 +266,9 @@ Tracked under [CLO-111](https://linear.app/materializeinc/issue/CLO-111/establis
 
 | Gap | Impact |
 |---|---|
-| `bundled` mode derives the Grafana URL from `mzmon.fullname` (pinned to `mzmon`), but the `grafana` subchart derives its Service name from the **release name** | Any release not named `mzmon` produces a URL that does not resolve |
-| `bundled` mode targets port `3000`, but the `grafana` Service listens on port `80` | Connection refused even when the hostname is right |
-| `bundled` mode references a Secret `<fullname>-grafana-admin-credentials` with keys `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD`; the `grafana` subchart creates `<release>-grafana` with keys `admin-user` / `admin-password` | The referenced Secret does not exist, so the operator cannot authenticate |
-| `bundled` mode hardcodes `.Release.Namespace` in the URL | Breaks under `split-namespace`, where Grafana moves to its own namespace |
-| `mode: operator` renders `spec.external:` as null with an otherwise empty spec | The operator falls through to creating a Grafana with stock defaults — unpinned version, no persistence, no admin secret, no resource requests — and none of it is configurable from this chart |
-| `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
 | No `GrafanaDatasource` resources are shipped | Dashboards resolve to nothing until datasources are created out of band |
-| `mzmon.validate` covers Loki only | None of the above fails at template time |
+| `mode: operator` is unconfigurable | The operator builds the instance from stock defaults — unpinned version, no persistence, no admin secret, no resource requests — none of it reachable from this chart's values |
+| `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
 | Bundled Grafana uses `emptyDir` storage | All UI-created state is lost on restart |
-| Leader-election leases are namespaced, but the operator watches cluster-wide | Two releases in different namespaces both reconcile every `Grafana` in the cluster |
+| `mzmon.validate` covers Loki only | Grafana misconfiguration surfaces at reconcile time rather than at template time |
+| Leader-election leases are namespaced, but the operator watches cluster-wide | Two releases in different namespaces both reconcile every `Grafana` in the cluster; scope `WATCH_NAMESPACE` or add a per-release label to `connections.grafana.labels` |

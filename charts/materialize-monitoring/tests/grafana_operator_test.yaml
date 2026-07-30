@@ -21,11 +21,13 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: should still deploy the operator itself
+  # The operator uses a static `fullnameOverride`, like the other subcharts, so
+  # its resource names do not move with the release name.
+  - it: should still deploy the operator itself, under a release-independent name
     template: ../charts/grafana-operator/templates/deployment.yaml
     asserts:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: test-mon-grafana-operator
+          name: grafana-operator
           namespace: test-monitoring

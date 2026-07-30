@@ -1,42 +1,62 @@
-{{- if ( or
-  (eq $.Values.connections.grafana.mode "bundled")
-  (eq $.Values.connections.grafana.mode "external")
-  (eq $.Values.connections.grafana.mode "operator")
-) }}
+{{/*
+The Grafana instance grafana-operator reconciles this chart's dashboards into.
+
+`bundled` and `external` both render an *external* instance from the operator's
+point of view — "external" means "the operator did not create this server", not
+"outside the cluster". The bundled Grafana is external in that sense because the
+`grafana` subchart owns its Deployment, which is what keeps Grafana's readiness
+inside `helm --wait`.
+*/}}
+{{- if ( has $.Values.connections.grafana.mode ( list "bundled" "external" "operator" ) ) }}
   {{- $fullname := printf "%s-grafana" ( include "mzmon.fullname" $ ) }}
+  {{- $ext := $.Values.connections.grafana.external }}
+  {{- $bundled := eq $.Values.connections.grafana.mode "bundled" }}
 apiVersion: grafana.integreatly.org/v1beta1
 kind: Grafana
 metadata:
   name: {{ $fullname | quote }}
-  namespace: {{ $.Release.Namespace | quote }}
+  namespace: {{ include "mzmon.grafana.instanceNamespace" $ | quote }}
   annotations:
     {{- include "mzmon.annotations" $ | nindent 4 }}
   labels:
     {{- include "mzmon.labels" $ | nindent 4 }}
-    {{- if $.Values.connections.grafana.labels }}
-      {{- $.Values.connections.grafana.labels | toYaml | nindent 4 }}
-    {{- end }}
+    {{- include "mzmon.grafana.instanceLabels" $ | nindent 4 }}
 spec:
+  {{- if ( eq $.Values.connections.grafana.mode "operator" ) }}
+  {{- /*
+  No `external` block at all: an operator-managed instance is signalled by its
+  absence. Emitting the key with a null value is ambiguous, so leave the spec
+  empty. Note that the operator then builds the instance from its own stock
+  defaults, which this chart cannot configure — see the Grafana Structure docs.
+  */}}
+  {}
+  {{- else }}
   external:
-  {{- if $.Values.connections.grafana.external.url }}
-    url: {{ $.Values.connections.grafana.external.url | quote }}
-  {{- else if ( eq $.Values.connections.grafana.mode "bundled" ) }}
-    url: {{ printf "http://%s-grafana.%s:3000" ( include "mzmon.fullname" $ ) $.Release.Namespace | quote }}
-  {{- end }}
-  {{- if $.Values.connections.grafana.external.apiKey }}
+    {{- if $ext.url }}
+    url: {{ $ext.url | quote }}
+    {{- else if $bundled }}
+    url: {{ include "mzmon.grafana.url" $ | quote }}
+    {{- else }}
+    url: {{ $ext.url | required "connections.grafana.external.url is required when connections.grafana.mode is \"external\"" | quote }}
+    {{- end }}
+    {{- if $ext.apiKey }}
     apiKey:
-      {{- $.Values.connections.grafana.external.apiKey | toYaml | nindent 6 }}
-  {{- else if $.Values.connections.grafana.external.adminPassword }}
+      {{- $ext.apiKey | toYaml | nindent 6 }}
+    {{- else if $ext.adminPassword }}
     adminPassword:
-      {{- $.Values.connections.grafana.external.adminPassword | toYaml | nindent 6 }}
+      {{- $ext.adminPassword | toYaml | nindent 6 }}
     adminUser:
-      {{- $.Values.connections.grafana.external.adminUser | required "adminUser is required with adminPassword" | toYaml | nindent 6 }}
-  {{- else if ( eq $.Values.connections.grafana.mode "bundled" ) }}
+      {{- $ext.adminUser | required "connections.grafana.external.adminUser is required with adminPassword" | toYaml | nindent 6 }}
+    {{- else if $bundled }}
+    {{- /* Credentials from the Secret the `grafana` subchart owns. */}}
     adminPassword:
-      name: {{ printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote }}
-      key: GF_SECURITY_ADMIN_PASSWORD
+      name: {{ include "mzmon.grafana.adminSecret" $ | quote }}
+      key: {{ include "mzmon.grafana.adminPasswordKey" $ | quote }}
     adminUser:
-      name: {{ printf "%s-grafana-admin-credentials" ( include "mzmon.fullname" $ ) | quote }}
-      key: GF_SECURITY_ADMIN_USER
+      name: {{ include "mzmon.grafana.adminSecret" $ | quote }}
+      key: {{ include "mzmon.grafana.adminUserKey" $ | quote }}
+    {{- else }}
+      {{- fail "connections.grafana.external needs either apiKey or adminUser + adminPassword when connections.grafana.mode is \"external\"" }}
+    {{- end }}
   {{- end }}
 {{- end }}
