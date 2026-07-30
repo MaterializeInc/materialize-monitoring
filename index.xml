@@ -1297,10 +1297,28 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v090-unreleased"&gt;materialize-monitoring Helm Chart v0.9.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-optional-crds-v040-unreleased"&gt;materialize-monitoring Optional CRDs v0.4.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-optional-crds-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v080-unreleased"&gt;materialize-monitoring Helm Chart v0.8.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v080-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v080"&gt;materialize-monitoring Helm Chart v0.8.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v080"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;CLO-111 Grafana Documentation with datasources and bundled resources
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/164" rel="external" class="github-source-link"&gt;materialize-monitoring#164&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Move grafana-operator CRDs into the materialize-monitoring-crds chart
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/161" rel="external" class="github-source-link"&gt;materialize-monitoring#161&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;CLO-153 Add profile example for otel pipelines
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/159" rel="external" class="github-source-link"&gt;materialize-monitoring#159&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id="pipelines-v090-unreleased"&gt;Pipelines v0.9.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
