@@ -1,0 +1,258 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Regression tests for the bundled Grafana datasources. The failure mode these
+# guard against is uniformly silent — a wrong endpoint, a missing default, or a
+# missing tenant header all render an empty dashboard with no error anywhere:
+#
+#   1. Endpoints. Reads go to Thanos Query and the Loki *query frontend*; the
+#      Loki gateway is disabled in this chart, so it is not a valid target.
+#   2. Default. The dashboards resolve `${metricsDatasource}` to whichever
+#      Prometheus-type datasource is default, so Thanos must claim it.
+#   3. Tenant. The bundled Loki runs `auth_enabled: true`, so reads without an
+#      `X-Scope-OrgID` header fail with "no org id".
+#   4. Targeting. Datasources must land in the same instance as the dashboards
+#      that query them.
+suite: grafana datasources
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.managed-grafana: true
+  tags.bundled-backends: true
+  # Keep the loki/thanos subchart validators quiet; irrelevant to these tests.
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.enabled: false
+  thanos.global.objstore.createSecret: false
+templates:
+  - templates/grafana-datasources.yaml
+tests:
+  - it: should provision exactly the Thanos and Loki datasources
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-thanos-datasource
+          namespace: test-monitoring
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-loki-datasource
+          namespace: test-monitoring
+        documentIndex: 1
+
+  - it: should point Thanos at Thanos Query and make it the default
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.datasource.type
+          value: prometheus
+      - equal:
+          path: spec.datasource.uid
+          value: mzmon-thanos
+      - equal:
+          path: spec.datasource.url
+          value: http://thanos-query.test-monitoring.svc:9090
+      - equal:
+          path: spec.datasource.isDefault
+          value: true
+      - equal:
+          path: spec.datasource.jsonData
+          value:
+            prometheusType: Thanos
+            httpMethod: POST
+
+  - it: should point Loki at the query frontend, not the disabled gateway
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.type
+          value: loki
+      - equal:
+          path: spec.datasource.uid
+          value: mzmon-loki
+      - equal:
+          path: spec.datasource.url
+          value: http://loki-query-frontend.test-monitoring.svc:3100
+      - equal:
+          path: spec.datasource.isDefault
+          value: false
+
+  - it: should carry the tenant the pipeline writes to
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.httpHeaderName1
+          value: X-Scope-OrgID
+      - equal:
+          path: spec.datasource.secureJsonData.httpHeaderValue1
+          value: loki
+
+  - it: should follow a changed static tenant
+    set:
+      pipeline.logging.tenancy.staticTenant: mz-logs
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.httpHeaderValue1
+          value: mz-logs
+
+  - it: should honor an explicit tenant over the pipeline's
+    set:
+      connections.datasources.loki.tenant: other-tenant
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.httpHeaderValue1
+          value: other-tenant
+
+  - it: should send no tenant header when the tenant is explicitly empty
+    set:
+      connections.datasources.loki.tenant: ""
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.datasource.jsonData.httpHeaderName1
+      - notExists:
+          path: spec.datasource.secureJsonData
+
+  - it: should target the same instance the dashboards do
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.instanceSelector.matchLabels
+          value:
+            monitoring.materialize.cloud/grafana-instance: mzmon
+      - notExists:
+          path: spec.allowCrossNamespaceImport
+
+  - it: should follow connections.grafana.labels into the selector
+    set:
+      connections.grafana.labels:
+        team: observability
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.instanceSelector.matchLabels
+          value:
+            monitoring.materialize.cloud/grafana-instance: mzmon
+            team: observability
+
+  - it: should merge user jsonData over the chart defaults
+    set:
+      connections.datasources.thanos.jsonData:
+        timeInterval: 30s
+        httpMethod: GET
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData
+          value:
+            prometheusType: Thanos
+            # User value wins over the chart default of POST.
+            httpMethod: GET
+            timeInterval: 30s
+
+  - it: should pass valuesFrom through for credentials
+    set:
+      connections.datasources.thanos.valuesFrom:
+        - targetPath: secureJsonData.basicAuthPassword
+          valueFrom:
+            secretKeyRef:
+              name: thanos-basic-auth
+              key: password
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.valuesFrom[0].targetPath
+          value: secureJsonData.basicAuthPassword
+      - equal:
+          path: spec.valuesFrom[0].valueFrom.secretKeyRef.name
+          value: thanos-basic-auth
+
+  - it: should respect the editable flag
+    set:
+      connections.datasources.editable: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.datasource.editable
+          value: true
+
+  # A datasource pointing at a backend this release does not deploy would be a
+  # dead endpoint, so enablement follows the backend unless stated otherwise.
+  - it: should provision nothing when the backends are not deployed
+    set:
+      tags.bundled-backends: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should provision only Loki when only Loki is deployed
+    set:
+      tags.bundled-backends: false
+      tags.loki: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.datasource.type
+          value: loki
+
+  - it: should provision an external metrics backend on explicit opt-in
+    set:
+      tags.bundled-backends: false
+      connections.datasources.thanos.enabled: true
+      connections.datasources.thanos.url: https://aps-workspaces.example.com/workspaces/ws-1
+      connections.datasources.thanos.name: AMP
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.datasource.name
+          value: AMP
+      - equal:
+          path: spec.datasource.url
+          value: https://aps-workspaces.example.com/workspaces/ws-1
+
+  - it: should skip a backend that is deployed but explicitly opted out
+    set:
+      connections.datasources.loki.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.datasource.type
+          value: prometheus
+
+  - it: should provision nothing when the group is disabled
+    set:
+      connections.datasources.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should reach a Grafana in another namespace under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    asserts:
+      - equal:
+          path: spec.allowCrossNamespaceImport
+          value: true
+        documentIndex: 0
+      # Backends move too, so the endpoints must follow them.
+      - equal:
+          path: spec.datasource.url
+          value: http://thanos-query.thanos.svc:9090
+        documentIndex: 0
+      - equal:
+          path: spec.datasource.url
+          value: http://loki-query-frontend.loki.svc:3100
+        documentIndex: 1

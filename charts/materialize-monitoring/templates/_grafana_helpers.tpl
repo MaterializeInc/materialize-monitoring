@@ -183,3 +183,90 @@ Usage:
   {{- $labels := deepCopy ( $.Values.connections.grafana.labels | default dict ) }}
   {{- merge $labels $static | toYaml }}
 {{- end }}
+
+{{- /*
+Whether a bundled datasource should be provisioned.
+
+Honors an explicit `connections.datasources.<name>.enabled`, and otherwise
+follows whether the backend it points at is deployed by this release. Pointing
+at a backend outside the release means setting `enabled` explicitly.
+
+Returns a truthy string when it should be, empty when not.
+
+Usage:
+  {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) }}
+*/}}
+{{- define "mzmon.grafana.datasource.enabled" }}
+  {{- $root := .root }}
+  {{- $ds := index $root.Values.connections.datasources .name }}
+  {{- if not $root.Values.connections.datasources.enabled }}
+    {{- /* The whole group is off. */}}
+  {{- else if not ( kindIs "invalid" $ds.enabled ) }}
+    {{- ternary "true" "" $ds.enabled }}
+  {{- else }}
+    {{- include ( printf "mzmon.%s.enabled" .name ) $root }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Tenant the Loki datasource reads as, sent as `X-Scope-OrgID`.
+
+The bundled Loki runs `auth_enabled: true`, so reads carry a tenant or fail.
+Defaults to the tenant the pipeline writes to, which is only unambiguous while
+`pipeline.logging.tenancy.tenantMap` is uniformly `static` — see
+`mzmon.grafana.validate`.
+
+An explicit empty string is honored as "send no header"; `null` means default.
+
+Usage:
+  {{ include "mzmon.grafana.loki.tenant" $ }}
+*/}}
+{{- define "mzmon.grafana.loki.tenant" }}
+  {{- $tenant := $.Values.connections.datasources.loki.tenant }}
+  {{- if kindIs "invalid" $tenant }}
+    {{- $.Values.pipeline.logging.tenancy.staticTenant }}
+  {{- else }}
+    {{- $tenant }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate the Grafana datasource configuration.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $ds := $.Values.connections.datasources }}
+
+  {{- if $ds.enabled }}
+    {{- /*
+    The dashboards resolve `${metricsDatasource}` to the instance's default
+    Prometheus-type datasource. Without one, every panel is silently empty.
+    */}}
+    {{- if and ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) ( not $ds.thanos.isDefault ) }}
+      {{- $warnings = append $warnings "connections.datasources.thanos.isDefault is disabled; the bundled dashboards render empty unless another Prometheus datasource is the default in Grafana." }}
+    {{- end }}
+
+    {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) ) }}
+      {{- $tenant := include "mzmon.grafana.loki.tenant" $ }}
+      {{- /*
+      One datasource carries one tenant header. Any non-static tenancy spreads
+      logs across tenants that a single datasource cannot read.
+      */}}
+      {{- $modes := ( values $.Values.pipeline.logging.tenancy.tenantMap ) | uniq | sortAlpha }}
+      {{- if ne ( join "," $modes ) "static" }}
+        {{- if kindIs "invalid" $.Values.connections.datasources.loki.tenant }}
+          {{- $warnings = append $warnings ( printf "pipeline.logging.tenancy.tenantMap is not uniformly \"static\" (%s), so logs are spread across tenants; the Loki datasource reads only %q. Set connections.datasources.loki.tenant, or add a datasource per tenant." ( join ", " $modes ) $tenant ) }}
+        {{- end }}
+      {{- else if not $tenant }}
+        {{- $warnings = append $warnings "connections.datasources.loki.tenant is empty; reads fail with \"no org id\" unless Loki runs with auth_enabled: false." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}

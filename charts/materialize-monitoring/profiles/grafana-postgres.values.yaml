@@ -1,0 +1,93 @@
+# Profile: back the bundled Grafana with an external PostgreSQL database.
+#
+# Grafana keeps its own state — users, service accounts and tokens, annotations,
+# dashboard versions and permissions, preferences, and alert-rule state — in a
+# database separate from the observability data in Thanos and Loki.
+#
+# The chart default is SQLite on an `emptyDir`, which loses that state on every
+# pod restart. SQLite on a PersistentVolume survives restarts but tolerates one
+# writer, so it caps you at a single replica. An external PostgreSQL is the only
+# option that lifts both constraints, so it is the production shape.
+#
+# Layer this over your platform profile:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/grafana-postgres.values.yaml
+#
+# Prerequisites, none of which this chart creates:
+#
+#   1. A PostgreSQL database and a user that OWNS it. Grafana runs its own schema
+#      migrations at startup, so a read/write-only grant fails the migration.
+#   2. A Secret named below, in the namespace the Grafana POD runs in — under the
+#      `split-namespace` profile that is `grafana`, not the release namespace.
+#      Provision it with External Secrets Operator, Vault Agent, SOPS, or your
+#      cloud's CSI driver so the value never lands in Git:
+#
+#        kubectl create secret generic grafana-db -n monitoring \
+#          --from-literal=password="$GRAFANA_DB_PASSWORD" \
+#          --from-file=ca.pem=./rds-ca.pem
+#
+#   3. Network reach from the Grafana pod to the database.
+#
+# On IAM: RDS and Cloud SQL both support IAM database authentication, but Grafana
+# reads its password once at startup and has no refresh hook, so the 15-minute
+# (RDS) or one-hour (Cloud SQL) token expiry breaks the first reconnect. A static
+# secret is the practical answer on AWS today — see grafana/grafana#75965. On GCP
+# you can avoid it by running the Cloud SQL Auth Proxy as a sidecar with
+# `--auto-iam-authn` and pointing `host` at `127.0.0.1:5432` with no password.
+
+grafana:
+  # Safe to run more than one replica now that state is not on local disk.
+  replicas: 2
+
+  # Explicit: no PersistentVolume is wanted or needed. Grafana still writes its
+  # plugin and search-index scratch to `emptyDir`, both of which it rebuilds.
+  persistence:
+    enabled: false
+
+  grafana.ini:
+    database:
+      type: postgres
+      # MUST include the port.
+      host: <YOUR-DB-HOST>:5432
+      name: grafana
+      user: grafana
+      # Read from the mounted Secret rather than inlined, because `grafana.ini`
+      # renders into a ConfigMap — an inline password would sit in plaintext in
+      # the release manifest and in `helm get values`.
+      password: $__file{/etc/secrets/grafana-db/password}
+      # `require` encrypts but does not authenticate the server. Prefer
+      # `verify-full`, which needs `ca_cert_path` below.
+      ssl_mode: verify-full
+      ca_cert_path: /etc/secrets/grafana-db/ca.pem
+      # Keep the pool under the database's connection limit, remembering this is
+      # per replica: max_open_conn * replicas is the real ceiling.
+      max_open_conn: 30
+      max_idle_conn: 10
+
+  extraSecretMounts:
+    - name: grafana-db
+      secretName: grafana-db
+      mountPath: /etc/secrets/grafana-db
+      readOnly: true
+
+  # With more than one replica, keep at least one serving during disruptions.
+  podDisruptionBudget:
+    minAvailable: 1
+
+# NOTE: Grafana's unified alerting is not HA out of the box. Each replica
+# evaluates every rule independently, so alerts notify once per replica. If you
+# use Grafana-managed alert rules (as opposed to the Prometheus rules this chart
+# ships, which Alertmanager routes), enable gossip between the replicas:
+#
+#   grafana:
+#     headlessService: true
+#     grafana.ini:
+#       unified_alerting:
+#         enabled: true
+#         ha_peers: grafana-headless.monitoring.svc:9094
+#         ha_listen_address: "${POD_IP}:9094"
+#
+# Adjust the namespace to match, and note `grafana-headless` follows the static
+# `grafana.fullnameOverride` this chart sets.

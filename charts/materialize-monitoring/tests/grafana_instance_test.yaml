@@ -238,3 +238,55 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # The grafana-postgres profile moves Grafana's own state off local disk. The
+  # thing worth locking down is that the password never reaches the ConfigMap:
+  # `grafana.ini` is not a Secret, so an inlined password would be plaintext in
+  # the release manifest and in `helm get values`.
+  - it: should keep the database password out of the config ConfigMap
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: ../charts/grafana/templates/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'type = postgres'
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'password = \$__file\{/etc/secrets/grafana-db/password\}'
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'ssl_mode = verify-full'
+
+  - it: should mount the database Secret the profile reads from
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: grafana-db
+            secret:
+              secretName: grafana-db
+              defaultMode: null
+          any: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: grafana-db
+            mountPath: /etc/secrets/grafana-db
+            readOnly: true
+            subPath: null
+          any: true
+
+  - it: should not provision a PersistentVolume alongside the database
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: ../charts/grafana/templates/pvc.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

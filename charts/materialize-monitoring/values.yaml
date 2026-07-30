@@ -729,6 +729,98 @@ connections:
       # @default -- `{}`
       apiKey: {}
 
+  # -- (h4) Datasources provisioned into the Grafana instance
+  # @notationType -- (sectionstart) Datasource configuration
+  # @raw
+  #
+  # Provisioned as `GrafanaDatasource` resources, pushed into the same instance
+  # the dashboards target. `url` values are rendered with `tpl`, so they may
+  # reference chart helpers.
+  datasources:
+    # -- Install the bundled datasources. Requires the Grafana operator.
+    enabled: true
+    # -- How often the operator re-pushes each datasource.
+    resyncPeriod: 5m
+    # -- Whether the datasources can be edited in the Grafana UI.
+    # Edits are reverted on the next resync either way; this only hides the
+    # controls so the reversion is not a surprise.
+    editable: false
+
+    thanos:
+      # -- Provision the Thanos datasource.
+      # Unset follows whether the bundled Thanos is enabled. Set it explicitly
+      # to point Grafana at metrics storage this chart does not deploy.
+      # @default -- follows `thanos.enabled`
+      enabled: null
+      # -- Datasource name, as shown in Grafana.
+      name: Thanos
+      # -- Stable datasource UID.
+      uid: mzmon-thanos
+      # -- Thanos Query endpoint. Rendered with `tpl`.
+      url: 'http://thanos-query.{{ include "mzmon.thanos.namespace" $ }}.svc:9090'
+      # -- Make this Grafana's default datasource.
+      # The bundled dashboards deliberately do not pin a datasource: their
+      # `${metricsDatasource}` variable resolves to whichever Prometheus-type
+      # datasource is default. With no default, every panel renders empty and
+      # Grafana reports no error. Only turn this off if something else in the
+      # instance is already the default Prometheus datasource.
+      isDefault: true
+      # -- Extra `jsonData`, merged over the chart's defaults
+      # (`prometheusType: Thanos`, `httpMethod: POST`).
+      # @default -- `{}`
+      jsonData: {}
+      # -- Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this
+      # renders into the release manifest.
+      # @default -- `{}`
+      secureJsonData: {}
+      # -- Secret- or ConfigMap-sourced field injection, passed through to the
+      # `GrafanaDatasource`. This is the supported way to supply credentials.
+      # @default -- `[]`
+      # @raw
+      #
+      # ```yaml
+      # valuesFrom:
+      #   - targetPath: secureJsonData.basicAuthPassword
+      #     valueFrom:
+      #       secretKeyRef:
+      #         name: thanos-basic-auth
+      #         key: password
+      # ```
+      valuesFrom: []
+
+    loki:
+      # -- Provision the Loki datasource.
+      # Unset follows whether the bundled Loki is enabled.
+      # @default -- follows `loki.enabled`
+      enabled: null
+      # -- Datasource name, as shown in Grafana.
+      name: Loki
+      # -- Stable datasource UID.
+      uid: mzmon-loki
+      # -- Loki read endpoint. Rendered with `tpl`.
+      # The Loki gateway is disabled by default, so reads go to the query
+      # frontend directly (see `loki.gateway.enabled`).
+      url: 'http://loki-query-frontend.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
+      # -- Tenant to read as, sent in the `X-Scope-OrgID` header.
+      # The bundled Loki runs `auth_enabled: true`, so reads without this header
+      # fail with `no org id`. Unset follows the tenant the pipeline writes to.
+      # Set to `""` to send no header, which is only correct against a Loki with
+      # `auth_enabled: false`.
+      # @default -- follows `pipeline.logging.tenancy.staticTenant`
+      tenant: null
+      # -- Extra `jsonData`, merged over the chart's defaults (the tenant header
+      # name, and `timeout`).
+      # @default -- `{}`
+      jsonData: {}
+      # -- Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this
+      # renders into the release manifest.
+      # @default -- `{}`
+      secureJsonData: {}
+      # -- Secret- or ConfigMap-sourced field injection, passed through to the
+      # `GrafanaDatasource`. This is the supported way to supply credentials.
+      # @default -- `[]`
+      valuesFrom: []
+
 # -- Configuration for bundled subcharts
 # @notationType -- (sectionstart) Bundled subchart configurations
 _subchartSection: stub

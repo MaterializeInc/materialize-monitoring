@@ -128,7 +128,7 @@ flowchart TB
     subgraph provided["templates/ — provided by this chart"]
       gcr["Grafana CR: mzmon-grafana<br/>spec.external.url + credentials"]
       gman["GrafanaManifest: mzmon-env-top-dashboard<br/>resyncPeriod 5m"]
-      gds["GrafanaDatasource: Thanos · Loki<br/>(not yet shipped)"]
+      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki query frontend"]
     end
   end
 
@@ -240,23 +240,53 @@ This is deliberate: pinning a specific named datasource would leave the variable
 The consequence is a hard requirement: **exactly one Prometheus-type datasource must be marked default** in the target Grafana.
 If none is default, every panel on the dashboard renders empty with no obvious error.
 
-Two datasources are in scope for the bundled stack.
+The chart ships two, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
 
-| Datasource | Type | In-cluster endpoint | Notes |
-|---|---|---|---|
-| Thanos | `prometheus` | `http://thanos-query.<namespace>:9090` | Must be the default datasource |
-| Loki | `loki` | `http://loki-query-frontend.<namespace>:3100` | Requires a tenant header — see below |
+| Datasource | Type | UID | In-cluster endpoint | Notes |
+|---|---|---|---|---|
+| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
+| Loki | `loki` | `mzmon-loki` | `http://loki-query-frontend.<namespace>.svc:3100` | Carries a tenant header — see below |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
-In the default shared-namespace layout, `<namespace>` is the release namespace.
+`<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
+
+Each datasource is provisioned only when the backend it points at is part of the release.
+Set `enabled` explicitly to point Grafana at storage this chart does not deploy:
+
+```yaml
+connections:
+  datasources:
+    thanos:
+      enabled: true
+      name: AMP
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-EXAMPLE
+```
+
+Credentials go through `valuesFrom`, which the operator resolves from a Secret rather than rendering into the manifest:
+
+```yaml
+connections:
+  datasources:
+    thanos:
+      valuesFrom:
+        - targetPath: secureJsonData.basicAuthPassword
+          valueFrom:
+            secretKeyRef:
+              name: thanos-basic-auth
+              key: password
+```
+
+Datasources are provisioned with `editable: false` and re-pushed every `resyncPeriod`, the same as dashboards.
 
 ### Loki is multi-tenant
 
 The bundled Loki runs with `auth_enabled: true`, so **every read must carry an `X-Scope-OrgID` header**.
 A Loki datasource without it gets a `no org id` error on every query.
 
-The tenant to read from depends on how the pipeline writes.
-`pipeline.logging.tenancy.tenantMap` defaults to `static` for all four streams, writing everything to `pipeline.logging.tenancy.staticTenant` (`loki` by default), so a single datasource with a fixed header is sufficient:
+The tenant to read from depends on how the pipeline writes, so the chart derives it from `pipeline.logging.tenancy.staticTenant` (`loki` by default) rather than making you keep the two in sync.
+Override with `connections.datasources.loki.tenant`, or set it to `""` to send no header at all — correct only against a Loki with `auth_enabled: false`.
+
+Grafana models a custom header as a numbered pair, with the value always in `secureJsonData` regardless of how secret it is:
 
 ```yaml
 jsonData:
@@ -265,15 +295,12 @@ secureJsonData:
   httpHeaderValue1: loki
 ```
 
-Under `byNamespace`, `byEnvironment`, or `byLabel` tenancy, logs are spread across many tenants and one fixed header only reads one of them.
-Those modes need either a datasource per tenant or a multi-tenant read path in front of Loki.
+`tenantMap` defaults to `static` for all four streams, which is the only shape one datasource can serve.
+Under `byNamespace`, `byEnvironment`, or `byLabel`, logs are spread across many tenants and a fixed header reads exactly one of them — the chart emits an install-time warning saying which.
+Those modes need a datasource per tenant, or a multi-tenant read path in front of Loki.
 
 The Loki **gateway is disabled by default** (`loki.gateway.enabled: false`) — writes go through `alloy-gateway` and reads go straight to the query frontend.
 Do not point a datasource at a `loki-gateway` service; it does not exist.
-
-> [!INFO]
-> Neither datasource is shipped by the chart yet.
-> Until they are, create them by hand in the target Grafana, or apply your own `GrafanaDatasource` resources with an `instanceSelector` matching the `Grafana` resource above.
 
 ## State and persistence
 
@@ -294,6 +321,13 @@ On a `ReadWriteOnce` volume a rolling update also deadlocks — the new pod cann
 External PostgreSQL is the only option that lifts both constraints.
 
 ### Wiring PostgreSQL
+
+The `grafana-postgres` profile is the assembled version of everything below — the config block, the secret mount, two replicas, a PodDisruptionBudget, and notes on Grafana-managed alerting in HA.
+Layer it over your platform profile and fill in the host:
+
+```bash
+helm upgrade --install mzmon charts/materialize-monitoring -n monitoring -f charts/materialize-monitoring/profiles/aws-example.values.yaml -f charts/materialize-monitoring/profiles/grafana-postgres.values.yaml
+```
 
 Grafana reads its database config from the `[database]` section of `grafana.ini`, which the `grafana` subchart renders from a values block of the same name:
 
@@ -389,9 +423,8 @@ Tracked under [CLO-111](https://linear.app/materializeinc/issue/CLO-111/establis
 
 | Gap | Impact |
 |---|---|
-| No `GrafanaDatasource` resources are shipped | Dashboards resolve to nothing until datasources are created out of band |
 | `mode: operator` is unconfigurable | The operator builds the instance from stock defaults — unpinned version, no persistence, no admin secret, no resource requests — none of it reachable from this chart's values |
 | `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
-| Bundled Grafana defaults to `emptyDir` storage, and the chart ships no profile for an external database | All UI-created state is lost on restart until you wire up [State and persistence](#state-and-persistence) by hand |
-| `mzmon.validate` covers Loki only | Grafana misconfiguration surfaces at reconcile time rather than at template time |
+| Bundled Grafana defaults to `emptyDir` storage | All UI-created state is lost on restart unless you apply the `grafana-postgres` profile or enable a PVC — see [State and persistence](#state-and-persistence) |
+| No datasource is shipped for a non-static Loki tenancy | `byNamespace` / `byEnvironment` / `byLabel` installs get one datasource reading one tenant, plus a warning; the rest need adding by hand |
 | Leader-election leases are namespaced, but the operator watches cluster-wide | Two releases in different namespaces both reconcile every `Grafana` in the cluster; scope `WATCH_NAMESPACE` or add a per-release label to `connections.grafana.labels` |

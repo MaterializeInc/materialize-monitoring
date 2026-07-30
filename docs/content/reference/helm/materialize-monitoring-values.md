@@ -1302,6 +1302,156 @@ How to talk to a grafana instance
   </tbody>
 </table>
 
+#### Datasource configuration
+
+Datasources provisioned into the Grafana instance
+
+Provisioned as `GrafanaDatasource` resources, pushed into the same instance
+the dashboards target. `url` values are rendered with `tpl`, so they may
+reference chart helpers.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Install the bundled datasources. Requires the Grafana operator.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.resyncPeriod</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the operator re-pushes each datasource.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.editable</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Whether the datasources can be edited in the Grafana UI. Edits are reverted on the next resync either way; this only hides the controls so the reversion is not a surprise.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `thanos.enabled</code></td>
+      <td class="helm-value-desc">Provision the Thanos datasource. Unset follows whether the bundled Thanos is enabled. Set it explicitly to point Grafana at metrics storage this chart does not deploy.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.name</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"Thanos"</code></td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.uid</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-thanos"</code></td>
+      <td class="helm-value-desc">Stable datasource UID.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://thanos-query.{{ include \"mzmon.thanos.namespace\" $ }}.svc:9090"</code></td>
+      <td class="helm-value-desc">Thanos Query endpoint. Rendered with `tpl`.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.isDefault</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Make this Grafana's default datasource. The bundled dashboards deliberately do not pin a datasource: their `${metricsDatasource}` variable resolves to whichever Prometheus-type datasource is default. With no default, every panel renders empty and Grafana reports no error. Only turn this off if something else in the instance is already the default Prometheus datasource.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.jsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.secureJsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.valuesFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.
+
+```yaml
+valuesFrom:
+  - targetPath: secureJsonData.basicAuthPassword
+    valueFrom:
+      secretKeyRef:
+        name: thanos-basic-auth
+        key: password
+```</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `loki.enabled</code></td>
+      <td class="helm-value-desc">Provision the Loki datasource. Unset follows whether the bundled Loki is enabled.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.name</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"Loki"</code></td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.uid</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-loki"</code></td>
+      <td class="helm-value-desc">Stable datasource UID.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://loki-query-frontend.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100"</code></td>
+      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tenant</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `pipeline.logging.tenancy.staticTenant</code></td>
+      <td class="helm-value-desc">Tenant to read as, sent in the `X-Scope-OrgID` header. The bundled Loki runs `auth_enabled: true`, so reads without this header fail with `no org id`. Unset follows the tenant the pipeline writes to. Set to `""` to send no header, which is only correct against a Loki with `auth_enabled: false`.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.jsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (the tenant header name, and `timeout`).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.secureJsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.valuesFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Bundled subchart configurations
 
 Configuration for bundled subcharts
