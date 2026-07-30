@@ -34,7 +34,7 @@ It is built for Dashboards-as-Code workflows and AI agent usage.
 This is the recommended path when the dashboards are installed by the `materialize-monitoring` Helm chart, since it keeps them in sync rather than importing a point-in-time copy.
 Refer to the [Grafana Operator documentation](./grafana-operator).
 
-For how the chart wires Grafana, the Grafana Operator, and the datasources together, see [Grafana Structure](./structure).
+For how the chart wires Grafana, the Grafana Operator, and the datasources together, see [Grafana Architecture](./architecture).
 
 ## Download Dashboards
 

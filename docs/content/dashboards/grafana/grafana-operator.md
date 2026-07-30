@@ -9,7 +9,7 @@ The [Grafana Operator](https://grafana.github.io/grafana-operator/) reconciles K
 `materialize-monitoring` uses it to keep the Materialize dashboards in sync without anyone importing JSON by hand.
 
 This page is the how-to.
-For how the operator relates to the bundled Grafana server, and which of the two owns what, read [Grafana Structure](../structure/) first.
+For how the operator relates to the bundled Grafana server, and which of the two owns what, read [Grafana Architecture](../architecture/) first.
 
 ## Configuring Grafana Operator via `materialize-monitoring` Helm Chart
 

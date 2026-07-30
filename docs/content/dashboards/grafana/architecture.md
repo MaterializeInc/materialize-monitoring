@@ -1,9 +1,9 @@
 ---
-title: "Grafana Structure"
+title: "Grafana Architecture"
 weight: 5
 ---
 
-# Grafana Structure
+# Grafana Architecture
 
 `materialize-monitoring` installs **two** Grafana-related subcharts, and they do different jobs.
 This page explains what each one owns, how they are wired together, and which knobs you are expected to set.
@@ -63,9 +63,8 @@ Both subcharts pin a static `fullnameOverride` — `grafana` and `grafana-operat
 The derivation reads `grafana.service.port` (80 by default, routed to the container's 3000) and `grafana.namespaceOverride`, so overriding either keeps the operator pointed at the right place.
 
 > [!WARNING]
-> The bundled Grafana ships **no persistence** — the `grafana` subchart mounts `emptyDir` for `/var/lib/grafana` by default.
-> Operator-managed dashboards resync automatically, but anything created in the UI (users, annotations, saved dashboards, preferences, starred items) is lost on pod restart.
-> Set `grafana.persistence.enabled: true` before treating the bundled instance as anything but a demo.
+> The bundled Grafana ships **no persistence** — the `grafana` subchart mounts `emptyDir` for `/var/lib/grafana` by default, so all of Grafana's own state is lost on pod restart.
+> Give it a real backing store before treating it as anything but a demo: see [State and persistence](#state-and-persistence).
 
 ### `external`
 
@@ -109,9 +108,11 @@ Lets the Grafana Operator own the server lifecycle.
 
 ## Resource map
 
+Shown in the default shared-namespace layout, where everything lands in the release namespace.
+
 ```mermaid
 flowchart TB
-  subgraph release["Helm release — materialize-monitoring"]
+  subgraph ns["namespace: monitoring (the release namespace)"]
     subgraph chart_grafana["grafana subchart"]
       gdep["Deployment: grafana"]
       gsvc["Service: grafana<br/>port 80 → container 3000"]
@@ -142,6 +143,31 @@ flowchart TB
 
 The operator reconciles in one direction: Kubernetes resources are the source of truth, and it writes them into Grafana over the HTTP API.
 Nothing reads state back out of Grafana into the cluster.
+
+## Namespaces
+
+Both Grafana subcharts pin a static `fullnameOverride`, the same way `loki` and `thanos` do, so their resource names never move with the release name.
+That makes the namespace the only thing that varies between layouts.
+
+| Layout | Grafana | Grafana Operator | `Grafana` resource | Dashboards |
+|---|---|---|---|---|
+| Shared (default) | `grafana.monitoring` | `grafana-operator.monitoring` | `monitoring` | `monitoring` |
+| Split (`split-namespace` profile) | `grafana.grafana` | `grafana-operator.grafana-operator` | `grafana` | `monitoring` |
+
+`monitoring` is the recommended release namespace; substitute whatever you install into.
+See [Namespace layout](../../../operating/production-best-practices/#namespace-layout) for the trade-off between the two.
+
+Two things shift automatically under `split-namespace`, both to keep `mode: bundled` working:
+
+* **The `Grafana` resource follows Grafana, not the release.**
+  It has to: the admin credentials on it are a `SecretKeySelector`, which carries no namespace and cannot reach across one, so the resource must sit beside the Secret the `grafana` subchart owns.
+* **The dashboards stay in the release namespace and gain `allowCrossNamespaceImport: true`**, so they can still match an instance that is now elsewhere.
+
+The operator watches all namespaces by default (`WATCH_NAMESPACE=""`), so it sees both regardless of layout.
+Scoping that watch is a separate decision — see [Watch scope](../grafana-operator/#watch-scope).
+
+Datasource URLs are the piece that does *not* adjust itself, because the chart does not ship datasources yet.
+Under `split-namespace` they must name the backend's own namespace (`thanos-query.thanos`, `loki-query-frontend.loki`), and cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
 
 ## Dashboards
 
@@ -249,16 +275,113 @@ Do not point a datasource at a `loki-gateway` service; it does not exist.
 > Neither datasource is shipped by the chart yet.
 > Until they are, create them by hand in the target Grafana, or apply your own `GrafanaDatasource` resources with an `instanceSelector` matching the `Grafana` resource above.
 
-## Split-namespace layout
+## State and persistence
 
-The `split-namespace` profile moves each subchart into its own namespace, including `grafana` and `grafana-operator`.
-Datasource URLs must then use the backend's own namespace (`thanos-query.thanos`, `loki-query-frontend.loki`) rather than the release namespace, and cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+Grafana keeps its own state — users, orgs, service accounts and tokens, annotations, dashboard versions and permissions, preferences, and alert-rule state — in a database of its own.
+This is separate from the observability data, which lives in Thanos and Loki and is never at risk here.
 
-Two things shift automatically under this profile:
+Note what is *not* at risk either: dashboards this chart installs are re-pushed by the operator every `resyncPeriod`, so they come back on their own.
+Everything a human created through the UI does not.
 
-* The `Grafana` resource is created in Grafana's namespace rather than the release namespace.
-  It has to be: the admin credentials are a `SecretKeySelector`, which carries no namespace and cannot reach across one, so the resource must sit beside the Secret the `grafana` subchart owns.
-* The dashboards stay in the release namespace and gain `allowCrossNamespaceImport: true` so they can still match that instance.
+| Backing store | Set with | Replicas | Suitable for |
+|---|---|---|---|
+| SQLite on `emptyDir` (**default**) | — | 1 | demos; state is lost on every pod restart |
+| SQLite on a PersistentVolume | `grafana.persistence.enabled: true` | 1 | a single small instance |
+| External PostgreSQL | the `[database]` section of `grafana.ini` | 2+ | production |
+
+SQLite tolerates exactly one writer, so both SQLite options pin you to a single replica.
+On a `ReadWriteOnce` volume a rolling update also deadlocks — the new pod cannot attach the volume until the old one releases it — so a PVC additionally needs `grafana.deploymentStrategy.type: Recreate`.
+External PostgreSQL is the only option that lifts both constraints.
+
+### Wiring PostgreSQL
+
+Grafana reads its database config from the `[database]` section of `grafana.ini`, which the `grafana` subchart renders from a values block of the same name:
+
+```yaml
+grafana:
+  replicas: 2
+  grafana.ini:
+    database:
+      type: postgres
+      # Host must include the port.
+      host: grafana-db.example.internal:5432
+      name: grafana
+      user: grafana
+      ssl_mode: verify-full
+      ca_cert_path: /etc/secrets/grafana-db/ca.pem
+```
+
+> [!WARNING]
+> Do not put `password` in this block.
+> `grafana.ini` renders into a **ConfigMap**, so the password would sit in plaintext in the release manifest, in `helm get values`, and in whatever Git repo holds your values file.
+
+### Supplying the password
+
+Everything under `grafana.ini` is config, not secret material.
+The password has to arrive by one of two routes, both of which keep it in a Secret you create out of band.
+
+**Environment variable.** Grafana maps `GF_DATABASE_PASSWORD` onto `[database].password`:
+
+```yaml
+grafana:
+  envValueFrom:
+    GF_DATABASE_PASSWORD:
+      secretKeyRef:
+        name: grafana-db
+        key: password
+```
+
+**Mounted file.** Grafana's `$__file{}` provider reads a value from disk at startup, which keeps the secret out of the process environment:
+
+```yaml
+grafana:
+  grafana.ini:
+    database:
+      password: $__file{/etc/secrets/grafana-db/password}
+  extraSecretMounts:
+    - name: grafana-db
+      secretName: grafana-db
+      mountPath: /etc/secrets/grafana-db
+      readOnly: true
+```
+
+The file route is the better default: it also carries the CA certificate that `ca_cert_path` needs, from the same Secret.
+
+### The Secret
+
+The chart does not create it — provision it with your secret tooling (External Secrets Operator, Vault Agent, SOPS, or the cloud's own CSI driver) so the value never lands in Git.
+It must exist in the namespace the **Grafana pod** runs in, which under `split-namespace` is `grafana`, not the release namespace.
+
+| Key | Required | Contents |
+|---|---|---|
+| `password` | yes | The database user's password |
+| `ca.pem` | with `ssl_mode: verify-full` | CA bundle for the server certificate |
+
+```bash
+kubectl create secret generic grafana-db -n monitoring --from-literal=password="$GRAFANA_DB_PASSWORD" --from-file=ca.pem=./rds-ca.pem
+```
+
+Use a dedicated database user that owns only Grafana's database.
+Grafana runs its own schema migrations on startup, so the user needs DDL on that database — a read/write-only grant will fail the migration.
+
+> [!INFO]
+> Rotating the password requires a Grafana restart either way.
+> Neither the env var nor `$__file{}` is re-read while the process is running.
+
+### Why IAM does not replace the secret
+
+Managed Postgres offerings **do** support IAM-based database authentication — RDS and Aurora have IAM database authentication for PostgreSQL, and Cloud SQL has IAM database authentication.
+The blocker is Grafana, not the database.
+
+IAM auth works by exchanging your cloud identity for a short-lived token used as the password: 15 minutes on RDS, an hour on Cloud SQL.
+Grafana reads its password **once at startup** and has no hook to refresh it, so the first reconnect after the token expires fails authentication.
+The feature request for Grafana to call `generate-db-auth-token` itself has been open in some form since 2020 and is tracked in [grafana/grafana#75965](https://github.com/grafana/grafana/issues/75965).
+
+So on AWS, a static secret is the practical answer today.
+Keep the blast radius small by storing it in Secrets Manager and syncing it in with External Secrets Operator rather than committing it — IRSA still earns its keep there, authenticating the *sync*, just not the database connection.
+
+On GCP there is a real passwordless path, because the token refresh moves out of Grafana: run the [Cloud SQL Auth Proxy](https://docs.cloud.google.com/sql/docs/postgres/iam-authentication) as a sidecar with `--auto-iam-authn`, point Grafana at `127.0.0.1:5432` with only a `user`, and let the proxy handle IAM and token renewal via Workload Identity.
+That trades a managed secret for an extra container.
 
 ## Known gaps
 
@@ -269,6 +392,6 @@ Tracked under [CLO-111](https://linear.app/materializeinc/issue/CLO-111/establis
 | No `GrafanaDatasource` resources are shipped | Dashboards resolve to nothing until datasources are created out of band |
 | `mode: operator` is unconfigurable | The operator builds the instance from stock defaults — unpinned version, no persistence, no admin secret, no resource requests — none of it reachable from this chart's values |
 | `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
-| Bundled Grafana uses `emptyDir` storage | All UI-created state is lost on restart |
+| Bundled Grafana defaults to `emptyDir` storage, and the chart ships no profile for an external database | All UI-created state is lost on restart until you wire up [State and persistence](#state-and-persistence) by hand |
 | `mzmon.validate` covers Loki only | Grafana misconfiguration surfaces at reconcile time rather than at template time |
 | Leader-election leases are namespaced, but the operator watches cluster-wide | Two releases in different namespaces both reconcile every `Grafana` in the cluster; scope `WATCH_NAMESPACE` or add a per-release label to `connections.grafana.labels` |
