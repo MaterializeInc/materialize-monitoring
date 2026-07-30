@@ -23,6 +23,15 @@ If you are not using the terraform module to install `materialize-monitoring`, y
 
 A second `materialize-monitoring-crds` Helm chart is provided to install these CRDs separately from the main `materialize-monitoring` chart, which is recommended to manage the lifecycle of these CRDs separately from the main chart.
 
+Install it first, then install `materialize-monitoring` with `--skip-crds`:
+
+```bash
+helm install mz-mon-crds materialize/materialize-monitoring-crds
+```
+
+The bundled Grafana Operator ships its own copy of the Grafana CRDs and offers no way to opt out of them, so without `--skip-crds` a fresh install of the main chart would create them behind the CRDs chart's back.
+See [Dependencies](../dependencies) for the full list of CRDs.
+
 ## Dependency: Setting Up Storage
 
 You will likely need to set up storage for your metrics and logs before you can start using `materialize-monitoring`.

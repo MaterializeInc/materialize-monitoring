@@ -28,6 +28,7 @@ ignore: |
   docs/assets/dashboards/
   charts/*/pre-rendered/
   charts/*/templates/
+  charts/*/charts/*/templates/
   *.kyaml
   *.yaml.snap
 

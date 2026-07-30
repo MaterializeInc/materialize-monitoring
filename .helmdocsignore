@@ -1,0 +1,7 @@
+# Charts helm-docs should not walk into.
+#
+# Patterns are gitignore-style, so a bare directory name matches at any depth.
+#
+# grafana-operator-crds is a vendored copy of upstream CRDs living inside
+# materialize-monitoring-crds; it is documented by its parent, not on its own.
+grafana-operator-crds/

@@ -40,7 +40,8 @@ repos:
         args: [--maxkb=640]
       - id: check-yaml
         # Helm templates contain Go template syntax and are not valid YAML.
-        exclude: ^charts/[^/]+/templates/
+        # Vendored subcharts (charts/<chart>/charts/<sub>/templates/) count too.
+        exclude: ^charts/[^/]+/(charts/[^/]+/)?templates/
 
   # ── Python: ruff (lint + format) ───────────────────────────────────────
   # Pinned to match ruff>=0.15.12 in pyproject.toml [dependency-groups].dev

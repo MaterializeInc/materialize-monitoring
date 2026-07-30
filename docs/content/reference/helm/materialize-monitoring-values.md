@@ -136,7 +136,8 @@ Group ↔ chart mapping:
 | `bundled-backends` | `loki`, `thanos`, `alertmanager`                    |
 | `managed-grafana`  | `grafana`, `grafana-operator`                       |
 | `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
-| `crds`             | `prometheus-operator-crds`                          |
+| `crds`             | `prometheus-operator-crds`, `grafana-operator-crds` |
+|                    | (in the sibling `materialize-monitoring-crds` chart)|
 
 `default` is the only group on by default and enables the full
 recommended stack. `--set tags.default=false` turns everything off, so
@@ -2409,10 +2410,10 @@ Upstream references:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "immutable": false
+  "immutable": true
 }</pre>
 </td>
-      <td class="helm-value-desc">CRD behavior</td>
+      <td class="helm-value-desc">CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.</td>
     </tr>
   </tbody>
 </table>
