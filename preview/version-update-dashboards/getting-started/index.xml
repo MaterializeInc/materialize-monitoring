@@ -2,12 +2,11 @@
 &lt;h2 id="installing-crds"&gt;Installing CRDs&lt;a class="anchor" href="#installing-crds"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;The following CRDs are required for &lt;code&gt;materialize-monitoring&lt;/code&gt;
 to function properly.&lt;/p&gt;
-&lt;p&gt;A second &lt;code&gt;materialize-monitoring-crds&lt;/code&gt; Helm chart is provided to install these CRDs separately from the main &lt;code&gt;materialize-monitoring&lt;/code&gt; chart, which is recommended to manage the lifecycle of these CRDs separately from the main chart.&lt;/p&gt;
-&lt;h2 id="configuring-storage"&gt;Configuring Storage&lt;a class="anchor" href="#configuring-storage"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;Before you start, you need to be able to store your metrics and logs
-somewhere.&lt;/p&gt;
-&lt;h4 id="-i-am-running-in-a-cloud-environment-with-a-managed-kubernetes-service-eks-gke-aks-etc"&gt;&amp;raquo; I am running in a cloud environment with a managed Kubernetes service (EKS, GKE, AKS, etc.)&lt;a class="anchor" href="#-i-am-running-in-a-cloud-environment-with-a-managed-kubernetes-service-eks-gke-aks-etc"&gt;#&lt;/a&gt;&lt;/h4&gt;
-&lt;p&gt;TODO: setup bucket with IRSA&lt;/p&gt;</description></item><item><title>Terraform</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/getting-started/terraform/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/getting-started/terraform/</guid><description>&lt;h1 id="installing-via-terraform"&gt;Installing via Terraform&lt;a class="anchor" href="#installing-via-terraform"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;Prometheus Operator CRDs — &lt;code&gt;ServiceMonitor&lt;/code&gt;, &lt;code&gt;PodMonitor&lt;/code&gt;, &lt;code&gt;ScrapeConfig&lt;/code&gt;, &lt;code&gt;PrometheusRule&lt;/code&gt;, and friends, used to describe what gets scraped and what gets alerted on.&lt;/li&gt;
+&lt;li&gt;Grafana Operator CRDs — &lt;code&gt;Grafana&lt;/code&gt;, &lt;code&gt;GrafanaDashboard&lt;/code&gt;, &lt;code&gt;GrafanaDatasource&lt;/code&gt;, &lt;code&gt;GrafanaFolder&lt;/code&gt;, and friends, used to provision dashboards and datasources.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;A second &lt;code&gt;materialize-monitoring-crds&lt;/code&gt; Helm chart is provided to install these CRDs separately from the main &lt;code&gt;materialize-monitoring&lt;/code&gt; chart, which is recommended to manage the lifecycle of these CRDs separately from the main chart.&lt;/p&gt;</description></item><item><title>Terraform</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/getting-started/terraform/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/getting-started/terraform/</guid><description>&lt;h1 id="installing-via-terraform"&gt;Installing via Terraform&lt;a class="anchor" href="#installing-via-terraform"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;div class="warning wip"&gt;
  &lt;strong class="gutter"&gt;Work in Progress!&lt;/strong&gt;
