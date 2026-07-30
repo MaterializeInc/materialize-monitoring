@@ -5,15 +5,19 @@ Grafana Dashboards (operator format)
   $.Values.dashboards.config.grafana.enabled
   ( eq $.Values.dashboards.config.grafana.mode "operator" )
 ) }}
-  {{- $seenDashboard := list }}
-  {{- range $selectPattern := $.Values.dashboards.selected }}
-    {{- range $dashboardName, $_ := $.Files.Glob ( printf "pre-rendered/dashboards/grafana/%s.yaml" $selectPattern ) }}
-      {{- $dashboardName := base $dashboardName | trimSuffix ".yaml" | lower | replace "_" "-" }}
-      {{- if not ( has $dashboardName $seenDashboard ) }}
-        {{- $seenDashboard = append $seenDashboard $dashboardName }}
-        {{- $fullname := printf "%s-%s-dashboard" ( include "mzmon.fullname" $ ) $dashboardName }}
-        {{- $dashboardYaml := $.Files.Get ( printf "pre-rendered/dashboards/grafana/%s.yaml" $dashboardName ) | fromYaml }}
-        {{- $dashboardYaml = set $dashboardYaml "apiVersion" $.Values.dashboards.config.grafana.manifest.apiTarget }}
+  {{- /*
+  Defaults to the labels on the `Grafana` resource this chart creates, so the
+  selector and the instance are rendered from one source and cannot drift.
+  */}}
+  {{- $selector := $.Values.dashboards.config.grafana.manifest.instanceSelector
+    | default ( dict
+      "matchLabels" ( include "mzmon.grafana.instanceLabels" $ | fromYaml )
+    ) }}
+  {{- range $dashboardName := include "mzmon.grafana.dashboards" $ | fromYamlArray }}
+    {{- $fullname := printf "%s-%s-dashboard" ( include "mzmon.fullname" $ ) $dashboardName }}
+    {{- $dashboardYaml := $.Files.Get ( printf "pre-rendered/dashboards/grafana/%s.yaml" $dashboardName ) | fromYaml }}
+    {{- $dashboardYaml = set $dashboardYaml "apiVersion" $.Values.dashboards.config.grafana.manifest.apiTarget }}
+---
 kind: GrafanaManifest
 apiVersion: grafana.integreatly.org/v1beta1
 metadata:
@@ -28,19 +32,9 @@ spec:
   {{- if ( include "mzmon.grafana.crossNamespace" $ ) }}
   allowCrossNamespaceImport: true
   {{- end }}
-  {{- /*
-  Defaults to the labels on the `Grafana` resource this chart creates, so the
-  selector and the instance are rendered from one source and cannot drift.
-  */}}
-  {{- $selector := $.Values.dashboards.config.grafana.manifest.instanceSelector
-    | default ( dict
-      "matchLabels" ( include "mzmon.grafana.instanceLabels" $ | fromYaml )
-    ) }}
   instanceSelector:
     {{- toYaml $selector | nindent 4 }}
   template:
     {{- $dashboardYaml | toYaml | nindent 4 }}
-      {{- end }}
-    {{- end }}
   {{- end }}
 {{- end }}

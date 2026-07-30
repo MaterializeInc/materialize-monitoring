@@ -1,6 +1,62 @@
 {{- /* Grafana helpers. */}}
 
 {{- /*
+Check if the bundled Grafana server is enabled.
+
+This returns a truthy string if enabled and a falsy string (empty) if not.
+
+Usage:
+  {{- if ( include "mzmon.grafana.enabled" $ ) }}
+    ...
+  {{- end }}
+*/}}
+{{- define "mzmon.grafana.enabled" }}
+  {{- $values := $.Values.grafana | required "grafana is missing from values." }}
+  {{- $tags := $.Values.tags }}
+  {{- if hasKey $values "enabled" }}
+    {{- ternary "true" "" $values.enabled }}
+  {{- else }}
+    {{- if ( or $tags.default ( index $tags "managed-grafana" ) ( index $tags "grafana-standalone" ) ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Check if grafana-operator is enabled.
+
+This returns a truthy string if enabled and a falsy string (empty) if not.
+
+Usage:
+  {{- if ( include "mzmon.grafanaOperator.enabled" $ ) }}
+    ...
+  {{- end }}
+*/}}
+{{- define "mzmon.grafanaOperator.enabled" }}
+  {{- $values := index $.Values "grafana-operator" | required "grafana-operator is missing from values." }}
+  {{- $tags := $.Values.tags }}
+  {{- if hasKey $values "enabled" }}
+    {{- ternary "true" "" $values.enabled }}
+  {{- else }}
+    {{- if ( or $tags.default ( index $tags "managed-grafana" ) ( index $tags "grafana-operator" ) ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Get the grafana-operator namespace.
+
+Usage:
+  {{ include "mzmon.grafanaOperator.namespace" $ }}
+*/}}
+{{- define "mzmon.grafanaOperator.namespace" }}
+  {{- $values := index $.Values "grafana-operator" | default dict }}
+  {{- $ns := $values.namespaceOverride | default ( include "mzmon.namespace" $ ) }}
+  {{- printf "%s" $ns }}
+{{- end }}
+
+{{- /*
 Namespace the bundled Grafana runs in.
 
 Mirrors the `grafana` subchart's own `grafana.namespace` helper, so the URL we
@@ -182,6 +238,28 @@ Usage:
   {{- $static := dict "monitoring.materialize.cloud/grafana-instance" "mzmon" }}
   {{- $labels := deepCopy ( $.Values.connections.grafana.labels | default dict ) }}
   {{- merge $labels $static | toYaml }}
+{{- end }}
+
+{{- /*
+Names of the dashboards `dashboards.selected` resolves to.
+
+Globs the pre-rendered dashboards once so the resources and the install notes
+cannot disagree about what was installed. Returns a YAML list.
+
+Usage:
+  {{- range $name := include "mzmon.grafana.dashboards" $ | fromYamlArray }}
+*/}}
+{{- define "mzmon.grafana.dashboards" }}
+  {{- $names := list }}
+  {{- range $selectPattern := $.Values.dashboards.selected }}
+    {{- range $path, $_ := $.Files.Glob ( printf "pre-rendered/dashboards/grafana/%s.yaml" $selectPattern ) }}
+      {{- $name := base $path | trimSuffix ".yaml" | lower | replace "_" "-" }}
+      {{- if not ( has $name $names ) }}
+        {{- $names = append $names $name }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- $names | toYaml }}
 {{- end }}
 
 {{- /*

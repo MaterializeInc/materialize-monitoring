@@ -290,3 +290,51 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # The install notes hand out copy-pasteable commands, so the names in them
+  # have to track the same helpers the resources use.
+  - it: should print reachable commands in the install notes
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Service: grafana\.test-monitoring:80'
+      - matchRegexRaw:
+          pattern: 'port-forward svc/grafana 3000:80'
+      - matchRegexRaw:
+          pattern: 'get secret grafana -o jsonpath="\{\.data\.admin-password\}"'
+
+  - it: should call out unpersisted state in the install notes
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'State: SQLite on emptyDir -- NOT PERSISTED'
+
+  - it: should report an external database instead of the emptyDir warning
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'State: external postgres database'
+      - notMatchRegexRaw:
+          pattern: 'NOT PERSISTED'
+
+  - it: should omit the password command when credentials are supplied
+    set:
+      grafana.admin.existingSecret: my-grafana-admin
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'Read the generated admin password'
+
+  - it: should follow Grafana into its own namespace in the install notes
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Grafana namespace: grafana'
+      - matchRegexRaw:
+          pattern: 'Grafana operator namespace: grafana-operator'
+      - matchRegexRaw:
+          pattern: 'Resource: mzmon-grafana \(namespace grafana\)'
