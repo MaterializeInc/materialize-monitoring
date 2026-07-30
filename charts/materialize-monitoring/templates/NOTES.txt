@@ -44,4 +44,91 @@ Thanos is installed and configured to store metrics.
   Thanos namespace: {{ include "mzmon.thanos.namespace" $ }}
 {{- end }}
 
+{{- if ( include "mzmon.grafana.enabled" $ ) }}
+  {{- $gfNamespace := include "mzmon.grafana.namespace" $ }}
+  {{- $gfName := include "mzmon.grafana.fullname" $ }}
+  {{- $gfPort := include "mzmon.grafana.servicePort" $ }}
+  {{- $database := dig "grafana.ini" "database" "type" "" $.Values.grafana }}
+
+Grafana is installed and configured to visualize metrics and logs.
+  Grafana namespace: {{ $gfNamespace }}
+  Service: {{ $gfName }}.{{ $gfNamespace }}:{{ $gfPort }}
+  Replicas: {{ $.Values.grafana.replicas | default 1 }}
+  {{- if $database }}
+  State: external {{ $database }} database
+  {{- else if $.Values.grafana.persistence.enabled }}
+  State: SQLite on a PersistentVolume ({{ $.Values.grafana.persistence.size }}); caps Grafana at one replica
+  {{- else }}
+  State: SQLite on emptyDir -- NOT PERSISTED. Every restart loses users, annotations,
+         and anything else created in the UI. Dashboards this chart installs come back
+         on their own. Apply the `grafana-postgres` profile before production.
+  {{- end }}
+
+  Reach it from your machine:
+    kubectl --namespace {{ $gfNamespace }} port-forward svc/{{ $gfName }} 3000:{{ $gfPort }}
+    Then open http://localhost:3000
+  {{- if not ( dig "admin" "existingSecret" "" $.Values.grafana ) }}
+
+  Read the generated admin password:
+    kubectl --namespace {{ $gfNamespace }} get secret {{ include "mzmon.grafana.adminSecret" $ }} -o jsonpath="{.data.{{ include "mzmon.grafana.adminPasswordKey" $ }}}" | base64 -d
+  {{- end }}
+{{- end }}
+
+{{- if ( include "mzmon.grafanaOperator.enabled" $ ) }}
+  {{- $mode := $.Values.connections.grafana.mode }}
+  {{- $instanceNamespace := include "mzmon.grafana.instanceNamespace" $ }}
+
+Grafana Operator is installed and reconciles dashboards and datasources into Grafana.
+  Grafana operator namespace: {{ include "mzmon.grafanaOperator.namespace" $ }}
+  {{- $watch := index ( index $.Values "grafana-operator" ) "env" | default list }}
+  {{- $watchNamespace := "" }}
+  {{- range $watch }}
+    {{- if eq .name "WATCH_NAMESPACE" }}
+      {{- $watchNamespace = .value }}
+    {{- end }}
+  {{- end }}
+  Watch scope: {{ $watchNamespace | default "all namespaces in the cluster" }}
+  {{- if has $mode ( list "bundled" "external" "operator" ) }}
+
+  Target instance ({{ $mode }}):
+    Resource: {{ printf "%s-grafana" ( include "mzmon.fullname" $ ) }} (namespace {{ $instanceNamespace }})
+    {{- if eq $mode "bundled" }}
+    URL: {{ include "mzmon.grafana.url" $ }}
+    {{- else if $.Values.connections.grafana.external.url }}
+    URL: {{ $.Values.connections.grafana.external.url }}
+    {{- else }}
+    URL: managed by grafana-operator
+    {{- end }}
+    Selected by: {{ include "mzmon.grafana.instanceLabels" $ | fromYaml | toJson }}
+  {{- end }}
+  {{- $dashboards := include "mzmon.grafana.dashboards" $ | fromYamlArray }}
+  {{- if and $.Values.dashboards.config.grafana.enabled ( eq $.Values.dashboards.config.grafana.mode "operator" ) $dashboards }}
+
+  Dashboards ({{ len $dashboards }}, resynced every {{ $.Values.dashboards.config.grafana.manifest.resyncPeriod }}):
+    {{- range $dashboards }}
+    - {{ . }}
+    {{- end }}
+    Schema: {{ $.Values.dashboards.config.grafana.manifest.apiTarget }} (needs Grafana 12 or later)
+  {{- end }}
+  {{- $thanosDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) }}
+  {{- $lokiDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) }}
+  {{- if or $thanosDs $lokiDs }}
+
+  Datasources:
+    {{- if $thanosDs }}
+    - {{ $.Values.connections.datasources.thanos.name }} (prometheus{{ if $.Values.connections.datasources.thanos.isDefault }}, default{{ end }}) -> {{ tpl $.Values.connections.datasources.thanos.url $ }}
+    {{- end }}
+    {{- if $lokiDs }}
+      {{- $tenant := include "mzmon.grafana.loki.tenant" $ }}
+    - {{ $.Values.connections.datasources.loki.name }} (loki{{ if $tenant }}, tenant {{ $tenant | quote }}{{ end }}) -> {{ tpl $.Values.connections.datasources.loki.url $ }}
+    {{- end }}
+  {{- end }}
+
+  IMPORTANT: `helm --wait` does not cover any of the above. Helm waits for the operator
+  Deployment; pushing this content into Grafana happens afterwards and can fail on its
+  own. Confirm it landed:
+    kubectl --namespace {{ $instanceNamespace }} get grafana
+    kubectl --namespace {{ include "mzmon.namespace" $ }} get grafanamanifest,grafanadatasource
+{{- end }}
+
 {{- include "mzmon.validate.format" $ | nindent 0 }}

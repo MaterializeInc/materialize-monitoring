@@ -1,0 +1,340 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Regression tests for the `Grafana` resource that grafana-operator reconciles
+# this chart's dashboards into. Everything here locks down a way the operator
+# can end up unable to reach — or unable to authenticate against — the Grafana
+# it is supposed to write to, all of which fail silently at runtime:
+#
+#   1. Host. The bundled URL must name the Service the `grafana` subchart
+#      actually creates. The parent chart pins `fullnameOverride: mzmon`, so
+#      deriving the host from `mzmon.fullname` only resolved for a release
+#      literally named `mzmon`.
+#   2. Port. The subchart's Service listens on `service.port` (80) and routes to
+#      the container's 3000. Dialing the container port is refused.
+#   3. Credentials. The subchart owns a Secret named after itself with the
+#      literal `admin-user` / `admin-password` keys.
+#   4. Namespace. `split-namespace` moves Grafana out of the release namespace,
+#      and a `SecretKeySelector` cannot reach across namespaces.
+#   5. Selector. grafana-operator reads an empty `matchLabels` as *every*
+#      instance, not none.
+suite: grafana instance and dashboard targeting
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  # Deliberately not `mzmon`: the release name must not leak into the wiring.
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.managed-grafana: true
+tests:
+  - it: should point the bundled instance at the grafana subchart's Service
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - equal:
+          path: spec.external.url
+          value: http://grafana.test-monitoring:80
+      - equal:
+          path: spec.external.adminUser
+          value:
+            name: grafana
+            key: admin-user
+      - equal:
+          path: spec.external.adminPassword
+          value:
+            name: grafana
+            key: admin-password
+
+  - it: should name that Service exactly as the grafana subchart does
+    template: ../charts/grafana/templates/service.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: grafana
+          namespace: test-monitoring
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+
+  - it: should name that Secret exactly as the grafana subchart does
+    template: ../charts/grafana/templates/secret.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: Secret
+          name: grafana
+          namespace: test-monitoring
+      - exists:
+          path: data["admin-user"]
+      - exists:
+          path: data["admin-password"]
+
+  - it: should follow a service port override rather than assume 80
+    set:
+      grafana.service.port: 8080
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.external.url
+          value: http://grafana.test-monitoring:8080
+
+  - it: should defer to an existingSecret and its key names
+    set:
+      grafana.admin.existingSecret: my-grafana-admin
+      grafana.admin.userKey: user
+      grafana.admin.passwordKey: password
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.external.adminUser
+          value:
+            name: my-grafana-admin
+            key: user
+      - equal:
+          path: spec.external.adminPassword
+          value:
+            name: my-grafana-admin
+            key: password
+
+  - it: should carry a non-empty instance label that the dashboards select on
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: metadata.labels["monitoring.materialize.cloud/grafana-instance"]
+          value: mzmon
+
+  - it: should select the instance it creates, and not every instance
+    template: templates/dashboards/grafana-operator/dashboards.yaml
+    asserts:
+      - equal:
+          path: spec.instanceSelector.matchLabels
+          value:
+            monitoring.materialize.cloud/grafana-instance: mzmon
+      # Same namespace as the Grafana resource, so no cross-namespace import.
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - notExists:
+          path: spec.allowCrossNamespaceImport
+
+  - it: should merge connections.grafana.labels into both sides
+    set:
+      connections.grafana.labels:
+        team: observability
+    asserts:
+      - template: templates/grafana-grafana.yaml
+        equal:
+          path: metadata.labels.team
+          value: observability
+      - template: templates/dashboards/grafana-operator/dashboards.yaml
+        equal:
+          path: spec.instanceSelector.matchLabels
+          value:
+            monitoring.materialize.cloud/grafana-instance: mzmon
+            team: observability
+
+  - it: should keep the instance beside its Secret under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    asserts:
+      - template: templates/grafana-grafana.yaml
+        equal:
+          path: metadata.namespace
+          value: grafana
+      - template: templates/grafana-grafana.yaml
+        equal:
+          path: spec.external.url
+          value: http://grafana.grafana:80
+      - template: ../charts/grafana/templates/secret.yaml
+        containsDocument:
+          apiVersion: v1
+          kind: Secret
+          name: grafana
+          namespace: grafana
+
+  - it: should allow cross-namespace import when the instance moves away
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/dashboards/grafana-operator/dashboards.yaml
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - equal:
+          path: spec.allowCrossNamespaceImport
+          value: true
+
+  - it: should honor an explicit allowCrossNamespaceImport over the inference
+    set:
+      dashboards.config.grafana.manifest.allowCrossNamespaceImport: true
+    template: templates/dashboards/grafana-operator/dashboards.yaml
+    asserts:
+      - equal:
+          path: spec.allowCrossNamespaceImport
+          value: true
+
+  - it: should render an external instance from the connection details
+    set:
+      grafana.enabled: false
+      connections.grafana.mode: external
+      connections.grafana.external.url: https://grafana.example.com
+      connections.grafana.external.apiKey:
+        name: external-grafana-api-key
+        key: apiKey
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.external.url
+          value: https://grafana.example.com
+      - equal:
+          path: spec.external.apiKey
+          value:
+            name: external-grafana-api-key
+            key: apiKey
+      - notExists:
+          path: spec.external.adminUser
+
+  - it: should refuse an external instance with no url
+    set:
+      grafana.enabled: false
+      connections.grafana.mode: external
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - failedTemplate:
+          errorMessage: connections.grafana.external.url is required when connections.grafana.mode is "external"
+
+  - it: should refuse an external instance with no credentials
+    set:
+      grafana.enabled: false
+      connections.grafana.mode: external
+      connections.grafana.external.url: https://grafana.example.com
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - failedTemplate:
+          errorMessage: connections.grafana.external needs either apiKey or adminUser + adminPassword when connections.grafana.mode is "external"
+
+  # An operator-managed instance is signalled by the *absence* of `external`.
+  # Emitting the key with a null value reads as "external, unconfigured".
+  - it: should omit the external block entirely in operator mode
+    set:
+      grafana.enabled: false
+      connections.grafana.mode: operator
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec
+          value: {}
+
+  - it: should render no instance at all for an unrecognized mode
+    set:
+      grafana.enabled: false
+      connections.grafana.mode: none
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The grafana-postgres profile moves Grafana's own state off local disk. The
+  # thing worth locking down is that the password never reaches the ConfigMap:
+  # `grafana.ini` is not a Secret, so an inlined password would be plaintext in
+  # the release manifest and in `helm get values`.
+  - it: should keep the database password out of the config ConfigMap
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: ../charts/grafana/templates/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'type = postgres'
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'password = \$__file\{/etc/secrets/grafana-db/password\}'
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'ssl_mode = verify-full'
+
+  - it: should mount the database Secret the profile reads from
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: grafana-db
+            secret:
+              secretName: grafana-db
+              defaultMode: null
+          any: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: grafana-db
+            mountPath: /etc/secrets/grafana-db
+            readOnly: true
+            subPath: null
+          any: true
+
+  - it: should not provision a PersistentVolume alongside the database
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: ../charts/grafana/templates/pvc.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The install notes hand out copy-pasteable commands, so the names in them
+  # have to track the same helpers the resources use.
+  - it: should print reachable commands in the install notes
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Service: grafana\.test-monitoring:80'
+      - matchRegexRaw:
+          pattern: 'port-forward svc/grafana 3000:80'
+      - matchRegexRaw:
+          pattern: 'get secret grafana -o jsonpath="\{\.data\.admin-password\}"'
+
+  - it: should call out unpersisted state in the install notes
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'State: SQLite on emptyDir -- NOT PERSISTED'
+
+  - it: should report an external database instead of the emptyDir warning
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'State: external postgres database'
+      - notMatchRegexRaw:
+          pattern: 'NOT PERSISTED'
+
+  - it: should omit the password command when credentials are supplied
+    set:
+      grafana.admin.existingSecret: my-grafana-admin
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'Read the generated admin password'
+
+  - it: should follow Grafana into its own namespace in the install notes
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Grafana namespace: grafana'
+      - matchRegexRaw:
+          pattern: 'Grafana operator namespace: grafana-operator'
+      - matchRegexRaw:
+          pattern: 'Resource: mzmon-grafana \(namespace grafana\)'

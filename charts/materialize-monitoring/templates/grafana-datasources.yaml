@@ -1,0 +1,105 @@
+{{/*
+Datasources pushed into the Grafana instance grafana-operator manages.
+
+Both are built from the same shape and share the instance targeting used by the
+dashboards, so a datasource and the dashboards that query it always land in the
+same instance.
+*/}}
+{{- $ds := $.Values.connections.datasources }}
+{{- $selector := $.Values.dashboards.config.grafana.manifest.instanceSelector
+  | default ( dict
+    "matchLabels" ( include "mzmon.grafana.instanceLabels" $ | fromYaml )
+  ) }}
+
+{{- /*
+Resolve each datasource into a `spec.datasource` body. The chart's defaults go
+in first so user `jsonData` / `secureJsonData` merges over them.
+*/}}
+{{- $specs := list }}
+
+{{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) }}
+  {{- $thanos := $ds.thanos }}
+  {{- $jsonData := merge
+    ( deepCopy ( $thanos.jsonData | default dict ) )
+    ( dict
+      "prometheusType" "Thanos"
+      "httpMethod" "POST"
+    ) }}
+  {{- $specs = append $specs ( dict
+    "key" "thanos"
+    "name" $thanos.name
+    "uid" $thanos.uid
+    "type" "prometheus"
+    "url" ( tpl $thanos.url $ )
+    "isDefault" $thanos.isDefault
+    "jsonData" $jsonData
+    "secureJsonData" ( $thanos.secureJsonData | default dict )
+    "valuesFrom" ( $thanos.valuesFrom | default list )
+  ) }}
+{{- end }}
+
+{{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) ) }}
+  {{- $loki := $ds.loki }}
+  {{- $tenant := include "mzmon.grafana.loki.tenant" $ }}
+  {{- $defaults := dict "timeout" 60 }}
+  {{- $secure := deepCopy ( $loki.secureJsonData | default dict ) }}
+  {{- if $tenant }}
+    {{- /*
+    Grafana models custom HTTP headers as a numbered pair: the name is plain
+    config, the value is always secure — regardless of how secret it is.
+    */}}
+    {{- $defaults = merge $defaults ( dict "httpHeaderName1" "X-Scope-OrgID" ) }}
+    {{- $secure = merge $secure ( dict "httpHeaderValue1" $tenant ) }}
+  {{- end }}
+  {{- $specs = append $specs ( dict
+    "key" "loki"
+    "name" $loki.name
+    "uid" $loki.uid
+    "type" "loki"
+    "url" ( tpl $loki.url $ )
+    "isDefault" false
+    "jsonData" ( merge ( deepCopy ( $loki.jsonData | default dict ) ) $defaults )
+    "secureJsonData" $secure
+    "valuesFrom" ( $loki.valuesFrom | default list )
+  ) }}
+{{- end }}
+
+{{- range $spec := $specs }}
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: {{ printf "%s-%s-datasource" ( include "mzmon.fullname" $ ) $spec.key | quote }}
+  namespace: {{ include "mzmon.namespace" $ | quote }}
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+spec:
+  resyncPeriod: {{ $ds.resyncPeriod }}
+  {{- if ( include "mzmon.grafana.crossNamespace" $ ) }}
+  allowCrossNamespaceImport: true
+  {{- end }}
+  instanceSelector:
+    {{- toYaml $selector | nindent 4 }}
+  {{- with $spec.valuesFrom }}
+  valuesFrom:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  datasource:
+    name: {{ $spec.name | quote }}
+    uid: {{ $spec.uid | quote }}
+    type: {{ $spec.type | quote }}
+    access: proxy
+    url: {{ $spec.url | quote }}
+    isDefault: {{ $spec.isDefault }}
+    editable: {{ $ds.editable }}
+    {{- with $spec.jsonData }}
+    jsonData:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $spec.secureJsonData }}
+    secureJsonData:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

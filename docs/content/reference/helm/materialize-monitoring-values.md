@@ -1151,7 +1151,13 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance</td>
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.allowCrossNamespaceImport</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>inferred</code></td>
+      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
@@ -1253,7 +1259,7 @@ How to talk to a grafana instance
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
-      <td class="helm-value-desc">How this establishes its connection to Grafana. `bundled` means it uses the grafana provisioning chart.</td>
+      <td class="helm-value-desc">How this establishes its connection to Grafana. `bundled` (default) targets the Grafana deployed by the bundled `grafana` subchart; the URL and admin-credential Secret are derived from it. `external` targets a Grafana you already run — Grafana Cloud, a shared platform Grafana, another cluster — and requires `external.url` plus either `external.apiKey` or `external.adminUser` + `external.adminPassword`. `operator` hands the instance lifecycle to grafana-operator itself, which builds it from the operator's own defaults and is not yet production-ready.</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.labels</td>
@@ -1261,7 +1267,7 @@ How to talk to a grafana instance
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Labels applied to Grafana instance</td>
+      <td class="helm-value-desc">Additional labels applied to the Grafana instance, and to the `instanceSelector` of every Grafana resource this chart targets at it. Merged over a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is what keeps the selector non-empty — grafana-operator reads an empty `matchLabels` as *every* instance, not none. Add to this to narrow the selector further, e.g. to scope per release when two `materialize-monitoring` releases share a cluster.</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.url</td>
@@ -1292,6 +1298,156 @@ How to talk to a grafana instance
 {}</pre>
 </td>
       <td class="helm-value-desc">Secret for Grafana API key</td>
+    </tr>
+  </tbody>
+</table>
+
+#### Datasource configuration
+
+Datasources provisioned into the Grafana instance
+
+Provisioned as `GrafanaDatasource` resources, pushed into the same instance
+the dashboards target. `url` values are rendered with `tpl`, so they may
+reference chart helpers.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Install the bundled datasources. Requires the Grafana operator.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.resyncPeriod</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the operator re-pushes each datasource.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.editable</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Whether the datasources can be edited in the Grafana UI. Edits are reverted on the next resync either way; this only hides the controls so the reversion is not a surprise.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `thanos.enabled</code></td>
+      <td class="helm-value-desc">Provision the Thanos datasource. Unset follows whether the bundled Thanos is enabled. Set it explicitly to point Grafana at metrics storage this chart does not deploy.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.name</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"Thanos"</code></td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.uid</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-thanos"</code></td>
+      <td class="helm-value-desc">Stable datasource UID.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://thanos-query.{{ include \"mzmon.thanos.namespace\" $ }}.svc:9090"</code></td>
+      <td class="helm-value-desc">Thanos Query endpoint. Rendered with `tpl`.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.isDefault</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Make this Grafana's default datasource. The bundled dashboards deliberately do not pin a datasource: their `${metricsDatasource}` variable resolves to whichever Prometheus-type datasource is default. With no default, every panel renders empty and Grafana reports no error. Only turn this off if something else in the instance is already the default Prometheus datasource.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.jsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.secureJsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.valuesFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.
+
+```yaml
+valuesFrom:
+  - targetPath: secureJsonData.basicAuthPassword
+    valueFrom:
+      secretKeyRef:
+        name: thanos-basic-auth
+        key: password
+```</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `loki.enabled</code></td>
+      <td class="helm-value-desc">Provision the Loki datasource. Unset follows whether the bundled Loki is enabled.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.name</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"Loki"</code></td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.uid</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-loki"</code></td>
+      <td class="helm-value-desc">Stable datasource UID.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"http://loki-query-frontend.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100"</code></td>
+      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tenant</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `pipeline.logging.tenancy.staticTenant</code></td>
+      <td class="helm-value-desc">Tenant to read as, sent in the `X-Scope-OrgID` header. The bundled Loki runs `auth_enabled: true`, so reads without this header fail with `no org id`. Unset follows the tenant the pipeline writes to. Set to `""` to send no header, which is only correct against a Loki with `auth_enabled: false`.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.jsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (the tenant header name, and `timeout`).</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.secureJsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.valuesFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.</td>
     </tr>
   </tbody>
 </table>
@@ -2406,6 +2562,18 @@ Upstream references:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grafana-operator"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -2424,6 +2592,25 @@ Bundled Grafana for dashboard rendering.
 
 Upstream reference:
   * https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">grafana<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"grafana"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations. `connections.grafana.mode: bundled` derives the URL it hands grafana-operator from this, so a release-name-derived name would leave the operator dialing a host that does not resolve.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.</td>
+    </tr>
+  </tbody>
+</table>
 
 #### Alertmanager
 

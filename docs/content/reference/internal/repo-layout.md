@@ -38,7 +38,7 @@ The repo is a polyglot monorepo: a Rust workspace, a `uv`-managed Python workspa
         * `dashboards/`: `grafana/` and `datadog/` JSON
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`)
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
-      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` and `_helpers.tpl`
+      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki `GrafanaDatasource`s), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`)
       * `examples/`: example values overlays (e.g. existing-grafana, IRSA/S3)
       * `profiles/`: profile value sets (still being defined)
     * `materialize-monitoring-crds/`: CRDs chart (`Chart.yaml`, `values.yaml`, `README.md`)
