@@ -1,0 +1,10 @@
+# Canonical shellcheck config, read by every invocation (CI, pre-commit, local).
+#
+# Scripts in bin/ source tools/shlib/common.sh via a `# shellcheck source=`
+# directive. Following that directive requires permission to read a file
+# outside the input set — without it shellcheck emits SC1091 and exits 1.
+#
+# CI got away with it by accident: it passes every shell file to one
+# invocation, so common.sh was already in the input set. pre-commit passes
+# only the changed files, so any commit touching a single bin/*.sh failed.
+external-sources=true

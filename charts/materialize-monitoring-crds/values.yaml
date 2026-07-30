@@ -1,6 +1,28 @@
 # This chart does not install any other resources other than CRDs.
+#
+# Both CRD sets take the same shape: `crds.annotations` is applied to every
+# CRD in that set, and `crds.<plural>.enabled` toggles an individual CRD.
+# See each subchart's `values.yaml` for the full list of toggles.
 
+# -- Prometheus Operator CRDs (ServiceMonitor, PodMonitor, ScrapeConfig, …),
+# pulled from the upstream prometheus-community chart.
+# @notationType -- (sectionstart) Prometheus Operator CRDs
 prometheus-operator-crds:
+  # -- Annotations applied to every Prometheus Operator CRD.
+  # `helm.sh/resource-policy: keep` stops `helm uninstall` from cascading
+  # into the custom resources that customers and the stack depend on.
+  crds:
+    annotations:
+      helm.sh/resource-policy: keep
+
+# -- Grafana Operator CRDs (Grafana, GrafanaDashboard, GrafanaDatasource, …),
+# deflated from the upstream grafana-operator chart into a local subchart —
+# upstream publishes no standalone CRDs chart for them.
+# @notationType -- (sectionstart) Grafana Operator CRDs
+grafana-operator-crds:
+  # -- Annotations applied to every Grafana Operator CRD.
+  # `helm.sh/resource-policy: keep` stops `helm uninstall` from cascading
+  # into the custom resources that customers and the stack depend on.
   crds:
     annotations:
       helm.sh/resource-policy: keep

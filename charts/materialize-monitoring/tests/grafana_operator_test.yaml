@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: grafana-operator subchart
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.grafana-operator: true
+tests:
+  # The Grafana Operator CRDs belong to the materialize-monitoring-crds chart.
+  # `grafana-operator.crds.immutable` is what keeps them out of this release:
+  # flipping it to false makes the operator template and own them here instead,
+  # which would fight the CRDs chart for the same objects.
+  - it: should not template the Grafana Operator CRDs
+    template: ../charts/grafana-operator/templates/crds.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should still deploy the operator itself
+    template: ../charts/grafana-operator/templates/deployment.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: test-mon-grafana-operator
+          namespace: test-monitoring

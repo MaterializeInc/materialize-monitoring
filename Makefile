@@ -60,6 +60,7 @@ docs: docs/public
 
 helm-docs: \
 	charts/materialize-monitoring/README.md \
+	charts/materialize-monitoring-crds/README.md \
 	docs/content/reference/helm/materialize-monitoring-values.md
 .PHONY: helm-docs
 
@@ -197,6 +198,12 @@ crd-schemas:
 	bin/extract-crd-schemas.sh
 .PHONY: crd-schemas
 
+# Re-deflate the Grafana Operator CRDs from the vendored grafana-operator chart
+# into materialize-monitoring-crds. Output is checked in; re-run on version bump.
+grafana-operator-crds:
+	bin/extract-grafana-operator-crds.sh
+.PHONY: grafana-operator-crds
+
 ### CONTAINER IMAGES ###
 
 CONTAINER_REGISTRY ?= ghcr.io/materializeinc
@@ -261,6 +268,26 @@ docs/content/reference/helm/materialize-monitoring-values.md: \
 charts/materialize-monitoring: charts/materialize-monitoring/README.md charts/materialize-monitoring/pre-rendered
 	touch "$@"
 
+HELM_DOCS_SOURCES_materialize-monitoring-crds = \
+	charts/materialize-monitoring-crds/values.yaml \
+	charts/materialize-monitoring-crds/Chart.yaml
+
+# Generate the chart-local README.md from values.yaml + the README template.
+# --chart-search-root is the chart itself so helm-docs does not wander into
+# the vendored grafana-operator-crds subchart and write a README there too.
+charts/materialize-monitoring-crds/README.md: \
+		$(HELM_DOCS_SOURCES_materialize-monitoring-crds) \
+		tools/chartlib/helm-docs-lib.gotmpl \
+		charts/materialize-monitoring-crds/README.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root charts/materialize-monitoring-crds \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
+		--template-files README.md.gotmpl \
+		--output-file README.md \
+		--sort-values-order file \
+		--log-level debug \
+		--ignore-non-descriptions
+
 HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring
 	helm package charts/materialize-monitoring --destination charts/
@@ -273,6 +300,7 @@ HELM_UNITTEST_ARGS ?=
 
 helm-tests:
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring
+	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-crds
 .PHONY: helm-tests
 
 helm-update-snapshots:

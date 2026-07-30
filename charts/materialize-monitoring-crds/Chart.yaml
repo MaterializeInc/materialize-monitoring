@@ -26,6 +26,17 @@ annotations:
       description: Initial CRD chart skeleton.
 
 
+# Subchart sourcing
+# -----------------
+# Upstream CRD charts are pulled from an OCI registry where one exists.
+#
+# The Grafana Operator publishes no standalone CRDs chart — its CRDs ship
+# inside the operator chart and cannot be turned off there, only moved
+# between `templates/` and `crds/` via `crds.immutable`. The main chart pins
+# `grafana-operator.crds.immutable=true` so they stay out of its release
+# manifest, and we vendor a deflated copy here (a local subchart resolved by
+# path) so this chart owns their lifecycle. Regenerate that copy with
+# `make grafana-operator-crds` after bumping the vendored operator.
 dependencies:
   - name: prometheus-operator-crds
     version: "^29.0.0"
@@ -34,3 +45,10 @@ dependencies:
     tags:
       - crds
       - prometheus-operator-crds
+  - name: grafana-operator-crds
+    version: "0.0.0"
+    repository: ""
+    condition: grafana-operator-crds.enabled
+    tags:
+      - crds
+      - grafana-operator-crds

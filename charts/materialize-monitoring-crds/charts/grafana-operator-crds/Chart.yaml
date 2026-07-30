@@ -1,0 +1,25 @@
+apiVersion: v2
+name: grafana-operator-crds
+description: |
+  CustomResourceDefinitions for the Grafana Operator.
+  Deflated from the upstream grafana-operator chart, which ships no
+  standalone CRDs chart of its own. Regenerate with
+  `make grafana-operator-crds` after bumping the vendored operator.
+type: application
+# Local subchart resolved by path, never from a repository, so the version is
+# a fixed placeholder. `appVersion` is the operator the CRDs were lifted from
+# and is rewritten by bin/extract-grafana-operator-crds.sh.
+version: 0.0.0
+appVersion: "v5.24.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/MaterializeInc/materialize-monitoring
+sources:
+  - https://github.com/grafana/grafana-operator
+maintainers:
+  - name: Materialize
+    email: support@materialize.com
+    url: https://materialize.com
+keywords:
+  - grafana
+  - grafana-operator
+  - crds
