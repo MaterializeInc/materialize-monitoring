@@ -8,13 +8,22 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring Helm Chart v0.9.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring Optional CRDs v0.4.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring Helm Chart v0.8.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.8.0
 
-_Changes Pending_
+* CLO-111 Grafana Documentation with datasources and bundled resources
+    * [materialize-monitoring#164](https://github.com/MaterializeInc/materialize-monitoring/pull/164)
+* Move grafana-operator CRDs into the materialize-monitoring-crds chart
+    * [materialize-monitoring#161](https://github.com/MaterializeInc/materialize-monitoring/pull/161)
+* CLO-153 Add profile example for otel pipelines
+    * [materialize-monitoring#159](https://github.com/MaterializeInc/materialize-monitoring/pull/159)
 
 ## Pipelines v0.9.0 (Unreleased)
 
