@@ -19,7 +19,33 @@
 &lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;selector&lt;/span&gt;: &lt;span style="color:#e6db74"&gt;&amp;#39;{app=&amp;#34;alloy&amp;#34;}&amp;#39;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;blocks&lt;/span&gt;:
 &lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; - &lt;span style="color:#f92672"&gt;stage.logfmt&lt;/span&gt;:
-&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;mapping&lt;/span&gt;: { &lt;span style="color:#f92672"&gt;msg: msg, level&lt;/span&gt;: &lt;span style="color:#ae81ff"&gt;level }&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Each entry in &lt;code&gt;blocks&lt;/code&gt; is a &lt;strong&gt;single-key object&lt;/strong&gt; whose key is either:&lt;/p&gt;</description></item><item><title>Alloy</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/images/alloy/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/images/alloy/</guid><description>&lt;h1 id="materialize-monitoring-alloy"&gt;Materialize Monitoring Alloy&lt;a class="anchor" href="#materialize-monitoring-alloy"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;mapping&lt;/span&gt;: { &lt;span style="color:#f92672"&gt;msg: msg, level&lt;/span&gt;: &lt;span style="color:#ae81ff"&gt;level }&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Each entry in &lt;code&gt;blocks&lt;/code&gt; is a &lt;strong&gt;single-key object&lt;/strong&gt; whose key is either:&lt;/p&gt;</description></item><item><title>Grafana Architecture</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/architecture/</guid><description>&lt;h1 id="grafana-architecture"&gt;Grafana Architecture&lt;a class="anchor" href="#grafana-architecture"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;&lt;code&gt;materialize-monitoring&lt;/code&gt; installs &lt;strong&gt;two&lt;/strong&gt; Grafana-related subcharts, and they do different jobs.
+This page explains what each one owns, how they are wired together, and which knobs you are expected to set.&lt;/p&gt;
+&lt;table&gt;
+ &lt;thead&gt;
+ &lt;tr&gt;
+ &lt;th&gt;Subchart&lt;/th&gt;
+ &lt;th&gt;Upstream&lt;/th&gt;
+ &lt;th&gt;Role&lt;/th&gt;
+ &lt;/tr&gt;
+ &lt;/thead&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;grafana&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;a href="https://github.com/grafana-community/helm-charts/tree/main/charts/grafana" rel="external" class="external-link"&gt;&lt;code&gt;grafana&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;Runs a Grafana &lt;strong&gt;server&lt;/strong&gt; — the Deployment, Service, ConfigMap, and admin Secret&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;code&gt;grafana-operator&lt;/code&gt;&lt;/td&gt;
+ &lt;td&gt;&lt;a href="https://github.com/grafana/grafana-operator" rel="external" class="external-link"&gt;&lt;code&gt;grafana-operator&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;Runs a &lt;strong&gt;controller&lt;/strong&gt; that pushes dashboards, datasources, and folders &lt;em&gt;into&lt;/em&gt; a Grafana server over its HTTP API&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;The operator is a &lt;strong&gt;client&lt;/strong&gt; of a Grafana server, not a replacement for one.
+Installing only the operator gives you dashboards-as-code with nowhere to put the dashboards.
+Installing only the Grafana server gives you a Grafana with no Materialize content in it.&lt;/p&gt;</description></item><item><title>Alloy</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/images/alloy/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/images/alloy/</guid><description>&lt;h1 id="materialize-monitoring-alloy"&gt;Materialize Monitoring Alloy&lt;a class="anchor" href="#materialize-monitoring-alloy"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;&lt;code&gt;mzmon-alloy&lt;/code&gt; is a minimal, distroless repackaging of &lt;a href="https://github.com/grafana/alloy" rel="external" class="external-link"&gt;Grafana Alloy&lt;/a&gt; hardened for use in Materialize Monitoring.
 It is published to &lt;code&gt;ghcr.io/materializeinc/mzmon-alloy&lt;/code&gt; and is a drop-in replacement for the upstream &lt;code&gt;grafana/alloy&lt;/code&gt; image.&lt;/p&gt;
 &lt;p&gt;Rather than build Alloy from source, the image repackages the signed upstream release binary (verified against the release &lt;code&gt;SHA256SUMS&lt;/code&gt;) onto a &lt;a href="https://github.com/GoogleContainerTools/distroless" rel="external" class="external-link"&gt;distroless&lt;/a&gt; base.
@@ -29,12 +55,14 @@ This page covers what the &lt;a href="../#alloy-agent"&gt;agent&lt;/a&gt; and &l
 See the &lt;a href="../"&gt;logging architecture&lt;/a&gt; for how collection fits into the full pipeline.&lt;/p&gt;
 &lt;h2 id="what-the-agent-collects"&gt;What the agent collects&lt;a class="anchor" href="#what-the-agent-collects"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;The &lt;a href="../#alloy-agent"&gt;&lt;code&gt;alloy-agent&lt;/code&gt;&lt;/a&gt; runs as a DaemonSet — one pod per node — and gathers two things from each node:&lt;/p&gt;</description></item><item><title>Configuring</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/alerting/configuring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/alerting/configuring/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Grafana Operator</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/grafana-operator/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/grafana-operator/</guid><description>&lt;h1 id="managing-dashboards-with-grafana-operator"&gt;Managing Dashboards with Grafana Operator&lt;a class="anchor" href="#managing-dashboards-with-grafana-operator"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;The &lt;a href="https://grafana.github.io/grafana-operator/" rel="external" class="external-link"&gt;Grafana Operator&lt;/a&gt; reconciles Kubernetes resources into a Grafana instance over its HTTP API.
+&lt;code&gt;materialize-monitoring&lt;/code&gt; uses it to keep the Materialize dashboards in sync without anyone importing JSON by hand.&lt;/p&gt;
+&lt;p&gt;This page is the how-to.
+For how the operator relates to the bundled Grafana server, and which of the two owns what, read &lt;a href="../architecture/"&gt;Grafana Architecture&lt;/a&gt; first.&lt;/p&gt;
 &lt;h2 id="configuring-grafana-operator-via-materialize-monitoring-helm-chart"&gt;Configuring Grafana Operator via &lt;code&gt;materialize-monitoring&lt;/code&gt; Helm Chart&lt;a class="anchor" href="#configuring-grafana-operator-via-materialize-monitoring-helm-chart"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;TODO&lt;/p&gt;
-&lt;h2 id="connecting-your-grafana-instance-to-grafana-operator"&gt;Connecting your Grafana Instance to Grafana Operator&lt;a class="anchor" href="#connecting-your-grafana-instance-to-grafana-operator"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;TODO&lt;/p&gt;
-&lt;h2 id="importing-dashboards-via-grafana-operator"&gt;Importing Dashboards via Grafana Operator&lt;a class="anchor" href="#importing-dashboards-via-grafana-operator"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>List of Metrics</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/</guid><description>&lt;h1 id="list-of-metrics"&gt;List of Metrics&lt;a class="anchor" href="#list-of-metrics"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;h3 id="enabling-the-operator"&gt;Enabling the operator&lt;a class="anchor" href="#enabling-the-operator"&gt;#&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;The operator is part of the &lt;code&gt;managed-grafana&lt;/code&gt; tag group, which the &lt;code&gt;default&lt;/code&gt; tag includes.
+A default install already has it.&lt;/p&gt;</description></item><item><title>List of Metrics</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/</guid><description>&lt;h1 id="list-of-metrics"&gt;List of Metrics&lt;a class="anchor" href="#list-of-metrics"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;This has the list of metrics which are available for usage.
 In many systems, only a subset of metrics get stored based
 on how they would be used.&lt;/p&gt;
@@ -120,12 +148,16 @@ If it disagrees with what is actually in the tree, trust the repo and update thi
 &lt;li&gt;&lt;code&gt;rules/&lt;/code&gt;: &lt;code&gt;prometheus/&lt;/code&gt;, &lt;code&gt;loki/&lt;/code&gt;, &lt;code&gt;thanos/&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;code&gt;templates/&lt;/code&gt;: provided resources — &lt;code&gt;alerts/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;scrapers/&lt;/code&gt;, plus &lt;code&gt;grafana-grafana.yaml&lt;/code&gt; and &lt;code&gt;_helpers.tpl&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;templates/&lt;/code&gt;: provided resources — &lt;code&gt;alerts/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;scrapers/&lt;/code&gt;, plus &lt;code&gt;grafana-grafana.yaml&lt;/code&gt; (the &lt;code&gt;Grafana&lt;/code&gt; instance), &lt;code&gt;grafana-datasources.yaml&lt;/code&gt; (the Thanos / Loki &lt;code&gt;GrafanaDatasource&lt;/code&gt;s), and the &lt;code&gt;_*.tpl&lt;/code&gt; helper files (&lt;code&gt;_helpers.tpl&lt;/code&gt;, &lt;code&gt;_grafana_helpers.tpl&lt;/code&gt;, &lt;code&gt;_loki_helpers.tpl&lt;/code&gt;, &lt;code&gt;_thanos_helpers.tpl&lt;/code&gt;, &lt;code&gt;_alloy_helpers.tpl&lt;/code&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;examples/&lt;/code&gt;: example values overlays (e.g. existing-grafana, IRSA/S3)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;profiles/&lt;/code&gt;: profile value sets (still being defined)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;code&gt;materialize-monitoring-crds/&lt;/code&gt;: CRDs chart (&lt;code&gt;Chart.yaml&lt;/code&gt;, &lt;code&gt;values.yaml&lt;/code&gt;, &lt;code&gt;README.md&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;materialize-monitoring-crds/&lt;/code&gt;: CRDs chart (&lt;code&gt;Chart.yaml&lt;/code&gt;, &lt;code&gt;values.yaml&lt;/code&gt;, &lt;code&gt;README.md&lt;/code&gt;)
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;charts/grafana-operator-crds/&lt;/code&gt;: Grafana Operator CRDs deflated from the upstream operator chart, which publishes no CRDs chart of its own — generated by &lt;code&gt;bin/extract-grafana-operator-crds.sh&lt;/code&gt; (&lt;code&gt;make grafana-operator-crds&lt;/code&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;code&gt;docs/&lt;/code&gt;: Hugo docsite (the source of this page)
@@ -196,12 +228,11 @@ also provides many opionated configurations such as o11y pipelines, Grafana dash
 &lt;h2 id="installing-crds"&gt;Installing CRDs&lt;a class="anchor" href="#installing-crds"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;The following CRDs are required for &lt;code&gt;materialize-monitoring&lt;/code&gt;
 to function properly.&lt;/p&gt;
-&lt;p&gt;A second &lt;code&gt;materialize-monitoring-crds&lt;/code&gt; Helm chart is provided to install these CRDs separately from the main &lt;code&gt;materialize-monitoring&lt;/code&gt; chart, which is recommended to manage the lifecycle of these CRDs separately from the main chart.&lt;/p&gt;
-&lt;h2 id="configuring-storage"&gt;Configuring Storage&lt;a class="anchor" href="#configuring-storage"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;Before you start, you need to be able to store your metrics and logs
-somewhere.&lt;/p&gt;
-&lt;h4 id="-i-am-running-in-a-cloud-environment-with-a-managed-kubernetes-service-eks-gke-aks-etc"&gt;&amp;raquo; I am running in a cloud environment with a managed Kubernetes service (EKS, GKE, AKS, etc.)&lt;a class="anchor" href="#-i-am-running-in-a-cloud-environment-with-a-managed-kubernetes-service-eks-gke-aks-etc"&gt;#&lt;/a&gt;&lt;/h4&gt;
-&lt;p&gt;TODO: setup bucket with IRSA&lt;/p&gt;</description></item><item><title>Logging</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/pipelines/logging/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/pipelines/logging/</guid><description>&lt;h1 id="logging-pipeline"&gt;Logging Pipeline&lt;a class="anchor" href="#logging-pipeline"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;Prometheus Operator CRDs — &lt;code&gt;ServiceMonitor&lt;/code&gt;, &lt;code&gt;PodMonitor&lt;/code&gt;, &lt;code&gt;ScrapeConfig&lt;/code&gt;, &lt;code&gt;PrometheusRule&lt;/code&gt;, and friends, used to describe what gets scraped and what gets alerted on.&lt;/li&gt;
+&lt;li&gt;Grafana Operator CRDs — &lt;code&gt;Grafana&lt;/code&gt;, &lt;code&gt;GrafanaDashboard&lt;/code&gt;, &lt;code&gt;GrafanaDatasource&lt;/code&gt;, &lt;code&gt;GrafanaFolder&lt;/code&gt;, and friends, used to provision dashboards and datasources.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;A second &lt;code&gt;materialize-monitoring-crds&lt;/code&gt; Helm chart is provided to install these CRDs separately from the main &lt;code&gt;materialize-monitoring&lt;/code&gt; chart, which is recommended to manage the lifecycle of these CRDs separately from the main chart.&lt;/p&gt;</description></item><item><title>Logging</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/pipelines/logging/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/pipelines/logging/</guid><description>&lt;h1 id="logging-pipeline"&gt;Logging Pipeline&lt;a class="anchor" href="#logging-pipeline"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;This is the authoritative reference for the log-processing pipelines that run on &lt;code&gt;alloy-agent&lt;/code&gt; and &lt;code&gt;alloy-gateway&lt;/code&gt;.
 The customer-facing &lt;a href="../../../../logs-and-events/"&gt;Logs &amp;amp; Events&lt;/a&gt; section links here for pipeline detail; this page is for repo contributors.&lt;/p&gt;
 &lt;!--
@@ -224,10 +255,9 @@ See the &lt;a href="../"&gt;logging architecture&lt;/a&gt; for how storage relat
 &lt;p&gt;Loki is a black box over an S3-style object store.
 The supported backends are &lt;strong&gt;S3-compatible&lt;/strong&gt; storage (AWS S3, MinIO, Ceph, R2, …), &lt;strong&gt;Google Cloud Storage&lt;/strong&gt;, and &lt;strong&gt;Azure Blob Storage&lt;/strong&gt;.
 For integration testing, Loki instead uses a local &lt;strong&gt;filesystem&lt;/strong&gt; store in single-binary mode — no object storage required.&lt;/p&gt;</description></item><item><title>Storing</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/metrics/storing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/metrics/storing/</guid><description>&lt;h1 id="storing-metrics"&gt;Storing Metrics&lt;a class="anchor" href="#storing-metrics"&gt;#&lt;/a&gt;&lt;/h1&gt;
-&lt;p&gt;Metrics collected by &lt;code&gt;alloy-gateway&lt;/code&gt; are forwarded to an &lt;strong&gt;OTLP&lt;/strong&gt; or &lt;strong&gt;Prometheus remote-write&lt;/strong&gt; backend.
-Out of the box that is an in-cluster &lt;strong&gt;Thanos Receive&lt;/strong&gt;; you can point it at any remote-write-compatible store (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …) through chart values.
-The destination values below live under &lt;code&gt;pipeline.metrics.gateway.destination.prometheusRemoteWrite&lt;/code&gt;.
-If you keep the bundled Thanos, it in turn persists blocks to object storage — see &lt;a href="#thanos-object-storage"&gt;Thanos object storage&lt;/a&gt; for the S3/GCS/Azure setup.&lt;/p&gt;</description></item><item><title>Style Guidelines</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/dashboard/style-guidelines/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/dashboard/style-guidelines/</guid><description>&lt;h1 id="dashboard-style-guidelines"&gt;Dashboard Style Guidelines&lt;a class="anchor" href="#dashboard-style-guidelines"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;&lt;code&gt;alloy-gateway&lt;/code&gt; forwards the metrics it collects to one or more storage backends.
+Out of the box that is an in-cluster &lt;strong&gt;Thanos Receive&lt;/strong&gt;, but you can send metrics to any Prometheus remote-write store (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …), to an &lt;strong&gt;OpenTelemetry (OTLP)&lt;/strong&gt; endpoint, or to several at once — each enabled destination receives its own copy.&lt;/p&gt;
+&lt;p&gt;This page walks through the three decisions that setup involves:&lt;/p&gt;</description></item><item><title>Style Guidelines</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/dashboard/style-guidelines/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/dashboard/style-guidelines/</guid><description>&lt;h1 id="dashboard-style-guidelines"&gt;Dashboard Style Guidelines&lt;a class="anchor" href="#dashboard-style-guidelines"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;Conventions for building visually consistent, operator-friendly dashboards. The audience for the dashboards themselves is &lt;strong&gt;Materialize end users&lt;/strong&gt;: database-literate operators with basic graph-reading fluency but minimal cloud / Kubernetes / observability expertise. SQL is fair game; jargon like &amp;ldquo;differential dataflow&amp;rsquo;s arrangement&amp;rdquo; needs a one-liner explanation when it appears.&lt;/p&gt;
 &lt;h2 id="layouts"&gt;Layouts&lt;a class="anchor" href="#layouts"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;Prefer &lt;strong&gt;automatic layouts&lt;/strong&gt; over fixed positioning. Dashboard v2 provides more ergonomic options like Tabs and a formal automatic layout system.&lt;/p&gt;</description></item><item><title>Common Alerts</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-alerts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-alerts/</guid><description>&lt;h1 id="common-alerts"&gt;Common Alerts&lt;a class="anchor" href="#common-alerts"&gt;#&lt;/a&gt;&lt;/h1&gt;
@@ -1267,54 +1297,29 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
-&lt;h2 id="pipelines-v090-unreleased"&gt;Pipelines v0.9.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v090-unreleased"&gt;materialize-monitoring Helm Chart v0.9.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="pipelines-v080"&gt;Pipelines v0.8.0&lt;a class="anchor" href="#pipelines-v080"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-optional-crds-v040-unreleased"&gt;materialize-monitoring Optional CRDs v0.4.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-optional-crds-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v080"&gt;materialize-monitoring Helm Chart v0.8.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v080"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
-&lt;li&gt;CLO-152 Support splitting metrics into tiers
+&lt;li&gt;CLO-111 Grafana Documentation with datasources and bundled resources
 &lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/151" rel="external" class="github-source-link"&gt;materialize-monitoring#151&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/164" rel="external" class="github-source-link"&gt;materialize-monitoring#164&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Move grafana-operator CRDs into the materialize-monitoring-crds chart
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/161" rel="external" class="github-source-link"&gt;materialize-monitoring#161&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;CLO-153 Add profile example for otel pipelines
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/159" rel="external" class="github-source-link"&gt;materialize-monitoring#159&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
-&lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
-&lt;ul&gt;
-&lt;li&gt;Update Rust crate regex to v1.13.1
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/133" rel="external" class="github-source-link"&gt;materialize-monitoring#133&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;CLO-152 Support importance axis for extracted metrics
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/132" rel="external" class="github-source-link"&gt;materialize-monitoring#132&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Update Rust crate tokio to v1.52.4
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/131" rel="external" class="github-source-link"&gt;materialize-monitoring#131&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Port metric registry to rust
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/129" rel="external" class="github-source-link"&gt;materialize-monitoring#129&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Implement a Query Registry for reducing total metric set
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/125" rel="external" class="github-source-link"&gt;materialize-monitoring#125&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Update Rust crate clap to v4.6.2
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/124" rel="external" class="github-source-link"&gt;materialize-monitoring#124&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="prometheus-scrapers-v040-unreleased"&gt;Prometheus Scrapers v0.4.0 (Unreleased)&lt;a class="anchor" href="#prometheus-scrapers-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="pipelines-v090-unreleased"&gt;Pipelines v0.9.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
