@@ -280,7 +280,7 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 For the architecture these items configure, see [Metrics](../../metrics/).
 
-Thanos is **less finished than Loki** in this chart, and the checklist says so honestly: there are no sizing profiles, no resource requests, no PodDisruptionBudgets, and no topology spread on any Thanos component today.
+Thanos is **less finished than Loki** in this chart, and the checklist says so honestly: there are no sizing profiles, no resource requests, and no topology spread on any Thanos component today.
 Treat the unchecked `[chart]` items below as the current work list rather than as guidance you are expected to satisfy by hand.
 
 ### Receive: replication is the availability lever, not `mode`
@@ -326,8 +326,8 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [x] `[chart]` `receive.mode: standalone` with `replicaCount: 3` and an auto-generated ketama hashring.
 - [ ] `[operator]` Set an **odd** `--receive.replication-factor` (3) via `receive.extraArgs`; the chart cannot set it in standalone mode. A render-time check warns at factor 1, warns harder at 2, and errors when the factor exceeds `replicaCount`.
 - [ ] `[operator]` Keep `replicaCount >= replicationFactor`. At `replicaCount == replicationFactor` every pod holds every series — good availability, no horizontal capacity.
-- [ ] `[chart]` PodDisruptionBudgets on Receive, Store Gateway, and Compactor. None are enabled today, so a drain can take out quorum.
-- [ ] `[chart]` `topologySpreadConstraints` across zones for Receive, so RF 3 actually survives an AZ loss rather than landing three copies in one zone.
+- [x] `[chart]` PodDisruptionBudgets on **every** component (`thanos.global.pdb`, `maxUnavailable: 1`) — matching the Loki ingester convention. `maxUnavailable` rather than `minAvailable` deliberately: it scales with the replica count, and on the single-replica Compactor `minAvailable: 1` would permit no eviction at all and hang node drains. A validator errors when the Receive budget exceeds what write quorum tolerates, and warns on `minAvailable` for the singleton.
+- [ ] `[chart]` `topologySpreadConstraints` across zones for Receive, so RF 3 actually survives an AZ loss rather than landing three copies in one zone. Receive is PVC-backed and therefore AZ-pinned, so this matters more here than for Loki's ephemeral ingesters.
 - [ ] `[operator]` `priorityClassName` so Receive and Compactor are not evicted under node pressure.
 
 #### 2. Object storage & credentials
@@ -341,6 +341,8 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [x] `[chart]` Query, Receive, Store Gateway, and Compactor enabled by default.
 - [ ] `[operator]` Enable **Query Frontend** for production read paths (splitting and result caching) — and repoint `connections.datasources.thanos.url` at it, or the cache is deployed and bypassed. A render-time check warns on exactly that mismatch.
 - [ ] `[operator]` Store Gateway is how queries reach historical blocks; disabling it limits reads to what Receive still holds locally.
+- [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
+- [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
 
 #### 4. Retention & compaction
 
@@ -352,6 +354,7 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 
 - [ ] `[chart]` **No resource requests or limits are set on any Thanos component.** Sizing profiles (`thanos-small` / `thanos-large`, mirroring the Loki convention where the chart defaults are medium) are outstanding work.
 - [ ] `[operator]` Until they land, set requests explicitly. Thanos sizes off different axes than Loki — active series and samples/sec for Receive, block volume and retention for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [ ] `[operator]` Autoscaling on Query does not remove the need for requests: without them the HPA has no CPU target to measure against, so it never scales.
 
 #### 6. Meta-monitoring
 

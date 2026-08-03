@@ -25,8 +25,10 @@ set:
   pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
   # Pin the baseline explicitly: `set` state bleeds between tests in this
   # runner, so a case that does not name extraArgs would otherwise inherit a
-  # replication factor from a neighbour.
-  thanos.receive.extraArgs: []
+  # replication factor from a neighbour. This mirrors the shipped default, so
+  # cases that do not care about replication exercise the real configuration.
+  thanos.receive.extraArgs:
+    - --receive.replication-factor=3
 tests:
   # --- objstore -------------------------------------------------------------
 
@@ -99,6 +101,8 @@ tests:
   # RouterIngestor mode and still shards across a hashring. Only the
   # replication factor decides redundancy, so the mode name must not warn.
   - it: warns that the default replicaCount 3 still has replication factor 1
+    set:
+      thanos.receive.extraArgs: []
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -157,6 +161,7 @@ tests:
   - it: warns when a single Receive replica is the whole ingestion path
     set:
       thanos.receive.replicaCount: 1
+      thanos.receive.extraArgs: []
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -178,6 +183,89 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "blocks are never compacted or downsampled"
+
+  # --- disruption & autoscaling ---------------------------------------------
+
+  - it: enables a PodDisruptionBudget for every Thanos component by default
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: charts/thanos/templates/receive/pdb.yaml
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+        template: charts/thanos/templates/receive/pdb.yaml
+
+  - it: warns when a multi-replica component has no PodDisruptionBudget
+    set:
+      thanos.global.pdb.enabled: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.receive runs 3 replicas with no PodDisruptionBudget"
+      - matchRegexRaw:
+          pattern: "thanos.query runs 2 replicas with no PodDisruptionBudget"
+
+  # The PDB budget and the write-quorum budget have to agree, or a routine
+  # node drain breaks ingestion.
+  - it: errors when the Receive PDB allows more loss than quorum tolerates
+    set:
+      thanos.global.pdb.maxUnavailable: 2
+    asserts:
+      - failedTemplate:
+          errorPattern: "allows 2 pods unavailable, but a replication factor of 3 only tolerates 1"
+
+  - it: accepts a wider PDB when the replication factor supports it
+    set:
+      thanos.receive.replicaCount: 5
+      thanos.global.pdb.maxUnavailable: 2
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=5
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "pods unavailable, but a replication factor"
+        not: true
+
+  # minAvailable on a singleton permits no eviction at all, so drains hang.
+  - it: warns when the Compactor singleton uses minAvailable
+    set:
+      thanos.compactor.pdb.minAvailable: 1
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Compactor is a single-replica singleton.*minAvailable"
+
+  - it: enables an HPA for the stateless Query by default
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: charts/thanos/templates/query/hpa.yaml
+
+  # Store Gateway is PVC-backed and warms a bucket index on startup, so it is
+  # deliberately left off.
+  - it: leaves Store Gateway autoscaling off
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: charts/thanos/templates/storegateway/hpa.yaml
+
+  # The subchart templates `replicas:` even alongside an HPA, so a mismatch
+  # means every reconcile fights the autoscaler.
+  - it: warns when replicaCount disagrees with the autoscaling floor
+    set:
+      thanos.query.replicaCount: 4
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.query.replicaCount is 4 but autoscaling.minReplicas is 2"
+
+  - it: stays quiet when replicaCount matches the autoscaling floor
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "autoscaling.minReplicas"
+        not: true
 
   # --- reachability ---------------------------------------------------------
 

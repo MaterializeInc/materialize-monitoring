@@ -34,6 +34,47 @@ Usage:
 {{- end }}
 
 {{- /*
+Effective Receive replication factor.
+
+The chart only passes `--receive.replication-factor` in split mode, so
+standalone falls back to Thanos's default of 1 unless `receive.extraArgs`
+supplies it.
+
+Usage:
+  {{- $rf := include "mzmon.thanos.receive.replicationFactor" $ | int }}
+*/}}
+{{- define "mzmon.thanos.receive.replicationFactor" }}
+  {{- $values := $.Values.thanos | required "thanos is missing from values." }}
+  {{- if eq ( dig "receive" "mode" "standalone" $values ) "split" }}
+    {{- dig "receive" "router" "replicationFactor" 1 $values | int }}
+  {{- else }}
+    {{- $rf := 1 }}
+    {{- range ( dig "receive" "extraArgs" list $values ) }}
+      {{- if hasPrefix "--receive.replication-factor=" ( . | toString ) }}
+        {{- $rf = ( trimPrefix "--receive.replication-factor=" ( . | toString ) ) | int }}
+      {{- end }}
+    {{- end }}
+    {{- $rf }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Whether a PodDisruptionBudget renders for a Thanos component.
+
+The subchart tests `or <component>.pdb.enabled global.pdb.enabled`, so a
+global `true` cannot be opted out of per component.
+
+Usage:
+  {{- if ( include "mzmon.thanos.pdb.enabled" ( dict "root" $ "name" "receive" ) ) }}
+*/}}
+{{- define "mzmon.thanos.pdb.enabled" }}
+  {{- $values := .root.Values.thanos | required "thanos is missing from values." }}
+  {{- if or ( dig .name "pdb" "enabled" false $values ) ( dig "global" "pdb" "enabled" false $values ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
 Validate the bundled Thanos configuration.
 
 Usage:
@@ -49,6 +90,10 @@ Usage:
     {{- $warnings = concat $warnings $res.warnings | default list }}
 
     {{- $res := include "mzmon.thanos.validate.topology" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- $res := include "mzmon.thanos.validate.disruption" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
   {{- end }}
@@ -156,6 +201,103 @@ Validate the Thanos component topology.
 
   {{- if not ( dig "compactor" "enabled" false $values ) }}
     {{- $warnings = append $warnings "thanos.compactor.enabled is false: blocks are never compacted or downsampled and thanos.compactor.retention is not enforced, so object-storage cost grows without bound." }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate voluntary-disruption and autoscaling settings.
+
+Three failure shapes, none of which surface until a node drain or an upgrade:
+
+  - a multi-replica component with no PDB, so a drain can take all of it;
+  - a Receive PDB that permits more simultaneous loss than write quorum
+    tolerates, so a routine drain breaks ingestion;
+  - `minAvailable` on the single-replica Compactor, which permits no eviction
+    at all and hangs node drains indefinitely.
+
+Autoscaling has its own trap: the subchart templates `replicas:` on every
+workload unconditionally, including the ones that also ship an HPA. Every
+`helm upgrade` — and every GitOps reconcile — therefore resets the replica
+count out from under the HPA.
+*/}}
+{{- define "mzmon.thanos.validate.disruption" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.thanos | required "thanos is missing from values." }}
+
+  {{- /* Components that can carry a PDB, and where their replica count lives. */}}
+  {{- $components := list
+        ( dict "name" "query" "replicaPath" "query.replicaCount" "default" 2 )
+        ( dict "name" "queryFrontend" "replicaPath" "queryFrontend.replicaCount" "default" 2 )
+        ( dict "name" "storegateway" "replicaPath" "storegateway.replicaCount" "default" 2 )
+        ( dict "name" "receive" "replicaPath" "receive.replicaCount" "default" 3 )
+        ( dict "name" "ruler" "replicaPath" "ruler.replicaCount" "default" 2 ) }}
+
+  {{- range $components }}
+    {{- $name := .name }}
+    {{- if dig $name "enabled" false $values }}
+      {{- $replicas := dig $name "replicaCount" .default $values | int }}
+      {{- $hasPdb := include "mzmon.thanos.pdb.enabled" ( dict "root" $ "name" $name ) }}
+      {{- if and ( gt $replicas 1 ) ( not $hasPdb ) }}
+        {{- $warnings = append $warnings ( printf "thanos.%s runs %d replicas with no PodDisruptionBudget, so a node drain can evict all of them at once. Set thanos.global.pdb.enabled=true (maxUnavailable: 1)." $name $replicas ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* Receive's PDB has to stay inside the write-quorum budget. */}}
+  {{- if dig "receive" "enabled" false $values }}
+    {{- $hasPdb := include "mzmon.thanos.pdb.enabled" ( dict "root" $ "name" "receive" ) }}
+    {{- if $hasPdb }}
+      {{- /* Component value wins only when non-empty; upstream's own PDB
+             template resolves it with the same `| default` chain, and `dig`
+             alone would stop at the empty per-component default. */}}
+      {{- $maxUnavail := ( dig "receive" "pdb" "maxUnavailable" "" $values ) | default ( dig "global" "pdb" "maxUnavailable" "" $values ) }}
+      {{- $rf := include "mzmon.thanos.receive.replicationFactor" $ | int }}
+      {{- $tolerated := sub $rf ( add ( div $rf 2 ) 1 ) | int }}
+      {{- /* Only meaningful once replication provides a budget to respect. At
+             a factor of 1 or 2 nothing is tolerated, but the fix is the
+             replication factor — which the replication validator already
+             reports — not a maxUnavailable of 0, which would block every
+             drain. Reporting both would double up on one root cause.
+             A percentage cannot be compared to a pod count, so it is skipped. */}}
+      {{- if and $maxUnavail ( gt $tolerated 0 ) ( not ( hasSuffix "%" ( $maxUnavail | toString ) ) ) }}
+        {{- if gt ( $maxUnavail | int ) $tolerated }}
+          {{- $errors = append $errors ( printf "The Receive PodDisruptionBudget allows %v pods unavailable, but a replication factor of %d only tolerates %d (write quorum is (rf/2)+1). A node drain would break ingestion. Lower maxUnavailable, or raise the replication factor." $maxUnavail $rf $tolerated ) }}
+        {{- end }}
+      {{- end }}
+      {{- if ( dig "receive" "pdb" "minAvailable" "" $values ) | default ( dig "global" "pdb" "minAvailable" "" $values ) }}
+        {{- $warnings = append $warnings "The Receive PodDisruptionBudget uses minAvailable. Prefer maxUnavailable, which scales with the replica count and stays comparable against the write-quorum budget." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The Compactor is a singleton: minAvailable on it deadlocks drains. */}}
+  {{- if dig "compactor" "enabled" false $values }}
+    {{- if include "mzmon.thanos.pdb.enabled" ( dict "root" $ "name" "compactor" ) }}
+      {{- if ( dig "compactor" "pdb" "minAvailable" "" $values ) | default ( dig "global" "pdb" "minAvailable" "" $values ) }}
+        {{- $warnings = append $warnings "The Compactor is a single-replica singleton, and its PodDisruptionBudget sets minAvailable — which permits no voluntary eviction, so node drains hang indefinitely. Use maxUnavailable: 1 instead; on a singleton it is a harmless no-op." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* HPA vs the statically templated replica count.
+         The subchart renders `replicas:` unconditionally, so every upgrade and
+         every GitOps reconcile writes it back. That is only disruptive when it
+         disagrees with the autoscaling floor: equal values make the reset a
+         no-op, so this warns on the mismatch rather than on autoscaling
+         itself. Components that are disabled are inert and say nothing. */}}
+  {{- range list "query" "queryFrontend" "storegateway" }}
+    {{- $name := . }}
+    {{- if and ( dig $name "enabled" false $values ) ( dig $name "autoscaling" "enabled" false $values ) }}
+      {{- $minReplicas := dig $name "autoscaling" "minReplicas" 0 $values | int }}
+      {{- $replicas := dig $name "replicaCount" 2 $values | int }}
+      {{- if and $minReplicas ( ne $replicas $minReplicas ) }}
+        {{- $warnings = append $warnings ( printf "thanos.%s.replicaCount is %d but autoscaling.minReplicas is %d. The subchart templates a static replicas value even when an HPA exists, so every helm upgrade or GitOps reconcile resets the replica count to %d and the HPA has to scale back out. Set them equal so the reset lands on the autoscaling floor." $name $replicas $minReplicas $replicas ) }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}
