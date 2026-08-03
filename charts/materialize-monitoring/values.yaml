@@ -1614,10 +1614,17 @@ thanos:
   query:
     enabled: true
 
-  # -- Thanos receive configuration. Receive provides a Prometheus remote_write-compatible endpoint.
   receive:
+    # -- Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.
     enabled: true
+    # -- Whether to split receive distributors from ingesters.
+    # mode=split is not very stable in the helm chart
     mode: standalone
+    # -- Number of receive replicas.
+    replicaCount: 3
+
+    extraArgs:
+      - --receive.replication-factor=3
 
   # -- Thanos Store Gateway configuration. Store Gateway provides historical block querying.
   storegateway:

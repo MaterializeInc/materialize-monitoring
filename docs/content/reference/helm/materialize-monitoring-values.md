@@ -2488,15 +2488,22 @@ Upstream reference:
       <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.receive</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "enabled": true,
-  "mode": "standalone"
-}</pre>
-</td>
-      <td class="helm-value-desc">Thanos receive configuration. Receive provides a Prometheus remote_write-compatible endpoint.</td>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.mode</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"standalone"</code></td>
+      <td class="helm-value-desc">Whether to split receive distributors from ingesters. mode=split is not very stable in the helm chart</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.replicaCount</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>3</code></td>
+      <td class="helm-value-desc">Number of receive replicas.</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.storegateway</td>

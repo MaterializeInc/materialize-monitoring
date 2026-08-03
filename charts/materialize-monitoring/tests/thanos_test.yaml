@@ -1,0 +1,222 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the Thanos validators in `_thanos_helpers.tpl`.
+#
+# The failures these lock down all share a shape: the render succeeds, the pods
+# come up, and the misconfiguration only surfaces as missing data or an auth
+# error much later. That is what makes them worth catching at template time.
+suite: thanos validators
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.thanos: true
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+  # Some cases below enable the pipeline to give the reachability checks a
+  # writer. Point the log destination off-cluster so only the Thanos-side
+  # check under test can fire.
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  # Pin the baseline explicitly: `set` state bleeds between tests in this
+  # runner, so a case that does not name extraArgs would otherwise inherit a
+  # replication factor from a neighbour.
+  thanos.receive.extraArgs: []
+tests:
+  # --- objstore -------------------------------------------------------------
+
+  # The subchart's own schema requires the key to exist, so an empty string is
+  # the way an operator actually hits this — not a missing key.
+  - it: errors when the objstore config is empty
+    set:
+      thanos.global.objstore.config: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.global.objstore.config is still the placeholder"
+
+  - it: errors when createSecret is false and no secretName is given
+    set:
+      thanos.global.objstore.createSecret: false
+      thanos.global.objstore.secretName: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.global.objstore.secretName must name an existing Secret"
+
+  # A GCP annotation beside an S3 backend authenticates against the wrong cloud.
+  - it: errors when the workload-identity annotation names a different cloud than the backend
+    set:
+      thanos.global.serviceAccount.annotations:
+        iam.gke.io/gcp-service-account: thanos@example.iam.gserviceaccount.com
+    asserts:
+      - failedTemplate:
+          errorPattern: "GCP workload identity.*but.*names a AWS backend"
+
+  - it: accepts a matching annotation and backend
+    set:
+      thanos.global.serviceAccount.annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::012345678901:role/Thanos
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "workload identity"
+        not: true
+
+  - it: warns when a cloud backend has neither workload identity nor inline credentials
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "names a AWS backend but.*sets no workload-identity annotation"
+
+  - it: does not warn about credentials when they are inline in the objstore config
+    set:
+      thanos.global.objstore.config: |
+        type: s3
+        config:
+          bucket: test-thanos
+          access_key: AKIAEXAMPLE
+          secret_key: shhh
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "sets no workload-identity annotation"
+        not: true
+
+  # --- topology -------------------------------------------------------------
+
+  - it: errors when Query is disabled, since nothing would serve PromQL
+    set:
+      thanos.query.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.query.enabled is false, so nothing serves PromQL"
+
+  # `mode` is a topology choice, not an availability one: standalone is
+  # RouterIngestor mode and still shards across a hashring. Only the
+  # replication factor decides redundancy, so the mode name must not warn.
+  - it: warns that the default replicaCount 3 still has replication factor 1
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "replicaCount is 3, so writes are sharded across a hashring — but the replication factor is 1"
+
+  - it: does not warn about replication once extraArgs sets an odd factor
+    set:
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=3
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "replication factor is 1|quorum"
+        not: true
+
+  # Thanos write quorum is (rf/2)+1, so a factor of 2 needs both copies and
+  # tolerates nothing — the same as a factor of 1, and worse on a small ring
+  # because more series depend on any one pod.
+  - it: warns that a replication factor of 2 tolerates no ingester loss
+    set:
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=2
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "quorum is \\(rf/2\\)\\+1 = 2 — every copy must succeed and no ingester can be lost"
+      - matchRegexRaw:
+          pattern: "same fault tolerance as a factor of 1"
+
+  # Even factors above 2 do tolerate a loss, just never more than the odd
+  # factor below them — so the message must not claim zero tolerance.
+  - it: warns that an even factor above 2 buys durability but not availability
+    set:
+      thanos.receive.replicaCount: 5
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=4
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "tolerating 1 ingester loss — the same as a factor of 3"
+      - matchRegexRaw:
+          pattern: "no ingester can be lost"
+        not: true
+
+  - it: accepts an odd factor on a larger ring
+    set:
+      thanos.receive.replicaCount: 5
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=5
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "quorum"
+        not: true
+
+  - it: warns when a single Receive replica is the whole ingestion path
+    set:
+      thanos.receive.replicaCount: 1
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "replicaCount is 1: a single ingestion path"
+
+  - it: errors when the replication factor exceeds the replica count
+    set:
+      thanos.receive.replicaCount: 2
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=3
+    asserts:
+      - failedTemplate:
+          errorPattern: "replication factor is 3 .* but thanos.receive.replicaCount is 2"
+
+  - it: warns when the compactor is disabled
+    set:
+      thanos.compactor.enabled: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "blocks are never compacted or downsampled"
+
+  # --- reachability ---------------------------------------------------------
+
+  # Only fires when a writer exists: with the gateway off, a stale destination
+  # URL is inert and must not be reported.
+  - it: errors when the gateway remote-writes to a Receive that is disabled
+    set:
+      tags.pipeline: true
+      thanos.receive.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "points at thanos-receive.*but thanos.receive.enabled is false"
+
+  - it: stays quiet about the destination URL when the gateway is disabled
+    set:
+      thanos.receive.enabled: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos-receive"
+        not: true
+
+  # An external endpoint that merely contains the service name is not ours.
+  - it: does not flag an off-cluster remote-write endpoint
+    set:
+      tags.pipeline: true
+      thanos.receive.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://thanos-receive.example.com/api/v1/receive
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "points at thanos-receive"
+        not: true
+
+  - it: warns when the query frontend is deployed but the datasource bypasses it
+    set:
+      tags.managed-grafana: true
+      thanos.queryFrontend.enabled: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "does not address it, so reads bypass the cache"

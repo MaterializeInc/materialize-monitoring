@@ -21,6 +21,12 @@ set:
   # loki/thanos subchart validators don't require bucket/objstore values.
   tags.default: false
   tags.pipeline: true
+  # Point both destinations off-cluster. Auth only matters against an external
+  # backend, so this matches what these tests are actually about — and it keeps
+  # the reachability validators quiet, since they flag in-cluster Service URLs
+  # aimed at backends this suite deliberately does not deploy.
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://metrics.example.com/api/v1/receive
 tests:
   - it: "metrics: external_labels renders at the top level, not inside endpoint"
     set:
