@@ -26,7 +26,35 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v0130-unreleased"&gt;Dashboards v0.13.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0130-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart-v090-unreleased"&gt;materialize-monitoring Helm Chart v0.9.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v090-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v0100-unreleased"&gt;materialize-monitoring Helm Chart v0.10.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart-v090"&gt;materialize-monitoring Helm Chart v0.9.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart-v090"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;DEP-191 Improve validation for thanos and alloy
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/170" rel="external" class="github-source-link"&gt;materialize-monitoring#170&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Included Dashboards @ v0.11.0..v0.12.0&lt;/li&gt;
+&lt;li&gt;Included Pipelines @ v0.8.0..v0.9.0&lt;/li&gt;
+&lt;li&gt;Included Prometheus Scrapers @ v0.3.0..v0.4.0&lt;/li&gt;
+&lt;li&gt;Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+&lt;ul&gt;
+&lt;li&gt;Update dependency uv_build to &amp;gt;=0.12,&amp;lt;0.13
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/168" rel="external" class="github-source-link"&gt;materialize-monitoring#168&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Update Rust crate jsonschema to 0.49.0
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/134" rel="external" class="github-source-link"&gt;materialize-monitoring#134&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id="materialize-monitoring-optional-crds-v040-unreleased"&gt;materialize-monitoring Optional CRDs v0.4.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-optional-crds-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>
