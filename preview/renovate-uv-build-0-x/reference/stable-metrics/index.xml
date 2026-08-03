@@ -1,0 +1,942 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Reference Metrics on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/</link><description>Recent content in Reference Metrics on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/index.xml" rel="self" type="application/rss+xml"/><item><title>List of Metrics</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/list-metrics/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/list-metrics/</guid><description>&lt;h1 id="list-of-metrics"&gt;List of Metrics&lt;a class="anchor" href="#list-of-metrics"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;This has the list of metrics which are available for usage.
+In many systems, only a subset of metrics get stored based
+on how they would be used.&lt;/p&gt;
+&lt;h2 id="metric-tiers"&gt;Metric Tiers&lt;a class="anchor" href="#metric-tiers"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Metrics are grouped by &amp;ldquo;metricImportance&amp;rdquo; levels (mzmon-specific).
+These levels guide which metrics are prioritized in
+metric stores which have limited capacity.&lt;/p&gt;
+&lt;p&gt;The &lt;strong&gt;essential&lt;/strong&gt; metrics are the set of metrics that
+are critical and you would always want to have available.
+These are used in alerting.&lt;/p&gt;</description></item><item><title>Common Alerts</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/common-alerts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/common-alerts/</guid><description>&lt;h1 id="common-alerts"&gt;Common Alerts&lt;a class="anchor" href="#common-alerts"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;blockquote class='book-hint warning'&gt;
+&lt;p&gt;Many of these alerts are not suited for all deployments.
+Do not use the entire set as is!&lt;/p&gt;&lt;/blockquote&gt;&lt;h2 id="infra-alerts"&gt;infra-alerts&lt;a class="anchor" href="#infra-alerts"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Alerting rules for the infrastructure Materialize depends on.&lt;/p&gt;
+&lt;p&gt;Each alert carries its firing expression as an inline query, is graded by a
+&lt;code&gt;severity&lt;/code&gt; label (critical &amp;gt; warning &amp;gt; notice), and is tagged with a &lt;code&gt;component&lt;/code&gt;
+label naming the subsystem it watches.&lt;/p&gt;
+&lt;h4 id="crdb-disk-usage-critical"&gt;crdb-disk-usage-critical
+ &lt;a class="anchor" href="#crdb-disk-usage-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB disk usage is above 90% and likely to impact Materialize.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; critical&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; crdb_dedicated_capacity_used &lt;span style="color:#f92672"&gt;/&lt;/span&gt; crdb_dedicated_capacity
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;90&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-disk-usage-high"&gt;crdb-disk-usage-high
+ &lt;a class="anchor" href="#crdb-disk-usage-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB disk usage is above 70% and may need a capacity increase.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; crdb_dedicated_capacity_used &lt;span style="color:#f92672"&gt;/&lt;/span&gt; crdb_dedicated_capacity
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;70&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-disk-usage-elevated"&gt;crdb-disk-usage-elevated
+ &lt;a class="anchor" href="#crdb-disk-usage-elevated"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB disk usage is above 30% and worth keeping an eye on.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; crdb_dedicated_capacity_used &lt;span style="color:#f92672"&gt;/&lt;/span&gt; crdb_dedicated_capacity
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;30&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-cpu-usage-critical"&gt;crdb-cpu-usage-critical
+ &lt;a class="anchor" href="#crdb-cpu-usage-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB CPU usage is critically high (&amp;gt;89%) and likely to impact Materialize.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;avg_over_time&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_sys_cpu_combined_percent_normalized[&lt;span style="color:#e6db74"&gt;30m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;89&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-cpu-usage-high"&gt;crdb-cpu-usage-high
+ &lt;a class="anchor" href="#crdb-cpu-usage-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB CPU usage is above 85% over 2h and may impact Materialize.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;avg_over_time&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_sys_cpu_combined_percent_normalized[&lt;span style="color:#e6db74"&gt;2h&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;85&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-query-latency"&gt;crdb-query-latency
+ &lt;a class="anchor" href="#crdb-query-latency"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB p95 SQL service latency has been above 250ms for an extended period.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;histogram_quantile&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;&lt;span style="color:#ae81ff"&gt;0.95&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;le, node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_sql_service_latency_bucket[&lt;span style="color:#e6db74"&gt;20m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;250&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-lsm-read-amplification-critical"&gt;crdb-lsm-read-amplification-critical
+ &lt;a class="anchor" href="#crdb-lsm-read-amplification-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB LSM read amplification is critically high (&amp;gt;150), indicating severe I/O overload.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_rocksdb_read_amplification&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;150&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-lsm-read-amplification-high"&gt;crdb-lsm-read-amplification-high
+ &lt;a class="anchor" href="#crdb-lsm-read-amplification-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB LSM read amplification is elevated (&amp;gt;50), a sign writes may be outpacing compaction.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_rocksdb_read_amplification&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;50&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-ranges-unavailable"&gt;crdb-ranges-unavailable
+ &lt;a class="anchor" href="#crdb-ranges-unavailable"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB has unavailable ranges, which may indicate node failures or replication issues.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_ranges_unavailable&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-ranges-underreplicated"&gt;crdb-ranges-underreplicated
+ &lt;a class="anchor" href="#crdb-ranges-underreplicated"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB has under-replicated ranges, which may indicate node failures or replication issues.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_ranges_underreplicated&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-sql-memory-rapid-growth"&gt;crdb-sql-memory-rapid-growth
+ &lt;a class="anchor" href="#crdb-sql-memory-rapid-growth"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB SQL memory is growing faster than 8 MB/s, a sign of a runaway query heading toward OOM.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;deriv&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_sql_mem_distsql_current[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;8&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-sql-memory-pressure-high"&gt;crdb-sql-memory-pressure-high
+ &lt;a class="anchor" href="#crdb-sql-memory-pressure-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB distsql memory exceeds 18% of node RAM, indicating high user-query memory pressure.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; crdb_dedicated_sql_mem_distsql_current
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;on&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; crdb_dedicated_sys_totalmem
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.18&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-write-intent-accumulation-critical"&gt;crdb-write-intent-accumulation-critical
+ &lt;a class="anchor" href="#crdb-write-intent-accumulation-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB write-intent count has exceeded 10M for 10m, indicating large transactions holding locks.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_intentcount&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-write-intent-accumulation-high"&gt;crdb-write-intent-accumulation-high
+ &lt;a class="anchor" href="#crdb-write-intent-accumulation-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CockroachDB write-intent count has exceeded 10M, a sign of large transactions accumulating locks.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_intentcount&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="crdb-backup-missing"&gt;crdb-backup-missing
+ &lt;a class="anchor" href="#crdb-backup-missing"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A CockroachDB backup may be missing — the last completed backup is more than 80 minutes old.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cockroachdb&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;time&lt;/span&gt;&lt;span style="color:#f92672"&gt;()&lt;/span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;&lt;span style="color:#66d9ef"&gt;max_over_time&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;crdb_dedicated_schedules_backup_last_completed_time[&lt;span style="color:#e6db74"&gt;60m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;60&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;80&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="cilium-bpf-map-pressure"&gt;cilium-bpf-map-pressure
+ &lt;a class="anchor" href="#cilium-bpf-map-pressure"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A Cilium BPF map is filling up, which will cause networking issues if left unaddressed.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cilium&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;map_name, instance&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; cilium_bpf_map_pressure
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.7&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="cilium-drop-rate-elevated"&gt;cilium-drop-rate-elevated
+ &lt;a class="anchor" href="#cilium-drop-rate-elevated"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Cilium is dropping more packets than expected, which can indicate networking issues.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; cilium&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;direction, reason, pod&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;cilium_drop_count_total[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;&lt;span style="color:#960050;background-color:#1e0010"&gt;:&lt;/span&gt;&lt;span style="color:#e6db74"&gt;1m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="coredns-slow-queries"&gt;coredns-slow-queries
+ &lt;a class="anchor" href="#coredns-slow-queries"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+CoreDNS p99 request latency is above 500ms, which can cause or accompany broader outages.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; coredns&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;histogram_quantile&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;&lt;span style="color:#ae81ff"&gt;0.99&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;le, service&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;coredns_dns_request_duration_seconds_bucket{zone&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;.&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.5&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="node-unreachable"&gt;node-unreachable
+ &lt;a class="anchor" href="#node-unreachable"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A Kubernetes node is marked unreachable, which may indicate a node or network problem.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;kube_node_spec_taint{key&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;node.kubernetes.io/unreachable&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-horizontalpodautoscaler-replicas-critical"&gt;k8s-horizontalpodautoscaler-replicas-critical
+ &lt;a class="anchor" href="#k8s-horizontalpodautoscaler-replicas-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A HorizontalPodAutoscaler is above 90% of its maximum replicas — nearly out of headroom to scale.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; critical&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_horizontalpodautoscaler_status_current_replicas{namespace&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;alloy|loki&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; kube_horizontalpodautoscaler_spec_max_replicas{namespace&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;alloy|loki&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.9&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-horizontalpodautoscaler-replicas-high"&gt;k8s-horizontalpodautoscaler-replicas-high
+ &lt;a class="anchor" href="#k8s-horizontalpodautoscaler-replicas-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A HorizontalPodAutoscaler is above 70% of its maximum replicas.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_horizontalpodautoscaler_status_current_replicas
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; kube_horizontalpodautoscaler_spec_max_replicas
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.7&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-container-disk-usage"&gt;k8s-container-disk-usage
+ &lt;a class="anchor" href="#k8s-container-disk-usage"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A container filesystem is above 70% usage and should be cleaned up or resized.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;kubernetes_io_hostname&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_fs_usage_bytes&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;kubernetes_io_hostname&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_fs_limit_bytes&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;70&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-node-disk-pressure"&gt;k8s-node-disk-pressure
+ &lt;a class="anchor" href="#k8s-node-disk-pressure"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A Kubernetes node is under disk pressure, which can cause pods to fail scheduling or be evicted.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_node_status_condition{condition&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;DiskPressure&lt;/span&gt;&amp;#34;, status&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;true&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-volume-usage"&gt;k8s-volume-usage
+ &lt;a class="anchor" href="#k8s-volume-usage"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A Kubernetes persistent volume is above 70% usage and should be cleaned up or resized.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, persistentvolumeclaim&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kubelet_volume_stats_used_bytes{persistentvolumeclaim&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;.*cluster-s2-.*|.*cluster-u.*&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, persistentvolumeclaim&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kubelet_volume_stats_capacity_bytes{persistentvolumeclaim&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;.*cluster-s2-.*|.*cluster-u.*&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;70&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="alloy-log-drops"&gt;alloy-log-drops
+ &lt;a class="anchor" href="#alloy-log-drops"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Alloy is dropping log entries — logs are being lost right now.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; loki&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, job, reason&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_write_dropped_entries_total[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="loki-push-err-high"&gt;loki-push-err-high
+ &lt;a class="anchor" href="#loki-push-err-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Loki&amp;rsquo;s push endpoint is returning 10%+ write errors, so logs are being rejected.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; loki&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, app_kubernetes_io_component&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_count{status_code&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;4.*|5.*&lt;/span&gt;&amp;#34;, route&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;.*push.*&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, app_kubernetes_io_component&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_count{route&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;.*push.*&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="loki-panics"&gt;loki-panics
+ &lt;a class="anchor" href="#loki-panics"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A Loki component has panicked.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; loki&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, job, app_kubernetes_io_component&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;increase&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_panic_total[&lt;span style="color:#e6db74"&gt;10m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="loki-req-duration-high"&gt;loki-req-duration-high
+ &lt;a class="anchor" href="#loki-req-duration-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Loki p95 request duration is above 1s (excluding tail/long-poll routes).
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; loki&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;histogram_quantile&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;&lt;span style="color:#ae81ff"&gt;0.95&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;le, app_kubernetes_io_component&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_bucket{route&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="loki-req-err-high"&gt;loki-req-err-high
+ &lt;a class="anchor" href="#loki-req-err-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Loki read requests are returning 10%+ 5xx errors.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; loki&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, app_kubernetes_io_component, route&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_count{status_code&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;5.*&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, app_kubernetes_io_component, route&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_count[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="loki-writer-err-high"&gt;loki-writer-err-high
+ &lt;a class="anchor" href="#loki-writer-err-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Loki write requests are erroring for 10%+ of requests.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; loki&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, app_kubernetes_io_component, route&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_count{status_code&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;error&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, app_kubernetes_io_component, route&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_request_duration_seconds_count[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="clusterd-metrics-missing"&gt;clusterd-metrics-missing
+ &lt;a class="anchor" href="#clusterd-metrics-missing"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+All metrics for a Materialize pod have been missing for 60m — the scrape target is likely down.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; monitoring&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; up{job&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;materialize&lt;/span&gt;&amp;#34;, cluster_environmentd_materialize_cloud_cluster_id&lt;span style="color:#f92672"&gt;!=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;s5&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="critical-metrics-missing"&gt;critical-metrics-missing
+ &lt;a class="anchor" href="#critical-metrics-missing"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+More than 30% of a critical scrape job&amp;rsquo;s targets have been down for 30m.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; monitoring&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;count&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;job, app&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; up{job&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller&lt;/span&gt;&amp;#34;} &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;count&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;job, app&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; up{job&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;30&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="logging-collection-down"&gt;logging-collection-down
+ &lt;a class="anchor" href="#logging-collection-down"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Loki has received no logs for 15m — log collection is down.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; monitoring&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;&lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;loki_distributor_bytes_received_total{namespace&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;loki&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;))&lt;/span&gt; &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-deployment-unavailable-critical"&gt;k8s-deployment-unavailable-critical
+ &lt;a class="anchor" href="#k8s-deployment-unavailable-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A core control-plane deployment is unavailable.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; critical&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;deployment, namespace&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_deployment_status_condition{condition&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;Available&lt;/span&gt;&amp;#34;, status&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;true&lt;/span&gt;&amp;#34;, deployment&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;, &lt;span style="color:#960050;background-color:#1e0010"&gt;${excludeEnvironmentFilter&lt;/span&gt;}&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt; &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-deployment-unavailable-warning"&gt;k8s-deployment-unavailable-warning
+ &lt;a class="anchor" href="#k8s-deployment-unavailable-warning"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An important supporting deployment is unavailable.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;deployment, namespace&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_deployment_status_condition{condition&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;Available&lt;/span&gt;&amp;#34;, status&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;true&lt;/span&gt;&amp;#34;, deployment&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy&lt;/span&gt;&amp;#34;, &lt;span style="color:#960050;background-color:#1e0010"&gt;${excludeEnvironmentFilter&lt;/span&gt;}&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt; &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-deployment-unavailable-notice"&gt;k8s-deployment-unavailable-notice
+ &lt;a class="anchor" href="#k8s-deployment-unavailable-notice"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A non-essential deployment is unavailable.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;deployment, namespace&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_deployment_status_condition{condition&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;Available&lt;/span&gt;&amp;#34;, status&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;true&lt;/span&gt;&amp;#34;, deployment&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;backend|egress-check.*|egress-noop.*|exporter|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector&lt;/span&gt;&amp;#34;, &lt;span style="color:#960050;background-color:#1e0010"&gt;${excludeEnvironmentFilter&lt;/span&gt;}&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt; &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-daemonset-saturating-cpu"&gt;k8s-daemonset-saturating-cpu
+ &lt;a class="anchor" href="#k8s-daemonset-saturating-cpu"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Daemonsets are requesting nearly all the CPU reserved for them, squeezing clusterd headroom.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#ae81ff"&gt;1.77&lt;/span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_resource_requests{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector&lt;/span&gt;&amp;#34;, unit&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;core&lt;/span&gt;&amp;#34;, resource&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cpu&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;lt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.01&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-daemonset-saturating-mem"&gt;k8s-daemonset-saturating-mem
+ &lt;a class="anchor" href="#k8s-daemonset-saturating-mem"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Daemonsets are requesting nearly all the memory reserved for them, squeezing clusterd headroom.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#ae81ff"&gt;10730942464&lt;/span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_resource_requests{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector&lt;/span&gt;&amp;#34;, unit&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;byte&lt;/span&gt;&amp;#34;, resource&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;memory&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;lt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;5243000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-daemonset-high-cpu"&gt;k8s-daemonset-high-cpu
+ &lt;a class="anchor" href="#k8s-daemonset-high-cpu"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Daemonsets are approaching the CPU budget reserved for them.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#ae81ff"&gt;1.77&lt;/span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_resource_requests{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector&lt;/span&gt;&amp;#34;, unit&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;core&lt;/span&gt;&amp;#34;, resource&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cpu&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;lt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0.1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="container-file-descriptors-critical"&gt;container-file-descriptors-critical
+ &lt;a class="anchor" href="#container-file-descriptors-critical"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A core container&amp;rsquo;s open file descriptors are above 70% of its limit and it may be killed.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; critical&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_file_descriptors{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;min&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_ulimits_soft{ulimit&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;max_open_files&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;70&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="container-file-descriptors-warning"&gt;container-file-descriptors-warning
+ &lt;a class="anchor" href="#container-file-descriptors-warning"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A non-core container&amp;rsquo;s open file descriptors are above 70% of its limit and it may be killed.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_file_descriptors{container&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;min&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_ulimits_soft{ulimit&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;max_open_files&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;70&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="container-file-descriptors-elevated"&gt;container-file-descriptors-elevated
+ &lt;a class="anchor" href="#container-file-descriptors-elevated"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A container&amp;rsquo;s open file descriptors are above 20% of its limit.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_file_descriptors&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;min&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_ulimits_soft{ulimit&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;max_open_files&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;20&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-pod-high-cpu-ratio"&gt;infra-pod-high-cpu-ratio
+ &lt;a class="anchor" href="#infra-pod-high-cpu-ratio"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A vector pod has used more than its full CPU request for 6h and may be throttled.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_cpu_usage_seconds_total{container&lt;span style="color:#f92672"&gt;!=&lt;/span&gt;&amp;#34;&amp;#34;, pod&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;vector-.*&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_resource_requests{resource&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cpu&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;!=&lt;/span&gt;&amp;#34;&amp;#34;, pod&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;vector-.*&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-pods-high-cpu-ratio"&gt;infra-pods-high-cpu-ratio
+ &lt;a class="anchor" href="#infra-pods-high-cpu-ratio"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An infra pod is using more than its full CPU request and may be throttled.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_cpu_usage_seconds_total{namespace&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;environment.*&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;!=&lt;/span&gt;&amp;#34;&amp;#34;, pod&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;parca-agent-.*|vector-.*|cilium-egress-.*&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;pod, namespace, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_resource_requests{namespace&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;environment.*&lt;/span&gt;&amp;#34;, resource&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cpu&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;!=&lt;/span&gt;&amp;#34;&amp;#34;, pod&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;parca-agent-.*|vector-.*|cilium-egress-.*&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-memory-high"&gt;infra-memory-high
+ &lt;a class="anchor" href="#infra-memory-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An important infra container is above 80% memory usage.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, pod, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_memory_working_set_bytes{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, pod, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_spec_memory_limit_bytes{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;80&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-memory-elevated"&gt;infra-memory-elevated
+ &lt;a class="anchor" href="#infra-memory-elevated"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A supporting infra container is above 80% memory usage.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, pod, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_memory_working_set_bytes{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, pod, container&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; container_spec_memory_limit_bytes{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;80&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-oomkill-core-systems"&gt;infra-oomkill-core-systems
+ &lt;a class="anchor" href="#infra-oomkill-core-systems"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A core infra container has been OOMKilled.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container, namespace, pod&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;} &lt;span style="color:#66d9ef"&gt;offset&lt;/span&gt; &lt;span style="color:#e6db74"&gt;3h&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;and&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;ignoring&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;reason&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_last_terminated_reason{reason&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;OOMKilled&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-oomkill-important-systems"&gt;infra-oomkill-important-systems
+ &lt;a class="anchor" href="#infra-oomkill-important-systems"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An important infra container has been OOMKilled.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container, namespace, pod&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy&lt;/span&gt;&amp;#34;} &lt;span style="color:#66d9ef"&gt;offset&lt;/span&gt; &lt;span style="color:#e6db74"&gt;3h&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;and&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;ignoring&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;reason&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_last_terminated_reason{reason&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;OOMKilled&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="infra-oomkill-nonessential-systems"&gt;infra-oomkill-nonessential-systems
+ &lt;a class="anchor" href="#infra-oomkill-nonessential-systems"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A non-essential infra container has been OOMKilled.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container, namespace, pod&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector&lt;/span&gt;&amp;#34;} &lt;span style="color:#66d9ef"&gt;offset&lt;/span&gt; &lt;span style="color:#e6db74"&gt;3h&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;and&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;ignoring&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;reason&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_last_terminated_reason{reason&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;OOMKilled&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="k8s-infra-pod-pending-too-long"&gt;k8s-infra-pod-pending-too-long
+ &lt;a class="anchor" href="#k8s-infra-pod-pending-too-long"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An infra pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;max&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, pod&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_status_phase{namespace&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;environment.*&lt;/span&gt;&amp;#34;, phase&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;Pending&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="pod-restart-rate-high"&gt;pod-restart-rate-high
+ &lt;a class="anchor" href="#pod-restart-rate-high"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An important infra container is restarting frequently, which may indicate a crash loop.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;avg&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container, namespace&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;kube_pod_container_status_restarts_total{namespace&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;environment.*&lt;/span&gt;&amp;#34;, container&lt;span style="color:#f92672"&gt;!~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;10m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="pod-restart-rate-high-nonessential"&gt;pod-restart-rate-high-nonessential
+ &lt;a class="anchor" href="#pod-restart-rate-high-nonessential"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A non-essential infra container is restarting frequently, which may indicate a crash loop.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;avg&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;container, namespace&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;kube_pod_container_status_restarts_total{container&lt;span style="color:#f92672"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;10m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="pods-stuck-in-waiting"&gt;pods-stuck-in-waiting
+ &lt;a class="anchor" href="#pods-stuck-in-waiting"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A pod has been stuck in Waiting for over 10m, which can indicate a scheduling or resource problem.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; kubernetes&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;namespace, pod&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; kube_pod_container_status_waiting &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;and&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;time&lt;/span&gt;&lt;span style="color:#f92672"&gt;()&lt;/span&gt; &lt;span style="color:#f92672"&gt;-&lt;/span&gt; kube_pod_start_time &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;10&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;60&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="egress-traffic-missing-metrics"&gt;egress-traffic-missing-metrics
+ &lt;a class="anchor" href="#egress-traffic-missing-metrics"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+Egress-gateway node throughput metrics are missing, which may indicate an egress-gateway problem.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; egress-gateway&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;absent&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_network_receive_bytes_total{device&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;eth0&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;on&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;group_left&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node, workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;label_replace&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_network_receive_bytes_total{workload&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;materialize-egress&lt;/span&gt;&amp;#34;}, &amp;#34;&lt;span style="color:#e6db74"&gt;node&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;$1&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;instance&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;(.+)&lt;/span&gt;&amp;#34;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;^&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="excessive-egress-traffic"&gt;excessive-egress-traffic
+ &lt;a class="anchor" href="#excessive-egress-traffic"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An egress-gateway node has very high traffic, which may indicate traffic is not routing through the internet gateway.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; egress-gateway&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_network_receive_bytes_total{device&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;eth0&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;on&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;group_left&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node, workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;label_replace&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_network_receive_bytes_total{workload&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;materialize-egress&lt;/span&gt;&amp;#34;}, &amp;#34;&lt;span style="color:#e6db74"&gt;node&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;$1&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;instance&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;(.+)&lt;/span&gt;&amp;#34;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;^&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;5.5&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;8&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="high-egress-traffic"&gt;high-egress-traffic
+ &lt;a class="anchor" href="#high-egress-traffic"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An egress-gateway node is above 90% of its allowed traffic and may soon exceed capacity.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; egress-gateway&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; notice&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_network_receive_bytes_total{device&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;eth0&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;on&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;group_left&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node, workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;label_replace&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_network_receive_bytes_total{workload&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;materialize-egress&lt;/span&gt;&amp;#34;}, &amp;#34;&lt;span style="color:#e6db74"&gt;node&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;$1&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;instance&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;(.+)&lt;/span&gt;&amp;#34;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;^&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;&amp;gt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;4.5&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;1000&lt;/span&gt; &lt;span style="color:#f92672"&gt;/&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;8&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="low-egress-traffic"&gt;low-egress-traffic
+ &lt;a class="anchor" href="#low-egress-traffic"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An egress-gateway node has unusually low traffic, which may indicate the gateway is unhealthy.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; egress-gateway&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_network_receive_bytes_total{device&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;eth0&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;2m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;*&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;on&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;group_left&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;sum&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node, workload&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;label_replace&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;container_network_receive_bytes_total{workload&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;materialize-egress&lt;/span&gt;&amp;#34;}, &amp;#34;&lt;span style="color:#e6db74"&gt;node&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;$1&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;instance&lt;/span&gt;&amp;#34;, &amp;#34;&lt;span style="color:#e6db74"&gt;(.+)&lt;/span&gt;&amp;#34;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;^&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;&amp;lt;&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;100&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="no-egress-traffic"&gt;no-egress-traffic
+ &lt;a class="anchor" href="#no-egress-traffic"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+An egress-gateway node has had no traffic for 5m, which may indicate external traffic is blocked.
+Labels:
+&lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;component:&lt;/strong&gt; egress-gateway&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;severity:&lt;/strong&gt; warning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;min&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_network_receive_bytes_total{device&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;eth0&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;&lt;span style="color:#960050;background-color:#1e0010"&gt;:&lt;/span&gt;&lt;span style="color:#e6db74"&gt;1m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;or&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;rate&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;node_network_transmit_bytes_total{device&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;eth0&lt;/span&gt;&amp;#34;}[&lt;span style="color:#e6db74"&gt;5m&lt;/span&gt;&lt;span style="color:#960050;background-color:#1e0010"&gt;:&lt;/span&gt;&lt;span style="color:#e6db74"&gt;1m&lt;/span&gt;]&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;and&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;on&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;node&lt;span style="color:#f92672"&gt;)&lt;/span&gt; kubelet_node_name{workload&lt;span style="color:#f92672"&gt;=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;materialize-egress&lt;/span&gt;&amp;#34;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;==&lt;/span&gt; &lt;span style="color:#ae81ff"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2 id="materialize-alerts"&gt;materialize-alerts&lt;a class="anchor" href="#materialize-alerts"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Alerting rules for Materialize.&lt;/p&gt;</description></item><item><title>Common Queries</title><link>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/common-queries/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/renovate-uv-build-0-x/reference/stable-metrics/common-queries/</guid><description>&lt;h1 id="common-queries"&gt;Common Queries&lt;a class="anchor" href="#common-queries"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;These queries are used in various dashboards and may be a good
+starting point for a dashboard developer or for someone looking
+into particulars of a dashboard.&lt;/p&gt;
+&lt;blockquote class='book-hint note'&gt;
+&lt;p&gt;Most environments use &lt;code&gt;mz_&lt;/code&gt; for mzSqlPrefix and do not set &lt;code&gt;mzEnvironmentFilter&lt;/code&gt;.&lt;/p&gt;&lt;/blockquote&gt;&lt;h2 id="materialize-clusters"&gt;materialize-clusters&lt;a class="anchor" href="#materialize-clusters"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Inventory and sizing of a Materialize deployment’s clusters and replicas.
+Adapted from the Overview dashboard’s “Cluster Objects / Replicas” tab.&lt;/p&gt;
+&lt;h4 id="materialize.clusters.count"&gt;materialize.clusters.count
+ &lt;a class="anchor" href="#materialize.clusters.count"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+How many clusters exist, split into the Materialize-managed system
+clusters (mz_catalog_server, mz_system, mz_probe, …) that every
+environment has and the user clusters you created. The gap between the
+two is your own footprint.
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;count&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;compute_cluster_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#960050;background-color:#1e0010"&gt;$&lt;/span&gt;{&lt;span style="color:#960050;background-color:#1e0010"&gt;mzSqlPrefix&lt;/span&gt;}compute_cluster_status{&lt;span style="color:#960050;background-color:#1e0010"&gt;${mzEnvironmentFilter&lt;/span&gt;}, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzClusterList}&lt;/span&gt;&amp;#34;&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;count&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;compute_cluster_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#960050;background-color:#1e0010"&gt;$&lt;/span&gt;{&lt;span style="color:#960050;background-color:#1e0010"&gt;mzSqlPrefix&lt;/span&gt;}compute_cluster_status{&lt;span style="color:#960050;background-color:#1e0010"&gt;${mzEnvironmentFilter&lt;/span&gt;}, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzClusterList}&lt;/span&gt;&amp;#34;, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;^s.*&lt;/span&gt;&amp;#34;&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="materialize.clusters.replicas.count"&gt;materialize.clusters.replicas.count
+ &lt;a class="anchor" href="#materialize.clusters.replicas.count"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+How many replicas back the selected clusters, and how many of those are
+redundancy beyond the first. Every cluster needs one replica to run;
+anything above that is capacity or availability headroom you&amp;rsquo;ve opted
+into, so a non-zero &amp;ldquo;additional&amp;rdquo; count is the quick check that HA is
+actually configured where you expect it.
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;count&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;compute_cluster_id, compute_replica_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#960050;background-color:#1e0010"&gt;$&lt;/span&gt;{&lt;span style="color:#960050;background-color:#1e0010"&gt;mzSqlPrefix&lt;/span&gt;}compute_cluster_status{&lt;span style="color:#960050;background-color:#1e0010"&gt;${mzEnvironmentFilter&lt;/span&gt;}, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzClusterList}&lt;/span&gt;&amp;#34;, compute_replica_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzReplicaList}&lt;/span&gt;&amp;#34;&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;count&lt;/span&gt;&lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#66d9ef"&gt;group&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;compute_cluster_id, compute_replica_id&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#960050;background-color:#1e0010"&gt;$&lt;/span&gt;{&lt;span style="color:#960050;background-color:#1e0010"&gt;mzSqlPrefix&lt;/span&gt;}compute_cluster_status{&lt;span style="color:#960050;background-color:#1e0010"&gt;${mzEnvironmentFilter&lt;/span&gt;}, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzClusterList}&lt;/span&gt;&amp;#34;, compute_replica_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzReplicaList}&lt;/span&gt;&amp;#34;, compute_replica_name&lt;span style="color:#f92672"&gt;!=&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;r1&lt;/span&gt;&amp;#34;&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="materialize.clusters.replicas.sizes"&gt;materialize.clusters.replicas.sizes
+ &lt;a class="anchor" href="#materialize.clusters.replicas.sizes"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+The replica fleet grouped by configured size. Most deployments settle
+on a handful of sizes; a long tail of one-off sizes usually means an
+experiment or a half-finished migration. The total agrees with the
+replica count.
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#66d9ef"&gt;count&lt;/span&gt; &lt;span style="color:#66d9ef"&gt;by&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;size&lt;span style="color:#f92672"&gt;)&lt;/span&gt; &lt;span style="color:#f92672"&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#960050;background-color:#1e0010"&gt;$&lt;/span&gt;{&lt;span style="color:#960050;background-color:#1e0010"&gt;mzSqlPrefix&lt;/span&gt;}compute_cluster_status{&lt;span style="color:#960050;background-color:#1e0010"&gt;${mzEnvironmentFilter&lt;/span&gt;}, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzClusterList}&lt;/span&gt;&amp;#34;, compute_replica_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzReplicaList}&lt;/span&gt;&amp;#34;&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#f92672"&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id="materialize.clusters.info"&gt;materialize.clusters.info
+ &lt;a class="anchor" href="#materialize.clusters.info"&gt;#&lt;/a&gt;
+&lt;/h4&gt;
+A reference row per (cluster, replica): ids, names, size, version, and
+scheduling metadata. The &amp;ldquo;what does my fleet actually look like&amp;rdquo; lookup
+— most useful for grabbing a cluster or replica id to scope the rest of
+a dashboard to.
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"&gt;&lt;code class="language-promql" data-lang="promql"&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&lt;span style="color:#960050;background-color:#1e0010"&gt;$&lt;/span&gt;{&lt;span style="color:#960050;background-color:#1e0010"&gt;mzSqlPrefix&lt;/span&gt;}compute_cluster_status{&lt;span style="color:#960050;background-color:#1e0010"&gt;${mzEnvironmentFilter&lt;/span&gt;}, compute_cluster_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzClusterList}&lt;/span&gt;&amp;#34;, compute_replica_id&lt;span style="color:#960050;background-color:#1e0010"&gt;=~&lt;/span&gt;&amp;#34;&lt;span style="color:#e6db74"&gt;${mzReplicaList}&lt;/span&gt;&amp;#34;&lt;span style="color:#960050;background-color:#1e0010"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2 id="materialize-compute"&gt;materialize-compute&lt;a class="anchor" href="#materialize-compute"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Queries for the compute side of a Materialize deployment — the indexes,
+materialized views, and subscribes that run as dataflows on cluster replicas,
+plus their freshness, hydration, and resource footprint.&lt;/p&gt;</description></item></channel></rss>
