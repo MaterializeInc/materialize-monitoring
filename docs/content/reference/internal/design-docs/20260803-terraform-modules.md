@@ -216,13 +216,26 @@ Putting the raw-YAML list last is what makes the "reach the full chart surface w
 Profiles under `charts/materialize-monitoring/profiles/` exist to **document** deployment shapes — the AWS and GCP examples are annotated walkthroughs of the IAM wiring, and `grafana-postgres.values.yaml` is mostly prose explaining why SQLite on an `emptyDir` is not a production Grafana state store.
 They are not a consumption API, so Terraform not loading them is not a defect. The module computes the cloud overlay anyway, because bucket names and role identifiers *are* Terraform outputs.
 
-**The exception is Loki.** `loki-small`, `loki-large`, and `loki-test` carry foundational overlay content — microservice topology, `schemaConfig`, network policy, storage wiring — that is load-bearing rather than illustrative.
-If the Terraform module expresses its own equivalent of those, the two drift, and the failure mode is a topology that renders but misbehaves under load.
+**The exception is the sizing set.** `loki-small` and `loki-large` are load-bearing in a way the cloud examples are not — they change resources, WAL, caches, limits, retention, and autoscaling ceilings, and the failure mode of re-expressing them wrong is a topology that renders fine and misbehaves under load.
 
-Two mitigations, and we should do both:
+Because the module lives in this repo it **reads those files directly**, via `file("${path.module}/../../../charts/materialize-monitoring/profiles/loki-small.values.yaml")`, at the same commit as the chart it pins. No re-expression, no drift window. That is the concrete payoff of the repo decision above.
 
-- **Because the module lives in this repo, it reads those files directly** via `file("${path.module}/../../../charts/materialize-monitoring/profiles/loki-small.values.yaml")` at the same commit as the chart it pins. No re-expression, no drift window. This is the concrete payoff of the repo decision above.
-- **Long-term, the foundational parts of the Loki profiles should migrate into chart defaults or a values-level sizing selector**, leaving the profiles genuinely documentation-only. A `sizing: small|large` key is also the only form that works identically under Helm, Terraform, Pulumi, ArgoCD, and Flux, and `tests/loki_profiles_test.yaml` already gives it a home to be pinned in.
+Worth correcting an overstatement from an earlier draft: the sizing profiles are *not* foundational in the sense of carrying storage or schema wiring. `loki-small` states plainly that it defines only the deltas from the medium defaults and that topology stays production-shaped (replication factor 3, ≥3 ingesters) at every size. The genuinely foundational content — `schemaConfig`, `bucketNames`, object-store type, identity annotations — lives in the **cloud example** profiles, and Terraform computes all of that itself. So the drift risk is narrower than first described.
+
+### Sizing profiles: medium is the chart defaults
+
+The convention is already established and should be extended rather than reinvented: **the chart defaults target a medium install**, and profiles are deltas away from it in both directions. `loki-small` and `loki-large` both say so in their headers, and both carry a documented throughput envelope (sustained / 5-minute burst / regression ceiling) plus a "typical fit" line.
+
+Three consequences for this workstream:
+
+- **"Medium on main" means no sizing profile at all** — the tier-2 main-branch variant runs the bare chart defaults. That is a nice property: the default configuration is the one under continuous test.
+- **Thanos needs the same treatment, and has none today.** The chart's `thanos` section configures which components are enabled and the compactor's retention policy, but sets **no resources or replica counts anywhere**. So `thanos-small` / `thanos-large` are net-new, and they should mirror Loki's shape: deltas from a medium default, with a documented envelope. Thanos's natural envelope axis is different from Loki's throughput — active series, ingested samples per second, block/retention volume, and query concurrency — so the envelope needs its own vocabulary rather than a copied one.
+- **A `kind` profile** that sets only CI-appropriate resource sizes, with no feature management. Keeping it purely a sizing overlay is what makes it composable — `-f kind.values.yaml` layers cleanly over `loki-test` or over the defaults, and it never becomes a second place where features get turned on and off.
+
+Two Thanos-specific things to resolve while sizing it, both of which fail quietly:
+
+- **`queryFrontend` is disabled by default** and the values note it is "only required for production" — but the Thanos datasource URL points at `thanos-query`. Enabling the query frontend in a large profile without moving the datasource to it means caching is deployed and nothing routes through it.
+- **`receive.mode` is `standalone` by default.** Loki's profiles deliberately keep an HA-valid topology at *every* size so ring behavior and PodDisruptionBudgets stay meaningful. Thanos's default does not obviously meet that bar for a tier-0 metrics store, so either the default changes or the profile set has to document that HA arrives only at large — which would break the convention Loki set.
 
 ### Scheduling and storage class want profiles
 
@@ -291,6 +304,156 @@ Provider settings that matter:
 | `allow-monitoring-ingress` NetworkPolicies select the namespace by name | Unaffected — the name does not change. Worth a CI assertion that scrapes still succeed under network policy, since collection moves from one pod to a DaemonSet plus a gateway. |
 | Grafana dashboards previously delivered as sidecar ConfigMaps | Terraform manages those ConfigMaps, so they are deleted on apply. No orphans. |
 
+## Parity audit
+
+The swap is a net upgrade on nearly every axis, but a handful of things the old stack did are not covered today.
+Ordered by severity — and the first is a functional gap in the **chart's own default path**, not a Terraform concern. Terraform only makes it visible, by making the bundled path the default for everyone.
+
+### 1. cAdvisor is not collected on the bundled path
+
+The Kubernetes dashboards depend on cAdvisor directly — `packages/queries/materialize-kubernetes.yaml` builds on `container_cpu_usage_seconds_total`, `container_spec_cpu_quota`, and `container_memory_working_set_bytes`, and several queries are annotated "requires cAdvisor".
+
+The chart does ship the scrape, twice: `pre-rendered/scrapers/prometheus-operator/scrapeconfig-cadvisor.yaml` and a `mz-kubelet-cadvisor` job in the `classic` flavor.
+Both are consumed by **Prometheus**, not by Alloy.
+The gateway metrics pipeline wires only `prometheus.operator.podmonitors` and `prometheus.operator.servicemonitors` — and Alloy has no `prometheus.operator.scrapeconfigs` equivalent, so a `ScrapeConfig` is inert wherever Alloy is the collector.
+
+The old Terraform stack *did* scrape cAdvisor, because it ran real Prometheus with a raw scrape config.
+So on the bundled Alloy → Thanos path, the Kubernetes panels are empty today.
+This is the highest-priority item in this doc that is not itself Terraform work.
+
+**Decision: run `prometheus.exporter.cadvisor` in the agent.** There are two ways to get these metrics and the tradeoff is genuine:
+
+| Approach | Per-node cost | Completeness | Dependency |
+|---|---|---|---|
+| `prometheus.exporter.cadvisor` in the agent | **New** work per node; scales with container count | Full cAdvisor metric set | None — node-local |
+| Scrape the kubelet's `/metrics/cadvisor` | Reuses what the kubelet already computes; ~zero marginal | Whatever the kubelet chooses to expose | API-server proxy, or node-level auth |
+
+The cost argument favors the kubelet, and it favors it most in bin-packed environments — containers-per-node is exactly the axis the exporter scales on.
+But **completeness favors the exporter, and we already have a documented case of it mattering**: [Compatibility](../../../compatibility/) records that GKE does not expose all cAdvisor and kube-state-metrics metrics, which is precisely why the GCP-optimized dashboards drop some percentage-based panels. Running cAdvisor ourselves makes the metric set ours rather than the platform's, and removes the API-server proxy from the collection path at the same time.
+
+The exporter it is, with the bin-packing risk managed rather than dismissed: explicit resource limits, a footprint measured on the tier-2 medium run so the number is known rather than assumed, and the ability to disable it per node pool for the densest pools. The kubelet scrape stays documented as the fallback — `scrapeconfig-cadvisor.yaml` already has the relabeling written, so switching is cheap if the measured footprint turns out badly.
+
+### 2. Node metrics: node-exporter's known footprint beats Alloy's exporter
+
+The old stack enabled `prometheus-node-exporter`; the chart has no equivalent.
+Alloy's `prometheus.exporter.unix` **is** node_exporter, and consolidating into the existing agent DaemonSet is attractive on paper — one fewer workload, and it is already stubbed as a commented placeholder at `packages/alloy-pipelines/agent.yaml:229-230`.
+
+**Take node-exporter anyway, at least first.** The deciding argument is operational, not technical:
+
+- **Known resource envelope.** node-exporter's footprint is well characterized; Alloy-with-exporters is not, and the agent runs on *every* node including the tightly-packed ones. In environments doing heavy bin packing, an uncharacterized per-node request is a real scheduling risk, not a theoretical one.
+- **Shared envelope means shared fate.** Folding node metrics into the agent puts logs and metrics under one set of limits. A metrics regression then starves log collection — the signal you most need during the incident it caused. Separate DaemonSets have independent limits, independent eviction, and can be excluded from specific node pools (the Materialize pool carries do-not-disrupt pods; the generic pool does not).
+- **Consolidation stays available later**, once the footprint is measured. The reverse — backing a fleet out of a starving agent — is worse.
+
+Consequences worth accepting explicitly: one more DaemonSet, and node-exporter's own scrape needs a collector, which the gateway can do via a ServiceMonitor the subchart already ships.
+
+Also note the schema has **no `prometheus.exporter.*` support**, and the agent pipeline is **logs-only** today (journal + node-local pod logs → `loki.write`), so the Alloy-native route was never the cheap option it looked like.
+
+### 3. Generic annotation-based pod discovery, with exclusions
+
+The old `prometheus.yml` had a `kubernetes-pods` job keyed on `prometheus.io/scrape`, so it collected **any** annotated pod — including a customer's own workloads. The chart's surface is explicit PodMonitors for Materialize components only, so anyone who annotated their own applications loses that collection silently.
+
+Add it — but it cannot be a naive port, because **`prometheus.io/scrape` and exposing `/metrics` are coupled upstream.** Pods that expose metrics carry the annotation, and the chart already collects many of them explicitly. A naive annotation job therefore double-scrapes everything the PodMonitors already cover.
+
+Double-scraping is not merely wasteful. The same series arrives twice under different `job` labels, which breaks `sum()` and `rate()` aggregations and double-counts in exactly the panels people trust. With the OTLP egress change below, both copies land in the same destination with nothing to catch it.
+
+So the job needs a **"already scraped elsewhere" exclusion list**, and the mechanism matters more than the list:
+
+- The shipped monitors select by **label**, not annotation (`app.kubernetes.io/name: environmentd`, and nothing in the scrapers references `prometheus.io/*` at all). So exclusions are expressible as `action: drop` relabel rules on those same label values.
+- **Generate the exclusions from the same source as the monitors.** The scrapers are already generated by the `scrape` transpiler in `mzmon-lib`; a hand-maintained name list beside them would drift the first time a component is renamed. Deriving both from one definition makes the invariant structural.
+- Cover our own components too, not just Materialize's — Loki, Thanos, Grafana, Alloy, Alertmanager, and kube-state-metrics all have deterministic names and `serviceMonitor.enabled: true`.
+- Provide a per-pod opt-out for the case the list cannot know about, and default the whole job **off** so enabling it is a deliberate cardinality decision.
+
+### 4. SQL-on-scrape metric families
+
+The old stack scraped `mz_compute`, `mz_storage`, and `mz_usage`; the chart additionally ships `materialize-sql-mz-frontier`.
+With the module defaulting the SQL scraper off (no `mz_support` role — see [Secrets](#secrets)), those families disappear relative to the old stack until upstream native metrics land.
+
+This is deliberate and roadmap-aligned ([Metrics contract](../../roadmap/#metrics-contract-upstream-dependency)), but it must ship as a **named list of which panels degrade**. Unannounced, a blank panel reads as a bug in the new stack rather than a known upstream gap.
+
+### 5. metrics-server is a Console dependency, so phasing it out is a handoff
+
+Worth being precise about, because the failure is silent.
+The operator module installs metrics-server with the comment that it is *required for the Materialize Console to display cluster metrics* — and the chart's `metrics-server` subchart sits **outside** the `default` tag.
+
+So setting `install_metrics_server = false` downstream must flip `tags.metrics-server` on in the module's computed values **in the same change**. Do one without the other and the Console quietly loses cluster metrics.
+
+### 6. NetworkPolicy covers only Loki
+
+`networkPolicy` appears exactly once in the chart's values — under `loki`. Thanos, Grafana, Alloy, Alertmanager, and kube-state-metrics have none.
+
+That matters because the Terraform repo sets `enable_network_policies = true`, and the new stack has far more flows than the single scraping pod it replaces: agent → gateway, gateway → Thanos receive, Thanos → object storage and STS, Grafana → Loki / Thanos / Postgres.
+This needs an explicit audit before the cutover.
+
+It also has a testing consequence: `loki-test` sets `networkPolicy.enabled: false`, so **tier 1 cannot catch a policy regression**. The tier-2 variant should run with policies enabled.
+
+### 7. Capacity
+
+The old stack asked for 500m / 512Mi (Prometheus) plus 100m / 128Mi (Grafana).
+The new one is microservice Loki, Thanos, Grafana, Alertmanager, kube-state-metrics, and two Alloy roles.
+
+The examples' `generic` node pool is sized for the old shape and will likely need to grow — downstream, in the same change as the cutover, or the first apply lands unschedulable pods.
+
+### 8. Smaller deltas
+
+- **Grafana reachability.** Old and new both give an in-cluster URL only. The Terraform repo already has NLB primitives and exposes the Console on 443, so offering an ingress or LB option should be a recorded decision rather than an omission.
+- **Retention.** Old was 15 days on local disk. The new default needs setting deliberately, and agreeing with the bucket lifecycle policy the wrapper creates.
+- **Prometheus API consumers.** Thanos Query is Prometheus-API-compatible, so anything pointing at the new URL keeps working; only host and port change. Nothing in the Terraform repo consumes `prometheus_url` beyond re-exporting it.
+
+## Agent → gateway transport: OTLP with a WAL
+
+Planned alongside this workstream. It changes where durability lives, so it belongs here.
+
+```text
+agent   loki.source.file (pod logs) ┐
+        prometheus.exporter.cadvisor ┘→ OTLP/gRPC + persistent queue (WAL)
+                                          ↓
+gateway otelcol.receiver.otlp (stateless) → existing fan-outs
+                                          ↓
+        loki.write (logs)   ·   prometheus.remote_write (metrics → Thanos / AMP)
+```
+
+**The gateway stays stateless and the backend destinations do not change.** Thanos and AMP speak Prometheus remote-write, not OTLP, so `prometheus.remote_write` and `loki.write` stay exactly as they are. OTLP is the **agent-to-gateway transport**, and the WAL sits at the first hop. Reading via otelcol is out of scope.
+
+### Why the first hop is the right place for it
+
+This is a better factoring than putting the queue on the gateway, for a reason worth writing down:
+
+- **The agent is the only tier holding data that exists nowhere else.** The gateway can afford to be stateless precisely *because* the agent retries — backpressure propagates upstream into the agent's queue instead of needing gateway disk.
+- **The gateway is the scale-out tier.** Keeping it a stateless Deployment preserves horizontal scaling, clustering, and cheap rescheduling; a per-replica volume would force a StatefulSet on the component that most wants to be fungible.
+- **It changes an existing recommendation's rationale.** The production checklist asks for ≥2 gateway replicas because the gateway holds in-memory buffers, making a single replica a delivery gap across restarts. With an agent-side WAL, a gateway restart becomes survivable — the replica guidance stays good practice but stops being the only thing standing between a restart and data loss. That is a doc update in `operating/production-best-practices.md`.
+- **The module barely changes.** No StorageClass consumer, no StatefulSet, no PVC. I had this wrong in an earlier draft; the corrected design touches Terraform almost not at all.
+
+### The delta is agent-side only
+
+The receiving half already exists. The gateway runs `otelcol.receiver.otlp` with both gRPC and HTTP, its Service already exposes 4317 and 4318, and OTLP logs already bridge into the same `loki.process.inputProcessor` that `loki.source.api` feeds via the existing `otelcol.exporter.loki`. Metrics have the mirror-image bridge in `gateway-metrics.yaml`. So the gateway needs nothing.
+
+What the agent needs:
+
+- **An otelcol path at all.** The agent is `loki.*`-only today: journal and pod logs into `loki.process`, out through `loki.write` to the gateway's port 3100. It has no otelcol components.
+- **Bridges in both signal directions** — logs from `loki.process` into OTLP, and cAdvisor metrics from the exporter into OTLP. The gateway already demonstrates both bridge patterns in reverse, so the shapes are known.
+- **`otelcol.exporter.otlp` with a persistent sending queue.** Component and attribute names for the file-backed queue need confirming against the pinned Alloy version, along with whether to type these in the schema or use the `raw:` escape hatch the existing otelcol blocks all use.
+- `loki.source.api` on the gateway **stays** — third parties send their own logs there, so this is not a replacement of that ingress.
+
+### Two correctness details that are easy to miss
+
+**The WAL and the positions file must share a lifetime.** `loki.source.file` tracks a read offset in its positions file; the OTLP queue holds read-but-unsent data. If the queue is lost while positions have advanced past it, those lines are gone — the positions file will not re-read them. Both must live on the same node-local persistence with the same durability, or the WAL provides less than it appears to.
+
+Note the asymmetry this creates: logs are re-readable from the node as long as positions are intact, so a lost queue is recoverable in principle. **cAdvisor metrics have no re-readable source** — a lost queue is a permanent gap. The WAL matters more for metrics than for logs.
+
+**Backing: `hostPath`, `/var/lib/mzmon-alloy` → `/var/lib/alloy/wal`.** The agent is a DaemonSet already mounting host paths to read `/var/log/pods`, so node-local disk is the natural home and no PVC or StorageClass enters the picture. `hostPath` also survives pod restarts, which is what makes the positions/WAL lifetime guarantee above hold.
+
+Sizing is bounded by compaction — default threshold ~100 MiB, with compaction-on-start enabled so the on-disk file is reclaimed rather than growing monotonically across restarts. That keeps the footprint modest enough that node disk pressure is not a live concern; the one thing to keep in view is simply that this is *shared node disk*, so the bound should stay explicit in values rather than inherited silently.
+
+**Round-trip fidelity.** The metric bridge already had to set `add_metric_suffixes: false` to keep names stable across the OTLP round trip. The log path has the analogous risk in label ↔ resource-attribute mapping, and `gateway.yaml` already carries a TODO for an `otelcol.processor.transform` before bridging to handle resource attributes. That TODO becomes load-bearing once the agent's logs arrive as OTLP rather than through `loki.source.api`.
+
+### It gives tier 2 a real durability test
+
+The assertion the E2E suite was missing a reason for: partition the gateway (or delete it) while data is flowing, restore it, and assert **no gap** in either the metric series or the log stream across the outage.
+
+`hostPath` backing makes a second assertion available and worth having — restart the agent pod itself, not just the gateway, and assert the queued data still arrives. That is the case a PVC-less DaemonSet would normally lose, and it is the one that proves the host mount is actually doing its job.
+
+Both work on kind and both are only meaningful against a real backend, so they belong on the rustfs + CNPG tier-2 variant. This is the test that would catch a regression in the guarantee the change exists to provide.
+
 ## Version pinning and compatibility
 
 `chart_version` and `crds_chart_version` default to a pinned pair, bumped as part of a release of the `terraform` component here; the wrapper's `?ref=` is bumped in the Terraform repo.
@@ -314,7 +477,7 @@ A major version bump in the Terraform repo with a README upgrade note, matching 
 - `grafana_url` and `grafana_admin_password` keep their names and meaning.
 - `enable_observability = true` now requires the wrapper module, which needs cluster OIDC inputs.
 
-`enable_observability` keeps its name. It is the right switch, and renaming it would churn six example roots for nothing.
+`enable_observability` keeps its name — it is the right switch, and renaming it would churn six example roots for nothing. **It flips to `true` by default once this is GA**, in `simple` as well as `enterprise`, which is the point at which observability stops being opt-in and the "arrives with your cluster" goal is actually met.
 
 No compatibility shim: the two paths install different charts, and a wrapper pretending otherwise would misrepresent what is running.
 
@@ -400,8 +563,10 @@ Two operational notes carried over from the Terraform repo's harness, which alre
 ### Gaps this plan does not close
 
 - **Workload identity is untestable on kind.** rustfs takes static credentials; there is no OIDC issuer an IAM provider trusts. IRSA, GKE Workload Identity, and Azure Workload Identity are covered **only** at tier 3, on real clouds — and tier 3 runs after we have already tagged. This is the one place where "fully qualified before release" cannot be literally true. Mitigation is the chart-side validators asserting the *shape* of the identity config (annotation present, and consistent with the objstore type), so a misconfiguration fails at render time even though the binding itself is unexercised locally.
-- **There is no `medium` profile.** The profile set is `loki-small`, `loki-large`, `loki-test` — so "medium on main" needs a decision: add `loki-medium`, define medium as small-plus-HA, or read it as `loki-large`. Related and larger: profiles are **Loki-only** today, so "small" and "medium" currently say nothing about Thanos sizing. The plan's vocabulary needs the profile set to catch up.
+- **Thanos has no sizing profiles yet**, so "small on PRs, medium on main" currently says nothing about Thanos. Medium needs nothing built — it is the chart defaults, which is a nice property since it puts the default configuration under continuous test — but `thanos-small` is a prerequisite for the PR variant to mean anything, and a `kind` resource-sizing profile is a prerequisite for either to fit a CI runner. See [Sizing profiles](#sizing-profiles-medium-is-the-chart-defaults).
 - **Runner sizing.** Medium-on-main means microservice Loki with real replicas plus Thanos plus Grafana plus CNPG plus rustfs on one kind node. That wants a larger runner and belongs on the post-merge or merge-queue path, not as a PR gate.
+- **Network policy is invisible to tier 1.** `loki-test` sets `networkPolicy.enabled: false`, and the chart has no policies for the other components anyway ([parity item 6](#6-networkpolicy-covers-only-loki)) — while the Terraform repo enables policies by default. The tier-2 variant should run with them on, or the whole policy surface ships unqualified.
+- **Node and container metrics are only assertable once they exist.** Until [parity items 1 and 2](#1-cadvisor-is-not-collected-on-the-bundled-path) land, the suite cannot assert on `container_*` or `node_*` series, and the Kubernetes dashboard assertions stay structural for a reason that is a bug rather than a design choice. Worth encoding as a test that is expected to fail until then, so it converts to coverage the moment collection lands.
 
 This suite is the roadmap's **synthetic-data end-to-end smoke test**, and it promotes the kind half of the **kind / ArgoCD / FluxCD CI matrix** item well above its current "very low priority" — the ArgoCD and Flux halves stay where they are.
 
@@ -422,6 +587,13 @@ Work in **this** repo. None of it is Terraform-specific — each item is a gap t
 
 | Item | Why the module needs it | Blocking? |
 |---|---|---|
+| **`prometheus.exporter.cadvisor` in the agent**, plus the metrics path it needs | The Kubernetes dashboards need cAdvisor, the shipped `ScrapeConfig` is inert under Alloy, and the old stack collected it. See [parity item 1](#1-cadvisor-is-not-collected-on-the-bundled-path) | **Blocking** — a functional gap in the default path, independent of Terraform |
+| **node-exporter subchart** plus a collector for its metrics | Replaces the old stack's node-exporter with a known resource envelope rather than an uncharacterized addition to the per-node agent. See [parity item 2](#2-node-metrics-node-exporters-known-footprint-beats-alloys-exporter) | Blocking for parity |
+| **Agent OTLP export with a bounded, node-local persistent queue** — otelcol path in the agent, bridges for both signals, and the positions/WAL lifetime guarantee | [Agent → gateway transport](#agent--gateway-transport-otlp-with-a-wal). Gateway ingress and the backend fan-outs already exist, so this is agent-side pipeline work | Independent of the module; the durability guarantee is the point |
+| `otelcol.processor.transform` before the log bridge (existing TODO in `gateway.yaml`) | Resource-attribute handling becomes load-bearing once agent logs arrive as OTLP rather than through `loki.source.api` | Blocking for the OTLP transport change |
+| NetworkPolicy for Thanos, Grafana, Alloy, Alertmanager, kube-state-metrics | Only Loki has one today, and the Terraform repo enables network policies by default | Blocking for the cutover |
+| Generic `prometheus.io/scrape` discovery, default off, with exclusions **generated from the same source as the monitors** | The old stack collected any annotated pod; a naive port double-scrapes everything already covered, and a hand-maintained exclusion list drifts | Not blocking; the exclusion mechanism is the part worth getting right |
+| A published list of panels that degrade without the SQL-on-scrape families | Otherwise a known upstream gap reads as a regression in the new stack | Should land with the migration note |
 | Scheduling profiles (nodeSelector / tolerations / priorityClassName) that fan out to subcharts | Every example passes node selectors today; without them the fan-out map lives unverified in Terraform | Not blocking, but it is the module's largest maintenance liability until it lands |
 | Storage-class profile, same shape | Examples pass one `storage_class` today | Not blocking |
 | Thanos and Alloy validators wired into `mzmon.validate.collect` | The two components with workload-identity bindings have no validation at all | Should land with the storage wiring |
@@ -431,8 +603,8 @@ Work in **this** repo. None of it is Terraform-specific — each item is a gap t
 | Terraform tooling in `lint.yaml` (`terraform fmt`, `tflint`, `terraform-docs`) and a `terraform` component in `components.yaml` | Prerequisite for hosting the module here at all | Blocking for the module landing here |
 | `packages/mz-monitoring-e2e` crate — a fourth workspace member, with cluster-connectivity helpers and the Grafana / Loki / Thanos / Alloy assertions | The assertion engine for tiers 1 and 2 | Blocking for qualification, which downstream assumes |
 | kind-based E2E workflow with path-filtered variants (chart vs Terraform, small on PRs / medium on main) | The venue for tiers 1 and 2; `test.yaml` runs cargo test and helm-unittest only today | Blocking alongside the crate |
-| A `loki-medium` profile, or a decision that medium means small-plus-HA — plus Thanos sizing in the profile vocabulary | "Medium on main" has nothing to point at; profiles are Loki-only today | Blocking for the tier-2 main-branch variant |
-| A `kind-integration` profile (rustfs + CNPG) usable by the chart's own gate | Lets tier 1 opt into the deeper storage shape; today only the Terraform path exercises real object storage | Not blocking, but it closes the tier-1/tier-2 coverage gap |
+| `thanos-small` / `thanos-large` sizing profiles, mirroring the Loki convention (deltas from the medium defaults, with a documented envelope) | Thanos has no resources or replica counts in values at all today, so the sizing vocabulary covers only half the stack | Blocking for the tier-2 PR variant |
+| A `kind` profile setting CI-appropriate resource sizes only, no feature management | Lets any variant fit a CI runner while staying composable with `loki-test` and the sizing profiles | Blocking for tiers 1 and 2 |
 | Retire the SQL-on-scrape default, or make it fail loud rather than quiet | Terraform provisions no `mz_support` role, so today the scraper comes up failing auth | Module defaults it off; chart cleanup follows |
 
 ## Documentation to update
@@ -450,8 +622,17 @@ The Terraform story is stale in several places here and should be corrected as t
 
 - [x] ~~Does hosting the module here create a chicken-and-egg problem for the Terraform repo's integration tests?~~ **No.** Downstream consumes released tags only, Renovate-pinned, and assumes qualification already happened here. The contract is one-directional.
 - [x] ~~Does the integration harness run the object-storage path on every apply?~~ Superseded by the [tier structure](#tiers): real object storage is exercised at tier 2 on kind via rustfs, and at tier 3 on real clouds.
-- [ ] What does "medium" mean? Add a `loki-medium` profile, define it as small-plus-HA, or read it as `loki-large` — and does the profile vocabulary grow to cover Thanos sizing at the same time?
-- [ ] Confirm the Alloy support-bundle endpoint on the pinned version, and whether it sits behind a stability-level flag.
+- [ ] Confirm the Alloy component and attribute names for a file-backed sending queue, and whether the pipeline schema should type the otelcol components or keep using the `raw:` escape hatch as the existing bridges do.
+- [ ] Should logs and metrics share one agent-side OTLP exporter and queue (uniform behavior, shared backpressure, one node's blast radius) or separate queues over the same connection (independent failure)? Worth exposing as a value either way.
+- [x] ~~`hostPath` or `emptyDir` for the agent queue, and how is it bounded?~~ **`hostPath`, `/var/lib/mzmon-alloy` → `/var/lib/alloy/wal`**, bounded by compaction at ~100 MiB with compaction-on-start. Survives pod restarts, needs no StorageClass.
+- [ ] Measure `prometheus.exporter.cadvisor`'s per-node footprint on the tier-2 medium run, and set the limits from the measurement. If it lands badly on dense nodes, the kubelet-scrape fallback is already written in `scrapeconfig-cadvisor.yaml`.
+- [ ] Measure the per-node cost of `prometheus.exporter.unix` before revisiting consolidation of node metrics into the agent. Keeping node-exporter separate is deliberate for now, not permanent.
+- [ ] Where does the generated exclusion list for annotation discovery live — in the `scrape` transpiler alongside the monitor definitions, or as a separate derived artifact both consume?
+- [x] ~~What does "medium" mean, and does the vocabulary cover Thanos?~~ **Medium is the chart defaults** — the Loki profiles already say so and define only deltas. Thanos sizing profiles are net-new work, tracked in the prerequisites table.
+- [x] ~~Is the Alloy support bundle available to the E2E suite?~~ **Enabled by default**, so the suite can rely on it without a flag. The exact endpoint path still wants confirming against the pinned version.
+- [ ] What envelope vocabulary do the Thanos profiles document? Loki's is throughput (sustained / burst / ceiling); Thanos wants active series, ingested samples per second, retention volume, and query concurrency instead.
+- [ ] Does enabling `queryFrontend` in `thanos-large` also move the Thanos datasource URL onto it? Deploying the cache without routing through it is a silent no-op.
+- [ ] Is `receive.mode: standalone` acceptable as the medium default for a tier-0 metrics store? Loki keeps an HA-valid topology at every size; matching that convention means either changing the default or documenting that Thanos HA arrives only at large.
 - [ ] Should tier 2 also gate chart changes that touch storage wiring, or only run on main? Path-filtering is more precise but more machinery to keep correct.
 - [ ] Is a `kind-integration` (rustfs + CNPG) profile worth adding so the chart's own gate can reach the deeper storage shape, rather than that coverage living only on the Terraform path?
 - [ ] One `scheduling` profile parameterized by values, or separate `node-selector` / `tolerations` profiles? The former is fewer files; the latter composes more cleanly with the existing one-concern-per-profile convention.
@@ -459,5 +640,5 @@ The Terraform story is stale in several places here and should be corrected as t
 - [ ] Should the wrapper modules provision the Grafana Postgres database from the existing per-cloud `database` module in the first version, or defer it behind a variable? Deferring ships sooner; not deferring means Grafana state survives a restart out of the box. Note tier 2 covers the CNPG-backed shape either way, so the chart-side path is qualified before the wrapper uses it.
 - [ ] Retention defaults for the buckets: what lifecycle policy does the wrapper set, and does it agree with the chart's compactor/retention defaults?
 - [ ] Is the `prometheus_url` output alias worth one release, or is a clean break clearer given the semantics change to Thanos Query?
-- [ ] Should `enable_observability` default to `true` in `examples/simple` once this lands, matching `enterprise`? This is now purely a product decision — it no longer carries any CI-coverage argument, since qualification moved here.
+- [x] ~~Should `enable_observability` default to `true` in `examples/simple`?~~ **Yes, at GA.** Recorded in [Migration](#migration).
 - [ ] Alertmanager routing has no Terraform input here (no receivers, no upstream integration). Is `additional_values` sufficient for the first version? Note the E2E suite cannot assert delivery without a receiver, so routing stays effectively unqualified either way.
