@@ -8,9 +8,25 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring Helm Chart v0.9.0 (Unreleased)
+## materialize-monitoring Helm Chart v0.10.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring Helm Chart v0.9.0
+
+* DEP-191 Improve validation for thanos and alloy
+    * [materialize-monitoring#170](https://github.com/MaterializeInc/materialize-monitoring/pull/170)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.8.0..v0.9.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.8.0..v0.9.0
+    * Update dependency uv_build to >=0.12,<0.13
+        * [materialize-monitoring#168](https://github.com/MaterializeInc/materialize-monitoring/pull/168)
+    * Update Rust crate jsonschema to 0.49.0
+        * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
 
 ## materialize-monitoring Optional CRDs v0.4.0 (Unreleased)
 
