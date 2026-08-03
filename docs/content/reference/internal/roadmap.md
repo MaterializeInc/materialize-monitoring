@@ -37,8 +37,8 @@ Milestones are named by maturity stage; the date is a soft target.
 |---|---|---|
 | **Foundation** (M1) | June 15 | `env-top` overview dashboard (Summary, Kubernetes, Cluster, Connections, Compute, Storage — including Hydration / Freshness / Sources / Sinks *summaries*); cloud ↔ self-managed convergence via `$sqlMetricPrefix`; typed Alloy **agent** pipeline; **ScrapeConfigs + ServiceMonitors** for metric collection (synced to charts and docs); Hugo docsite; pre-commit suite; per-component versioning/changelog/release automation; Grafana dashboard v1/v2 API support |
 | **Production** (M2) | July 15 (required) | Native **OTLP exporter** support; **productionalized** stack (Thanos + Loki + Alloy); product observability documentation **fully replaced**; **Logs & Events** + **Networking** + **Upgrades** (Day 2) dashboards; Grafana 11 (dashboard v1) parity for publicly hosted dashboards (Grafana public dashboards gallery); Helm subchart bundling; `renovate` for dependency bumps |
-| **Operational Depth** (M3) | July 31 (stretch) | Day 2 drilldown dashboards: **Hydration**, **Freshness**, **Sources**, **Sinks** (⛓️ gated on upstream Tier 2 instrumentation); Datadog dashboard set; Day 2 ops dashboards (resizing, changing sources/destinations, managing users) |
-| **Maturity** (M4) | August 31+ | Day 1 dashboards (Dependencies, Sizing); Tier 2 upstream metric instrumentation; Helm completeness tail; profile-set finalization; Terraform wrapper; v2 items (BYOC, trace correlation, Polar Signals, formal deprecation policy) |
+| **Operational Depth** (M3) | July 31 (stretch) | Day 2 drilldown dashboards: **Hydration**, **Freshness**, **Sources**, **Sinks** (⛓️ gated on upstream Tier 2 instrumentation); Datadog dashboard set; Day 2 ops dashboards (resizing, changing sources/destinations, managing users); **Terraform modules** + the collection-parity and kind-E2E work they depend on |
+| **Maturity** (M4) | August 31+ | Day 1 dashboards (Dependencies, Sizing); Tier 2 upstream metric instrumentation; Helm completeness tail; profile-set finalization; v2 items (BYOC, trace correlation, Polar Signals, formal deprecation policy) |
 
 Item tables below reference milestones by their short tag (M1–M4); names and target dates live in the table above.
 
@@ -95,6 +95,9 @@ The agent and gateway pipelines are in place; the OTLP export path is the near-t
 | Native **OTLP exporter** (forwarding workflows evaluated for Honeycomb, Datadog, Google Cloud Observability) | M2 | ✅ |
 | Gateway pipeline (ported from the staging-gateway reference; log processing + loki.source.api / OTLP-log ingress) | M2 | ✅ |
 | Loki (logs) + Thanos (metrics) wiring | M2 | ✅ |
+| Agent **metrics path** + `prometheus.exporter.cadvisor` (the agent is logs-only today) | M3 | ⬜ |
+| Agent → gateway transport over **OTLP/gRPC with a node-local WAL** (`hostPath`, compaction-bounded); gateway stays stateless and backend fan-outs are unchanged | M3 | ⬜ |
+| `otelcol.processor.transform` before the log bridge (resource attributes) — becomes load-bearing once agent logs arrive as OTLP | M3 | ⬜ |
 
 ### Scraping (ScrapeConfigs & ServiceMonitors)
 
@@ -106,7 +109,14 @@ These ship as the released **Prometheus Scrapers** component and are bundled int
 | ScrapeConfigs (consumed manually) | M1 | ✅ |
 | ServiceMonitors / PodMonitors (incl. GCP `PodMonitoring`) | M1 | ✅ |
 | Sync scrapers into the charts and docs | M1 | ✅ |
+| **cAdvisor on the bundled path** — the shipped `ScrapeConfig` is only consumable by Prometheus, and Alloy has no `prometheus.operator.scrapeconfigs` equivalent, so the Kubernetes dashboards have no data on the default Alloy → Thanos path | M3 | ⬜ |
+| **node-exporter subchart** — no node-level metrics ship today; kept a separate workload rather than folded into the agent so its resource envelope stays known for bin-packed clusters | M3 | ⬜ |
+| NetworkPolicy for Thanos / Grafana / Alloy / Alertmanager / kube-state-metrics (only Loki has one) | M3 | ⬜ |
+| Generic `prometheus.io/scrape` discovery, default off, with exclusions generated from the same source as the monitors | M4 | ⬜ |
 | Move scrapers to the `materialize-operator` Helm chart | M4 | ⬜ (long-term) |
+
+The cAdvisor and node-exporter rows are **parity gaps against the stack the Terraform repo ships today**, which collected both.
+They are functional gaps in the chart's own default path, not Terraform-specific — the Terraform work only makes the bundled path everyone's default.
 
 Long term, ServiceMonitors belong in the `materialize-operator` Helm chart rather than here.
 This repo carries them now to fill the gap, with the intent to hand them off once the operator owns that surface.
@@ -123,7 +133,27 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | Distroless Alloy image (FIPS boringcrypto, multi-arch, non-root, GHCR-published) | M2 | ✅ |
 | Pre-install/pre-upgrade `alloy validate` validation hook | M2 | ✅ |
 | Charts published to GHCR as OCI artifacts (`oci://ghcr.io/materializeinc/helm-charts`) + `.tgz` attached to each release | M3 | ✅ |
-| Terraform wrapper module (pins a chart version, own cadence) | M4 | ⬜ |
+| **cert-manager integration (opt-in)** — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | M3 | ⬜ |
+| **Grafana `ingress` / `service` values** so Grafana is reachable at all (ClusterIP-only today) — internal by default, public gated on an enforced CIDR allowlist. SSO is desirable but out of scope for now | M3 | ⬜ |
+
+### Terraform
+
+Designed in [Terraform Modules for materialize-monitoring](design-docs/20260803-terraform-modules/).
+The **common module lives in this repo** (`terraform/modules/materialize-monitoring`), next to the chart whose value paths it encodes; **per-cloud wrapper modules** live in `materialize-terraform-self-managed` and wrap it.
+This replaces the hand-rolled Prometheus + Grafana modules that repo ships today, which vendor a point-in-time dashboard copy and a legacy scrape config.
+
+| Item | Milestone | Status |
+|---|---|---|
+| Design doc | M3 | ✅ |
+| Common module (chart + CRDs flag, values composition, secrets, outputs) | M3 | ⬜ |
+| Terraform tooling in CI (`fmt`, `tflint`, `terraform-docs`) + `terraform/` folded into the `materialize-monitoring` component | M3 | ⬜ |
+| Per-cloud wrapper modules; retire the legacy modules downstream | M3 | ⬜ |
+| Terraform install guide + Terraform ↔ chart version compatibility row | M3 | ⬜ |
+
+The module ships as part of the **`materialize-monitoring` component**, not as a component of its own — one version stream covering two artifacts, so `?ref=materialize-monitoring/vX.Y.Z` installs chart `vX.Y.Z` and there is no mapping to maintain between our own two surfaces.
+
+Qualification happens **here**, not downstream: the Terraform repo's cloud integration tests consume released tags and assume our changes are already qualified.
+See [Testing / CI](#testing--ci--devex).
 
 ### Rules & alerts
 
@@ -134,8 +164,19 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 
 ### Profiles
 
-The profile set is **deliberately not finalized** — it is a stub until the common deployment shapes settle.
-Profile finalization is an M4 activity.
+The profile set is **deliberately not finalized** — final shape is an M4 activity.
+The convention that has settled: **the chart defaults target a medium install**, and profiles are deltas away from it in both directions, each documenting the envelope it is sized for.
+Loki follows this today; Thanos has no sizing profiles at all (the chart sets no resources or replica counts for it).
+
+| Item | Milestone | Status |
+|---|---|---|
+| Loki sizing profiles (`small` / `large`, deltas from the medium defaults) | M2 | ✅ |
+| Thanos sizing profiles (`small` / `large`), mirroring the Loki convention | M3 | ⬜ |
+| `kind` profile — CI-appropriate resource sizes only, no feature management, composable with the rest | M3 | ⬜ |
+| Scheduling profiles (nodeSelector / tolerations / priorityClassName) and a storage-class profile, fanned out to subcharts | M3 | ⬜ |
+| Profile-set finalization | M4 | ⬜ |
+
+Scheduling and storage class are profiles rather than a `global.*` block so the subchart fan-out map is inspectable data that snapshot tests can pin, instead of an unverified projection living in a downstream consumer.
 
 ### Testing / CI & DevEx
 
@@ -145,8 +186,13 @@ Profile finalization is an M4 activity.
 | Per-component versioning + changelog + release automation (see [Versioning](versioning/) / [Releasing](releasing/)) | M2 | ✅ |
 | `auto-format` workflow (label-driven formatter fixups) | M2 | ✅ |
 | `renovate` for automated dependency bumps | M2 | ✅ |
-| Synthetic-data end-to-end smoke test (metrics flow through the chart) | M4 | ⬜ |
-| kind / ArgoCD / FluxCD CI matrix | M4 | ⬜ (very low priority) |
+| Chart-shape fail-fast: Thanos + Alloy validators wired into `mzmon.validate.collect`, snapshot tests pinning rendered service-account names and workload-identity subject strings | M3 | ⬜ |
+| **kind E2E**, path-filtered: chart variant on the `loki-test` profile; Terraform variant against in-cluster rustfs + CNPG (small on PRs, medium — the chart defaults — on main) | M3 | ⬜ |
+| **Rust E2E suite** (`packages/mz-monitoring-e2e`): Grafana API dashboard + datasource-query assertions, Loki / Thanos direct health, Alloy support-bundle inspection, WAL durability across a gateway outage | M3 | ⬜ |
+| ArgoCD / FluxCD CI matrix | M4 | ⬜ (very low priority) |
+
+The E2E suite subsumes what was previously tracked as a synthetic-data smoke test.
+It asserts **query success everywhere and non-empty results only on self-monitoring series** — Materialize scrapers stay off, since those are integration-tested downstream, so `env-top` assertions are structural while the stack's own telemetry provides real data.
 
 ### Adoption / productionalization
 
@@ -193,11 +239,15 @@ Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); thi
   Still to commit: at least one minor-release cycle for breaking changes to the label/metric contract, with a release-process check, and a called-out "customer-facing surface" changelog subsection.
   The label/metric contract is the public API; this discipline should land before broad adoption.
 - **Downstream pinning.** ⬜
-  The Terraform wrapper (M4) pins specific chart versions with its own cadence, so Terraform never tracks a moving target.
+  The Terraform modules (M3) pin a specific chart version, so Terraform never tracks a moving target.
+  The common module ships from this repo **inside the `materialize-monitoring` component** rather than on a stream of its own: the chart version is the release version, and the module's Git tag is that same version.
+  Per-cloud wrappers downstream pin the module by Git ref, so a single number identifies both surfaces and there is no window where the pair is mismatched.
+  The trade is that a Terraform-only change publishes a chart release, and a breaking module change bumps the chart's major — both handled in the changelog rather than by splitting the stream.
 
 ## Follow-up documentation
 
 - [Releasing](releasing/) and [Versioning](versioning/) are written, covering the release mechanics and the per-component model. ✅
 - `CHANGELOG.md` exists and is maintained by the release tooling. ✅
 - A **customer-facing** contract/deprecation-policy page (in customer terms, distinct from the internal `versioning.md`) is still to write. ⬜
-- [Repo Layout](repo-layout/) still needs a refresh as the layout settles. ⬜
+- [Repo Layout](repo-layout/) refreshed against the tree (August 2026), including the planned `terraform/`. ✅
+  It goes stale easily by design — re-check it whenever a top-level directory moves.
