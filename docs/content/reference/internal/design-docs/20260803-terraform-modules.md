@@ -395,7 +395,7 @@ The examples' `generic` node pool is sized for the old shape and will likely nee
 
 ### 8. Smaller deltas
 
-- **Grafana reachability.** Old and new both give an in-cluster URL only. The Terraform repo already has NLB primitives and exposes the Console on 443, so offering an ingress or LB option should be a recorded decision rather than an omission.
+- **Grafana reachability.** Old and new both give an in-cluster URL only — see [Reaching Grafana](#reaching-grafana).
 - **Retention.** Old was 15 days on local disk. The new default needs setting deliberately, and agreeing with the bucket lifecycle policy the wrapper creates.
 - **Prometheus API consumers.** Thanos Query is Prometheus-API-compatible, so anything pointing at the new URL keeps working; only host and port change. Nothing in the Terraform repo consumes `prometheus_url` beyond re-exporting it.
 
@@ -454,6 +454,93 @@ The assertion the E2E suite was missing a reason for: partition the gateway (or 
 
 Both work on kind and both are only meaningful against a real backend, so they belong on the rustfs + CNPG tier-2 variant. This is the test that would catch a regression in the guarantee the change exists to provide.
 
+## In-cluster TLS and authentication
+
+Three hops need authenticating, and none of them are today: **agent → gateway**, **gateway → Loki / Thanos**, and **Grafana → Loki / Thanos**.
+
+### What already exists, and what does not
+
+The **client half is modeled**. Every pipeline destination carries a TLS block with CA, client cert, and client key, and `minVersion: TLS13` — `AGENT_LOKI_DEST_TLS_*` for agent → gateway, `GATEWAY_LOKI_DEST_TLS_*` and the Prometheus-destination equivalents for gateway → backends. `authType` (`none` / `basicAuth` / `bearer` / `oauth2` / `sigv4`) is modeled alongside it.
+
+What is missing is everything around that:
+
+- **Nothing issues the certs.** There are no `Certificate` templates and no cert-manager integration anywhere in the chart. The values assume an operator supplies PEMs out of band.
+- **The server halves are unwired.** The gateway's OTLP and `loki.source.api` receivers, Loki's own HTTP server, and Thanos receive are not configured to present certs or require client ones. A configured client with an unconfigured server is just TLS-off.
+- **Grafana → backends has no cert path.** `connections.datasources.*.valuesFrom` can inject `secureJsonData`, so client certs are *expressible*, but nothing models or defaults them.
+- **`authType: none` is the default on every destination**, and the production checklist already flags `loki.write` auth as not yet wired.
+
+### cert-manager stays an optional dependency
+
+cert-manager is an upstream dependency we want to **encourage** in production, not one the chart can require. Plenty of installs will not have it, and the CRDs chart has no business pulling in a separate ecosystem's CRDs.
+
+So the split falls out cleanly along the [shared responsibility model](../../../../operating/production-best-practices/#shared-responsibility-model):
+
+- **The chart** keeps certificates **opt-in and off by default**, renders no `Certificate` resources unless enabled, and continues to accept operator-supplied material for anyone bringing their own PKI.
+- **The Terraform path turns them on by default**, because cert-manager and a ClusterIssuer are already in that stack. This is the consumer supplying what the chart consumes by name — the same shape as buckets and workload identity.
+
+That also means the chart cannot treat missing cert-manager CRDs as an error, and the docs should frame cert-manager as the recommended production path rather than a prerequisite.
+
+### Mount the material, keep inline as the escape hatch
+
+The existing TLS values carry **PEM contents through environment variables**, which is the natural way to express a certificate inline in `values.yaml` — reasonable for the case it was written for.
+
+It is the wrong carrier for cert-manager, though, and specifically for **renewal**: env vars are captured at process start, and cert-manager renews by rewriting the Secret in place, so an env-injected cert would keep working for exactly one certificate lifetime and then fail everywhere at once.
+
+**Decision: file-mounted material for the cert-manager path** (`ca_file` / `cert_file` / `key_file` against a mounted Secret), with inline PEM retained as the escape hatch for values-only and bring-your-own-PKI users.
+
+The chart already has the surface for this and an established pattern to copy — both Alloy roles expose `alloy.mounts.extra` and `controller.volumes.extra`, each already carrying a `tmp` `emptyDir` example. Mounting a cert Secret follows the existing convention rather than introducing a new one.
+
+One thing file mounts do not settle by themselves: the kubelet updates mounted Secret contents on renewal, but the process still has to notice. Reload-on-change versus a config-checksum annotation that rolls the workload is still an open call.
+
+### Mirror `materialize-instance`'s issuer variables exactly
+
+The sibling module already solved the naming, and its split is the one this stack needs:
+
+- `issuer_ref` — the browser-facing certs, i.e. the Grafana LB.
+- `internal_issuer_ref` — cluster-internal mTLS with `*.cluster.local` SANs.
+
+Its variable documentation spells out why the two cannot be one: a public ACME issuer such as Let's Encrypt **cannot sign `cluster.local`** and rejects single-label domains. That constraint applies here identically.
+
+Using the same variable names and semantics means the examples pass one set of locals to both modules, and an operator who understands certs for their Materialize instance already understands them for their monitoring stack. The Terraform repo also already ships `kubernetes/modules/cert-manager` and `kubernetes/modules/self-signed-cluster-issuer` (which outputs `issuer_name`), so the wiring exists — nothing new is needed downstream beyond passing it through.
+
+### Bootstrap and trust domains
+
+cert-manager and the issuer have to exist before the chart. Under Terraform that is a `depends_on`; for Helm-only users it is the same "install this first" story the CRDs chart already has. Per the [ordering reality](../20260627-loki-production-infrastructure/#the-ordering-reality), the chart must still converge if certs are not ready yet — crashloop-and-retry, not a hard pre-flight failure.
+
+Two trust domains coexist and should not be conflated: **in-cluster** material from the issuer, and **external destinations** (a remote Loki, AMP, an OTLP forward target) using a public or customer CA. The module wires the first and leaves the second to `additional_values`.
+
+### Testing
+
+Tier 2 should run with mTLS enabled end-to-end — otherwise the auth surface ships unqualified, the same argument as network policy.
+
+The test that earns its keep is **rotation**: issue a deliberately short-lived certificate, force renewal, and assert the pipeline keeps delivering across it. That is precisely the failure the env-var shape produces, and it is invisible to any test that only checks a freshly-installed stack.
+
+## Reaching Grafana
+
+**Grafana is not reachable today.** The chart's `grafana` block surfaces `fullnameOverride`, `namespaceOverride`, `replicas`, `grafana.ini`, and `serviceMonitor` — no service type, no ingress. The upstream default is `ClusterIP`, so the only access path is `kubectl port-forward`.
+
+This is parity-neutral — the module being replaced also emitted an in-cluster service DNS name as its `grafana_url` — but it stops being acceptable when Grafana is the primary interface to the whole stack rather than a bundled extra.
+
+### Express it in the chart, wire the cloud specifics in Terraform
+
+Surface `grafana.ingress` and `grafana.service` (the upstream chart supports both) so Helm-only users get the same capability, and let the module supply cloud-specific annotations, the hostname, and the certificate reference. The alternative — building a bespoke LB path in the Terraform module — would leave Helm users with nothing and put chart-shape knowledge somewhere new.
+
+On AWS, prefer **Ingress through the load-balancer controller** over the repo's `nlb` module. Grafana is ordinary HTTP wanting host-based routing and a certificate, which is what Ingress is for. The Console uses the NLB module for reasons specific to it — OIDC redirect and port constraints that pushed it onto 443 with a target-group setup — and those do not apply here.
+
+### Follow the house LB convention
+
+The Terraform repo already has the right posture, and the monitoring module should copy it rather than invent one:
+
+- **Internal by default.** `aws/modules/nlb` defaults `internal = true`, and `internal_load_balancer` defaults to `true` in the examples.
+- **Public requires a CIDR allowlist**, and — worth copying specifically — the NLB module *enforces* it with a `validation` block: `ingress_cidr_blocks` must be present and contain valid CIDRs whenever `internal = false`. Copy the validation, not just the default. An unenforced default is a convention; an enforced one is a guardrail.
+- Terminate TLS with `issuer_ref` (the external issuer, per the section above) or ACM on AWS.
+
+**SSO is out of scope for now.** It is worth working out eventually — the enterprise example already runs Ory, so OIDC is available rather than hypothetical — but the shipped posture is internal-by-default plus an enforced allowlist for public, with the generated admin password. Document that combination as the boundary, so nobody reads "Grafana is exposable" as "Grafana is safe to expose broadly."
+
+### Output behavior changes
+
+`grafana_url` becomes the external URL when Grafana is exposed and stays the in-cluster service name otherwise. Worth calling out in the upgrade note, since the output keeps its name while its meaning becomes conditional.
+
 ## One version, two artifacts
 
 **Decision: the Terraform module ships as part of the existing `materialize-monitoring` component, not as a separate one.**
@@ -500,7 +587,7 @@ A major version bump in the Terraform repo with a README upgrade note, matching 
 - The `prometheus` and `grafana` releases and their PVCs are destroyed. Up to 15 days of local Prometheus data goes with them; there is no backfill.
 - Grafana state moves off its PVC. The chart default is SQLite on an `emptyDir`, so anything hand-created in the old instance does not carry over and will not survive a pod restart until Postgres is wired (see [Secrets](#secrets)).
 - `prometheus_url` is replaced by a Thanos Query endpoint output. Keeping the old name as an alias for one release is cheap courtesy; a clean break is also defensible given the semantics change.
-- `grafana_url` and `grafana_admin_password` keep their names and meaning.
+- `grafana_admin_password` keeps its name and meaning. `grafana_url` keeps its name but its meaning becomes conditional — the external URL when Grafana is exposed, the in-cluster service name otherwise (see [Reaching Grafana](#reaching-grafana)).
 - `enable_observability = true` now requires the wrapper module, which needs cluster OIDC inputs.
 
 `enable_observability` keeps its name — it is the right switch, and renaming it would churn six example roots for nothing. **It flips to `true` by default once this is GA**, in `simple` as well as `enterprise`, which is the point at which observability stops being opt-in and the "arrives with your cluster" goal is actually met.
@@ -592,6 +679,7 @@ Two operational notes carried over from the Terraform repo's harness, which alre
 - **Thanos has no sizing profiles yet**, so "small on PRs, medium on main" currently says nothing about Thanos. Medium needs nothing built — it is the chart defaults, which is a nice property since it puts the default configuration under continuous test — but `thanos-small` is a prerequisite for the PR variant to mean anything, and a `kind` resource-sizing profile is a prerequisite for either to fit a CI runner. See [Sizing profiles](#sizing-profiles-medium-is-the-chart-defaults).
 - **Runner sizing.** Medium-on-main means microservice Loki with real replicas plus Thanos plus Grafana plus CNPG plus rustfs on one kind node. That wants a larger runner and belongs on the post-merge or merge-queue path, not as a PR gate.
 - **Network policy is invisible to tier 1.** `loki-test` sets `networkPolicy.enabled: false`, and the chart has no policies for the other components anyway ([parity item 6](#6-networkpolicy-covers-only-loki)) — while the Terraform repo enables policies by default. The tier-2 variant should run with them on, or the whole policy surface ships unqualified.
+- **mTLS needs its own tier-2 coverage, including rotation.** Same argument as network policy: run tier 2 with certs enabled end-to-end. And add the rotation case — a short-lived cert, forced renewal, assert delivery continues — because that failure is invisible to any test that only exercises a freshly-installed stack. See [In-cluster TLS](#in-cluster-tls-and-authentication).
 - **Node and container metrics are only assertable once they exist.** Until [parity items 1 and 2](#1-cadvisor-is-not-collected-on-the-bundled-path) land, the suite cannot assert on `container_*` or `node_*` series, and the Kubernetes dashboard assertions stay structural for a reason that is a bug rather than a design choice. Worth encoding as a test that is expected to fail until then, so it converts to coverage the moment collection lands.
 
 This suite is the roadmap's **synthetic-data end-to-end smoke test**, and it promotes the kind half of the **kind / ArgoCD / FluxCD CI matrix** item well above its current "very low priority" — the ArgoCD and Flux halves stay where they are.
@@ -617,6 +705,8 @@ Work in **this** repo. None of it is Terraform-specific — each item is a gap t
 | **node-exporter subchart** plus a collector for its metrics | Replaces the old stack's node-exporter with a known resource envelope rather than an uncharacterized addition to the per-node agent. See [parity item 2](#2-node-metrics-node-exporters-known-footprint-beats-alloys-exporter) | Blocking for parity |
 | **Agent OTLP export with a bounded, node-local persistent queue** — otelcol path in the agent, bridges for both signals, and the positions/WAL lifetime guarantee | [Agent → gateway transport](#agent--gateway-transport-otlp-with-a-wal). Gateway ingress and the backend fan-outs already exist, so this is agent-side pipeline work | Independent of the module; the durability guarantee is the point |
 | `otelcol.processor.transform` before the log bridge (existing TODO in `gateway.yaml`) | Resource-attribute handling becomes load-bearing once agent logs arrive as OTLP rather than through `loki.source.api` | Blocking for the OTLP transport change |
+| **cert-manager integration, opt-in** — `Certificate` resources from `issuer_ref` / `internal_issuer_ref`, server-side TLS on the receiving halves, and **file-mounted material** via the existing `mounts.extra` / `volumes.extra` surface so renewal takes effect | [In-cluster TLS and authentication](#in-cluster-tls-and-authentication). The client half is modeled; issuance, the server halves, and rotation-safety are not. cert-manager stays optional in the chart and on-by-default only on the Terraform path | Blocking for the cutover — `authType: none` on every hop |
+| **Grafana `ingress` / `service` values**, internal by default with an enforced CIDR allowlist for public | [Reaching Grafana](#reaching-grafana). The chart surfaces neither today, so Grafana is port-forward-only | Blocking for the cutover |
 | NetworkPolicy for Thanos, Grafana, Alloy, Alertmanager, kube-state-metrics | Only Loki has one today, and the Terraform repo enables network policies by default | Blocking for the cutover |
 | Generic `prometheus.io/scrape` discovery, default off, with exclusions **generated from the same source as the monitors** | The old stack collected any annotated pod; a naive port double-scrapes everything already covered, and a hand-maintained exclusion list drifts | Not blocking; the exclusion mechanism is the part worth getting right |
 | A published list of panels that degrade without the SQL-on-scrape families | Otherwise a known upstream gap reads as a regression in the new stack | Should land with the migration note |
@@ -648,6 +738,9 @@ The Terraform story is stale in several places here and should be corrected as t
 
 - [x] ~~Does hosting the module here create a chicken-and-egg problem for the Terraform repo's integration tests?~~ **No.** Downstream consumes released tags only, Renovate-pinned, and assumes qualification already happened here. The contract is one-directional.
 - [x] ~~Does the integration harness run the object-storage path on every apply?~~ Superseded by the [tier structure](#tiers): real object storage is exercised at tier 2 on kind via rustfs, and at tier 3 on real clouds.
+- [ ] Reload-on-change or a config-checksum-annotation rollout when a mounted certificate is renewed? The first avoids restarts, the second is simpler and matches how the chart already handles config revisions.
+- [ ] Does Loki and Thanos server-side TLS change the datasource URLs to `https` in a way that interacts with the tenant-header wiring, and does the bundled Grafana trust the internal issuer's CA by default or need it mounted?
+- [ ] Should the Grafana LB be Ingress-through-the-LB-controller on all three clouds, or does GCP/Azure want the `load_balancers` module instead? AWS is clear; the others are not.
 - [ ] Verify Terraform resolves a `?ref=` containing a slash (`materialize-monitoring/v0.9.0`). Slashes are valid in refnames and the ref is passed through to git, so this should work — but the whole consumption path depends on it, so confirm before committing to the tag format.
 - [ ] Does a `### Terraform` changelog subsection carry enough signal for Helm-only readers seeing a version bump that did not change the chart, or does the release note need to say so more loudly?
 - [ ] Confirm the Alloy component and attribute names for a file-backed sending queue, and whether the pipeline schema should type the otelcol components or keep using the `raw:` escape hatch as the existing bridges do.

@@ -133,6 +133,8 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | Distroless Alloy image (FIPS boringcrypto, multi-arch, non-root, GHCR-published) | M2 | ✅ |
 | Pre-install/pre-upgrade `alloy validate` validation hook | M2 | ✅ |
 | Charts published to GHCR as OCI artifacts (`oci://ghcr.io/materializeinc/helm-charts`) + `.tgz` attached to each release | M3 | ✅ |
+| **cert-manager integration (opt-in)** — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | M3 | ⬜ |
+| **Grafana `ingress` / `service` values** so Grafana is reachable at all (ClusterIP-only today) — internal by default, public gated on an enforced CIDR allowlist. SSO is desirable but out of scope for now | M3 | ⬜ |
 
 ### Terraform
 
