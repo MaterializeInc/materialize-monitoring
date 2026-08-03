@@ -8,7 +8,7 @@ weight: 10
 Production guidance for the `materialize-monitoring` stack, organized by backend.
 Every checklist item is tagged with its **primary owner** under the [shared responsibility model](#shared-responsibility-model), and is checked (`[x]`) when the chart already ships it as a default — unchecked items are the deployment-time actions (or still-to-build chart work) that remain.
 
-Today this covers the **collection tier (Alloy)** and the bundled **logging backend (Loki)**; metrics (Thanos), Grafana, and Alertmanager sections will follow the same shape.
+Today this covers the **collection tier (Alloy)**, the bundled **logging backend (Loki)**, and the bundled **metrics backend (Thanos)**; Grafana and Alertmanager sections will follow the same shape.
 
 ## Shared responsibility model
 
@@ -275,3 +275,99 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 - [Storing](../../logs-and-events/storing/) — storage, retention, and disaster recovery in depth.
 - [Upgrading](../upgrading/) — cross-cutting upgrade guidance.
 - [Loki production deployment](https://github.com/grafana/loki/tree/main/production/ksonnet/loki) (official) — Grafana's reference production config (built for far larger volumes; read it for the patterns, not the magnitudes).
+
+## Metrics (Thanos)
+
+For the architecture these items configure, see [Metrics](../../metrics/).
+
+Thanos is **less finished than Loki** in this chart, and the checklist says so honestly: there are no sizing profiles, no resource requests, and no topology spread on any Thanos component today.
+Treat the unchecked `[chart]` items below as the current work list rather than as guidance you are expected to satisfy by hand.
+
+### Receive: replication is the availability lever, not `mode`
+
+The single most consequential setting, and the one most often misread.
+
+`receive.mode` is a **topology** choice:
+
+- **`standalone`** (default) is *RouterIngestor* mode — one workload that both routes and ingests. It still builds a ketama hashring across the StatefulSet pods (`receive.hashrings.autogen`), so `replicaCount: 3` shards writes across three pods.
+- **`split`** separates Router (Deployment) from Ingester (StatefulSet) so they scale independently.
+
+Neither choice, by itself, gives you redundancy. **The replication factor does**, and the chart passes `--receive.replication-factor` **only in split mode** — so standalone runs at Thanos's default of **1** unless `receive.extraArgs` sets it.
+
+Thanos write quorum is `(rf / 2) + 1`:
+
+| Replication factor | Write quorum | Ingester losses tolerated |
+|---:|---:|---:|
+| 1 | 1 | 0 |
+| **2** | **2** | **0** |
+| 3 | 2 | 1 |
+| 4 | 3 | 1 |
+| 5 | 3 | 2 |
+
+**Use an odd factor.** A factor of 2 requires both copies and tolerates nothing — the same as 1, and on a small ring *worse*: on three pods, losing one fails ~1/3 of series at RF 1 but ~2/3 at RF 2, because more series depend on any given pod while quorum still demands all of their copies. Even factors above 2 tolerate no more losses than the odd factor below them; the extra copy buys durability, not availability.
+
+```yaml
+thanos:
+  receive:
+    replicaCount: 3
+    extraArgs:
+      - --receive.replication-factor=3
+```
+
+Note this differs from Loki, where ingesters are deliberately ephemeral and durability comes from RF 3 alone. **Thanos Receive is PVC-backed** (10Gi RWO per pod by default) and therefore AZ-pinned, and it holds up to `receive.tsdb.retention` (24h) of not-yet-uploaded blocks. With RF 1 that window exists in exactly one copy, on one volume, in one zone.
+
+> [!WARNING]
+>   **Split mode is not recommended yet.** It landed upstream only recently, and `receive.ingester` does not inherit from the top-level `receive.*` defaults — upstream considers the non-merging behavior intentional, so this is unlikely to change. In practice that means restating ~31 keys, of which the values schema hard-requires eight sub-objects (`hashrings`, `service`, `vpa`, `persistence`, `podSecurityContext`, `probes`, `serviceMonitor`, `pdb`) before the chart will render at all. Prefer standalone with an odd replication factor until that changes.
+
+### Checklist
+
+#### 1. Ingestion topology & replication
+
+- [x] `[chart]` `receive.mode: standalone` with `replicaCount: 3` and an auto-generated ketama hashring.
+- [ ] `[operator]` Set an **odd** `--receive.replication-factor` (3) via `receive.extraArgs`; the chart cannot set it in standalone mode. A render-time check warns at factor 1, warns harder at 2, and errors when the factor exceeds `replicaCount`.
+- [ ] `[operator]` Keep `replicaCount >= replicationFactor`. At `replicaCount == replicationFactor` every pod holds every series — good availability, no horizontal capacity.
+- [x] `[chart]` PodDisruptionBudgets on **every** component (`thanos.global.pdb`, `maxUnavailable: 1`) — matching the Loki ingester convention. `maxUnavailable` rather than `minAvailable` deliberately: it scales with the replica count, and on the single-replica Compactor `minAvailable: 1` would permit no eviction at all and hang node drains. A validator errors when the Receive budget exceeds what write quorum tolerates, and warns on `minAvailable` for the singleton.
+- [ ] `[chart]` `topologySpreadConstraints` across zones for Receive, so RF 3 actually survives an AZ loss rather than landing three copies in one zone. Receive is PVC-backed and therefore AZ-pinned, so this matters more here than for Loki's ephemeral ingesters.
+- [ ] `[operator]` `priorityClassName` so Receive and Compactor are not evicted under node pressure.
+
+#### 2. Object storage & credentials
+
+- [x] `[chart]` Objstore config rendered into a Secret (`global.objstore.createSecret`), consumed by every component.
+- [ ] `[consumer]` Supply the bucket and grant access by **workload identity** (IRSA / GKE Workload Identity / Azure Workload Identity) rather than static keys. A render-time check errors when the identity annotation names a different cloud than the objstore backend, and warns when a cloud backend has neither an annotation nor inline credentials.
+- [ ] `[consumer]` A dynamic-provisioning **StorageClass** must exist — Receive, Store Gateway, and Compactor are all PVC-backed.
+
+#### 3. Components & read path
+
+- [x] `[chart]` Query, Receive, Store Gateway, and Compactor enabled by default.
+- [ ] `[operator]` Enable **Query Frontend** for production read paths (splitting and result caching) — and repoint `connections.datasources.thanos.url` at it, or the cache is deployed and bypassed. A render-time check warns on exactly that mismatch.
+- [ ] `[operator]` Store Gateway is how queries reach historical blocks; disabling it limits reads to what Receive still holds locally.
+- [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
+- [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
+
+#### 4. Retention & compaction
+
+- [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d.
+- [ ] `[operator]` Set those to your storage budget. Retention is enforced by the Compactor — with it disabled nothing expires and bucket cost grows without bound.
+- [x] `[chart]` Receive TSDB WAL retention 24h with compression, so blocks ship to object storage promptly.
+
+#### 5. Sizing
+
+- [ ] `[chart]` **No resource requests or limits are set on any Thanos component.** Sizing profiles (`thanos-small` / `thanos-large`, mirroring the Loki convention where the chart defaults are medium) are outstanding work.
+- [ ] `[operator]` Until they land, set requests explicitly. Thanos sizes off different axes than Loki — active series and samples/sec for Receive, block volume and retention for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [ ] `[operator]` Autoscaling on Query does not remove the need for requests: without them the HPA has no CPU target to measure against, so it never scales.
+
+#### 6. Meta-monitoring
+
+- [x] `[chart]` ServiceMonitors for every Thanos component (`thanos.global.serviceMonitor`).
+- [ ] `[operator]` Alert on Receive write failures and quorum errors — with RF 1 or 2 these are the first sign of a lost pod, and they are silent from the dashboards' point of view.
+
+#### 7. Validation
+
+- [x] `[chart]` Render-time validators cover objstore placeholders, backend/identity mismatch, component topology, replication-factor quorum, and writers or datasources aimed at a Thanos that is not deployed.
+- [ ] `[chart]` `helm template | kubeconform` in CI (shared with the Loki checklist).
+
+### See also
+
+- [Metrics](../../metrics/) — the metrics architecture these items configure.
+- [Storing](../../metrics/storing/) — object storage and retention in depth.
+- [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.

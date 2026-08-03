@@ -2485,25 +2485,79 @@ Upstream reference:
       <td class="helm-value-desc">Namespace override.</td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.pdb</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "maxUnavailable": 1
+}</pre>
+</td>
+      <td class="helm-value-desc">PodDisruptionBudgets for every Thanos component.
+
+Upstream ships these off. One switch turns them on for all components,
+and the per-component `pdb.enabled` cannot opt back out — the subchart
+templates test `or <component>.pdb.enabled global.pdb.enabled`.
+
+`maxUnavailable` rather than `minAvailable`, deliberately:
+
+  * It scales with replica count instead of pinning an absolute floor.
+  * On the single-replica Compactor, `minAvailable: 1` would block every
+    voluntary eviction and hang node drains indefinitely. `maxUnavailable: 1`
+    permits the eviction, so the singleton is a harmless no-op rather than
+    a drain deadlock.
+  * On Receive it must stay within what write quorum tolerates
+    (`replicationFactor - ((replicationFactor / 2) + 1)`), which is 1 at
+    the replication factor of 3 set below. A validator enforces this.
+
+This matches the Loki convention (ingester `maxUnavailable: 1`).</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.query</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "autoscaling": {
+    "enabled": true,
+    "maxReplicas": 5,
+    "minReplicas": 2,
+    "targetCPUUtilizationPercentage": 80
+  },
   "enabled": true
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.</td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.receive</td>
+      <td class="helm-value-key">thanos<wbr>.query<wbr>.autoscaling</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
   "enabled": true,
-  "mode": "standalone"
+  "maxReplicas": 5,
+  "minReplicas": 2,
+  "targetCPUUtilizationPercentage": 80
 }</pre>
 </td>
-      <td class="helm-value-desc">Thanos receive configuration. Receive provides a Prometheus remote_write-compatible endpoint.</td>
+      <td class="helm-value-desc">Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.mode</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"standalone"</code></td>
+      <td class="helm-value-desc">Whether to split receive distributors from ingesters. mode=split is not very stable in the helm chart</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.replicaCount</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>3</code></td>
+      <td class="helm-value-desc">Number of receive replicas.</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.storegateway</td>
@@ -2513,7 +2567,14 @@ Upstream reference:
   "enabled": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Thanos Store Gateway configuration. Store Gateway provides historical block querying.</td>
+      <td class="helm-value-desc">Thanos Store Gateway configuration. Store Gateway provides historical block querying.
+
+Autoscaling is available upstream but left **off** deliberately. Store
+Gateway is a PVC-backed StatefulSet that syncs the bucket's block index on
+startup, so scale-up is slow to become useful (it serves nothing until the
+index is warm) and CPU-triggered scaling reacts long after the load that
+triggered it. Scale-down also leaves orphaned PVCs behind, since
+StatefulSet volumes are not reclaimed. Size it deliberately instead.</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.compactor</td>
@@ -2538,10 +2599,34 @@ Upstream reference:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "autoscaling": {
+    "enabled": true,
+    "maxReplicas": 5,
+    "minReplicas": 2,
+    "targetCPUUtilizationPercentage": 80
+  },
   "enabled": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.</td>
+      <td class="helm-value-desc">Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.
+
+Note that enabling this is not sufficient on its own: point
+`connections.datasources.thanos.url` at the query-frontend Service too, or
+reads keep going straight to Query and the cache is never consulted. A
+validator warns when the two disagree.</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.queryFrontend<wbr>.autoscaling</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "maxReplicas": 5,
+  "minReplicas": 2,
+  "targetCPUUtilizationPercentage": 80
+}</pre>
+</td>
+      <td class="helm-value-desc">Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.ruler</td>

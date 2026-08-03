@@ -667,3 +667,181 @@ Usage:
   {{- /* Output main snippet */}}
   {{- $.Files.Get "pre-rendered/pipelines/agent.alloy" }}
 {{- end }}
+
+{{- /*
+Validate the Alloy agent and gateway pipeline wiring.
+
+Usage:
+  {{- $res := include "mzmon.alloy.validate" $ | fromYaml }}
+*/}}
+{{- define "mzmon.alloy.validate" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- $res := include "mzmon.alloy.validate.reachability" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- $res := include "mzmon.alloy.validate.destinations" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
+    {{- $gw := $.Values.pipeline }}
+    {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
+          "context" $
+          "role" "alloy-gateway"
+          "path" "pipeline.logging.gateway.destination.loki"
+          "dest" $gw.logging.gateway.destination.loki
+          "enabled" $gw.logging.gateway.destination.loki.enabled ) | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
+          "context" $
+          "role" "alloy-gateway"
+          "path" "pipeline.metrics.gateway.destination.prometheusRemoteWrite"
+          "dest" $gw.metrics.gateway.destination.prometheusRemoteWrite
+          "enabled" $gw.metrics.gateway.destination.prometheusRemoteWrite.enabled ) | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that the agent has a gateway to write to.
+*/}}
+{{- define "mzmon.alloy.validate.reachability" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- $agentOn := include "mzmon.alloyAgent.enabled" $ }}
+  {{- $gatewayOn := include "mzmon.alloyGateway.enabled" $ }}
+
+  {{- if and $agentOn ( not $gatewayOn ) }}
+    {{- $url := tpl ( $.Values.pipeline.logging.agent.destination.loki.url | toString ) $ }}
+    {{- if contains "alloy-gateway" $url }}
+      {{- $errors = append $errors ( printf "The Alloy agent is enabled and writes to the bundled gateway (%s), but alloy-gateway is not enabled. Node logs would be collected and then dropped. Enable the gateway, or repoint pipeline.logging.agent.destination.loki.url at a collector you run." $url ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- if and $gatewayOn ( not $agentOn ) }}
+    {{- $warnings = append $warnings "alloy-gateway is enabled but the alloy-agent is not, so nothing collects node or pod logs. This is correct only if you push logs to the gateway from elsewhere (loki.source.api or OTLP)." }}
+  {{- end }}
+
+  {{- /* The bundled Loki is the gateway's default log destination. */}}
+  {{- if $gatewayOn }}
+    {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
+    {{- if $lokiDest.enabled }}
+      {{- $url := tpl ( $lokiDest.url | toString ) $ }}
+      {{- /* Require the in-cluster Service shape so an external host that
+             happens to start with `loki-` is not flagged. */}}
+      {{- if and ( contains "loki-" $url ) ( contains ".svc" $url ) ( not ( include "mzmon.loki.enabled" $ ) ) }}
+        {{- $errors = append $errors ( printf "pipeline.logging.gateway.destination.loki.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist." $url ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that each signal has somewhere to go.
+*/}}
+{{- define "mzmon.alloy.validate.destinations" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
+    {{- $logging := $.Values.pipeline.logging.gateway.destination }}
+    {{- if and ( not $logging.loki.enabled ) ( not $logging.otel.enabled ) }}
+      {{- $warnings = append $warnings "Every gateway log destination is disabled (pipeline.logging.gateway.destination.loki.enabled and .otel.enabled are both false). Logs are processed and then discarded." }}
+    {{- end }}
+
+    {{- $metrics := $.Values.pipeline.metrics.gateway.destination }}
+    {{- if and ( not $metrics.prometheusRemoteWrite.enabled ) ( not $metrics.otel.enabled ) }}
+      {{- $warnings = append $warnings "Every gateway metric destination is disabled (pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled and .otel.enabled are both false). Metrics are scraped and then discarded." }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that a destination's declared authType has credentials behind it.
+
+The rendered pipeline references `sys.env(...)` for every credential, but the
+env ConfigMap only sets those variables when an inline value is present in
+values. Anything else has to arrive through `extraEnv` or `envFrom`, and
+nothing checked that — so a typo produced an empty credential and an auth
+failure at run time rather than a render error.
+
+Inline credentials are worth a warning of their own: the pipeline env template
+writes them into a ConfigMap, not a Secret.
+
+Usage:
+  {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
+        "context" $ "role" "alloy-gateway" "path" "..." "dest" $dest "enabled" true ) | fromYaml }}
+*/}}
+{{- define "mzmon.alloy.validate.destAuth" }}
+  {{- $ctx := .context | required ".context must be specified" }}
+  {{- $role := .role | required ".role must be specified" }}
+  {{- $path := .path | required ".path must be specified" }}
+  {{- $dest := .dest | required ".dest must be specified" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- if and .enabled ( ne ( $dest.authType | toString ) "none" ) }}
+    {{- $authType := $dest.authType | toString }}
+
+    {{- /* Which (value, envVar) pairs this authType needs. sigv4 is signed
+           from ambient AWS credentials, so it needs none. */}}
+    {{- $needed := list }}
+    {{- if eq $authType "basicAuth" }}
+      {{- $needed = list
+            ( dict "field" "basicAuth.username" "value" $dest.basicAuth.username "env" $dest.basicAuth.usernameEnv )
+            ( dict "field" "basicAuth.password" "value" $dest.basicAuth.password "env" $dest.basicAuth.passwordEnv "secret" true ) }}
+    {{- else if eq $authType "bearer" }}
+      {{- $needed = list
+            ( dict "field" "bearer.token" "value" $dest.bearer.token "env" $dest.bearer.tokenEnv "secret" true ) }}
+    {{- else if eq $authType "oauth2" }}
+      {{- $needed = list
+            ( dict "field" "oauth2.clientId" "value" $dest.oauth2.clientId "env" $dest.oauth2.clientIdEnv )
+            ( dict "field" "oauth2.clientSecret" "value" $dest.oauth2.clientSecret "env" $dest.oauth2.clientSecretEnv "secret" true )
+            ( dict "field" "oauth2.tokenUrl" "value" $dest.oauth2.tokenUrl "env" $dest.oauth2.tokenUrlEnv ) }}
+    {{- end }}
+
+    {{- $alloy := dig "alloy" dict ( index $ctx.Values $role | default dict ) }}
+    {{- $extraEnv := dig "extraEnv" list $alloy }}
+    {{- $envFrom := dig "envFrom" list $alloy }}
+    {{- $extraEnvNames := list }}
+    {{- range $extraEnv }}
+      {{- if .name }}
+        {{- $extraEnvNames = append $extraEnvNames .name }}
+      {{- end }}
+    {{- end }}
+
+    {{- range $needed }}
+      {{- $envName := .env | toString }}
+      {{- if .value }}
+        {{- if .secret }}
+          {{- $warnings = append $warnings ( printf "%s.%s is set inline, so it renders into the pipeline env ConfigMap in plaintext — not a Secret. Prefer leaving it empty and supplying %s through %s.alloy.envFrom (a secretRef) or .extraEnv." $path .field $envName $role ) }}
+        {{- end }}
+      {{- else if has $envName $extraEnvNames }}
+        {{- /* explicitly provided */}}
+      {{- else if $envFrom }}
+        {{- $warnings = append $warnings ( printf "%s.authType is %q but %s.%s is empty, so %s must come from %s.alloy.envFrom. That cannot be verified at render time; if the source does not set it, the credential resolves empty and authentication fails at run time." $path $authType $path .field $envName $role ) }}
+      {{- else }}
+        {{- $errors = append $errors ( printf "%s.authType is %q but %s.%s is empty and %s is set by neither %s.alloy.extraEnv nor .envFrom. The rendered pipeline reads sys.env(%q), which would resolve empty." $path $authType $path .field $envName $role $envName ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}

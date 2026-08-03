@@ -235,7 +235,7 @@ Three consequences for this workstream:
 Two Thanos-specific things to resolve while sizing it, both of which fail quietly:
 
 - **`queryFrontend` is disabled by default** and the values note it is "only required for production" — but the Thanos datasource URL points at `thanos-query`. Enabling the query frontend in a large profile without moving the datasource to it means caching is deployed and nothing routes through it.
-- **`receive.mode` is `standalone` by default.** Loki's profiles deliberately keep an HA-valid topology at *every* size so ring behavior and PodDisruptionBudgets stay meaningful. Thanos's default does not obviously meet that bar for a tier-0 metrics store, so either the default changes or the profile set has to document that HA arrives only at large — which would break the convention Loki set.
+- **Every size stays `receive.mode: standalone`,** and availability comes from the replication factor instead. `standalone` is *RouterIngestor* mode — it already shards across a ketama hashring, so `mode` is a topology choice, not an availability one. `split` is not usable: `receive.ingester` does not inherit from the top-level `receive.*` defaults (a hard swap in `thanos.receive.cfg`, which upstream has confirmed is intentional), so it means restating ~31 keys with eight schema-required sub-objects. What the profiles must set is an **odd** replication factor via `receive.extraArgs` — quorum is `(rf/2)+1`, so 2 tolerates no loss at all while 3 tolerates one. See the [Thanos production checklist](../../../../operating/production-best-practices/#metrics-thanos).
 
 ### Scheduling and storage class want profiles
 
@@ -753,7 +753,8 @@ The Terraform story is stale in several places here and should be corrected as t
 - [x] ~~Is the Alloy support bundle available to the E2E suite?~~ **Enabled by default**, so the suite can rely on it without a flag. The exact endpoint path still wants confirming against the pinned version.
 - [ ] What envelope vocabulary do the Thanos profiles document? Loki's is throughput (sustained / burst / ceiling); Thanos wants active series, ingested samples per second, retention volume, and query concurrency instead.
 - [ ] Does enabling `queryFrontend` in `thanos-large` also move the Thanos datasource URL onto it? Deploying the cache without routing through it is a silent no-op.
-- [ ] Is `receive.mode: standalone` acceptable as the medium default for a tier-0 metrics store? Loki keeps an HA-valid topology at every size; matching that convention means either changing the default or documenting that Thanos HA arrives only at large.
+- [x] ~~Is `receive.mode: standalone` acceptable as the medium default for a tier-0 metrics store?~~ **Yes** — it is RouterIngestor mode and already shards across a hashring. Availability comes from an odd replication factor, which every profile must set via `extraArgs`; `split` is unusable because `receive.ingester` deliberately does not inherit the top-level defaults.
+- [ ] Thanos has no PodDisruptionBudgets or topology spread constraints on any component today, and Receive is PVC-backed and therefore AZ-pinned. Does zone spread land with the sizing profiles, or as its own piece of work?
 - [ ] Should tier 2 also gate chart changes that touch storage wiring, or only run on main? Path-filtering is more precise but more machinery to keep correct.
 - [ ] Is a `kind-integration` (rustfs + CNPG) profile worth adding so the chart's own gate can reach the deeper storage shape, rather than that coverage living only on the Terraform path?
 - [ ] One `scheduling` profile parameterized by values, or separate `node-selector` / `tolerations` profiles? The former is fewer files; the latter composes more cleanly with the existing one-concern-per-profile convention.

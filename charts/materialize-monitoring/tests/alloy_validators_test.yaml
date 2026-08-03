@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the Alloy validators in `_alloy_helpers.tpl`.
+#
+# The credential checks close the TODO left in values.yaml beside
+# `pipeline.logging.gateway.destination.loki.basicAuth`: the rendered pipeline
+# reads every credential through `sys.env(...)`, but the env ConfigMap only sets
+# those variables when an inline value is present. Anything else has to arrive
+# via `extraEnv`/`envFrom`, and nothing verified it — so a typo produced an empty
+# credential and an auth failure at run time rather than a render error.
+#
+# The distinction the tests lock down: an *error* when nothing could possibly
+# supply the variable, a *warning* when an envFrom source exists whose contents
+# we cannot see from here.
+suite: alloy validators
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  # Off-cluster destinations: auth is only interesting against an external
+  # backend, and it keeps the reachability checks (covered separately) quiet.
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://metrics.example.com/api/v1/receive
+tests:
+  # --- credentials ----------------------------------------------------------
+
+  - it: errors when a credential can come from nowhere
+    set:
+      pipeline.logging.gateway.destination.loki.authType: basicAuth
+      alloy-gateway.alloy.envFrom: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "GATEWAY_LOKI_DEST_USERNAME is set by neither"
+      - failedTemplate:
+          errorPattern: "GATEWAY_LOKI_DEST_PASSWORD is set by neither"
+
+  # envFrom is opaque at render time, so this can only ever be a warning.
+  - it: warns when a credential must come from an envFrom source
+    set:
+      pipeline.logging.gateway.destination.loki.authType: basicAuth
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "GATEWAY_LOKI_DEST_USERNAME must come from alloy-gateway.alloy.envFrom"
+
+  - it: stays quiet when extraEnv supplies the credential
+    set:
+      pipeline.logging.gateway.destination.loki.authType: bearer
+      alloy-gateway.alloy.envFrom: null
+      alloy-gateway.alloy.extraEnv:
+        - name: GATEWAY_LOKI_DEST_BEARER_TOKEN
+          value: token
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "GATEWAY_LOKI_DEST_BEARER_TOKEN"
+        not: true
+
+  # Inline secrets land in a ConfigMap, not a Secret.
+  - it: warns that an inline secret renders into a ConfigMap in plaintext
+    set:
+      pipeline.logging.gateway.destination.loki.authType: bearer
+      pipeline.logging.gateway.destination.loki.bearer.token: s3cr3t
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "bearer.token is set inline.*ConfigMap in plaintext"
+
+  - it: does not warn about a non-secret field set inline
+    set:
+      pipeline.logging.gateway.destination.loki.authType: basicAuth
+      pipeline.logging.gateway.destination.loki.basicAuth.username: mzmon
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "basicAuth.username is set inline"
+        not: true
+
+  - it: says nothing about credentials when authType is none
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "resolves empty|must come from"
+        not: true
+
+  # sigv4 signs from ambient AWS credentials, so it needs no env plumbing.
+  - it: does not require env credentials for sigv4
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: sigv4
+      alloy-gateway.alloy.envFrom: null
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "prometheusRemoteWrite.*set by neither"
+        not: true
+
+  # --- reachability ---------------------------------------------------------
+
+  - it: errors when the agent writes to a gateway that is not deployed
+    set:
+      tags.pipeline: false
+      tags.alloy-agent: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "agent is enabled and writes to the bundled gateway.*but alloy-gateway is not enabled"
+
+  - it: warns when the gateway runs with no agent collecting anything
+    set:
+      tags.pipeline: false
+      tags.alloy-gateway: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "nothing collects node or pod logs"
+
+  - it: errors when the gateway writes to a bundled Loki that is disabled
+    set:
+      pipeline.logging.gateway.destination.loki.url: http://loki-distributor.test-monitoring.svc:3100/loki/api/v1/push
+    asserts:
+      - failedTemplate:
+          errorPattern: "points at the bundled Loki.*but Loki is not enabled"
+
+  # --- destinations ---------------------------------------------------------
+
+  - it: warns when every log destination is disabled
+    set:
+      pipeline.logging.gateway.destination.loki.enabled: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Logs are processed and then discarded"
+
+  - it: warns when every metric destination is disabled
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Metrics are scraped and then discarded"
