@@ -111,14 +111,14 @@ Putting it in this repo makes a chart change and its Terraform consequence **the
 
 Supporting facts, all of which already exist here:
 
-- **Per-component versioning.** `packages/components.yaml` already gives each artifact its own SemVer stream with path-based attribution, and `propose-bumps` opens the bump PR automatically. A `terraform` component slots into that machinery with a `dependencies:` edge on `materialize-monitoring`, so a chart bump proposes a module bump.
+- **Per-component versioning.** `packages/components.yaml` already gives each artifact its own SemVer stream with path-based attribution, and `propose-bumps` opens the bump PR automatically. The module joins the existing **`materialize-monitoring`** component rather than getting one of its own — see [One version, two artifacts](#one-version-two-artifacts).
 - **Snapshot tests.** `charts/materialize-monitoring/tests/` already runs helm-unittest with a `__snapshot__` directory and a `loki_profiles_test.yaml`. The tests that pin the couplings the module depends on belong beside the tests that already pin everything else.
 - **Profile access.** The module can read `charts/materialize-monitoring/profiles/*.values.yaml` with `file()` from a path in its own repo, at the same commit as the chart it pins. Cross-repo, it cannot.
 
 What this costs, stated honestly:
 
 - **No Terraform tooling here yet.** `lint.yaml` runs editorconfig, ruff/pyright, cargo, shellcheck/shfmt, yamllint — no `terraform fmt`, `tflint`, or `terraform-docs`. Those get added. It is a small, well-understood addition.
-- **Two repos to bump.** The Terraform repo's tag stops solely determining the observability version; its wrapper pins `?ref=terraform/vX.Y.Z` and Renovate proposes the bump. This is the real cost, and it is the same cost the repo already pays for every upstream chart it pins.
+- **Two repos to bump.** The Terraform repo's tag stops solely determining the observability version; its wrapper pins `?ref=materialize-monitoring/vX.Y.Z` and Renovate proposes the bump. This is the real cost, and it is the same cost the repo already pays for every upstream chart it pins.
 - **"We want all our Terraform in one place."** Partially preserved: everything a user writes provider config for — VPC, cluster, buckets, IAM — still lives in the Terraform repo. What moves is the chart-shape translation layer, which is not really Terraform-about-infrastructure so much as Terraform-about-this-chart.
 
 ## Proposed module layout
@@ -454,12 +454,38 @@ The assertion the E2E suite was missing a reason for: partition the gateway (or 
 
 Both work on kind and both are only meaningful against a real backend, so they belong on the rustfs + CNPG tier-2 variant. This is the test that would catch a regression in the guarantee the change exists to provide.
 
-## Version pinning and compatibility
+## One version, two artifacts
 
-`chart_version` and `crds_chart_version` default to a pinned pair, bumped as part of a release of the `terraform` component here; the wrapper's `?ref=` is bumped in the Terraform repo.
-Renovate runs in both repos and is the mechanism for proposing both.
+**Decision: the Terraform module ships as part of the existing `materialize-monitoring` component, not as a separate one.**
 
-Three compatibility axes reconcile at pin time, and [Compatibility](../../../compatibility/) is where that gets recorded — including the row it currently lacks, mapping Terraform-repo versions to a chart version:
+The component stops meaning "the Helm chart" and starts meaning "the materialize-monitoring release", which has two artifacts: the chart and the Terraform module. Concretely, in `packages/components.yaml`:
+
+- `content_paths` gains `terraform/`, so module changes attribute to this component.
+- `version_paths` stays `charts/materialize-monitoring/Chart.yaml` — the chart version *is* the release version. Terraform modules carry no in-tree version file; they are versioned by Git tag, and `<component>/vX.Y.Z` already supplies one.
+- `artifacts` is unchanged. The module is consumed by Git ref, so there is nothing to attach.
+- `title` should be reworded off "Helm Chart".
+
+### Why coupling beats a separate stream
+
+A separate `terraform` component would model the two as independently evolving. They do not:
+
+- **The ref becomes the answer.** `?ref=materialize-monitoring/v0.9.0` installs chart v0.9.0. Which chart a given module ref deploys is readable from the ref itself — no mapping table, no compatibility matrix between our own two artifacts.
+- **No mismatch window.** With separate streams, a chart bump proposes a module bump as a *second* PR, and between the two merges the pair is inconsistent. Shared versioning removes the window rather than narrowing it.
+- **It matches the actual dependency.** The module's whole job is encoding chart value paths; it is not independently useful. A separate SemVer stream would advertise an independence that does not exist.
+- **One changelog entry** for a change that spans both, which is the common case.
+
+### The costs, stated plainly
+
+- **A Terraform-only change publishes a chart release.** `propose-bumps` bumps `Chart.yaml`, so a module fix ships a chart version that is byte-identical to its predecessor except for the version, plus an OCI push. Cheap, but real, and Helm-only users will see it. A `### Terraform` changelog subsection keeps it legible.
+- **A breaking module change forces a major bump of the chart version.** This is the sharper cost: renaming a module input is not a breaking *chart* change, but shared versioning makes the chart go to a new major anyway. Mitigations: prefer additive changes with deprecation over renames, and make the changelog say which surface broke — the [customer-facing surface subsection](../../roadmap/#versioning-changelog-and-releases) already contemplated for the deprecation policy is the right home. The alternative is not obviously better: two version numbers to reconcile is its own confusion.
+- **Every chart release re-pins the module downstream**, so Renovate fires on each one even when the module did not change. That is arguably correct — a chart release can move values the module sets — and downstream can group or schedule those PRs.
+
+The `materialize-monitoring-crds` chart stays a separate component, and the module pins it separately via `crds_chart_version`. That is the one pin this coupling does not cover, which is right: the CRDs chart deliberately has a looser lifecycle.
+
+## Compatibility
+
+Three compatibility axes reconcile at pin time, and [Compatibility](../../../compatibility/) is where that gets recorded.
+Coupled versioning collapses what would have been a two-number mapping into one: the row that page needs is `materialize-terraform-self-managed vX` ↔ `materialize-monitoring vY`, and `vY` covers the chart and the module together.
 
 - **Chart ↔ Materialize.** Dashboards from v0.8.0 want `mz_object_info` (Materialize v26.29.0+, degrading gracefully without it); scrapers from v0.1.1 need the `app.kubernetes.io/name` labels added in v26.24.0. The Terraform repo pins the Materialize version too, so the pair must actually be compatible.
 - **Chart ↔ Grafana.** Dashboards from v0.8.0 target dashboard schema v2 and want Grafana v13+; `dashboards.config.grafana.apiTarget` defaults to `dashboard.grafana.app/v2`. The bundled Grafana satisfies this; an `external` Grafana may not, so the module surfaces the knob.
@@ -600,7 +626,7 @@ Work in **this** repo. None of it is Terraform-specific — each item is a gap t
 | Snapshot tests pinning rendered service-account names and subject strings | The fail-fast mechanism for the Terraform path's hardest coupling | Should land with the module |
 | Subject strings emitted in `NOTES.txt` and as module outputs | Makes the value that must match copy-pasteable rather than derived | Should land with the module |
 | Migrate the foundational parts of the Loki profiles into chart defaults or a `sizing` selector | Leaves profiles documentation-only and removes the last drift risk | Longer-term; reading the files directly covers the interim |
-| Terraform tooling in `lint.yaml` (`terraform fmt`, `tflint`, `terraform-docs`) and a `terraform` component in `components.yaml` | Prerequisite for hosting the module here at all | Blocking for the module landing here |
+| Terraform tooling in `lint.yaml` (`terraform fmt`, `tflint`, `terraform-docs`), and `terraform/` added to the existing `materialize-monitoring` component's `content_paths` | Prerequisite for hosting the module here at all. See [One version, two artifacts](#one-version-two-artifacts) | Blocking for the module landing here |
 | `packages/mz-monitoring-e2e` crate — a fourth workspace member, with cluster-connectivity helpers and the Grafana / Loki / Thanos / Alloy assertions | The assertion engine for tiers 1 and 2 | Blocking for qualification, which downstream assumes |
 | kind-based E2E workflow with path-filtered variants (chart vs Terraform, small on PRs / medium on main) | The venue for tiers 1 and 2; `test.yaml` runs cargo test and helm-unittest only today | Blocking alongside the crate |
 | `thanos-small` / `thanos-large` sizing profiles, mirroring the Loki convention (deltas from the medium defaults, with a documented envelope) | Thanos has no resources or replica counts in values at all today, so the sizing vocabulary covers only half the stack | Blocking for the tier-2 PR variant |
@@ -615,13 +641,15 @@ The Terraform story is stale in several places here and should be corrected as t
 - `getting-started/_index.md` — carries a TODO and an "as of version: TODO" placeholder.
 - `reference/compatibility.md` — states that no version includes materialize-monitoring except its dashboard. Gains the Terraform-repo ↔ chart-version row.
 - `reference/internal/roadmap.md` — the M4 "Terraform wrapper module" row, the "Downstream pinning" bullet, and a `terraform` entry wherever components are enumerated. Also two Testing / CI rows: the "Synthetic-data end-to-end smoke test" row **is** the E2E suite described here, and the "kind / ArgoCD / FluxCD CI matrix" row needs its kind half split out and promoted well above "very low priority" (ArgoCD and Flux stay).
-- `reference/internal/repo-layout.md` — gains `terraform/`.
+- `reference/internal/repo-layout.md` — ✅ done. Refreshed against the tree and carries `terraform/` as a planned entry.
 - `operating/production-best-practices.md` — the `[consumer]` items become concretely satisfied-by-Terraform on that path, which matters to a reader choosing an install method.
 
 ## Open questions
 
 - [x] ~~Does hosting the module here create a chicken-and-egg problem for the Terraform repo's integration tests?~~ **No.** Downstream consumes released tags only, Renovate-pinned, and assumes qualification already happened here. The contract is one-directional.
 - [x] ~~Does the integration harness run the object-storage path on every apply?~~ Superseded by the [tier structure](#tiers): real object storage is exercised at tier 2 on kind via rustfs, and at tier 3 on real clouds.
+- [ ] Verify Terraform resolves a `?ref=` containing a slash (`materialize-monitoring/v0.9.0`). Slashes are valid in refnames and the ref is passed through to git, so this should work — but the whole consumption path depends on it, so confirm before committing to the tag format.
+- [ ] Does a `### Terraform` changelog subsection carry enough signal for Helm-only readers seeing a version bump that did not change the chart, or does the release note need to say so more loudly?
 - [ ] Confirm the Alloy component and attribute names for a file-backed sending queue, and whether the pipeline schema should type the otelcol components or keep using the `raw:` escape hatch as the existing bridges do.
 - [ ] Should logs and metrics share one agent-side OTLP exporter and queue (uniform behavior, shared backpressure, one node's blast radius) or separate queues over the same connection (independent failure)? Worth exposing as a value either way.
 - [x] ~~`hostPath` or `emptyDir` for the agent queue, and how is it bounded?~~ **`hostPath`, `/var/lib/mzmon-alloy` → `/var/lib/alloy/wal`**, bounded by compaction at ~100 MiB with compaction-on-start. Survives pod restarts, needs no StorageClass.
