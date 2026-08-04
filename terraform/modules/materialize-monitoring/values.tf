@@ -99,8 +99,13 @@ locals {
       type   = "GCS"
       config = { bucket = local.storage.thanos_bucket }
       }) : yamlencode({
-      type   = "AZURE"
-      config = { container = local.storage.thanos_bucket }
+      type = "AZURE"
+      # `storage_account` is as required as `container` — the account is not
+      # derivable from the container name, and omitting it fails at startup.
+      config = {
+        storage_account = local.storage.azure_storage_account
+        container       = local.storage.thanos_bucket
+      }
     })
   )
 
@@ -115,7 +120,14 @@ locals {
             chunks = local.storage.loki_bucket
             ruler  = local.storage.loki_bucket
           }
-          object_store = { type = local.loki_object_store }
+          # Azure needs the account alongside the type; the other two backends
+          # carry everything they need in the bucket name.
+          object_store = merge(
+            { type = local.loki_object_store },
+            local.storage.cloud != "azure" ? {} : {
+              azure = { account_name = local.storage.azure_storage_account }
+            },
+          )
           # The legacy selector. Loki ignores it while `use_thanos_objstore` is
           # on, but the chart still renders a `ruler.storage` block from it, so
           # leaving it at the default puts a contradictory s3 store in the config
@@ -220,6 +232,7 @@ locals {
     [yamlencode(local.wiring_values)],
     local.sizing_profiles,
     local.storage_documents,
+    local.azure_identity_document,
     local.storage_class_document,
     local.google_cloud_metrics_document,
     local.scheduling_document,

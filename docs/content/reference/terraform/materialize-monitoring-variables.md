@@ -206,6 +206,9 @@ rather than at pod start.
     thanos_bucket                       = string
     region                              = optional(string)
     endpoint                            = optional(string)
+    azure_storage_account               = optional(string)
+    azure_client_id                     = optional(string)
+    azure_tenant_id                     = optional(string)
     loki_service_account_annotations    = optional(map(string), {})
     thanos_service_account_annotations  = optional(map(string), {})
     gateway_service_account_annotations = optional(map(string), {})

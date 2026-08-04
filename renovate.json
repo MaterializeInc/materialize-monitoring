@@ -95,8 +95,7 @@
     },
     {
       "customType": "regex",
-      "description": "Update renovate-annotated image refs (tag plus optional digest) in the Makefile",
-      "comment": "The bundled customManagers:makefileVersions preset only matches a bare version in a *_VERSION variable, so it cannot maintain an image:tag@sha256 pair. Capturing currentDigest is what makes renovate bump both halves together — a tag-only bump would leave the digest pinning the old image and silently win.",
+      "description": "Update renovate-annotated image refs (tag plus optional digest) in the Makefile. The bundled customManagers:makefileVersions preset only matches a bare version in a *_VERSION variable, so it cannot maintain an image:tag@sha256 pair. Capturing currentDigest is what bumps both halves together — a tag-only bump would leave the digest pinning the old image and silently win.",
       "managerFilePatterns": ["/(^|/)Makefile$/"],
       "matchStrings": [
         "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z0-9_]+\\s*\\??=\\s*\\S+?:(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?"
