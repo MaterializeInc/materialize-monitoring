@@ -8,11 +8,11 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring Helm Chart v0.10.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.10.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring Helm Chart v0.9.0
+## materialize-monitoring (Helm chart + Terraform module) v0.9.0
 
 * DEP-191 Improve validation for thanos and alloy
     * [materialize-monitoring#170](https://github.com/MaterializeInc/materialize-monitoring/pull/170)
