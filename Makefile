@@ -368,8 +368,14 @@ KIND_CONTEXT ?= kind-$(KIND_CLUSTER)
 KUBECTL ?= kubectl --context $(KIND_CONTEXT)
 HELM_KUBE ?= --kube-context $(KIND_CONTEXT)
 
-# Matches the GKE minor the stack is validated against. Digest-pinned: kind's
-# tags are rebuilt, so the tag alone does not identify a node image.
+# Matches the GKE minor the stack is validated against.
+#
+# Digest-pinned, and it earns it: kind rebuilds node images per kind release and
+# reuses the tag, so a tag alone does not identify an image. `kindest/node:v1.21.14`
+# has been published with six different digests. The digest is a multi-arch index
+# (amd64 + arm64), so it works on both a CI runner and an Apple Silicon laptop.
+#
+# renovate: datasource=docker packageName=kindest/node
 KIND_NODE_IMAGE ?= kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
 
 e2e-cluster:
