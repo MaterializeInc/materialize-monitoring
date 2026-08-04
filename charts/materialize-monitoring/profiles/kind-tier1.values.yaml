@@ -1,0 +1,44 @@
+# Tier-1 E2E profile: the logging path, end to end, with no external dependency.
+#
+# Compose after loki-test:
+#   -f profiles/loki-test.values.yaml -f profiles/kind-tier1.values.yaml
+#
+# Scope is deliberately narrow. Thanos needs object storage in every deployment
+# shape it supports — FILESYSTEM exists but assumes one shared volume, which the
+# receive/store/compactor split does not have — so a hermetic run cannot include
+# it. Tier 2 provides rustfs and covers the metrics path there.
+#
+# What this still proves, which a render cannot: pods actually start, the agent
+# discovers pods and ships their logs, the gateway accepts and forwards them,
+# Loki ingests and indexes, and Grafana resolves the datasource and queries it
+# back. That is the full logging round trip.
+
+tags:
+  # Off, then re-enable only what runs without object storage. `tags.default`
+  # would pull in Thanos, Alertmanager, and metrics-server.
+  default: false
+  loki: true
+  # Both Alloy roles: the agent→gateway→Loki path is the point of this tier.
+  pipeline: true
+  # Grafana plus its operator, so datasource provisioning and dashboard delivery
+  # are exercised rather than assumed.
+  managed-grafana: true
+  # Emits series with no Materialize instance present, which keeps the
+  # self-monitoring assertions non-empty.
+  kube-state-metrics: true
+
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          # No Thanos in this tier. Left on, the gateway retries a remote-write
+          # endpoint that does not resolve and buries the logs under errors.
+          enabled: false
+
+grafana:
+  grafana:
+    # No PVC and no Postgres: Grafana's default SQLite on an emptyDir is fine for
+    # a cluster that lives for one CI job. Tier 2 covers the CNPG shape.
+    persistence:
+      enabled: false

@@ -14,6 +14,25 @@
 tags:
   loki: true
 
+# -- Endpoints for consumers of Loki.
+# SingleBinary renders exactly one `loki` Service. The chart defaults name the
+# microservice Services — `loki-query-frontend` for reads, `loki-distributor` for
+# writes — so every consumer resolves a host that does not exist unless it is
+# repointed here. The write path is the one that fails silently: the gateway
+# retries DNS forever and no logs reach Loki.
+# (The canary reads through `loki-query-frontend` too, but it is disabled below.)
+connections:
+  datasources:
+    loki:
+      url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
+
+pipeline:
+  logging:
+    gateway:
+      destination:
+        loki:
+          url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+
 loki:
   # -- Single-process Loki for hermetic tests.
   deploymentMode: SingleBinary
@@ -46,6 +65,13 @@ loki:
           index:
             prefix: loki_index_
             period: 24h
+    compactor:
+      # -- Must match storage.type, like every other backend name here.
+      # Left at the base default (s3) the compactor crash-loops with
+      # "failed to create delete request store object client: at least one
+      # bucket name must be specified" — the backend-consistency validator only
+      # covers the thanos objstore path, which this profile turns off.
+      delete_request_store: filesystem
 
   # -- Run exactly one Loki pod.
   singleBinary:

@@ -1,0 +1,40 @@
+# kind cluster for the E2E tiers.
+#
+# Two workers rather than one: the Alloy agent is a DaemonSet, and a
+# single-node cluster cannot distinguish "collects from every node" from
+# "collects from the node it happens to be on". Loki's SingleBinary and the
+# tier-2 StatefulSets fit comfortably on two.
+#
+# The control plane is left schedulable-by-default off (kind taints it), so
+# workload placement stays honest.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: mzmon-e2e
+
+nodes:
+  - role: control-plane
+    # Ingress is not used: the E2E suite reaches services by port-forward, which
+    # is the pragmatic choice on kind and needs no cluster-side plumbing.
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            # Surfaced to the stack as a node label so scheduling assertions have
+            # something to select on, mirroring the `workload=generic` pools the
+            # cloud examples create.
+            node-labels: "workload=generic"
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "workload=generic"
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "workload=generic"

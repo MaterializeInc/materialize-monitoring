@@ -312,6 +312,20 @@ Usage:
            client is chosen by name and then validated against a config that was
            never populated, so the component crash-loops with "no s3 endpoint in
            config file". Those are errors; the inert one below is a warning. */}}
+    {{- /* The same mismatch, on the pre-thanos path. `use_thanos_objstore: false`
+           makes `storage.type` the live selector, and the compactor still reads
+           delete_request_store — so a profile that switches the backend and
+           forgets this one crash-loops with "at least one bucket name must be
+           specified". The check below is gated on the thanos path, which is why
+           this needs its own. */}}
+    {{- $legacyOnly := dig "loki" "storage" "type" "" $values }}
+    {{- if and ( not ( dig "loki" "storage" "use_thanos_objstore" false $values ) ) $legacyOnly }}
+      {{- $delStore := dig "loki" "compactor" "delete_request_store" "" $values }}
+      {{- if and $delStore ( ne $delStore $legacyOnly ) }}
+        {{- $errors = append $errors ( printf "loki.loki.compactor.delete_request_store (%q) must match loki.loki.storage.type (%q) while use_thanos_objstore is off; otherwise the compactor fails at startup building a client for a backend that was never configured." $delStore $legacyOnly ) }}
+      {{- end }}
+    {{- end }}
+
     {{- $objType := dig "loki" "storage" "object_store" "type" "" $values }}
     {{- if and ( dig "loki" "storage" "use_thanos_objstore" false $values ) $objType }}
       {{- $delStore := dig "loki" "compactor" "delete_request_store" "" $values }}
