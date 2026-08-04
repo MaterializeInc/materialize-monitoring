@@ -1202,7 +1202,10 @@ loki:
     # (if v13 stops being in use).
     schemaConfig:
       configs:
-        - from: 2024-01-01
+        # Quoted so the date stays a string. Unquoted it is a YAML timestamp, and
+        # some parsers (Terraform's `yamldecode`, among others) promote it to
+        # RFC 3339, which Loki rejects.
+        - from: "2024-01-01"
           store: tsdb
           object_store: s3
           schema: v13

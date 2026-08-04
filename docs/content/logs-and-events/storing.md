@@ -26,6 +26,31 @@ A single bucket holds everything, separated by prefix:
 >   Prefer granting access through cloud **workload identity** (IRSA on AWS, Workload Identity on GKE, Azure Workload Identity) so no long-lived credentials live in the cluster.
 >   Manually configured credentials are supported as a documented escape hatch for environments where workload identity is unavailable.
 
+### Selecting the backend
+
+The chart's defaults are S3-shaped, so an AWS install only has to supply bucket names.
+Every other backend has to be named in **three** places, and all three have to agree:
+
+| Value | Read by |
+|---|---|
+| `loki.loki.storage.object_store.type` | the chunk and index clients, and the [Ruler](../#ruler) store |
+| `loki.loki.schemaConfig.configs[].object_store` | the chunk client for that schema period |
+| `loki.loki.compactor.delete_request_store` | the compactor's delete-request store |
+
+None of these fail softly.
+The client is chosen by name and then validated against a configuration that was never populated, so the component that reads a stale value crash-loops with `create bucket: no s3 endpoint in config file`.
+The schema period is the one that hurts most — it selects the chunk client, so **every ingester** fails at startup.
+
+There is a fourth, `loki.loki.storage.type`, which is the pre-Thanos selector.
+Loki ignores it while `use_thanos_objstore` is on and logs that it is doing so, so a stale value is misleading rather than broken — set it anyway, so the rendered configuration does not contain a contradictory store.
+
+The chart validates the set at render time and refuses to install a mismatched config, naming the value to fix.
+The exception is a schema period that is *not* the newest: those are allowed to name the previous backend, because that is what an append-only backend migration looks like.
+
+> [!TIP]
+>   `charts/materialize-monitoring/profiles/gcp-example.values.yaml` sets all four for GCS and is the shortest path to a correct non-AWS config.
+>   The [Terraform module](../../getting-started/terraform/) derives all four from `object_storage.cloud`, so there is nothing to keep in sync there.
+
 ## Granting object-storage access (workload identity)
 
 On every managed cloud the recommended way to give Loki access to its bucket is **workload identity** — no static keys in the cluster.
@@ -105,7 +130,7 @@ loki:
    >   The default assumes the release is installed into `monitoring`.
    >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[loki/loki]"` here.
 
-3. Annotate the ServiceAccount, and use the GCS backend (`loki.loki.object_store: gcs`):
+3. Annotate the ServiceAccount — and set the GCS backend in all four places from [Selecting the backend](#selecting-the-backend), which the annotation alone does not do:
 
    ```yaml
    loki:
@@ -127,7 +152,7 @@ loki:
    >   The default assumes the release is installed into `monitoring`.
    >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the subject is `system:serviceaccount:loki:loki` instead.
 
-3. Annotate the ServiceAccount, label the pods so the webhook injects the token, and use the Azure backend (`loki.loki.object_store: azure`):
+3. Annotate the ServiceAccount, label the pods so the webhook injects the token, and set the Azure backend in all four places from [Selecting the backend](#selecting-the-backend):
 
    ```yaml
    loki:

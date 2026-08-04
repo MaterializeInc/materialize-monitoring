@@ -1,10 +1,14 @@
-# Complete example: what a per-cloud wrapper module passes in.
+# AWS example: what the per-cloud wrapper module passes in.
 #
 # This is not a deployable root on its own — the buckets and IAM roles it names
 # are placeholders that a wrapper in materialize-terraform-self-managed would
-# create. It exists so the module has a plan target: CI plans this, extracts the
-# composed values, and renders the chart against them, which catches every value
-# path typo without needing a cluster.
+# create. It exists so the module has a plan target: `make terraform-render`
+# plans it, extracts the composed values, and renders the chart against them,
+# which catches every value-path typo without needing a cluster.
+#
+# There is a `gcp` example beside this one, and both are rendered. That is not
+# redundancy: the chart's defaults are S3-shaped, so an AWS-only example agrees
+# with every default it fails to set, and cannot catch a missing backend key.
 #
 # Note the relative `source`. An absolute path would make Terraform copy the
 # module into .terraform/modules/ without the chart directory beside it, and the

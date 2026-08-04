@@ -67,7 +67,7 @@ resource "helm_release" "crds" {
   name      = "mzmon-crds"
   namespace = local.namespace
   chart     = "${var.chart_registry}/materialize-monitoring-crds"
-  version   = var.crds_chart_version
+  version   = local.crds_chart_version
   timeout   = var.install_timeout
 
   # CRDs are cluster-scoped; the namespace only holds the release metadata.
@@ -80,7 +80,7 @@ resource "helm_release" "monitoring" {
   name      = "mzmon"
   namespace = local.namespace
   chart     = "${var.chart_registry}/materialize-monitoring"
-  version   = var.chart_version
+  version   = local.chart_version
   timeout   = var.install_timeout
 
   skip_crds = true
@@ -110,6 +110,17 @@ resource "helm_release" "monitoring" {
 
         Use a git source, or a "./"-relative path. Alternatively set sizing = "medium" (the chart's
         own defaults, which need no profile) and supply sizing through additional_values.
+      EOT
+    }
+
+    precondition {
+      condition     = can(yamldecode(file("${local.chart_dir}/Chart.yaml")).version)
+      error_message = <<-EOT
+        The chart's Chart.yaml is not readable from the module, so its version cannot be resolved.
+
+        Same cause as above: the repository is not present alongside the module, usually from an
+        absolute local path `source`. Use a git source or a "./"-relative path, or pin
+        chart_version and crds_chart_version explicitly.
       EOT
     }
   }

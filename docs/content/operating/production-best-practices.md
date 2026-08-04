@@ -48,7 +48,7 @@ Satisfied by the modules today:
 
 Still yours, on any install path:
 
-- A default **StorageClass** must exist — several components are PVC-backed and the modules do not create one.
+- A usable **StorageClass** must exist — five workloads are PVC-backed and the modules do not create one. "Usable" is not the same as "present": on GCP's C4 and N4 machine families, which accept only Hyperdisk, *every* StorageClass GKE creates by default is Persistent Disk and none of them will attach. The Terraform modules take `storage_class`; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
 - **Sizing and retention budgets**, node-pool capacity, and the profile choice.
 - **Basic-auth or mTLS secrets** between components, which are not yet wired on any path.
 - Everything tagged `[operator]`.
@@ -86,7 +86,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 
 - [x] `[chart]` Pipelines are **authored as code** (`packages/alloy-pipelines/*.yaml`) and rendered to `.alloy`; the rendered output is committed and CI asserts it matches a fresh render, so config drift is caught at review time.
 - [x] `[chart]` `alloy validate` runs on every rendered pipeline in the build.
-- [ ] `[chart]` Pre-install/pre-upgrade `alloy fmt`/validate hook so a bad config fails the release rather than a running pod (tracked on the [Roadmap](../../reference/internal/roadmap/)).
+- [x] `[chart]` Pre-install/pre-upgrade `alloy validate` hook so a bad config fails the release rather than a running pod.
 - [ ] `[operator]` Change pipeline behavior (stages, label families, endpoints) through the YAML sources, never by hand-editing rendered `.alloy` in a running deployment — edits there are lost on the next render and untracked.
 
 ### Cardinality & rate control (the lever)
@@ -105,14 +105,14 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 
 ### Agent placement & durability
 
-- [ ] `[operator]` Tolerate node taints so the DaemonSet actually lands on every node you want logs from (tainted/spot/system pools included) — a missing toleration is a silent per-node blind spot.
+- [ ] `[consumer]` Tolerate node taints so the DaemonSet actually lands on every node you want logs from (tainted/spot/system pools included) — a missing toleration is a silent per-node blind spot.
 - [ ] `[operator]` Persist the agent's file **positions** and journal cursor (hostPath) so a restart resumes where it left off instead of re-tailing (duplicate lines) or skipping (gaps).
-- [ ] `[operator]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
+- [ ] `[consumer]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
 
 ### Security & meta-monitoring
 
 - [x] `[chart]` Distroless Alloy image: FIPS boringcrypto, multi-arch, non-root, GHCR-published.
-- [ ] `[chart]` ServiceMonitor/PodMonitor (or GCP `PodMonitoring`) for both Alloy roles — scrape Alloy's own component metrics (received/sent bytes, dropped lines, write failures).
+- [x] `[chart]` ServiceMonitor/PodMonitor (or GCP `PodMonitoring`) for both Alloy roles — scrape Alloy's own component metrics (received/sent bytes, dropped lines, write failures).
 - [ ] `[operator]` Alert on gateway write failures and drop counters (`drop_counter_reason`) so shedding or a broken destination is visible rather than silent data loss.
 
 ## Logging (Loki)
@@ -204,6 +204,7 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 - [ ] `[consumer]` **(Terraform: automatic)** Provision the object-storage bucket (S3-compatible / GCS / Azure Blob); single bucket, prefixes `/loki/chunks`, `/loki/ruler`.
 - [ ] `[consumer]` **(Terraform: automatic)** Object-store lifecycle policy aligned with (or longer than) Loki retention, so the compactor owns deletion. The modules leave bucket expiry off by default, which is the safe end of that alignment.
 - [ ] `[operator]` Treat schema periods as **append-only** — future format changes go in a new period with a `from` date ahead of now, never by editing a past period.
+- [ ] `[consumer]` **(Terraform: automatic)** On any backend other than S3, name it in all **three** load-bearing places — `storage.object_store.type`, the newest `schemaConfig` period, and `compactor.delete_request_store`. The chart's defaults are S3-shaped, and a stale one crash-loops the component that reads it with `no s3 endpoint in config file` rather than degrading. A render-time check refuses a mismatched set, and warns on the inert fourth (`storage.type`); see [Selecting the backend](../../logs-and-events/storing/#selecting-the-backend).
 
 #### 3. Replication, ring & placement
 
@@ -222,7 +223,7 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 - [x] `[chart]` StatefulSet rolls ingesters **one at a time** (`maxUnavailable: 1`); a burst rollout needs `zoneAwareReplication` (zone-at-a-time) or the alpha `MaxUnavailableStatefulSet` gate — neither is in play, and PDBs govern *drains*, not rollout speed.
 - [ ] `[operator]` **Budget the roll and raise the deploy timeout.** The serial, readiness-gated ingester roll takes **~1 min per ingester** (so a 6-ingester roll ≈ 5 min) and is not bounded by node provisioning — it overruns Helm's default 5-min `--wait`. Set `helm upgrade --timeout` (or Flux `spec.timeout` / Pulumi `customTimeouts`; ArgoCD is async and tolerant). A wait-timeout here means "still rolling," not "failed." See [Upgrading](../upgrading/).
 - [ ] `[operator]` Add ingesters (N > RF) when per-ingester memory/stream-count climbs or to spread the regression burst — streams shard across the ring only when N > RF.
-- [ ] `[consumer]` A dynamic-provisioning **StorageClass** still needs to exist for the **one PVC-backed component, the ruler** (it keeps a PVC for its remote-write WAL) — CSI driver installed, not safe to assume on bare clusters.
+- [ ] `[consumer]` **(Terraform: `storage_class`)** A dynamic-provisioning **StorageClass** still needs to exist for the **one PVC-backed Loki component, the ruler** (it keeps a PVC for its remote-write WAL) — CSI driver installed, not safe to assume on bare clusters, and on GCP C4/N4 no default class is attachable at all.
 
 #### 5. Limits & cardinality
 
@@ -246,12 +247,12 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 #### 8. Read path
 
 - [x] `[chart]` Query-frontend ≥ 2 for queue fairness; query splitting/parallelism configured.
-- [ ] `[chart]` Grafana Loki datasource provisioned, pointing at the **query-frontend** Service (bundled nginx loki-gateway is off; datasource wiring still to land).
+- [x] `[chart]` Grafana Loki datasource provisioned, pointing at the **query-frontend** Service (bundled nginx loki-gateway is off; datasource wiring still to land).
 - [ ] `[operator]` Scale queriers/frontends — not ingesters — when dashboards feel slow.
 
 #### 9. Tenancy & auth
 
-- [ ] `[chart]` **One logical tenant per install:** `auth_enabled: true` with a single named `X-Scope-OrgID` (not the implicit `fake` tenant), so a future split is config — not a data migration, since the tenant ID is baked into the object-storage path. *(Decision recorded; not yet wired into values.)*
+- [x] `[chart]` **One logical tenant per install:** `auth_enabled: true` with a single named `X-Scope-OrgID` (not the implicit `fake` tenant), so a future split is config — not a data migration, since the tenant ID is baked into the object-storage path.
 - [ ] `[operator]` Isolation is **label-based** within the tenant (`environment_id`, …); the **hard isolation boundary is the install** (per region/stack). Fine for trusted internal consumers — revisit if per-team or customer-facing access is required (then Grafana LBAC, or tenant-per-environment writes + multi-tenant reads).
 - [ ] `[operator]` Per-environment controls are label-based, not tenant-based: per-stream retention (`environment_id`) and per-label rate limits — both **static config**, which is why no `runtime_config` live reload is needed.
 - [ ] `[operator]` Watch per-ingester memory against total fleet stream count — one tenant concentrates cardinality, bringing the N > RF lever ([§4](#4-ingester-durability--rollouts)) forward.
@@ -358,7 +359,7 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 
 - [x] `[chart]` Objstore config rendered into a Secret (`global.objstore.createSecret`), consumed by every component.
 - [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Supply the bucket and grant access by **workload identity** (IRSA / GKE Workload Identity / Azure Workload Identity) rather than static keys. A render-time check errors when the identity annotation names a different cloud than the objstore backend, and warns when a cloud backend has neither an annotation nor inline credentials.
-- [ ] `[consumer]` A dynamic-provisioning **StorageClass** must exist — Receive, Store Gateway, and Compactor are all PVC-backed.
+- [ ] `[consumer]` **(Terraform: `storage_class`)** A dynamic-provisioning **StorageClass** must exist *and be attachable by the nodes these land on* — Receive, Store Gateway, and Compactor are all PVC-backed. On GCP C4/N4 that rules out every default class; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
 
 #### 3. Components & read path
 

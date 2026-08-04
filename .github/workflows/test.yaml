@@ -56,12 +56,33 @@ jobs:
       - name: helm unittest
         run: make helm-tests
 
+  terraform-check:
+    name: terraform check
+    # Skip on version-update/* PRs, same reasoning as the jobs above: the module
+    # reads the chart version out of Chart.yaml, so a bump changes the rendered
+    # release name only, and main re-runs this on merge.
+    if: ${{ !startsWith(github.head_ref, 'version-update/') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          # The wrapper intercepts stdout, which the render check parses as JSON.
+          terraform_wrapper: false
+      # fmt, validate, and — via the terraform-render prerequisite — a plan of
+      # every example with the chart rendered against the values it composes.
+      # helm and jq are preinstalled on the runner image, and the subcharts are
+      # vendored, so no registry access is needed. No cluster either: the
+      # examples plan against a kubeconfig that does not exist.
+      - name: terraform check
+        run: make terraform-check
+
   # Rollup gate — the single check to require in branch protection for this
   # workflow. Passes iff every job above finished `success` or `skipped` (so the
   # version-update skips still pass); any failure or cancellation fails it.
   test-gate:
     name: test-gate
-    needs: [cargo-test, helm-tests]
+    needs: [cargo-test, helm-tests, terraform-check]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:

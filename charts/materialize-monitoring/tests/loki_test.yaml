@@ -88,6 +88,69 @@ tests:
       - failedTemplate:
           errorPattern: "delete_request_store.*must match.*object_store\\.type"
 
+  # The schema period selects the *chunk* client, so a period left at the base
+  # default takes every ingester down at startup rather than degrading. Everything
+  # else is switched to gcs here so the schema period is the only mismatch left.
+  - it: should fail when the active schema period names a different backend than the object store
+    set:
+      loki.loki.storage.object_store.type: gcs
+      loki.loki.storage.type: gcs
+      loki.loki.compactor.delete_request_store: gcs
+      # loki.loki.schemaConfig.configs[0].object_store left at the base default (s3)
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "schemaConfig\\.configs\\[0\\] is the active schema period.*must match"
+
+  # An append-only backend migration: the older period keeps naming the backend
+  # its chunks were written to, and only the newest has to match the current
+  # config. This must stay installable, or a migration is impossible.
+  - it: should allow an earlier schema period to name the previous backend
+    set:
+      loki.loki.storage.object_store.type: gcs
+      loki.loki.storage.type: gcs
+      loki.loki.compactor.delete_request_store: gcs
+      loki.loki.schemaConfig.configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+        - from: "2026-06-01"
+          store: tsdb
+          object_store: gcs
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'schemaConfig\.configs\[0\]\.object_store \("s3"\) differs.*predates a backend migration'
+
+  # storage.type is the legacy selector. Loki ignores it while use_thanos_objstore
+  # is on (it logs "ruler.storage ... will be ignored"), so a mismatch is only
+  # misleading config, not a live fault — a warning, and it must NOT block the
+  # install.
+  #
+  # No companion test for the ruler-disabled case: Distributed mode requires the
+  # ruler, so `loki.ruler.enabled: false` fails an earlier validator and the
+  # branch is unreachable from a supported config. The gate is there for the
+  # SingleBinary test shape, which the loki-test profile drives with
+  # use_thanos_objstore off — skipping this whole block.
+  - it: should warn but not fail when the legacy storage type mismatches
+    set:
+      loki.loki.storage.object_store.type: gcs
+      loki.loki.compactor.delete_request_store: gcs
+      loki.loki.schemaConfig.configs[0].object_store: gcs
+      # loki.loki.storage.type intentionally left at the base default (s3)
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'loki\.loki\.storage\.type \("s3"\) differs.*Loki ignores it'
+
   - it: fails in downstream chart when buckets are not defined
     set:
       loki.loki.storage.bucketNames.chunks: ""
