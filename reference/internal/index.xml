@@ -16,6 +16,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;CHANGELOG.md&lt;/code&gt;: source of truth for released changes, maintained by the release tooling (see &lt;a href="../releasing/"&gt;Releasing&lt;/a&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;CONTRIBUTING.md&lt;/code&gt; / &lt;code&gt;README.md&lt;/code&gt; / &lt;code&gt;LICENSE&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;renovate.json&lt;/code&gt;: automated dependency bumps&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.terraform-docs.yml&lt;/code&gt; / &lt;code&gt;.terraform-docs.docsite.yml&lt;/code&gt;: Terraform doc generation — the first injects into module READMEs, the second writes the docsite variable reference&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;.pre-commit-config.yaml&lt;/code&gt;: contributor-experience hooks (see &lt;a href="../"&gt;Internal Development&lt;/a&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;bin/&lt;/code&gt;: bash dev/CI entrypoints (flat; no subdirectories)
 &lt;ul&gt;
@@ -75,7 +76,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;content/&lt;/code&gt;: authored Markdown
 &lt;ul&gt;
 &lt;li&gt;top-level sections: &lt;code&gt;getting-started/&lt;/code&gt;, &lt;code&gt;metrics/&lt;/code&gt; (incl. &lt;code&gt;collecting/&lt;/code&gt;), &lt;code&gt;logs-and-events/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt; (incl. &lt;code&gt;grafana/&lt;/code&gt;), &lt;code&gt;alerting/&lt;/code&gt;, &lt;code&gt;operating/&lt;/code&gt;, plus &lt;code&gt;architecture.md&lt;/code&gt; and &lt;code&gt;o11y-glossary.md&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;reference/&lt;/code&gt;: &lt;code&gt;helm/&lt;/code&gt;, &lt;code&gt;stable-metrics/&lt;/code&gt;, &lt;code&gt;crds.md&lt;/code&gt;, &lt;code&gt;changelog.md&lt;/code&gt;, and &lt;code&gt;internal/&lt;/code&gt; (this section — &lt;code&gt;dashboard/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;design-docs/&lt;/code&gt;, plus &lt;code&gt;repo-layout.md&lt;/code&gt;, &lt;code&gt;roadmap.md&lt;/code&gt;, &lt;code&gt;releasing.md&lt;/code&gt;, &lt;code&gt;versioning.md&lt;/code&gt;, &lt;code&gt;skills.md&lt;/code&gt;, &lt;code&gt;helm.md&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;reference/&lt;/code&gt;: &lt;code&gt;helm/&lt;/code&gt;, &lt;code&gt;terraform/&lt;/code&gt; (generated variable reference), &lt;code&gt;stable-metrics/&lt;/code&gt;, &lt;code&gt;crds.md&lt;/code&gt;, &lt;code&gt;changelog.md&lt;/code&gt;, and &lt;code&gt;internal/&lt;/code&gt; (this section — &lt;code&gt;dashboard/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;design-docs/&lt;/code&gt;, plus &lt;code&gt;repo-layout.md&lt;/code&gt;, &lt;code&gt;roadmap.md&lt;/code&gt;, &lt;code&gt;releasing.md&lt;/code&gt;, &lt;code&gt;versioning.md&lt;/code&gt;, &lt;code&gt;skills.md&lt;/code&gt;, &lt;code&gt;helm.md&lt;/code&gt;)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;code&gt;layouts/&lt;/code&gt;, &lt;code&gt;static/&lt;/code&gt;, &lt;code&gt;assets/&lt;/code&gt;, &lt;code&gt;data/&lt;/code&gt;, &lt;code&gt;i18n/&lt;/code&gt;, &lt;code&gt;archetypes/&lt;/code&gt;, &lt;code&gt;themes/&lt;/code&gt;: Hugo machinery&lt;/li&gt;
