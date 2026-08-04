@@ -8,9 +8,16 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.11.1 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.12.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.11.1
+
+* DEP-186 Add an E2E suite for kind + helm/tf
+    * [materialize-monitoring#181](https://github.com/MaterializeInc/materialize-monitoring/pull/181)
+* DEP-123 Support GCM and handle alloy rolls
+    * [materialize-monitoring#179](https://github.com/MaterializeInc/materialize-monitoring/pull/179)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.11.0
 
