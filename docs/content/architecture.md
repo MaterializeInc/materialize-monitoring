@@ -40,7 +40,7 @@ Logging responsibilities of `alloy-gateway` include:
   * An [`otelcol.receiver.otlp`](https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.otlp/) component receives OTLP logs on `alloy-gateway.$namespace:4317` (gRPC) and `:4318` (HTTP).
 * A [`loki.source.kubernetes_events`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes_events/) component collects Kubernetes events and processes them as logs.
 * A [`loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) pipeline performs log processing — level normalization, [cardinality](../o11y-glossary/#observability-foundations) reduction, and structured-metadata extraction.
-* A [`loki.write`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/) component forwards logs to log storage (e.g., [Grafana Loki](#loki-grafana-loki)) — or, in a [remote-only topology](../logs-and-events/#alternative-topologies), to an external OTLP or Loki destination.
+* A [`loki.write`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/) component forwards logs to log storage (e.g., [Grafana Loki](#loki-grafana-loki)) — or, in a [remote-only topology](../logs-and-events/architecture/#alternative-topologies), to an external OTLP or Loki destination.
 
 Metrics responsibilities of `alloy-gateway` include:
 * [`prometheus.operator.servicemonitors`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.servicemonitors/) and [`prometheus.operator.podmonitors`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.operator.podmonitors/) components read ServiceMonitors and PodMonitors in order to determine what targets to scrape for metrics and then scrapes those targets.
@@ -75,7 +75,7 @@ containers.
 [Grafana Loki](https://grafana.com/docs/loki/latest/) is a horizontally scalable log-aggregation system, included in `materialize-monitoring` as its default logging backend.
 It runs in **microservice / distributed** mode, where each component scales independently.
 
-For the full component breakdown — diagrams, the read/write paths, the hash ring, day-2 operations, and alternative topologies — see [Logs & Events > Logging Architecture](../logs-and-events/).
+For the full component breakdown — diagrams, the read/write paths, the hash ring, day-2 operations, and alternative topologies — see [Logs & Events > Logging Architecture](../logs-and-events/architecture/).
 At a glance:
 
 * **Write path** — `alloy-gateway` pushes processed logs to the **Loki Distributor**, which fans each stream across **Loki Ingesters** through a consistent hash ring (replication factor 3); ingesters flush chunks and the TSDB index to object storage.

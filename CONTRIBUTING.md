@@ -2,7 +2,7 @@
 
 The canonical contributor guide lives in the docsite:
 
-**→ [Internal Development](https://materializeinc.github.io/materialize-monitoring/reference/internal/)** *(or [the source on GitHub](docs/content/reference/internal/_index.md))*
+**→ [Internal Development](https://materializeinc.github.io/materialize-monitoring/reference/internal/contributing/)** *(or [the source on GitHub](docs/content/reference/internal/contributing.md))*
 
 The audience is SRE, Field Engineering, and customer infrastructure teams. Conventions, lint rule rationale, and the full pre-commit / pre-push wiring are documented there.
 

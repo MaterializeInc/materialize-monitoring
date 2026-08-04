@@ -1,6 +1,10 @@
 {{/*
   folder-toc: Show a list of pages under a directory.
 
+  Works from a section's _index.md and from a regular page inside the section
+  (the latter is the usual case here, since section content lives in a subpage
+  rather than in _index.md). The current page is never listed.
+
   Usage:
     {{< folder-toc showParams="status" >}}
 */}}
@@ -9,10 +13,15 @@
 {{- $pages := .Page.Pages }}
 {{- if .Page.IsHome }}
   {{- $pages = .Site.RegularPages }}
+{{- else if not $pages }}
+  {{- with .Page.CurrentSection }}
+    {{- $pages = .RegularPages }}
+  {{- end }}
 {{- end }}
 
 <ul>
   {{- range $pages }}
+    {{- if eq .RelPermalink $.Page.RelPermalink }}{{ continue }}{{ end }}
     <li>
       <a href="{{ .RelPermalink }}">{{ .Title }}</a>
       {{- /* FIXME: when Params is present, but all are filtered out, we get an empty ul */}}

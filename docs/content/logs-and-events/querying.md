@@ -5,9 +5,9 @@ weight: 30
 
 # Querying Logs
 
-Queries — almost always issued through Grafana — are served by Loki's [read path](../#read-path).
+Queries — almost always issued through Grafana — are served by Loki's [read path](../architecture/#read-path).
 This page covers how to query logs, how the read path serves them, and how to keep queries fast.
-See the [logging architecture](../) for how the read path fits together.
+See the [logging architecture](../architecture/) for how the read path fits together.
 
 ## Querying through Grafana
 
@@ -22,17 +22,17 @@ Because Loki indexes only labels, **every query should start with a label select
 
 ## How the read path serves a query
 
-A query flows through the components described in the [read path](../#read-path):
+A query flows through the components described in the [read path](../architecture/#read-path):
 
-1. The [Loki Query Frontend](../#loki-query-frontend) receives it, splits a large or long-range query into smaller pieces, and checks its result cache.
-2. The [Loki Query Scheduler](../#loki-query-scheduler) queues the pieces fairly across tenants.
-3. [Loki Queriers](../#loki-querier) execute the pieces — reading recent data from ingesters and historical data from object storage (using the [Loki Index Gateway](../#loki-index-gateway) to find the right chunks) — then results are merged and deduplicated.
+1. The [Loki Query Frontend](../architecture/#loki-query-frontend) receives it, splits a large or long-range query into smaller pieces, and checks its result cache.
+2. The [Loki Query Scheduler](../architecture/#loki-query-scheduler) queues the pieces fairly across tenants.
+3. [Loki Queriers](../architecture/#loki-querier) execute the pieces — reading recent data from ingesters and historical data from object storage (using the [Loki Index Gateway](../architecture/#loki-index-gateway) to find the right chunks) — then results are merged and deduplicated.
 
 Splitting and caching are why a broad query can still return quickly the second time, and why running at least two query frontends matters for fairness.
 
 ## Querying structured metadata
 
-High-cardinality attributes such as `trace_id`, `span_id`, and per-request detail are stored as [structured metadata](../#storage), not as labels.
+High-cardinality attributes such as `trace_id`, `span_id`, and per-request detail are stored as [structured metadata](../architecture/#storage), not as labels.
 They are still queryable — filter on them after a label selector — but they do not inflate [stream cardinality](../../o11y-glossary/#logs-and-events), so you get targeted lookups without the storage-and-stability cost of making them labels.
 
 ## Keeping queries fast
@@ -48,7 +48,7 @@ They are still queryable — filter on them after a label selector — but they 
 
 ## See more
 
-- [Logging Architecture](../) — the read path in context.
+- [Logging Architecture](../architecture/) — the read path in context.
 - [Storing](../storing/) — what queriers read from.
 - [Rules](../rules/) — recurring LogQL evaluated on a schedule.
 - [LogQL](https://grafana.com/docs/loki/latest/query/) (official).

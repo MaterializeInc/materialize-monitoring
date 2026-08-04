@@ -174,7 +174,7 @@ Under `split-namespace` they must name the backend's own namespace (`thanos-quer
 Dashboards are **pre-rendered** into the chart, not generated at template time.
 Sources live in `packages/grafana-dashboards/` (Python + `grafana-foundation-sdk`), and `make dashboards` renders them to `charts/materialize-monitoring/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
-See [Dashboards as Code](../../../reference/internal/dashboard/) for the authoring workflow.
+See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
 
 Which dashboards get installed is controlled by glob patterns:
 

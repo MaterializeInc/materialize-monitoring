@@ -257,6 +257,6 @@ Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); thi
 - A **customer-facing** contract/deprecation-policy page (in customer terms, distinct from the internal `versioning.md`) is still to write. ⬜
 - [Repo Layout](repo-layout/) refreshed against the tree (August 2026), including `terraform/` and `test/`. ✅
   It goes stale easily by design — re-check it whenever a top-level directory moves.
-- [Uninstalling](../../operating/uninstalling/) is written: the grafana-operator finalizer deadlock, the ordered teardown, and recovery. ✅
+- [Uninstalling](../../../operating/uninstalling/) is written: the grafana-operator finalizer deadlock, the ordered teardown, and recovery. ✅
 - [Choosing the next version](releasing/#choosing-the-next-version) records the pre-1.0 bump policy and that the changelog placeholder heading is the decision. ✅
-- Alloy's rollout requirement is called out in [Production Best Practices](../../operating/production-best-practices/#collection-alloy) as an inversion of the normal chart guarantee — the one place the chart cannot own its own rollout. ✅
+- Alloy's rollout requirement is called out in [Production Best Practices](../../../operating/production-best-practices/#collection-alloy) as an inversion of the normal chart guarantee — the one place the chart cannot own its own rollout. ✅

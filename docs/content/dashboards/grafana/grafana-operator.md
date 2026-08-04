@@ -159,7 +159,7 @@ dashboards:
 `dashboards.config.grafana.manifest.apiTarget` selects the dashboard API the manifests declare.
 It defaults to `dashboard.grafana.app/v2`, which needs **Grafana 12 or later**.
 Against an older Grafana, the operator pushes an object the server does not understand and the dashboard never appears.
-Use the [downloadable v1 JSON](../#grafana-10-and-11-dashboard-schema-v1) for Grafana 10 and 11 instead.
+Use the [downloadable v1 JSON](../importing/#grafana-10-and-11-dashboard-schema-v1) for Grafana 10 and 11 instead.
 
 ### Drift
 

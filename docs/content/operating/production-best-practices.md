@@ -81,7 +81,7 @@ Two layouts are supported; both are fine, so pick per your isolation needs.
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
-It runs in two roles — the [`alloy-agent`](../../logs-and-events/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
 The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
 
 ### Configuration & change management
@@ -133,7 +133,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 
 ## Logging (Loki)
 
-For the architecture these items configure, see [Logs & Events](../../logs-and-events/).
+For the architecture these items configure, see [Logs & Events](../../logs-and-events/architecture/).
 
 ### Sizing the logging backend
 
@@ -312,7 +312,7 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 ### See also
 
-- [Logs & Events](../../logs-and-events/) — the logging architecture these items configure.
+- [Logs & Events](../../logs-and-events/architecture/) — the logging architecture these items configure.
 - [Storing](../../logs-and-events/storing/) — storage, retention, and disaster recovery in depth.
 - [Upgrading](../upgrading/) — cross-cutting upgrade guidance.
 - [Loki production deployment](https://github.com/grafana/loki/tree/main/production/ksonnet/loki) (official) — Grafana's reference production config (built for far larger volumes; read it for the patterns, not the magnitudes).

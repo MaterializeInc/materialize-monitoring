@@ -29,4 +29,4 @@ A `--wait` timeout here means **"still rolling," not "failed"** — the rollout 
 > [!WARNING]
 >   Do not speed the roll by allowing more than one ingester down at a time (`updateStrategy.rollingUpdate.maxUnavailable > 1`, via the alpha `MaxUnavailableStatefulSet` gate).
 >   With RF 3 that can drop you to a single healthy replica and break write quorum mid-roll.
->   `zoneAwareReplication` (roll a whole zone at once) is the only quorum-safe burst, at the cost of cross-AZ replication traffic — see the [logging architecture](../../logs-and-events/#loki-ingester).
+>   `zoneAwareReplication` (roll a whole zone at once) is the only quorum-safe burst, at the cost of cross-AZ replication traffic — see the [logging architecture](../../logs-and-events/architecture/#loki-ingester).
