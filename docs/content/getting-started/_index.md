@@ -28,6 +28,10 @@ The Helm chart is the full-fidelity surface: the Terraform modules are a thin la
 
 See [Helm Installation](./helm) for instructions on how to install `materialize-monitoring` via Helm.
 
+## Going to Production
+
+Whichever path you take, [Production Best Practices](../operating/production-best-practices/) is the checklist for a real deployment — sizing, retention, replication, disruption budgets, and object-storage durability — with each item tagged by who owns it.
+
 ## Getting Help
 
 Please [reach out for Support](https://materialize.com/docs/support/).
