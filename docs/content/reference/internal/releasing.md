@@ -30,6 +30,29 @@ A "Release `<component>` vX.Y.Z" PR (branch `version-update/<component>`):
 The released version stays at its original location; only the new placeholder is hoisted to the top.
 A released section can therefore sit above other components' unreleased placeholders — the changelog parser is order-independent, so this is fine.
 
+## Choosing the next version {#choosing-the-next-version}
+
+**The placeholder heading is the decision.**
+The tooling reads the version out of it and never overrides it — `release` writes a fresh placeholder at `bump_minor()` of what it just released, and that is only a default for the *next* cycle.
+Anything other than a minor is driven by editing that heading before the release goes out.
+
+```markdown
+## <title> v0.11.1 (Unreleased)   ← edited down from the v0.12.0 the tooling wrote
+```
+
+Current policy, pre-1.0:
+
+- **Patch** — small, low-risk changes. Preferred, and kept genuinely small now that releases are published more often.
+- **Minor** — a batch of features, or anything a consumer has to react to (a new required value, a changed default, a new Terraform variable).
+- **Major** — not stamped yet. Until it is, a breaking change goes in a minor with the break called out in the entry.
+
+> [!WARNING]
+>   That heading is the *only* place the intended bump is recorded, and it lives uncommitted in your working tree until you push it.
+>   A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default — and the next release goes out as a minor with no diff to show why.
+>   Commit the edit as its own change when you make it.
+
+Two other things are expressed by editing this heading rather than by a flag: seeding a newly merged or renamed component stream at a starting version, and re-baselining after a component `title` change (see [Versioning](../versioning/)).
+
 ## State machine
 
 - **Any merge to `main`** attempts to create or update the `version-update/*` PRs for every component with changes since its last release (a component with no changes gets no PR).
