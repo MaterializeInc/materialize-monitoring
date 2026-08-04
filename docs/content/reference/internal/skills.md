@@ -19,6 +19,12 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/grafana-dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
 
+## Related skills outside this repo
+
+The [`agent-skills`](https://github.com/MaterializeInc/agent-skills) repository carries org-wide skills, including one for [`materialize-terraform-self-managed`](https://github.com/MaterializeInc/agent-skills/blob/main/skills/materialize-terraform-self-managed/SKILL.md) — the repo the per-cloud monitoring wrappers live in.
+
+The two are **not synced**, and deliberately so for now: this repo's `platform-development` covers the common module and the chart it installs, while that one covers the deployment repo as a whole. The seam worth watching is the wrapper contract — the `object_storage` shape, the ServiceAccount names its trust policies must match, and the fact that a wrapper pins the module by released tag. If that contract changes here, the downstream skill is the thing most likely to go quietly stale.
+
 ## Skills are thin on purpose
 
 A skill routes; it does not duplicate.

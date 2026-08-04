@@ -169,7 +169,7 @@ Pin `--version` on both. The two charts have deliberately separate lifecycles, s
 
 A few flags earn their place:
 
-- **`--timeout 15m`.** Helm's default is 5 minutes, and a first install brings up Loki, Thanos, Grafana, Alertmanager, and both Alloy roles together. A `--wait` timeout means "still rolling", not "failed" — see [Upgrading](../../operating/upgrading/) for why ingester rollouts alone can take that long.
+- **`--timeout 15m`.** Helm's default is 5 minutes, and a first install brings up Loki, Thanos, Grafana, Alertmanager, and both Alloy roles together. If it still times out, **do not raise it again** — a timeout almost always means a pod is broken rather than slow. See [Troubleshooting](../../operating/o11y-troubleshooting/#start-here-a-timeout-is-not-a-duration-problem).
 - **`--wait` on the CRDs release only.** The main chart runs pre-install validation Jobs; if you add `--wait` there, add `--wait-for-jobs` too, or their verdict is never observed and a bad config rolls anyway.
 - **Not `--atomic`** on a first install. A rollback destroys the evidence of which component failed, and this stack has enough moving parts that the diagnostic is usually worth more than the cleanup.
 

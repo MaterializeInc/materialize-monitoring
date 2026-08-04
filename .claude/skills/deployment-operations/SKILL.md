@@ -40,6 +40,20 @@ pointing at production is the failure mode.
   cluster you touched. Capture `kubectl cluster-info` instead; the server address
   is unambiguous.
 
+## Before diagnosing anything
+
+**A timeout is not a duration problem.** "`helm upgrade` timed out" almost never
+means something was slow — assume something is broken, and raising the timeout is
+almost always the wrong response. Identical whether you ran `helm` or Terraform
+ran it for you. Inspect **events first**, then pod status, then the previous
+container's logs. See
+[Troubleshooting](../../../docs/content/operating/o11y-troubleshooting.md#start-here-a-timeout-is-not-a-duration-problem).
+
+**Check your credentials before your work.** AWS and GCP sessions commonly last
+12 hours, so a morning login lapses mid-afternoon — and an expired session breaks
+*everything at once*, including things you did not touch. When a failure looks
+impossibly broad, that breadth is the tell. Re-authenticate, then debug.
+
 ## Three habits that prevent wrong conclusions
 
 **Assert on recent data, not on any data.** Loki's filesystem store survives a pod

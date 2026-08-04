@@ -107,6 +107,45 @@ cargo clippy --workspace --all-targets -- -D warnings    # lint
 helm unittest charts/materialize-monitoring              # template unit tests
 ```
 
+## Iterating against a live cluster
+
+The default loop — release the chart, release the module, bump the wrapper's ref, apply — is correct for consumers and far too slow for development. Three shortcuts remove a release from the cycle. All three are temporary: revert them before you commit.
+
+### Point a Terraform wrapper at this repo
+
+A per-cloud wrapper in `materialize-terraform-self-managed` pins the common module by Git ref, so an unreleased change is invisible to it. Swap the `source` for a relative path to your checkout:
+
+```hcl
+# source = "github.com/MaterializeInc/materialize-monitoring//terraform/modules/materialize-monitoring?ref=materialize-monitoring/vX.Y.Z"
+source = "../../../../materialize-monitoring/terraform/modules/materialize-monitoring"
+```
+
+Local-path modules are used **in place** rather than copied, so edits take effect on the next `plan` with no `terraform init`.
+
+It has to stay *relative*. An absolute path makes Terraform copy the module into `.terraform/modules/` without the chart directory beside it, and the sizing profiles silently stop resolving — the module carries a precondition for that case precisely because the failure is otherwise invisible.
+
+### Point the module at a local chart
+
+`chart_registry` does not have to be an OCI registry. Set it to a local directory and the module installs the chart from your working tree, which closes the loop on chart changes as well as module changes:
+
+```hcl
+chart_registry = "/path/to/materialize-monitoring/charts"
+```
+
+The module reads its chart version from that directory's `Chart.yaml` too, so the pair stays consistent.
+
+### Install one component at a time
+
+A full stack is a slow way to iterate on one piece. Because the tags are OR'd and each subchart has an `enabled` circuit breaker, a second release can bring up a single component beside your existing one:
+
+```bash
+helm install mzmon-scratch charts/materialize-monitoring \
+  --namespace monitoring --skip-crds \
+  --set tags.default=false --set tags.loki=true
+```
+
+Give it a different release name so it does not fight the full install. Mind what is *not* release-scoped: the subcharts use static `fullnameOverride`s, so two releases in one namespace will collide on Service and ServiceAccount names. Use a separate namespace when the component you are iterating on has either — which is most of them. See [Namespace layout](../../../operating/production-best-practices/#namespace-layout) for what else assumes one instance per namespace.
+
 ## Pre-commit
 
 A single `uv run pre-commit install` wires both `pre-commit` and `pre-push` stages.

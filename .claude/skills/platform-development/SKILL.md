@@ -88,6 +88,19 @@ Every E2E target names its cluster explicitly (`KIND_CONTEXT`) rather than
 inheriting the current kubeconfig context. Keep it that way: these targets
 install, restart, and delete.
 
+## Iterating without cutting a release
+
+The default loop makes you release the chart, release the module, and bump the
+downstream ref before you can test anything. Three shortcuts remove that, all
+temporary and all documented in
+[Iterating against a live cluster](../../../docs/content/reference/internal/contributing.md#iterating-against-a-live-cluster):
+point a wrapper's `source` at a relative path to this repo, point
+`chart_registry` at a local chart directory, and install a second release with
+everything disabled except the component you are working on.
+
+Revert all three before committing. A relative `source` that reaches main is a
+broken module for every consumer.
+
 ## Releasing
 
 The module and the chart are **one release**, and the module reads its version
