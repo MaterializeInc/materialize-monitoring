@@ -22,8 +22,17 @@ Install the toolchain once:
 | Go | 1.22+ | `brew install go` — drives `hugo` and `helm-docs` via the `tool` directive in `go.mod` |
 | Helm | 3.x / 4.x | `brew install helm` |
 | Git LFS | latest | `brew install git-lfs` |
+| [Terraform](https://developer.hashicorp.com/terraform) | 1.3+ | `brew install terraform` — needed for `make terraform-check`; `terraform-docs` (`brew install terraform-docs`) regenerates the module reference |
 
 Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`helm plugin install https://github.com/helm-unittest/helm-unittest`), `yq`, `jq`.
+
+Only for the E2E tiers, which are the one part of the suite that needs a cluster:
+
+| Tool | Required version | Install |
+|---|---|---|
+| Docker | latest | Docker Desktop, Colima, or equivalent — must be running |
+| [`kind`](https://kind.sigs.k8s.io/) | 0.32+ | `brew install kind` |
+| `kubectl` | matching the cluster | `brew install kubectl` |
 
 ## First-time setup
 
@@ -54,7 +63,32 @@ make charts           # package the Helm charts
 make dashboards       # regenerate Grafana dashboards from Python sources
 make helm-docs        # regenerate chart README + docsite values reference
 make serve-docs       # serve this Hugo docsite locally
+make terraform-check  # fmt + validate + the tier-0 render check (no cluster)
+make terraform-docs   # regenerate the module README + docsite variable reference
 ```
+
+### Terraform
+
+The cloud-agnostic module lives in [`terraform/modules/materialize-monitoring`](https://github.com/MaterializeInc/materialize-monitoring/tree/main/terraform/modules/materialize-monitoring), next to the chart whose value paths it encodes. Per-cloud wrappers live downstream in `materialize-terraform-self-managed`.
+
+`make terraform-check` is the gate, and the part worth understanding is what it adds over `terraform validate`. Validate accepts **any** well-formed HCL, including a value written to a path the chart never reads — that renders perfectly and is silently ignored. So the check also plans each example, extracts the composed Helm values from the plan, and renders the chart against them. It needs no cluster: the examples plan against a kubeconfig that does not exist, and every resource is a create, so the providers are never asked to connect.
+
+Two examples are rendered, `aws` and `gcp`, and that is not redundancy — the chart's storage defaults are S3-shaped, so an AWS-only example agrees with every default it fails to set.
+
+### E2E (kind)
+
+```sh
+make e2e-cluster          # kind cluster + the namespaces a real install has
+make e2e-tier1            # chart, hermetic shape
+make e2e-verify-tier1     # assert the logging round trip
+make e2e-generic-cloud    # rustfs + CNPG substrate (tier-2 base)
+make e2e-cluster-down
+```
+
+See [`test/e2e/README.md`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/test/e2e/README.md) for what each tier covers and the traps worth knowing before extending them. Two are worth repeating here because they cost real debugging time:
+
+- **Alloy needs a restart after any config change.** Its config arrives through `envFrom` ConfigMaps, and environment variables are fixed at container start, so neither Helm nor Alloy's `/-/reload` picks up a change. `make e2e-tier1` does the rollout restart explicitly.
+- **Assert on recent data, not on any data.** Loki's filesystem store survives a pod restart, so an unbounded query passes against a stack that has stopped ingesting.
 
 Direct invocations when iterating:
 
@@ -87,10 +121,12 @@ A single `uv run pre-commit install` wires both `pre-commit` and `pre-push` stag
 - `yamllint` (YAML and KYAML)
 - `cargo fmt`
 - `helm-docs` regeneration (only when chart sources change)
+- `terraform fmt` and `terraform-docs` regeneration (only when `terraform/` changes)
 
 **Runs additionally on `pre-push` (slower, before publishing):**
 
 - `cargo clippy --workspace --all-targets -- -D warnings`
+- `make terraform-render` — the tier-0 render check. Triggered by chart changes as well as Terraform ones, since the module writes into the chart's value paths and either side can break the pair.
 
 The hooks are **fixers wherever possible** — re-`git add` after a hook rewrites a file and the next commit will pass. If a hook surfaces something that feels wrong, that's a bug in the configuration; please open an issue rather than reaching for `--no-verify`.
 
@@ -118,6 +154,8 @@ LFS is used for packaged Helm subcharts (`charts/*/charts/*.tgz`); the pattern i
    - Python: `uv run pytest`
    - Rust: `cargo test --workspace`
    - Helm: `helm unittest charts/materialize-monitoring`
+   - Terraform: `make terraform-check`
+   - E2E, when touching the chart or the module in a way a render cannot cover: `make e2e-cluster && make e2e-tier1 && make e2e-verify-tier1`
 4. Open a PR against `main`. Keep PRs focused — one concern per PR reviews faster than a sweep.
 5. The `pre-push` hook runs `cargo clippy` before `git push` succeeds.
 
