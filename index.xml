@@ -173,7 +173,17 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;code&gt;terraform/&lt;/code&gt; &lt;em&gt;(planned — see &lt;a href="../design-docs/20260803-terraform-modules/"&gt;Terraform Modules&lt;/a&gt;)&lt;/em&gt;: the cloud-agnostic module that installs the released charts. Versioned as part of the &lt;code&gt;materialize-monitoring&lt;/code&gt; component rather than on a stream of its own; per-cloud wrappers live in &lt;code&gt;materialize-terraform-self-managed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;terraform/&lt;/code&gt; (see &lt;a href="../design-docs/20260803-terraform-modules/"&gt;Terraform Modules&lt;/a&gt;): the cloud-agnostic module that installs the released charts. Versioned as part of the &lt;code&gt;materialize-monitoring&lt;/code&gt; component rather than on a stream of its own; per-cloud wrappers live in &lt;code&gt;materialize-terraform-self-managed&lt;/code&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;modules/materialize-monitoring/&lt;/code&gt;: the module. Concern per file — &lt;code&gt;values.tf&lt;/code&gt; (composition order), &lt;code&gt;scheduling.tf&lt;/code&gt; and &lt;code&gt;storage_class.tf&lt;/code&gt; (subchart fan-outs), &lt;code&gt;destinations.tf&lt;/code&gt; (extra metric destinations), &lt;code&gt;config_hash.tf&lt;/code&gt; (the pod-template hash that rolls Alloy)
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;examples/{aws,gcp}/&lt;/code&gt;: not deployable roots — plan targets for the tier-0 render check. Both clouds, because the chart&amp;rsquo;s storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;test/generic-cloud/&lt;/code&gt;: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;test/e2e/&lt;/code&gt;: kind cluster config, the tier-1 round-trip assertion, and the failure-diagnostics collector (&lt;code&gt;make e2e-*&lt;/code&gt;). Superseded in part by &lt;code&gt;packages/mz-monitoring-e2e&lt;/code&gt; once that lands&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;docs/&lt;/code&gt;: Hugo docsite (the source of this page)
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;hugo.toml&lt;/code&gt;: site config; &lt;code&gt;go.mod&lt;/code&gt; / &lt;code&gt;go.sum&lt;/code&gt; pin the theme&lt;/li&gt;
@@ -196,7 +206,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;code&gt;.claude/skills/&lt;/code&gt;: authoring conventions consumed by both contributors and AI agents&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;.github/&lt;/code&gt;: GitHub Actions workflows&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.github/&lt;/code&gt;: GitHub Actions workflows — &lt;code&gt;test.yaml&lt;/code&gt; (cargo, helm-unittest, terraform), &lt;code&gt;e2e.yaml&lt;/code&gt; (the kind tiers), &lt;code&gt;lint.yaml&lt;/code&gt;, &lt;code&gt;pipelines.yaml&lt;/code&gt;, &lt;code&gt;docs.yaml&lt;/code&gt;, &lt;code&gt;auto-format.yaml&lt;/code&gt;, &lt;code&gt;propose-bumps.yaml&lt;/code&gt;, &lt;code&gt;publish-*.yaml&lt;/code&gt;. Each workflow that path-filters does so in a &lt;code&gt;changes&lt;/code&gt; job rather than on the trigger, so its &lt;code&gt;*-gate&lt;/code&gt; rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>SDKs and Schemas</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/sdks/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/sdks/</guid><description>&lt;h1 id="sdks-and-schemas"&gt;SDKs and Schemas&lt;a class="anchor" href="#sdks-and-schemas"&gt;#&lt;/a&gt;&lt;/h1&gt;
