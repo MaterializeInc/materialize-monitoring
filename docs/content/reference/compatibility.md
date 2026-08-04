@@ -12,7 +12,7 @@ technologies.
 
 | materialize-terraform-self-managed | materialize-monitoring | Clouds |
 |---|---|---|
-| _unreleased_ | 0.8.0 | AWS, GCP |
+| _unreleased_ | 0.9.0 | AWS, GCP |
 | ≤ v8.0.0 | none (a vendored copy of the `env-top` dashboard only) | — |
 
 The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.

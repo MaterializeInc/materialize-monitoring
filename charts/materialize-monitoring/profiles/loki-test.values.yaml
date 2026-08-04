@@ -39,7 +39,7 @@ loki:
     # -- Schema must reference the filesystem object store in test.
     schemaConfig:
       configs:
-        - from: 2024-01-01
+        - from: "2024-01-01"
           store: tsdb
           object_store: filesystem
           schema: v13

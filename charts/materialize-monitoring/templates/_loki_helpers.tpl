@@ -307,22 +307,44 @@ Usage:
     {{- end }}
 
     {{- /* Object-store backend consistency (thanos objstore mode).
-           storage.object_store.type is the backend; the compactor's
-           delete-request store and each schema period name a backend too. If
-           they drift, the compactor fails at startup ("no s3 endpoint in config
-           file") or chunks for a schema period don't resolve. This is the
-           footgun of having to set the backend in several places — catch it at
-           template time instead of at pod startup. */}}
+           The backend has to be named in several places and the chart's defaults
+           name s3 in all of them. Two of them do not degrade gracefully: the
+           client is chosen by name and then validated against a config that was
+           never populated, so the component crash-loops with "no s3 endpoint in
+           config file". Those are errors; the inert one below is a warning. */}}
     {{- $objType := dig "loki" "storage" "object_store" "type" "" $values }}
     {{- if and ( dig "loki" "storage" "use_thanos_objstore" false $values ) $objType }}
       {{- $delStore := dig "loki" "compactor" "delete_request_store" "" $values }}
       {{- if and $delStore ( ne $delStore $objType ) }}
         {{- $errors = append $errors ( printf "loki.loki.compactor.delete_request_store (%q) must match loki.loki.storage.object_store.type (%q); otherwise the compactor's delete-request store falls back and fails at startup with \"no s3 endpoint in config file\"." $delStore $objType ) }}
       {{- end }}
-      {{- range $i, $cfg := dig "loki" "schemaConfig" "configs" list $values }}
+
+      {{- /* The legacy selector. Inert while use_thanos_objstore is on — Loki
+             ignores the `ruler.storage` block the chart renders from it, and
+             logs that it is doing so — but the chart renders it all the same, so
+             a stale value leaves an s3 ruler store sitting in the config next to
+             a gcs one. A warning, not an error: nothing reads it today, and it
+             only becomes load-bearing if use_thanos_objstore is turned off. */}}
+      {{- $legacyType := dig "loki" "storage" "type" "" $values }}
+      {{- if and ( dig "ruler" "enabled" false $values ) $legacyType ( ne $legacyType $objType ) }}
+        {{- $warnings = append $warnings ( printf "loki.loki.storage.type (%q) differs from loki.loki.storage.object_store.type (%q). Loki ignores it while use_thanos_objstore is on, so this is not a live misconfiguration — but the rendered ruler config contains a %s store pointed at a %s bucket name, and Loki logs \"ruler.storage ... will be ignored\" on every start. Set it to %q to make the rendered config agree with itself." $legacyType $objType $legacyType $objType $objType ) }}
+      {{- end }}
+
+      {{- /* Each schema period names the backend for its own chunk client, and
+             the last period is the active one — every ingester resolves chunks
+             through it. Earlier periods are allowed to differ: that is what an
+             append-only backend migration looks like, and their chunks still
+             have to be readable from where they were written. */}}
+      {{- $schemaConfigs := dig "loki" "schemaConfig" "configs" list $values }}
+      {{- $activeIdx := sub ( len $schemaConfigs ) 1 | int }}
+      {{- range $i, $cfg := $schemaConfigs }}
         {{- $schemaStore := dig "object_store" "" $cfg }}
         {{- if and $schemaStore ( ne $schemaStore $objType ) }}
-          {{- $warnings = append $warnings ( printf "loki.loki.schemaConfig.configs[%d].object_store (%q) differs from loki.loki.storage.object_store.type (%q). Expected only during an append-only backend migration; otherwise chunks for that period won't resolve." $i $schemaStore $objType ) }}
+          {{- if eq $i $activeIdx }}
+            {{- $errors = append $errors ( printf "loki.loki.schemaConfig.configs[%d] is the active schema period and its object_store (%q) must match loki.loki.storage.object_store.type (%q). Loki selects the chunk client by this name, so every ingester fails at startup with \"no s3 endpoint in config file\". To migrate backends, append a new period instead of editing this one." $i $schemaStore $objType ) }}
+          {{- else }}
+            {{- $warnings = append $warnings ( printf "loki.loki.schemaConfig.configs[%d].object_store (%q) differs from loki.loki.storage.object_store.type (%q). Expected for a period that predates a backend migration — chunks written under it must stay reachable at %s." $i $schemaStore $objType $schemaStore ) }}
+          {{- end }}
         {{- end }}
       {{- end }}
     {{- end }}

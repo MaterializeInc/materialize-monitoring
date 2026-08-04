@@ -54,9 +54,19 @@ loki:
         ruler: "<REPLACE-ME>"
       object_store:
         type: gcs
+      # The legacy selector. Loki ignores it while use_thanos_objstore is on
+      # (object_store.type above is what the clients use), but the chart still
+      # renders a ruler.storage block from it — left at the default that block
+      # names S3 with a GCS bucket, and Loki logs that it is ignoring it.
+      type: gcs
     schemaConfig:
+      # Each period names the backend for its chunk client. This is the value the
+      # ingesters read, so a period left at `s3` crash-loops all of them with
+      # "no s3 endpoint in config file" — the same error as the compactor below.
+      # The list is append-only: on a backend migration, add a new period rather
+      # than editing this one.
       configs:
-        - from: 2024-01-01
+        - from: "2024-01-01"
           store: tsdb
           object_store: gcs
           schema: v13

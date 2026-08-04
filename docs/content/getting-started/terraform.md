@@ -87,10 +87,43 @@ These are set on the `monitoring` module block rather than as root variables, so
 
 | Variable | Default | Notes |
 |---|---|---|
+| `storage_class` | `null` (cluster default) | Reaches the five PVC-backed workloads. **Required on GCP C4/N4 node pools** — see below. Loki's ingesters are unaffected; they use node-local `emptyDir` by design |
 | `bucket_force_destroy` | `false` | Allows `terraform destroy` to delete non-empty buckets. Leave false outside throwaway environments |
 | `enable_bucket_versioning` | `true` | Versioning is the disaster-recovery primitive — neither Loki nor Thanos has a native snapshot |
 | `logs_retention_days` | `null` | Bucket-level expiry for logs. Off by default; Loki's compactor already enforces retention |
 | `metrics_retention_days` | `null` | Off by default, and **leave it off** unless you have a reason. Thanos keeps blocks per downsampling resolution (raw 30d / 5m 90d / 1h 365d), and a bucket rule expiring sooner deletes blocks the compactor still references |
+
+#### StorageClass on GCP C4 and N4 node pools
+
+The **C4** and **N4** machine families accept only Hyperdisk.
+They cannot attach Persistent Disk of any type, and GKE's default `standard-rwo` class is `pd-balanced`, so every PVC-backed workload hangs:
+
+```
+AttachVolume.Attach failed for volume "pvc-...":
+  pd-balanced disk type cannot be used by c4-standard-8 machine type, badRequest
+```
+
+The other classes GKE creates by default — `premium-rwo` (`pd-ssd`) and `standard` (`pd-standard`) — are Persistent Disk too, so none of them work either.
+GKE does not create a Hyperdisk class for you:
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hyperdisk-balanced
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: hyperdisk-balanced
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+```
+
+Then `storage_class = "hyperdisk-balanced"`.
+
+> [!WARNING]
+>   Switching the class on an existing install does not migrate the volumes.
+>   A StatefulSet's `volumeClaimTemplates` are immutable, so the old PVCs have to be deleted before the new class takes effect — and deleting them discards their contents.
+>   That is cheap for these five (Thanos re-downloads blocks from object storage, and the Alertmanager and ruler volumes hold local state, not the rules themselves), but it is not a no-op.
 
 ### Integration
 
@@ -182,6 +215,8 @@ Until the first release, point `source` at a branch or a local checkout:
 source = "github.com/MaterializeInc/materialize-monitoring//terraform/modules/materialize-monitoring?ref=my-branch"
 ```
 
+The ref is the only version you set. The module reads its chart version from the `Chart.yaml` shipped beside it, so the two cannot disagree — `chart_version` exists only to pin something different deliberately.
+
 A local path works too, but it **must be relative**.
 Terraform copies a module referenced by an absolute path into `.terraform/modules/` without the chart directory beside it, and the sizing profiles stop resolving.
 The module raises a precondition rather than failing quietly.
@@ -195,6 +230,17 @@ The `prometheus` and `grafana` modules are replaced. Applying the change:
 - Creates new cloud resources: buckets and identities per backend.
 
 `enable_observability` keeps its name and defaults.
+
+## Tearing it down
+
+`terraform destroy` deadlocks unless the Grafana custom resources are deleted first, while grafana-operator is still running to remove its finalizers:
+
+```bash
+kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanas --all
+```
+
+The module orders its two releases correctly, but ordering *within* a release is not something Terraform controls.
+See [Operating > Uninstalling](../../operating/uninstalling/) for the mechanism and for recovering a teardown that is already stuck.
 
 ## If you are not using Terraform
 

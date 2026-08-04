@@ -91,7 +91,7 @@ docs/content/reference/terraform/materialize-monitoring-variables.md: \
 
 # Format and validate every Terraform module. `validate` needs `init`, which is
 # run without a backend so it stays offline apart from provider downloads.
-terraform-check:
+terraform-check: terraform-render
 	$(TERRAFORM) fmt -recursive -check -diff terraform/
 	@for d in terraform/modules/*/ terraform/modules/*/examples/*/; do \
 		[ -f "$$d/versions.tf" ] || [ -f "$$d/main.tf" ] || continue; \
@@ -99,6 +99,14 @@ terraform-check:
 		( cd "$$d" && $(TERRAFORM) init -backend=false -input=false >/dev/null && $(TERRAFORM) validate ); \
 	done
 .PHONY: terraform-check
+
+# Plan each example and render the chart against the values it composes. This is
+# the only check that proves a module value reached the setting it was aimed at —
+# `validate` accepts any well-formed HCL, including a path the chart never reads.
+# Needs no cluster; see the script header.
+terraform-render:
+	./bin/terraform-render-check.sh
+.PHONY: terraform-render
 
 # Generate grafana dashboards
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana

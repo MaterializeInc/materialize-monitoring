@@ -58,14 +58,19 @@ surfaces yet. See the README.
     <tr>
       <td class="tf-var-name"><a name="chart_version" href="#chart_version">chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Version of the materialize-monitoring chart. Pinned deliberately — bump it with the module, not independently.</td>
-        <td class="tf-var-default"><code>0.8.0</code></td>
+      <td class="tf-var-desc">Version of the materialize-monitoring chart.
+
+Leave null, which is the supported path: the module reads the version out of the chart's own
+`Chart.yaml` in this repository, so a module ref always installs the chart it shipped with and
+the two cannot drift. Set it only to pin a chart version different from the module's.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="crds_chart_version" href="#crds_chart_version">crds_<wbr>chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Version of the materialize-monitoring-crds chart. Tracked separately because the CRDs chart has a deliberately looser lifecycle.</td>
-        <td class="tf-var-default"><code>0.3.0</code></td>
+      <td class="tf-var-desc">Version of the materialize-monitoring-crds chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the CRDs chart has a deliberately looser lifecycle.</td>
+        <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="create_namespace" href="#create_namespace">create_<wbr>namespace</a></td>
@@ -86,6 +91,10 @@ Note the teardown blast radius: destroying this release deletes the CRDs, which 
 every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the cluster,
 including ones this stack did not create. It is a separate `helm_release` so it can be
 targeted independently (`-target=module.monitoring.helm_release.crds`).
+
+Teardown also needs the Grafana custom resources deleted before grafana-operator goes, or
+their finalizers have no remover and the CRDs wedge in Terminating. See the "Uninstalling"
+page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
     </tr>
@@ -198,6 +207,22 @@ is how Thanos sizing will start applying once those profiles land.
       <td class="tf-var-name"><a name="sql_scraper_password" href="#sql_scraper_password">sql_<wbr>scraper_<wbr>password</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Password for the SQL scraper's database user. Required when `enable_sql_scraper` is true.</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="storage_class" href="#storage_class">storage_<wbr>class</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">StorageClass for the five PVC-backed workloads (Alertmanager, the Loki ruler, and Thanos
+receive/compactor/store-gateway). Null uses the cluster default. Loki's ingesters are
+unaffected — node-local `emptyDir` by design.
+
+Required where the default class cannot serve the nodes: GCP's C4 and N4 families take only
+Hyperdisk, and every Persistent Disk class fails to attach with `pd-balanced disk type cannot
+be used by <machine-type>`.
+
+Changing it on an existing install does not move the volumes. `volumeClaimTemplates` are
+immutable, so the old PVCs must be deleted first — discarding their contents.
+</td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>

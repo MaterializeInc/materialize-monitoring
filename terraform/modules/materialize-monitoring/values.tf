@@ -27,7 +27,15 @@ locals {
   # on its own, leaving `charts/` behind. `helm_release.monitoring` carries a
   # precondition for that case, because silently dropping the sizing profile
   # is a far worse failure than refusing to plan.
-  profile_dir = "${path.module}/../../../charts/materialize-monitoring/profiles"
+  chart_dir      = "${path.module}/../../../charts/materialize-monitoring"
+  crds_chart_dir = "${path.module}/../../../charts/materialize-monitoring-crds"
+  profile_dir    = "${local.chart_dir}/profiles"
+
+  # Version comes from the chart itself unless the caller pins one. This is what
+  # makes "the module ref names the chart version" structurally true rather than
+  # a convention someone has to remember on every bump.
+  chart_version      = coalesce(var.chart_version, yamldecode(file("${local.chart_dir}/Chart.yaml")).version)
+  crds_chart_version = coalesce(var.crds_chart_version, yamldecode(file("${local.crds_chart_dir}/Chart.yaml")).version)
 
   # The tier's Loki profile is the sentinel: it ships with every version of the
   # chart, so its absence means the chart directory is unreachable rather than
@@ -55,6 +63,29 @@ locals {
     gcp   = "gcs"
     azure = "azure"
   }, local.storage.cloud, null)
+
+  # Loki names its backend in four places and the chart's defaults name `s3` in
+  # all of them. Three matter: `storage.object_store.type`, the schema period,
+  # and the compactor's delete-request store. Missing one of those does not
+  # degrade — it crash-loops the component that reads it, because the client is
+  # chosen by name and then validated against a config that was never populated
+  # ("no s3 endpoint in config file"). The fourth, `storage.type`, is inert here.
+  #
+  # The schema period bites hardest: it selects the *chunk* client, so every
+  # ingester fails at startup. Its list is append-only across backend
+  # migrations, so it is read from the chart rather than restated here — only the
+  # backend name is rewritten, and a period added to the chart is carried along
+  # for free.
+  chart_values = yamldecode(file("${local.chart_dir}/values.yaml"))
+
+  loki_schema_configs = [
+    for c in local.chart_values.loki.loki.schemaConfig.configs : merge(c, {
+      object_store = local.loki_object_store
+      # An unquoted YAML date decodes to an RFC 3339 timestamp, which Loki
+      # rejects. Round it back if that is what happened.
+      from = try(formatdate("YYYY-MM-DD", c.from), c.from)
+    })
+  ]
 
   thanos_objstore_config = local.storage == null ? null : (
     local.storage.cloud == "aws" ? yamlencode({
@@ -85,7 +116,15 @@ locals {
             ruler  = local.storage.loki_bucket
           }
           object_store = { type = local.loki_object_store }
+          # The legacy selector. Loki ignores it while `use_thanos_objstore` is
+          # on, but the chart still renders a `ruler.storage` block from it, so
+          # leaving it at the default puts a contradictory s3 store in the config
+          # and makes Loki log that it is ignoring it on every start.
+          type = local.loki_object_store
         }
+        # Selects the chunk client. Left at the chart's default, every ingester
+        # crash-loops on a non-AWS backend.
+        schemaConfig = { configs = local.loki_schema_configs }
         # Must match storage.object_store.type or the compactor fails at startup.
         compactor = { delete_request_store = local.loki_object_store }
       }
@@ -181,6 +220,7 @@ locals {
     [yamlencode(local.wiring_values)],
     local.sizing_profiles,
     local.storage_documents,
+    local.storage_class_document,
     local.scheduling_document,
     var.additional_values,
   )
