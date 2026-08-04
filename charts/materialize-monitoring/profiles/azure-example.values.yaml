@@ -1,0 +1,128 @@
+# Example Azure/AKS overlay. Replace every <REPLACE-ME> and combine with other
+# profiles as needed.
+#
+# Access is granted via Microsoft Entra Workload ID. For each backend, create a
+# user-assigned managed identity, give it "Storage Blob Data Contributor" on its
+# own container, and add a federated identity credential:
+#   issuer   = the AKS cluster's OIDC issuer URL
+#   audience = api://AzureADTokenExchange
+#   subject  = system:serviceaccount:monitoring:loki
+#              system:serviceaccount:monitoring:thanos-thanos
+# See docs: "Logs & Events > Storing" and "Metrics > Storing".
+#
+# One storage account with a container per backend is the shape the Terraform
+# wrapper builds: role assignments scope to a container, so Loki and Thanos stay
+# isolated without a second account.
+#
+# READ THIS BEFORE COPYING — Azure needs one thing the other clouds do not, and
+# each subchart wants it under a different key.
+#
+# The Entra Workload ID webhook injects the projected token and the AZURE_*
+# variables, but only into pods carrying the label
+# `azure.workload.identity/use: "true"`:
+#
+#   * Loki takes it at `loki.loki.podLabels`, which `_pod.tpl` merges into pods.
+#   * Thanos has no `podLabels`. It takes it at `thanos.global.commonLabels`,
+#     which feeds the `thanos.labels` helper the pod templates render.
+#
+# `commonLabels` also lands on object metadata, which is harmless, and not in any
+# workload selector — every Thanos selector is a hardcoded match on `component`
+# and `instance` — so this is safe to add to a running install.
+#
+# Do NOT set the token volume or the AZURE_* variables by hand. AZURE_AUTHORITY_HOST
+# differs on Azure Government and Azure China, and the webhook resolves it from the
+# cluster while a hardcoded value silently breaks on a sovereign cloud.
+
+tags: {}
+
+# The gateway needs no Azure identity: it writes to Loki and Thanos in-cluster,
+# not to blob storage. Annotate it only if you add an Azure Monitor destination.
+alloy-gateway: {}
+
+thanos:
+  global:
+    serviceAccount:
+      annotations:
+        azure.workload.identity/client-id: "<REPLACE-ME: thanos identity client ID>"
+
+    # The label the webhook keys on. Thanos has no `podLabels`, so it travels with
+    # the common set — which reaches the pod templates via `thanos.labels`.
+    commonLabels:
+      azure.workload.identity/use: "true"
+
+    objstore:
+      # createSecret renders `config` into the objstore Secret the chart
+      # references. Without it, `config` is ignored (createSecret defaults false).
+      createSecret: true
+      # `storage_account` is as required as `container` — the account is not
+      # derivable from the container name, and omitting it fails at startup.
+      # Omit `storage_account_key` so Thanos's credential chain reaches the
+      # federated token the webhook projects. NOTE: `endpoint`/`region`/`insecure`
+      # are S3-only fields and are NOT valid here.
+      config: |
+        type: AZURE
+        config:
+          storage_account: "<REPLACE-ME: storage account name>"
+          container: "<REPLACE-ME: thanos container>"
+
+loki:
+  networkPolicy:
+    enabled: true
+    metrics:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ingress:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: "<REPLACE-ME: loki identity client ID>"
+
+  loki:
+    # The label the webhook keys on. Without it the token is never projected and
+    # Loki falls back to whatever ambient credentials the node has.
+    #
+    # It has to be HERE, not at `loki.podLabels` one level up: `_pod.tpl` merges
+    # `.Values.loki.podLabels`, `.Values.defaults.podLabels`, and the component's
+    # own. A top-level `podLabels` is a different key that nothing reads, and it
+    # fails silently — the chart renders fine and no pod carries the label.
+    podLabels:
+      azure.workload.identity/use: "true"
+
+    storage:
+      # Container names on Azure, not buckets.
+      bucketNames:
+        chunks: "<REPLACE-ME: loki container>"
+        ruler: "<REPLACE-ME: loki container>"
+      object_store:
+        type: azure
+        azure:
+          account_name: "<REPLACE-ME: storage account name>"
+      # The legacy selector. Loki ignores it while use_thanos_objstore is on
+      # (object_store.type above is what the clients use), but the chart still
+      # renders a ruler.storage block from it — left at the default that block
+      # names S3 with an Azure container, and Loki logs that it is ignoring it.
+      type: azure
+    schemaConfig:
+      # Each period names the backend for its chunk client. This is the value the
+      # ingesters read, so a period left at `s3` crash-loops all of them with
+      # "no s3 endpoint in config file" — the same error as the compactor below.
+      # The list is append-only: on a backend migration, add a new period rather
+      # than editing this one.
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: azure
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    compactor:
+      # MUST match storage.object_store.type. Otherwise the compactor's
+      # delete-request store falls back to the base default (s3) and fails at
+      # startup with "failed to create delete request store object client:
+      # create bucket: no s3 endpoint in config file".
+      delete_request_store: azure
