@@ -54,7 +54,8 @@ A single PR can still appear in several components' sections; that duplication i
 Versions are read from `CHANGELOG.md` for each component.
 Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](releasing/)).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
-The next version defaults to a minor bump; set the placeholder version manually for a different bump.
+The next version defaults to a minor bump; **a patch or a major is expressed by editing the placeholder heading**, which the tooling reads and never overrides.
+See [Choosing the next version](releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose.
 
 ## Tooling
 
@@ -78,6 +79,10 @@ The per-component tag doubles as that component's `--since` boundary.
 Merging components (e.g. folding Dashboards, Pipelines, alerts, and scrapers into one "Supplemental Assets" stream) is just unioning their `content_paths` under one entry; renaming is a title change.
 `CHANGELOG.md` is keyed by component `title` and is append-only history: the tooling treats a title with no prior section as "start fresh" and leaves sections for retired titles untouched as historical record.
 A newly merged or renamed stream seeds its starting version by setting the unreleased version manually in `CHANGELOG.md`.
+
+Renaming has one consequence worth knowing before you do it: the changelog is keyed by `title`, so the lookup for a component's latest release only matches sections carrying the *current* title.
+The first release attempt after a rename therefore reports no prior release and skips the component.
+The fix is to rename the latest released section's heading to match — older sections can keep the old title, since only the newest one is consulted.
 
 **One shared lib, spanning Rust and Python.**
 `mzmon-lib` deliberately covers both ecosystems rather than splitting into per-language streams.

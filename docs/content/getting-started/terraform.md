@@ -125,6 +125,27 @@ Then `storage_class = "hyperdisk-balanced"`.
 >   A StatefulSet's `volumeClaimTemplates` are immutable, so the old PVCs have to be deleted before the new class takes effect — and deleting them discards their contents.
 >   That is cheap for these five (Thanos re-downloads blocks from object storage, and the Alertmanager and ruler volumes hold local state, not the rules themselves), but it is not a no-op.
 
+### Extra metrics destinations
+
+Thanos is always the primary metric store. These fan out in addition to it, from the Alloy gateway.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `enable_google_cloud_metrics` | `false` | GCP only. Export to Google Cloud Monitoring. Creates a service account with `roles/monitoring.metricWriter` and binds the gateway to it |
+| `google_cloud_metrics_min_importance` | `"recommended"` | `essential`, `recommended`, `extended`, `diagnostic`, or `all`. Each tier includes the ones below it |
+| `google_cloud_metrics_prefix` | `null` | Metric name prefix. Defaults to `workload.googleapis.com/mzmon` |
+
+`min_importance` is a **cost control**, not a filter for convenience.
+Cloud Monitoring bills per custom metric and per sample, so the tier you pick sets the bill.
+`recommended` covers the dashboards; `all` sends the full surface and is a diagnostic setting, not a steady state.
+
+The tiers come from the same `metric-tiers.yaml` the chart uses, so a Terraform-selected tier and a Helm-selected one always mean the same set.
+See [Metrics > Storing](../../metrics/storing/) for what each tier contains.
+
+> [!INFO]
+>   Authentication is ADC only — there is no key-file path.
+>   Without the Workload Identity binding the module creates, the exporter falls back to the node's service account, which works only if that account happens to hold `roles/monitoring.metricWriter`.
+
 ### Integration
 
 | Variable | Default | Notes |

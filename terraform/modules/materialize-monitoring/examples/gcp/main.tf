@@ -63,6 +63,14 @@ module "monitoring" {
     thanos_service_account_annotations = {
       "iam.gke.io/gcp-service-account" = "example-mzmon-thanos@example-project.iam.gserviceaccount.com"
     }
+    # The gateway needs this for Google Cloud Monitoring below, not for storage.
+    gateway_service_account_annotations = {
+      "iam.gke.io/gcp-service-account" = "example-mzmon-gateway@example-project.iam.gserviceaccount.com"
+    }
+  }
+
+  google_cloud_metrics = {
+    min_importance = "recommended"
   }
 
   node_selector = { workload = "generic" }

@@ -28,6 +28,7 @@ Checklist items are tagged with the **primary** owner.
 | Topology, defaults, validation, dashboards/alerts | — | **owns** | selects profile | — |
 | Cloud resources: bucket, IAM/IRSA, StorageClass | — | consumes by name | **owns** | approves |
 | Secrets provisioning | — | consumes by name | **provides** | rotates |
+| Rolling Alloy after a config change | — | cannot | **owns** | verifies |
 | Size, retention budget, tenant policy | — | offers profiles | sets values | **decides** |
 | Incident response, upgrades, DR, capacity | — | tooling + alerts | applies changes | **owns** |
 
@@ -45,6 +46,7 @@ Satisfied by the modules today:
 | Version pinning | The module and the chart are one release, so the module ref names the chart version |
 | Retention posture | Bucket lifecycle rules default to off, leaving deletion to each compactor |
 | Grafana admin secret | Generated and supplied by name |
+| Alloy rollouts | A values hash on both pod templates, so a config change rolls Alloy and an unchanged apply does not |
 
 Still yours, on any install path:
 
@@ -88,6 +90,20 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [x] `[chart]` `alloy validate` runs on every rendered pipeline in the build.
 - [x] `[chart]` Pre-install/pre-upgrade `alloy validate` hook so a bad config fails the release rather than a running pod.
 - [ ] `[operator]` Change pipeline behavior (stages, label families, endpoints) through the YAML sources, never by hand-editing rendered `.alloy` in a running deployment — edits there are lost on the next render and untracked.
+- [ ] `[consumer]` **(Terraform: automatic)** **Restart Alloy after a config change.** This is the one place the chart cannot own its own rollout, and it is the reverse of what a chart normally guarantees — see below.
+
+> [!WARNING]
+>   **Alloy config changes do not roll the pods.** Everywhere else in this chart, changing a value changes a pod template and Kubernetes rolls it. Alloy is the exception, and a `helm upgrade` that reports success can leave both roles serving the *previous* configuration indefinitely.
+>
+>   The bundled alloy subchart stamps a `checksum/config` annotation only when it creates the config ConfigMap itself. This chart renders the pipeline ConfigMaps in the umbrella (`mzmon-alloy-{agent,gateway}` and their `-env` pair) and points the subchart at them, so that guard never fires. The parent chart can compute the correct hash — it can read all of `.Values` and `.Files` — but a subchart value is static YAML, so there is nowhere to put it that reaches the pod template. **Only a consumer can close this**, because it holds the values before Helm renders them.
+>
+>   It must be a **restart**, not a reload. The `-env` ConfigMaps are consumed with `envFrom`, and environment variables are fixed at container start — so a metric-filter change (`minMetricImportance`) is invisible to both Alloy's `/-/reload` endpoint and the config-reloader sidecar. Enabling either would silently no-op on that half of the config surface, which is worse than doing nothing.
+>
+>   Installing with the [Terraform module](../../getting-started/terraform/) needs no action: it stamps `mzmon.materialize.cloud/values-hash` onto both pod templates, so a config change rolls them and an unchanged apply does not. Installing with Helm directly, restart both roles yourself after any pipeline or filter change:
+>
+>   ```bash
+>   kubectl -n monitoring rollout restart deployment/alloy-gateway daemonset/alloy-agent
+>   ```
 
 ### Cardinality & rate control (the lever)
 

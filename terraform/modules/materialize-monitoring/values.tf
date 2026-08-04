@@ -215,13 +215,22 @@ locals {
   # Final ordered list
   # ----------------------------------------------------------------------------
   # Sizing sits before storage so the cloud-specific facts Terraform computes
-  # always win over anything a profile happens to set. The caller is last.
-  values = concat(
+  # always win over anything a profile happens to set.
+  module_documents = concat(
     [yamlencode(local.wiring_values)],
     local.sizing_profiles,
     local.storage_documents,
     local.storage_class_document,
+    local.google_cloud_metrics_document,
     local.scheduling_document,
+  )
+
+  # The caller stays last, so `additional_values` still overrides everything —
+  # including the pod-template hash, which is derived from it rather than
+  # competing with it. See config_hash.tf.
+  values = concat(
+    local.module_documents,
+    [local.config_hash_document],
     var.additional_values,
   )
 }

@@ -73,6 +73,9 @@ resource "helm_release" "crds" {
   # CRDs are cluster-scoped; the namespace only holds the release metadata.
   create_namespace = false
 
+  # Same reason as the main release below.
+  render_subchart_notes = false
+
   depends_on = [kubernetes_namespace.monitoring]
 }
 
@@ -84,6 +87,13 @@ resource "helm_release" "monitoring" {
   timeout   = var.install_timeout
 
   skip_crds = true
+
+  # The provider defaults this to true, unlike `helm install`, where
+  # --render-subchart-notes is opt-in. Left on, eight subcharts' notes bury this
+  # chart's own — which is where the validators' warnings are printed — and most
+  # of what they say is wrong here anyway, since the umbrella wires Grafana,
+  # credentials, and endpoints differently than the subcharts assume.
+  render_subchart_notes = false
 
   # The chart runs a pre-install/pre-upgrade validation Job; without this its
   # verdict is never observed and a bad config rolls anyway.
