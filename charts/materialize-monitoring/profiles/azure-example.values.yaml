@@ -1,0 +1,153 @@
+# Example Azure/AKS overlay. Replace every <REPLACE-ME> and combine with other
+# profiles as needed.
+#
+# Access is granted via Microsoft Entra Workload ID. For each backend, create a
+# user-assigned managed identity, give it "Storage Blob Data Contributor" on its
+# own container, and add a federated identity credential:
+#   issuer   = the AKS cluster's OIDC issuer URL
+#   audience = api://AzureADTokenExchange
+#   subject  = system:serviceaccount:monitoring:loki
+#              system:serviceaccount:monitoring:thanos-thanos
+# See docs: "Logs & Events > Storing" and "Metrics > Storing".
+#
+# One storage account with a container per backend is the shape the Terraform
+# wrapper builds: role assignments scope to a container, so Loki and Thanos stay
+# isolated without a second account.
+#
+# READ THIS BEFORE COPYING — Azure needs more than the two annotations the other
+# clouds need, and the reason is not obvious:
+#
+# The Entra Workload ID webhook injects the projected token and the four AZURE_*
+# variables, but it only mutates pods carrying the label
+# `azure.workload.identity/use: "true"`.
+#
+#   * Loki can be labelled. Its `_pod.tpl` merges `loki.podLabels` into every
+#     pod, so the webhook handles Loki the supported way.
+#   * Thanos cannot. Its pod template's labels are `thanos.labels` plus the
+#     component label, with no extension point — per-component `labels` land on
+#     the StatefulSet, and there is `global.podAnnotations` with no `podLabels`
+#     beside it. The webhook can never see a Thanos pod.
+#
+# So the Thanos block below injects what the webhook would. That is deliberately
+# preferred over the two alternatives: a storage-account key is a long-lived
+# credential, and the node pool's identity is node-scoped, so every pod on the
+# node inherits it.
+
+tags: {}
+
+# The gateway needs no Azure identity: it writes to Loki and Thanos in-cluster,
+# not to blob storage. Annotate it only if you add an Azure Monitor destination.
+alloy-gateway: {}
+
+thanos:
+  global:
+    serviceAccount:
+      annotations:
+        azure.workload.identity/client-id: "<REPLACE-ME: thanos identity client ID>"
+
+    objstore:
+      # createSecret renders `config` into the objstore Secret the chart
+      # references. Without it, `config` is ignored (createSecret defaults false).
+      createSecret: true
+      # `storage_account` is as required as `container` — the account is not
+      # derivable from the container name, and omitting it fails at startup.
+      # Omit `storage_account_key` so the credential chain reaches the federated
+      # token configured below. NOTE: `endpoint`/`region`/`insecure` are S3-only
+      # fields and are NOT valid here.
+      config: |
+        type: AZURE
+        config:
+          storage_account: "<REPLACE-ME: storage account name>"
+          container: "<REPLACE-ME: thanos container>"
+
+    # --- Workload ID by hand, because the webhook cannot label Thanos pods ---
+    #
+    # The audience is fixed by Entra's token-exchange endpoint and must match the
+    # federated credential's. The mount path is arbitrary but has to agree with
+    # AZURE_FEDERATED_TOKEN_FILE below.
+    extraVolumes:
+      - name: azure-identity-token
+        projected:
+          defaultMode: 420
+          sources:
+            - serviceAccountToken:
+                path: azure-identity-token
+                expirationSeconds: 3600
+                audience: api://AzureADTokenExchange
+
+    extraVolumeMounts:
+      - name: azure-identity-token
+        mountPath: /var/run/secrets/azure/tokens
+        readOnly: true
+
+    extraEnv:
+      - name: AZURE_CLIENT_ID
+        value: "<REPLACE-ME: thanos identity client ID>"
+      - name: AZURE_TENANT_ID
+        value: "<REPLACE-ME: Entra tenant ID>"
+      - name: AZURE_FEDERATED_TOKEN_FILE
+        value: /var/run/secrets/azure/tokens/azure-identity-token
+      - name: AZURE_AUTHORITY_HOST
+        value: https://login.microsoftonline.com/
+
+loki:
+  networkPolicy:
+    enabled: true
+    metrics:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ingress:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: "<REPLACE-ME: loki identity client ID>"
+
+  loki:
+    # The label the webhook keys on. Without it the token is never projected and
+    # Loki falls back to whatever ambient credentials the node has.
+    #
+    # It has to be HERE, not at `loki.podLabels` one level up: `_pod.tpl` merges
+    # `.Values.loki.podLabels`, `.Values.defaults.podLabels`, and the component's
+    # own. A top-level `podLabels` is a different key that nothing reads, and it
+    # fails silently — the chart renders fine and no pod carries the label.
+    podLabels:
+      azure.workload.identity/use: "true"
+
+    storage:
+      # Container names on Azure, not buckets.
+      bucketNames:
+        chunks: "<REPLACE-ME: loki container>"
+        ruler: "<REPLACE-ME: loki container>"
+      object_store:
+        type: azure
+        azure:
+          account_name: "<REPLACE-ME: storage account name>"
+      # The legacy selector. Loki ignores it while use_thanos_objstore is on
+      # (object_store.type above is what the clients use), but the chart still
+      # renders a ruler.storage block from it — left at the default that block
+      # names S3 with an Azure container, and Loki logs that it is ignoring it.
+      type: azure
+    schemaConfig:
+      # Each period names the backend for its chunk client. This is the value the
+      # ingesters read, so a period left at `s3` crash-loops all of them with
+      # "no s3 endpoint in config file" — the same error as the compactor below.
+      # The list is append-only: on a backend migration, add a new period rather
+      # than editing this one.
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: azure
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    compactor:
+      # MUST match storage.object_store.type. Otherwise the compactor's
+      # delete-request store falls back to the base default (s3) and fails at
+      # startup with "failed to create delete request store object client:
+      # create bucket: no s3 endpoint in config file".
+      delete_request_store: azure

@@ -48,7 +48,8 @@ The chart validates the set at render time and refuses to install a mismatched c
 The exception is a schema period that is *not* the newest: those are allowed to name the previous backend, because that is what an append-only backend migration looks like.
 
 > [!TIP]
->   `charts/materialize-monitoring/profiles/gcp-example.values.yaml` sets all four for GCS and is the shortest path to a correct non-AWS config.
+>   `charts/materialize-monitoring/profiles/gcp-example.values.yaml` and `azure-example.values.yaml` set all four for their backend and are the shortest path to a correct non-AWS config.
+>   The Azure profile carries more than the other two, because Entra Workload ID needs a pod label the Thanos chart cannot render — read its header before copying.
 >   The [Terraform module](../../getting-started/terraform/) derives all four from `object_storage.cloud`, so there is nothing to keep in sync there.
 
 ## Granting object-storage access (workload identity)
