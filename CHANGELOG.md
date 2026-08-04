@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.12.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.13.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.12.0
+
+* DEP-184 Add Azure Profiles and TF Module Support
+    * [materialize-monitoring#183](https://github.com/MaterializeInc/materialize-monitoring/pull/183)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.11.1
 
