@@ -5,9 +5,16 @@ Two bases, both runnable locally with the same targets CI uses.
 ```bash
 make e2e-cluster          # kind cluster + the namespaces a real install has
 make e2e-tier1            # chart, hermetic shape
+make e2e-verify-tier1     # assert the logging round trip
 make e2e-generic-cloud    # rustfs + CNPG substrate
 make e2e-cluster-down
 ```
+
+Every one of these names its target cluster explicitly (`KIND_CONTEXT`, default `kind-mzmon-e2e`) rather than inheriting the current kubeconfig context.
+These targets install, restart, and delete things; without that, `make e2e-tier1` would run against whatever cluster you last used — a production one, if that is what it was.
+An unknown context is an immediate error rather than a fallback, and the Terraform substrate pins its providers the same way.
+
+Override `KIND_CONTEXT` to point at a different cluster, or `KUBE_CONTEXT` when running the scripts directly.
 
 Tier definitions live in the [Terraform modules design doc](../../docs/content/reference/internal/design-docs/20260803-terraform-modules.md#tiers).
 The short version: tier 0 is `make terraform-check` (no cluster), tier 1 is the chart's own hermetic shape, tier 2 is the chart against real object storage, tier 3 is real clouds and lives downstream.

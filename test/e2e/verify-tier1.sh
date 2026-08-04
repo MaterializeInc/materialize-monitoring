@@ -13,6 +13,10 @@ set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-monitoring}"
 TENANT="${TENANT:-loki}"
+# Named explicitly rather than inherited: this port-forwards into a cluster, and
+# defaulting to the current context would point it at whatever was last used.
+# Empty means "current context", for the CI job where only one cluster exists.
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 DEADLINE_SECONDS="${DEADLINE_SECONDS:-180}"
 PORT="${PORT:-3100}"
 # How recent a log line has to be to count as proof the write path is live. Wide
@@ -42,7 +46,22 @@ retry_until() {
     log "ok: ${what}"
 }
 
-kubectl -n "${NAMESPACE}" port-forward "svc/loki" "${PORT}:3100" >/dev/null 2>&1 &
+KUBECTL=(kubectl)
+[ -n "${KUBE_CONTEXT}" ] && KUBECTL+=(--context "${KUBE_CONTEXT}")
+
+# Checked upfront, because otherwise a typo'd or missing context spends the whole
+# deadline retrying a connection that can never succeed and reports it as a
+# timeout — which reads like a broken stack rather than a broken invocation.
+if [ -n "${KUBE_CONTEXT}" ] \
+    && ! kubectl config get-contexts "${KUBE_CONTEXT}" >/dev/null 2>&1; then
+    fail "kubeconfig has no context ${KUBE_CONTEXT} (create the cluster with 'make e2e-cluster')"
+fi
+
+# `config current-context` reports the *configured* context and ignores
+# `--context`, so it would name the wrong cluster here. Echo what was requested.
+log "cluster: ${KUBE_CONTEXT:-$(kubectl config current-context)}"
+
+"${KUBECTL[@]}" -n "${NAMESPACE}" port-forward "svc/loki" "${PORT}:3100" >/dev/null 2>&1 &
 PF_PID=$!
 trap 'kill "${PF_PID}" 2>/dev/null || true' EXIT
 

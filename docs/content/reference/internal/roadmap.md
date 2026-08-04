@@ -135,6 +135,8 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | Charts published to GHCR as OCI artifacts (`oci://ghcr.io/materializeinc/helm-charts`) + `.tgz` attached to each release | M3 | ✅ |
 | **cert-manager integration (opt-in)** — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | M3 | ⬜ |
 | **Grafana `ingress` / `service` values** so Grafana is reachable at all (ClusterIP-only today) — internal by default, public gated on an enforced CIDR allowlist. SSO is desirable but out of scope for now | M3 | ⬜ |
+| **Pre-delete hook finalizing the Grafana custom resources** before grafana-operator is deleted, so teardown does not deadlock on finalizers with no remover ([DEP-197](https://linear.app/materializeinc/issue/DEP-197)) | M3 | ⬜ |
+| Portable PVC defaults — Alertmanager's volume is sized by the cloud disk floor (4 GiB on GCP Hyperdisk and Azure) rather than by Alertmanager, which needs kilobytes | M3 | ✅ |
 
 ### Terraform
 
@@ -145,12 +147,15 @@ This replaces the hand-rolled Prometheus + Grafana modules that repo ships today
 | Item | Milestone | Status |
 |---|---|---|
 | Design doc | M3 | ✅ |
-| Common module (chart + CRDs flag, values composition, secrets, outputs) | M3 | ⬜ |
-| Terraform tooling in CI (`fmt`, `tflint`, `terraform-docs`) + `terraform/` folded into the `materialize-monitoring` component | M3 | ⬜ |
-| Per-cloud wrapper modules; retire the legacy modules downstream | M3 | ⬜ |
-| Terraform install guide + Terraform ↔ chart version compatibility row | M3 | ⬜ |
+| Common module (chart + CRDs flag, values composition, secrets, outputs) | M3 | ✅ |
+| Terraform tooling in CI (`fmt`, `terraform-docs`, `validate`, and the tier-0 render check) + `terraform/` folded into the `materialize-monitoring` component | M3 | 🔨 (`tflint` not wired) |
+| Per-cloud wrapper modules; retire the legacy modules downstream | M3 | 🔨 (AWS + GCP built; Azure not started, so `kubernetes/modules/{prometheus,grafana}` cannot be retired) |
+| Terraform install guide + tfvars reference + Terraform ↔ chart version compatibility row | M3 | ✅ |
+| Levers beyond the base install: `storage_class`, `google_cloud_metrics` (GCM fan-out with an importance tier), and a values hash that rolls Alloy on a config change | M3 | ✅ |
+| Static object-storage credentials, so a consumer without workload identity does not need `additional_values` | M3 | ⬜ |
 
 The module ships as part of the **`materialize-monitoring` component**, not as a component of its own — one version stream covering two artifacts, so `?ref=materialize-monitoring/vX.Y.Z` installs chart `vX.Y.Z` and there is no mapping to maintain between our own two surfaces.
+The module derives its chart version from the chart's own `Chart.yaml`, so that coupling is structural rather than a convention someone maintains on each bump.
 
 Qualification happens **here**, not downstream: the Terraform repo's cloud integration tests consume released tags and assume our changes are already qualified.
 See [Testing / CI](#testing--ci--devex).
@@ -186,8 +191,9 @@ Scheduling and storage class are profiles rather than a `global.*` block so the 
 | Per-component versioning + changelog + release automation (see [Versioning](versioning/) / [Releasing](releasing/)) | M2 | ✅ |
 | `auto-format` workflow (label-driven formatter fixups) | M2 | ✅ |
 | `renovate` for automated dependency bumps | M2 | ✅ |
-| Chart-shape fail-fast: Thanos + Alloy validators wired into `mzmon.validate.collect`, snapshot tests pinning rendered service-account names and workload-identity subject strings | M3 | ⬜ |
-| **kind E2E**, path-filtered: chart variant on the `loki-test` profile; Terraform variant against in-cluster rustfs + CNPG (small on PRs, medium — the chart defaults — on main) | M3 | ⬜ |
+| Chart-shape fail-fast: Thanos + Alloy validators wired into `mzmon.validate.collect`, snapshot tests pinning rendered service-account names and workload-identity subject strings | M3 | 🔨 (validators wired; subject-string snapshots outstanding) |
+| **Tier 0** — plan each Terraform example, extract the composed values, and render the chart against them (`make terraform-render`). Asserts values *land*, which `validate` cannot: a wrong value path is still valid HCL | M3 | ✅ |
+| **kind E2E**, path-filtered behind `e2e-gate`: tier-1 chart variant on `loki-test` + `kind-tier1`; tier-2 generic-cloud substrate (rustfs + CNPG) | M3 | 🔨 (both bases land; tier-2 root composing substrate + module, and small/medium sizing, outstanding) |
 | **Rust E2E suite** (`packages/mz-monitoring-e2e`): Grafana API dashboard + datasource-query assertions, Loki / Thanos direct health, Alloy support-bundle inspection, WAL durability across a gateway outage | M3 | ⬜ |
 | ArgoCD / FluxCD CI matrix | M4 | ⬜ (very low priority) |
 
@@ -249,5 +255,8 @@ Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); thi
 - [Releasing](releasing/) and [Versioning](versioning/) are written, covering the release mechanics and the per-component model. ✅
 - `CHANGELOG.md` exists and is maintained by the release tooling. ✅
 - A **customer-facing** contract/deprecation-policy page (in customer terms, distinct from the internal `versioning.md`) is still to write. ⬜
-- [Repo Layout](repo-layout/) refreshed against the tree (August 2026), including the planned `terraform/`. ✅
+- [Repo Layout](repo-layout/) refreshed against the tree (August 2026), including `terraform/` and `test/`. ✅
   It goes stale easily by design — re-check it whenever a top-level directory moves.
+- [Uninstalling](../../operating/uninstalling/) is written: the grafana-operator finalizer deadlock, the ordered teardown, and recovery. ✅
+- [Choosing the next version](releasing/#choosing-the-next-version) records the pre-1.0 bump policy and that the changelog placeholder heading is the decision. ✅
+- Alloy's rollout requirement is called out in [Production Best Practices](../../operating/production-best-practices/#collection-alloy) as an inversion of the normal chart guarantee — the one place the chart cannot own its own rollout. ✅

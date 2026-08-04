@@ -1,3 +1,17 @@
+variable "kube_context" {
+  description = "kubeconfig context to provision into. Defaults to the cluster `make e2e-cluster` creates; there is no default-to-current-context, because this root creates workloads and a wrong target should be an error."
+  type        = string
+  default     = "kind-mzmon-e2e"
+  nullable    = false
+}
+
+variable "kubeconfig_path" {
+  description = "Path to the kubeconfig holding `kube_context`."
+  type        = string
+  default     = "~/.kube/config"
+  nullable    = false
+}
+
 variable "namespace" {
   description = "Namespace for the substrate. Deliberately not `monitoring` — the stack under test should have to reach across a namespace boundary the way it would to a real cloud endpoint."
   type        = string

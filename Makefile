@@ -63,103 +63,6 @@ charts: materialize-monitoring-chart
 docs: docs/public
 .PHONY: docs
 
-helm-docs: \
-	charts/materialize-monitoring/README.md \
-	charts/materialize-monitoring-crds/README.md \
-	docs/content/reference/helm/materialize-monitoring-values.md
-.PHONY: helm-docs
-
-# Regenerate the Terraform module READMEs in place (inject between the
-# BEGIN_TF_DOCS/END_TF_DOCS markers). Not pinned via go.mod like helm-docs —
-# install terraform-docs separately.
-terraform-docs: \
-	docs/content/reference/terraform/materialize-monitoring-variables.md
-	@for m in terraform/modules/*/; do \
-		echo "terraform-docs $$m"; \
-		$(TERRAFORM_DOCS) -c .terraform-docs.yml "$$m" >/dev/null; \
-	done
-.PHONY: terraform-docs
-
-# Generate the docsite variable reference from the same variables.tf. The
-# output path in the config is relative to the module directory, hence the
-# `../../../` prefix there.
-docs/content/reference/terraform/materialize-monitoring-variables.md: \
-		terraform/modules/materialize-monitoring/variables.tf \
-		terraform/modules/materialize-monitoring/outputs.tf \
-		.terraform-docs.docsite.yml
-	$(TERRAFORM_DOCS) -c .terraform-docs.docsite.yml terraform/modules/materialize-monitoring
-
-# Format and validate every Terraform module. `validate` needs `init`, which is
-# run without a backend so it stays offline apart from provider downloads.
-terraform-check: terraform-render
-	$(TERRAFORM) fmt -recursive -check -diff terraform/
-	@for d in terraform/modules/*/ terraform/modules/*/examples/*/ terraform/test/*/; do \
-		[ -f "$$d/versions.tf" ] || [ -f "$$d/main.tf" ] || continue; \
-		echo "terraform validate $$d"; \
-		( cd "$$d" && $(TERRAFORM) init -backend=false -input=false >/dev/null && $(TERRAFORM) validate ); \
-	done
-.PHONY: terraform-check
-
-# Plan each example and render the chart against the values it composes. This is
-# the only check that proves a module value reached the setting it was aimed at —
-# `validate` accepts any well-formed HCL, including a path the chart never reads.
-# Needs no cluster; see the script header.
-terraform-render:
-	./bin/terraform-render-check.sh
-.PHONY: terraform-render
-
-### E2E (kind) ###
-# Tier 1 is the fast gate: the chart's own hermetic shape, no object storage.
-# Tier 2 adds the generic-cloud substrate (rustfs + CNPG), which is what exercises
-# the real object-storage code paths. See test/e2e/README.md.
-
-KIND ?= kind
-KIND_CLUSTER ?= mzmon-e2e
-# Matches the GKE minor the stack is validated against. Digest-pinned: kind's
-# tags are rebuilt, so the tag alone does not identify a node image.
-KIND_NODE_IMAGE ?= kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
-
-e2e-cluster:
-	$(KIND) create cluster --config test/e2e/kind-config.yaml --image $(KIND_NODE_IMAGE) --wait 120s
-	# Namespaces the operator module owns in a real install; the scrapers target
-	# them, and Helm refuses to install objects into a namespace that is absent.
-	kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
-	kubectl create namespace materialize --dry-run=client -o yaml | kubectl apply -f -
-	kubectl create namespace materialize-environment --dry-run=client -o yaml | kubectl apply -f -
-.PHONY: e2e-cluster
-
-e2e-cluster-down:
-	$(KIND) delete cluster --name $(KIND_CLUSTER)
-.PHONY: e2e-cluster-down
-
-e2e-tier1:
-	helm upgrade --install mzmon-crds charts/materialize-monitoring-crds \
-		--namespace monitoring --wait --timeout 5m
-	helm upgrade --install mzmon charts/materialize-monitoring \
-		--namespace monitoring --skip-crds \
-		-f charts/materialize-monitoring/profiles/loki-test.values.yaml \
-		-f charts/materialize-monitoring/profiles/kind-tier1.values.yaml \
-		--timeout 10m
-	# Alloy's config arrives through envFrom ConfigMaps, so a config change needs a
-	# restart — Helm does not roll these. The Terraform path stamps a values hash
-	# for exactly this; a raw `helm upgrade` has to do it by hand.
-	kubectl rollout restart -n monitoring deployment/alloy-gateway daemonset/alloy-agent
-	kubectl rollout status -n monitoring deployment/alloy-gateway --timeout 5m
-.PHONY: e2e-tier1
-
-# Assert the logging round trip rather than just that the install exited zero.
-e2e-verify-tier1:
-	./test/e2e/verify-tier1.sh
-.PHONY: e2e-verify-tier1
-
-# The tier-2 substrate on its own: object storage and Postgres, no monitoring
-# stack. Provable independently, and what a tier-2 root composes with the module.
-e2e-generic-cloud:
-	( cd terraform/test/generic-cloud && \
-		$(TERRAFORM) init -input=false >/dev/null && \
-		$(TERRAFORM) apply -auto-approve -input=false )
-.PHONY: e2e-generic-cloud
-
 # Generate grafana dashboards
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
@@ -402,6 +305,120 @@ helm-tests:
 helm-update-snapshots:
 	$(MAKE) helm-tests HELM_UNITTEST_ARGS="--update-snapshot"
 .PHONY: helm-update-snapshots
+
+helm-docs: \
+	charts/materialize-monitoring/README.md \
+	charts/materialize-monitoring-crds/README.md \
+	docs/content/reference/helm/materialize-monitoring-values.md
+.PHONY: helm-docs
+
+# Regenerate the Terraform module READMEs in place (inject between the
+# BEGIN_TF_DOCS/END_TF_DOCS markers). Not pinned via go.mod like helm-docs —
+# install terraform-docs separately.
+terraform-docs: \
+	docs/content/reference/terraform/materialize-monitoring-variables.md
+	@for m in terraform/modules/*/; do \
+		echo "terraform-docs $$m"; \
+		$(TERRAFORM_DOCS) -c .terraform-docs.yml "$$m" >/dev/null; \
+	done
+.PHONY: terraform-docs
+
+# Generate the docsite variable reference from the same variables.tf. The
+# output path in the config is relative to the module directory, hence the
+# `../../../` prefix there.
+docs/content/reference/terraform/materialize-monitoring-variables.md: \
+		terraform/modules/materialize-monitoring/variables.tf \
+		terraform/modules/materialize-monitoring/outputs.tf \
+		.terraform-docs.docsite.yml
+	$(TERRAFORM_DOCS) -c .terraform-docs.docsite.yml terraform/modules/materialize-monitoring
+
+# Format and validate every Terraform module. `validate` needs `init`, which is
+# run without a backend so it stays offline apart from provider downloads.
+terraform-check: terraform-render
+	$(TERRAFORM) fmt -recursive -check -diff terraform/
+	@for d in terraform/modules/*/ terraform/modules/*/examples/*/ terraform/test/*/; do \
+		[ -f "$$d/versions.tf" ] || [ -f "$$d/main.tf" ] || continue; \
+		echo "terraform validate $$d"; \
+		( cd "$$d" && $(TERRAFORM) init -backend=false -input=false >/dev/null && $(TERRAFORM) validate ); \
+	done
+.PHONY: terraform-check
+
+# Plan each example and render the chart against the values it composes. This is
+# the only check that proves a module value reached the setting it was aimed at —
+# `validate` accepts any well-formed HCL, including a path the chart never reads.
+# Needs no cluster; see the script header.
+terraform-render:
+	./bin/terraform-render-check.sh
+.PHONY: terraform-render
+
+### E2E (kind) ###
+# Tier 1 is the fast gate: the chart's own hermetic shape, no object storage.
+# Tier 2 adds the generic-cloud substrate (rustfs + CNPG), which is what exercises
+# the real object-storage code paths. See test/e2e/README.md.
+
+KIND ?= kind
+KIND_CLUSTER ?= mzmon-e2e
+
+# Every command below names this context explicitly. These targets install,
+# restart, and delete things, and without `--context` they would target whatever
+# the current kubeconfig context happens to be — a production cluster, if that is
+# what you last used. `kubectl` and `helm` both fail on an unknown context, so a
+# missing cluster is an error rather than a silent redirect to the wrong one.
+KIND_CONTEXT ?= kind-$(KIND_CLUSTER)
+KUBECTL ?= kubectl --context $(KIND_CONTEXT)
+HELM_KUBE ?= --kube-context $(KIND_CONTEXT)
+
+# Matches the GKE minor the stack is validated against. Digest-pinned: kind's
+# tags are rebuilt, so the tag alone does not identify a node image.
+KIND_NODE_IMAGE ?= kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
+
+e2e-cluster:
+	$(KIND) create cluster --config test/e2e/kind-config.yaml --image $(KIND_NODE_IMAGE) --wait 120s
+	# Namespaces the operator module owns in a real install; the scrapers target
+	# them, and Helm refuses to install objects into a namespace that is absent.
+	$(KUBECTL) create namespace monitoring --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) create namespace materialize --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) create namespace materialize-environment --dry-run=client -o yaml | $(KUBECTL) apply -f -
+.PHONY: e2e-cluster
+
+e2e-cluster-down:
+	$(KIND) delete cluster --name $(KIND_CLUSTER)
+.PHONY: e2e-cluster-down
+
+e2e-tier1:
+	helm upgrade --install mzmon-crds charts/materialize-monitoring-crds $(HELM_KUBE) \
+		--namespace monitoring --wait --timeout 5m
+	helm upgrade --install mzmon charts/materialize-monitoring $(HELM_KUBE) \
+		--namespace monitoring --skip-crds \
+		-f charts/materialize-monitoring/profiles/loki-test.values.yaml \
+		-f charts/materialize-monitoring/profiles/kind-tier1.values.yaml \
+		--timeout 10m
+	# Alloy's config arrives through envFrom ConfigMaps, so a config change needs a
+	# restart — Helm does not roll these. The Terraform path stamps a values hash
+	# for exactly this; a raw `helm upgrade` has to do it by hand.
+	$(KUBECTL) rollout restart -n monitoring deployment/alloy-gateway daemonset/alloy-agent
+	$(KUBECTL) rollout status -n monitoring deployment/alloy-gateway --timeout 5m
+.PHONY: e2e-tier1
+
+# Assert the logging round trip rather than just that the install exited zero.
+e2e-verify-tier1:
+	KUBE_CONTEXT=$(KIND_CONTEXT) ./test/e2e/verify-tier1.sh
+.PHONY: e2e-verify-tier1
+
+# The tier-2 substrate on its own: object storage and Postgres, no monitoring
+# stack. Provable independently, and what a tier-2 root composes with the module.
+e2e-generic-cloud:
+	( cd terraform/test/generic-cloud && \
+		$(TERRAFORM) init -input=false >/dev/null && \
+		$(TERRAFORM) apply -auto-approve -input=false \
+			-var 'kube_context=$(KIND_CONTEXT)' )
+.PHONY: e2e-generic-cloud
+
+e2e-generic-cloud-down:
+	( cd terraform/test/generic-cloud && \
+		$(TERRAFORM) destroy -auto-approve -input=false \
+			-var 'kube_context=$(KIND_CONTEXT)' )
+.PHONY: e2e-generic-cloud-down
 
 ### HUGO DOCS ###
 
