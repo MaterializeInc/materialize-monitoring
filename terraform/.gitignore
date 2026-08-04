@@ -1,0 +1,9 @@
+# Terraform working state. Modules here are consumed by ref, never applied from
+# the repo, so nothing under these paths belongs in git.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+tfplan
+plan.json
+crash.log

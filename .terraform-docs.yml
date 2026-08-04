@@ -1,0 +1,22 @@
+# terraform-docs config for the modules under terraform/.
+# Schema is the >=0.16 form (nested `output`), not the flat `output-file` used
+# by older versions.
+formatter: markdown
+
+output:
+  file: README.md
+  mode: inject
+  template: |-
+    <!-- BEGIN_TF_DOCS -->
+    {{ .Content }}
+    <!-- END_TF_DOCS -->
+
+sections:
+  show:
+    - requirements
+    - inputs
+    - outputs
+
+sort:
+  enabled: true
+  by: required

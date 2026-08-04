@@ -37,6 +37,11 @@ HUGO_BIN ?= GOFLAGS=-tags=extended $(GO) tool hugo
 # Invoke helm-docs as a tool (set HELM_DOCS=helm-docs to use brew)
 HELM_DOCS ?= $(GO) tool helm-docs
 
+# Terraform tooling. Not pinned via go.mod (neither publishes a Go tool
+# module), so these expect the binaries on PATH.
+TERRAFORM ?= terraform
+TERRAFORM_DOCS ?= terraform-docs
+
 # Whether brew can be used for installs (use ifneq)
 HAS_BREW := $(shell command -v brew 2> /dev/null)
 
@@ -63,6 +68,27 @@ helm-docs: \
 	charts/materialize-monitoring-crds/README.md \
 	docs/content/reference/helm/materialize-monitoring-values.md
 .PHONY: helm-docs
+
+# Regenerate the Terraform module READMEs in place (inject between the
+# BEGIN_TF_DOCS/END_TF_DOCS markers). Not pinned via go.mod like helm-docs —
+# install terraform-docs separately.
+terraform-docs:
+	@for m in terraform/modules/*/; do \
+		echo "terraform-docs $$m"; \
+		$(TERRAFORM_DOCS) -c .terraform-docs.yml "$$m" >/dev/null; \
+	done
+.PHONY: terraform-docs
+
+# Format and validate every Terraform module. `validate` needs `init`, which is
+# run without a backend so it stays offline apart from provider downloads.
+terraform-check:
+	$(TERRAFORM) fmt -recursive -check -diff terraform/
+	@for d in terraform/modules/*/ terraform/modules/*/examples/*/; do \
+		[ -f "$$d/versions.tf" ] || [ -f "$$d/main.tf" ] || continue; \
+		echo "terraform validate $$d"; \
+		( cd "$$d" && $(TERRAFORM) init -backend=false -input=false >/dev/null && $(TERRAFORM) validate ); \
+	done
+.PHONY: terraform-check
 
 # Generate grafana dashboards
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
