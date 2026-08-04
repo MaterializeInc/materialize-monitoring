@@ -155,3 +155,19 @@ repos:
         language: system
         pass_filenames: false
         files: ^(charts/materialize-monitoring/(values\.yaml|Chart\.yaml|README\.md\.gotmpl)|docs/content/reference/helm/materialize-monitoring-values\.md\.gotmpl)$
+
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: terraform fmt -recursive -check -diff terraform/
+        language: system
+        pass_filenames: false
+        files: ^terraform/.*\.tf$
+
+      - id: terraform-docs
+        name: Regenerate Terraform module docs
+        # Same shape as helm-docs: defer to the Makefile so the config and
+        # output paths live in one place.
+        entry: make terraform-docs
+        language: system
+        pass_filenames: false
+        files: ^(terraform/.*\.tf|\.terraform-docs\.yml)$

@@ -18,11 +18,25 @@ components:
   # Helm chart
   materialize-monitoring:
     changelog: true
-    title: "materialize-monitoring Helm Chart"
+    # Not "Helm Chart": this component is the materialize-monitoring *release*,
+    # which ships two artifacts — the chart and the Terraform module that
+    # installs it. One version stream covers both, so a module ref names the
+    # chart version it deploys and there is no mapping to maintain between our
+    # own two surfaces.
+    #
+    # The trade, accepted deliberately: a Terraform-only change publishes a
+    # chart release identical to its predecessor except the version, and a
+    # breaking module change bumps the chart's major. Both are handled in the
+    # changelog rather than by splitting the stream.
+    title: "materialize-monitoring (Helm chart + Terraform module)"
     version_paths:
+      # The chart version is the release version. Terraform modules carry no
+      # in-tree version file; they are versioned by the `<component>/vX.Y.Z`
+      # tag, which this already produces.
       - charts/materialize-monitoring/Chart.yaml
     content_paths:
       - charts/materialize-monitoring/
+      - terraform/
       - tools/chartlib/
     content_exclude:
       # Generated outputs; attributed to their source components (dashboards,

@@ -12,19 +12,19 @@ The contents of this chapter describe how to install and configure
 
 ## `materialize-terraform-self-managed` Terraform Module
 
+If you stand up Materialize with the Terraform modules, observability comes up with the cluster — the modules create the buckets and workload identity, then install these charts at a pinned version.
+
 > [!WARNING]
-> TODO: integrate `materialize-monitoring` into `materialize-terraform-self-managed`.
+>  **Preview.** The modules are built and validated but not yet in a tagged release of `materialize-terraform-self-managed`. AWS and GCP are wired; Azure still uses the previous Prometheus + Grafana modules.
 
-_`materialize-monitoring` is supported in `materialize-terraform-self-managed` as of version: TODO_
-
-See [Terraform Installation](./terraform) for users who are using `materialize-terraform-self-managed` to set up their Materialize cluster and want to use Terraform to set up their monitoring infrastructure as well.
+See [Terraform Installation](./terraform) — including the [tfvars reference](./terraform#tfvars-reference).
 
 ## `materialize-monitoring` Helm Chart
 
 If you have a cluster with `materialize-operator` installed,
 you can install the `materialize-monitoring` Helm chart in the same cluster to set up your monitoring infrastructure.
 
-The helm chart provides a greater level of customization than the terraform module.
+The Helm chart is the full-fidelity surface: the Terraform modules are a thin layer over it that adds the cloud resources Helm cannot create, and every chart value stays reachable from Terraform through `additional_values`.
 
 See [Helm Installation](./helm) for instructions on how to install `materialize-monitoring` via Helm.
 
