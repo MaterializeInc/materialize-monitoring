@@ -78,6 +78,16 @@ A node selector on the agent would confine it to one workload pool and silently 
 
 Two Loki memcached StatefulSets (`chunksCache`, `resultsCache`) do not render through `_pod.tpl` and so are named explicitly. That is the drift risk in this map, and the render check below is what catches it.
 
+## Rolling Alloy on a config change
+
+The module stamps `mzmon.materialize.cloud/values-hash` onto both Alloy pod templates, so a config change rolls them and an unchanged apply does not.
+
+This exists because the chart cannot do it. The alloy subchart hashes `configMap.content` into its pod template only when it creates that ConfigMap itself, and this chart points it at ConfigMaps the umbrella renders — so the guard never fires and the pod template never changes when the pipeline or the metric filters do. The parent chart can compute the right hash but has nowhere to put it: subchart values are static YAML. A consumer holds the values before Helm renders them, so it can.
+
+It has to be a **restart**, not a reload. The `-env` ConfigMaps are consumed with `envFrom`, and environment variables are fixed at container start, so neither the config reloader nor Alloy's `/-/reload` can pick up a filter change — they would silently no-op on half the config surface.
+
+The hash covers every value document plus the chart version, rather than only the pipeline paths. Narrowing it would mean encoding chart internals here, which is the coupling that goes stale; the cost is that an unrelated change also rolls Alloy. Documents are decoded and re-encoded first, so reformatting `additional_values` rolls nothing.
+
 ## Testing
 
 `examples/aws` and `examples/gcp` are not deployable roots — their buckets and roles are placeholders. They exist as plan targets, so the values this module composes can be rendered against the chart with no cluster involved:
