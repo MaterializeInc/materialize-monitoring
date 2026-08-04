@@ -31,6 +31,30 @@ Checklist items are tagged with the **primary** owner.
 | Size, retention budget, tenant policy | — | offers profiles | sets values | **decides** |
 | Incident response, upgrades, DR, capacity | — | tooling + alerts | applies changes | **owns** |
 
+### If you install with Terraform {#terraform-consumer}
+
+The [Terraform modules](../../getting-started/terraform/) are a `[consumer]` implementation, so several items below are already done when you use them.
+Those are marked **(Terraform: automatic)** — read them to understand what is happening, not as work to do.
+
+Satisfied by the modules today:
+
+| | |
+|---|---|
+| Object-storage buckets | One per backend, with versioning on |
+| Workload identity | IRSA on AWS, Workload Identity on GCP — no static keys |
+| Version pinning | The module and the chart are one release, so the module ref names the chart version |
+| Retention posture | Bucket lifecycle rules default to off, leaving deletion to each compactor |
+| Grafana admin secret | Generated and supplied by name |
+
+Still yours, on any install path:
+
+- A default **StorageClass** must exist — several components are PVC-backed and the modules do not create one.
+- **Sizing and retention budgets**, node-pool capacity, and the profile choice.
+- **Basic-auth or mTLS secrets** between components, which are not yet wired on any path.
+- Everything tagged `[operator]`.
+
+Azure has no wrapper module yet, so an Azure install is a plain `[consumer]` — every item below applies.
+
 ## Namespace layout {#namespace-layout}
 
 Each subchart uses a deterministic name (a static `fullnameOverride`, e.g. `loki`, `thanos`, so no release-name prefix), which assumes **one instance of each backend per namespace** — a reasonable constraint for an umbrella infrastructure chart.
@@ -177,8 +201,8 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 #### 2. Schema & storage
 
 - [x] `[chart]` `schema_config`: TSDB, schema **v13**, 24h index period.
-- [ ] `[consumer]` Provision the object-storage bucket (S3-compatible / GCS / Azure Blob); single bucket, prefixes `/loki/chunks`, `/loki/ruler`.
-- [ ] `[consumer]` Object-store lifecycle policy aligned with (or longer than) Loki retention, so the compactor owns deletion.
+- [ ] `[consumer]` **(Terraform: automatic)** Provision the object-storage bucket (S3-compatible / GCS / Azure Blob); single bucket, prefixes `/loki/chunks`, `/loki/ruler`.
+- [ ] `[consumer]` **(Terraform: automatic)** Object-store lifecycle policy aligned with (or longer than) Loki retention, so the compactor owns deletion. The modules leave bucket expiry off by default, which is the safe end of that alignment.
 - [ ] `[operator]` Treat schema periods as **append-only** — future format changes go in a new period with a `from` date ahead of now, never by editing a past period.
 
 #### 3. Replication, ring & placement
@@ -242,8 +266,8 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 
 #### 11. Security & credentials
 
-- [ ] `[consumer]` Object-store access via **workload identity** (IRSA / GKE WI / Azure WI) — see [Storing > Granting object-storage access](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) for the per-provider setup; static keys only as a documented escape hatch.
-- [ ] `[consumer]` No long-lived credentials in the chart; storage secret by reference.
+- [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Object-store access via **workload identity** (IRSA / GKE WI / Azure WI) — see [Storing > Granting object-storage access](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) for the per-provider setup; static keys only as a documented escape hatch.
+- [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** No long-lived credentials in the chart; storage secret by reference.
 - [ ] `[chart]` `runAsNonRoot`, read-only root filesystem, dropped capabilities on all components.
 - [ ] `[operator]` Optional inter-component TLS where the cluster requires it.
 
@@ -260,8 +284,8 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 - [ ] `[operator]` Upgrade ingesters one-at-a-time with flush (see [§4](#4-ingester-durability--rollouts)).
 - [ ] `[operator]` Schema changes = new period, never in place (see [§2](#2-schema--storage)).
-- [ ] `[consumer]`/`[operator]` DR = object versioning + cross-region replication + (for audit) Object Lock/WORM; restore = repoint at the bucket. No native snapshot — see [Storing](../../logs-and-events/storing/).
-- [ ] `[consumer]` Pin the Loki chart/image version; upgrades are deliberate.
+- [ ] `[consumer]`/`[operator]` DR = object versioning + cross-region replication + (for audit) Object Lock/WORM; restore = repoint at the bucket. No native snapshot — see [Storing](../../logs-and-events/storing/). The Terraform modules enable **versioning** by default; replication and Object Lock remain yours.
+- [ ] `[consumer]` **(Terraform: automatic)** Pin the Loki chart/image version; upgrades are deliberate.
 
 #### 13. Validation
 
@@ -333,7 +357,7 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 #### 2. Object storage & credentials
 
 - [x] `[chart]` Objstore config rendered into a Secret (`global.objstore.createSecret`), consumed by every component.
-- [ ] `[consumer]` Supply the bucket and grant access by **workload identity** (IRSA / GKE Workload Identity / Azure Workload Identity) rather than static keys. A render-time check errors when the identity annotation names a different cloud than the objstore backend, and warns when a cloud backend has neither an annotation nor inline credentials.
+- [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Supply the bucket and grant access by **workload identity** (IRSA / GKE Workload Identity / Azure Workload Identity) rather than static keys. A render-time check errors when the identity annotation names a different cloud than the objstore backend, and warns when a cloud backend has neither an annotation nor inline credentials.
 - [ ] `[consumer]` A dynamic-provisioning **StorageClass** must exist — Receive, Store Gateway, and Compactor are all PVC-backed.
 
 #### 3. Components & read path

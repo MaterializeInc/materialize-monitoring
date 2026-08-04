@@ -161,6 +161,17 @@ The stack is meaningfully larger than the Prometheus + Grafana pair it replaces:
 If your node pool is sized for the old shape, the first apply lands unschedulable pods.
 Either grow the pool or start at `sizing = "small"`.
 
+## Going to production
+
+The modules cover the cloud-resource half of a production deployment — buckets, workload identity, version pinning — but not the sizing, retention, and capacity decisions that only you can make.
+
+[Production Best Practices](../../operating/production-best-practices/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/#terraform-consumer), then work the items still tagged `[operator]`.
+
+Two that catch people out on a first production install:
+
+- **A default StorageClass must exist.** Several components are PVC-backed and the modules do not create one.
+- **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/#metrics-thanos).
+
 ## Before the first release
 
 The wrapper modules pin the common module to a released tag, and that tag does not yet contain it.

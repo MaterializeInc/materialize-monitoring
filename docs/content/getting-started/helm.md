@@ -86,6 +86,12 @@ TODO: document profiles and tags
 
 If you want further control of the managed components, you can selectively disable components in the `materialize-monitoring` Helm chart by setting the `enabled` field for that component to `false` in your `YOUR_VALUES.yaml` file or via `--set` in your `helm install`/`helm upgrade` command.
 
+## Going to production
+
+[Production Best Practices](../../operating/production-best-practices/) is the deployment checklist, organized by backend and tagged with who owns each item — the chart, you as the chart consumer, or you as the operator.
+
+On the Helm path every `[consumer]` item is yours, including the buckets and workload-identity bindings that the [Terraform modules](../terraform/) would otherwise create.
+
 ## Initial Installation
 
 TODO: helm install commands
