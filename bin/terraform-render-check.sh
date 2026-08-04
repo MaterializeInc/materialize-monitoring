@@ -107,6 +107,18 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
         fi
         echo "    storageClass reached all ${got} volumeClaimTemplates"
     fi
+
+    # Same reasoning for the Google Cloud Monitoring exporter: the observable
+    # proof it landed is the per-destination filter env var, which only renders
+    # when the chart actually sees the exporter enabled.
+    if grep -q '"googleCloudExporter"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
+        if ! grep -q 'GATEWAY_UNFILTERED_GCM_METRICS:' "${rendered}"; then
+            echo "  !! ${example}: googleCloudExporter is set but no GCM metric filter rendered" >&2
+            status=1
+            continue
+        fi
+        echo "    GCM exporter reached the gateway pipeline"
+    fi
 done
 
 if [ "${status}" -ne 0 ]; then

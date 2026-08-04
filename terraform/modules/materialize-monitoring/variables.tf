@@ -186,6 +186,39 @@ variable "object_storage" {
 }
 
 # ==============================================================================
+# Extra metrics destinations
+# ==============================================================================
+
+variable "google_cloud_metrics" {
+  description = <<-EOT
+    Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
+    is unaffected either way.
+
+    `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
+    `all` — and each tier includes the ones below it. This is a cost control: GCM bills per custom
+    metric and `all` sends the entire surface.
+
+    Authentication is ADC only. Bind the gateway ServiceAccount to a Google service account holding
+    `roles/monitoring.metricWriter` through `object_storage.gateway_service_account_annotations`;
+    failing that it falls back to the node's service account, which works only if that account has
+    the role.
+  EOT
+  type = object({
+    min_importance = optional(string, "recommended")
+    prefix         = optional(string)
+  })
+  default = null
+
+  validation {
+    condition = var.google_cloud_metrics == null || contains(
+      ["essential", "recommended", "extended", "diagnostic", "all"],
+      try(var.google_cloud_metrics.min_importance, ""),
+    )
+    error_message = "google_cloud_metrics.min_importance must be one of: essential, recommended, extended, diagnostic, all."
+  }
+}
+
+# ==============================================================================
 # Grafana
 # ==============================================================================
 

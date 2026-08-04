@@ -112,6 +112,26 @@ Supply `sql_scraper_password` when enabling it.
         <td class="tf-var-default"><code>false</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="google_cloud_metrics" href="#google_cloud_metrics">google_<wbr>cloud_<wbr>metrics</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
+is unaffected either way.
+
+`min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
+`all` — and each tier includes the ones below it. This is a cost control: GCM bills per custom
+metric and `all` sends the entire surface.
+
+Authentication is ADC only. Bind the gateway ServiceAccount to a Google service account holding
+`roles/monitoring.metricWriter` through `object_storage.gateway_service_account_annotations`;
+failing that it falls back to the node's service account, which works only if that account has
+the role.
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    min_importance = optional(string, "recommended")
+    prefix         = optional(string)
+  })</code></pre></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="grafana_admin_password" href="#grafana_admin_password">grafana_<wbr>admin_<wbr>password</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Grafana admin password. Generated when null. Supplied to Grafana as a Secret this module owns, rather than letting the bundled chart mint one — the chart's own generation does not survive upgrades.</td>

@@ -186,6 +186,19 @@ pipeline:
 
 Reach for the denylist to shed a metric everywhere (cost, cardinality, noise); reach for `minMetricImportance` to tune what an *individual* backend receives.
 
+### Through Terraform
+
+The Terraform modules expose the Google Cloud Monitoring destination directly, since it needs cloud resources the chart cannot create:
+
+```hcl
+enable_google_cloud_metrics          = true
+google_cloud_metrics_min_importance  = "recommended"
+```
+
+That sets the same `minMetricImportance` documented above and provisions the service account and Workload Identity binding the exporter authenticates with.
+Every other destination is reachable through `additional_values`.
+See [Getting Started > Terraform](../../getting-started/terraform/#extra-metrics-destinations).
+
 ### Operational notes
 
 > [!NOTE]

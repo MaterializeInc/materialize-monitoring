@@ -221,6 +221,7 @@ locals {
     local.sizing_profiles,
     local.storage_documents,
     local.storage_class_document,
+    local.google_cloud_metrics_document,
     local.scheduling_document,
     var.additional_values,
   )
