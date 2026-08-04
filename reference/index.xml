@@ -37,8 +37,16 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0120-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.12.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0120-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0130-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.13.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0130-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
+&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0120"&gt;materialize-monitoring (Helm chart + Terraform module) v0.12.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0120"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;DEP-184 Add Azure Profiles and TF Module Support
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/183" rel="external" class="github-source-link"&gt;materialize-monitoring#183&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0111"&gt;materialize-monitoring (Helm chart + Terraform module) v0.11.1&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0111"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;DEP-186 Add an E2E suite for kind + helm/tf
