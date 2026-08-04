@@ -223,19 +223,15 @@ variable "node_selector" {
 variable "storage_class" {
   description = <<-EOT
     StorageClass for the five PVC-backed workloads (Alertmanager, the Loki ruler, and Thanos
-    receive/compactor/store-gateway). Leave null to use the cluster's default class.
+    receive/compactor/store-gateway). Null uses the cluster default. Loki's ingesters are
+    unaffected — node-local `emptyDir` by design.
 
-    Set this when the default class cannot serve the nodes the stack runs on. The case that
-    forces it is GCP's C4 and N4 machine families, which accept only Hyperdisk — every
-    Persistent Disk class, including GKE's default `standard-rwo`, fails to attach with
-    `pd-balanced disk type cannot be used by <machine-type>`. A `hyperdisk-balanced` class
-    fixes it.
+    Required where the default class cannot serve the nodes: GCP's C4 and N4 families take only
+    Hyperdisk, and every Persistent Disk class fails to attach with `pd-balanced disk type cannot
+    be used by <machine-type>`.
 
-    Loki's ingesters are unaffected: they use node-local `emptyDir` by design.
-
-    Changing this on an existing install does not move the volumes. A StatefulSet's
-    `volumeClaimTemplates` are immutable, so the old PVCs have to be deleted for the new class
-    to take effect — which discards their contents.
+    Changing it on an existing install does not move the volumes. `volumeClaimTemplates` are
+    immutable, so the old PVCs must be deleted first — discarding their contents.
   EOT
   type        = string
   default     = null

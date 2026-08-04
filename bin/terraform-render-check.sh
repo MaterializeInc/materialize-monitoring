@@ -85,19 +85,13 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
     rendered="${WORK_DIR}/${example}-rendered.yaml"
     echo "    rendered $(grep -c '^kind:' "${rendered}") objects"
 
-    # Rendering proves the chart accepts the values; it does not prove a value
-    # reached the setting it was aimed at. A storageClass written to a path no
-    # subchart reads renders perfectly and is silently ignored, and the PVC lands
-    # on the cluster default instead — which on a Hyperdisk-only node pool means
-    # it never attaches.
+    # A storageClass written to a path no subchart reads renders fine and is
+    # silently ignored, so rendering alone proves nothing here. When an example
+    # sets one, require every volumeClaimTemplate to carry it.
     #
-    # So when an example sets one, require every volumeClaimTemplate in the
-    # output to carry it. The count is the assertion: a PVC-backed workload the
-    # fan-out map does not know about fails here rather than in a cluster.
-    # The key may be quoted or not: Terraform's `yamlencode` quotes every key,
-    # while a hand-written `additional_values` document usually does not.
-    # `|| true` because most examples set no storage class, and a no-match grep
-    # would take the whole script down under `pipefail`.
+    # The key may be quoted or not (Terraform's `yamlencode` quotes every key).
+    # `|| true` because most examples set none, and a no-match grep would take
+    # the script down under `pipefail`.
     expected_sc="$(grep -hoE '"?storageClass"?:[[:space:]]*"?[^"[:space:]]+' \
         "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \
         | head -1 | sed -E 's/.*:[[:space:]]*"?//' || true)"

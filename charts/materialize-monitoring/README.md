@@ -2708,6 +2708,19 @@ Upstream reference:
 
 Bundled Alertmanager for routing alerts emitted by the rule packages.
 
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.persistence<wbr>.size</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"4Gi"</code></td>
+      <td class="helm-value-desc">Volume for silences and the notification log. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.</td>
+    </tr>
+  </tbody>
+</table>
+
 #### Kube State Metrics
 
 kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.

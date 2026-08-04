@@ -67,14 +67,10 @@ module "monitoring" {
 
   node_selector = { workload = "generic" }
 
-  # A recognizable sentinel rather than a realistic class name. The render check
-  # counts `volumeClaimTemplates` in the output and requires every one of them to
-  # carry this value, which is what proves the five-key fan-out in
-  # storage_class.tf is complete. A sixth PVC-backed workload appearing in a
-  # subchart fails that count instead of silently landing on the cluster default.
-  #
-  # GCP is the right example to carry it: C4 and N4 nodes accept only Hyperdisk,
-  # so there the default class does not work at all.
+  # A sentinel, not a realistic class name: the render check requires every
+  # volumeClaimTemplate to carry it, which is what proves storage_class.tf's
+  # fan-out is complete. GCP carries it because C4/N4 take only Hyperdisk, so the
+  # default class does not work there at all.
   storage_class = "render-check-storage-class"
 }
 
