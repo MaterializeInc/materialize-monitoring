@@ -241,7 +241,7 @@ main.container {
   font-weight: 600;
 }
 
-.markdown table.helm-values {
+.markdown table.helm-values, .markdown table.tf-vars {
   pre, code {
     padding: rem(0.5);
     font-size: rem(1.2);
@@ -249,14 +249,14 @@ main.container {
     max-width: 15rem;
   }
 
-  td.helm-value-key {
+  td.helm-value-key, td.tf-var-name {
     font-family: monospace;
     font-size: rem(1.5);
     overflow-x: auto;
     max-width: 15rem;
   }
 
-  td.helm-value-desc {
+  td.helm-value-desc, td.tf-var-desc {
     font-size: rem(1.5);
   }
 }

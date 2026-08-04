@@ -146,6 +146,9 @@ variable "sizing" {
 # Object storage and workload identity
 # ==============================================================================
 
+# Keep this type expression free of blank lines and comments: terraform-docs
+# publishes it verbatim, and the docsite renders it inside a raw HTML block that
+# a blank line would terminate.
 variable "object_storage" {
   description = <<-EOT
     Buckets and workload identity for the logging and metrics backends, supplied by the per-cloud
@@ -157,12 +160,11 @@ variable "object_storage" {
     rather than at pod start.
   EOT
   type = object({
-    cloud         = string
-    loki_bucket   = string
-    thanos_bucket = string
-    region        = optional(string)
-    endpoint      = optional(string)
-
+    cloud                               = string
+    loki_bucket                         = string
+    thanos_bucket                       = string
+    region                              = optional(string)
+    endpoint                            = optional(string)
     loki_service_account_annotations    = optional(map(string), {})
     thanos_service_account_annotations  = optional(map(string), {})
     gateway_service_account_annotations = optional(map(string), {})

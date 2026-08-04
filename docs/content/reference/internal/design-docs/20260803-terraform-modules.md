@@ -727,9 +727,9 @@ Work in **this** repo. None of it is Terraform-specific — each item is a gap t
 
 The Terraform story is stale in several places here and should be corrected as the work lands:
 
-- `getting-started/terraform.md` — a work-in-progress stub with a "not available yet (as of May 2026)" warning and two TODOs. Becomes the real install guide.
-- `getting-started/_index.md` — carries a TODO and an "as of version: TODO" placeholder.
-- `reference/compatibility.md` — states that no version includes materialize-monitoring except its dashboard. Gains the Terraform-repo ↔ chart-version row.
+- `getting-started/terraform.md` — ✅ done. Now the install guide, including a tfvars reference.
+- `getting-started/_index.md` — ✅ done.
+- `reference/compatibility.md` — ✅ done. Carries the Terraform-repo ↔ chart-version table.
 - `reference/internal/roadmap.md` — the M4 "Terraform wrapper module" row, the "Downstream pinning" bullet, and a `terraform` entry wherever components are enumerated. Also two Testing / CI rows: the "Synthetic-data end-to-end smoke test" row **is** the E2E suite described here, and the "kind / ArgoCD / FluxCD CI matrix" row needs its kind half split out and promoted well above "very low priority" (ArgoCD and Flux stay).
 - `reference/internal/repo-layout.md` — ✅ done. Refreshed against the tree and carries `terraform/` as a planned entry.
 - `operating/production-best-practices.md` — the `[consumer]` items become concretely satisfied-by-Terraform on that path, which matters to a reader choosing an install method.

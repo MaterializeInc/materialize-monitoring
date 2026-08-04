@@ -10,8 +10,14 @@ technologies.
 
 ## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
-No version of materialize-terraform-self-managed includes
-materialize-monitoring currently with the exception of its dashboard.
+| materialize-terraform-self-managed | materialize-monitoring | Clouds |
+|---|---|---|
+| _unreleased_ | 0.8.0 | AWS, GCP |
+| ≤ v8.0.0 | none (a vendored copy of the `env-top` dashboard only) | — |
+
+The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.
+
+Azure has no wrapper module yet and still uses the previous Prometheus + Grafana modules.
 
 ## [Materialize product](https://github.com/MaterializeInc/materialize)
 

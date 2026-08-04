@@ -72,12 +72,22 @@ helm-docs: \
 # Regenerate the Terraform module READMEs in place (inject between the
 # BEGIN_TF_DOCS/END_TF_DOCS markers). Not pinned via go.mod like helm-docs —
 # install terraform-docs separately.
-terraform-docs:
+terraform-docs: \
+	docs/content/reference/terraform/materialize-monitoring-variables.md
 	@for m in terraform/modules/*/; do \
 		echo "terraform-docs $$m"; \
 		$(TERRAFORM_DOCS) -c .terraform-docs.yml "$$m" >/dev/null; \
 	done
 .PHONY: terraform-docs
+
+# Generate the docsite variable reference from the same variables.tf. The
+# output path in the config is relative to the module directory, hence the
+# `../../../` prefix there.
+docs/content/reference/terraform/materialize-monitoring-variables.md: \
+		terraform/modules/materialize-monitoring/variables.tf \
+		terraform/modules/materialize-monitoring/outputs.tf \
+		.terraform-docs.docsite.yml
+	$(TERRAFORM_DOCS) -c .terraform-docs.docsite.yml terraform/modules/materialize-monitoring
 
 # Format and validate every Terraform module. `validate` needs `init`, which is
 # run without a backend so it stays offline apart from provider downloads.
