@@ -376,7 +376,7 @@ HELM_KUBE ?= --kube-context $(KIND_CONTEXT)
 # (amd64 + arm64), so it works on both a CI runner and an Apple Silicon laptop.
 #
 # renovate: datasource=docker packageName=kindest/node
-KIND_NODE_IMAGE ?= kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
+KIND_NODE_IMAGE ?= kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
 
 e2e-cluster:
 	$(KIND) create cluster --config test/e2e/kind-config.yaml --image $(KIND_NODE_IMAGE) --wait 120s
