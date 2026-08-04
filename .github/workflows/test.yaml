@@ -65,14 +65,18 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The render check runs `helm template`, and the vendored subchart
+          # tarballs are LFS-tracked. Without this they check out as pointer
+          # files and the render fails.
+          lfs: true
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           # The wrapper intercepts stdout, which the render check parses as JSON.
           terraform_wrapper: false
       # fmt, validate, and — via the terraform-render prerequisite — a plan of
       # every example with the chart rendered against the values it composes.
-      # helm and jq are preinstalled on the runner image, and the subcharts are
-      # vendored, so no registry access is needed. No cluster either: the
+      # helm and jq are preinstalled on the runner image. No cluster needed: the
       # examples plan against a kubeconfig that does not exist.
       - name: terraform check
         run: make terraform-check
