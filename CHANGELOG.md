@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.10.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.11.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.10.0
+
+* DEP-182 materialize-monitoring Terraform Module
+    * [materialize-monitoring#171](https://github.com/MaterializeInc/materialize-monitoring/pull/171)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.9.0
 
