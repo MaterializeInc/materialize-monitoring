@@ -14,24 +14,24 @@
 # wrapper builds: role assignments scope to a container, so Loki and Thanos stay
 # isolated without a second account.
 #
-# READ THIS BEFORE COPYING — Azure needs more than the two annotations the other
-# clouds need, and the reason is not obvious:
+# READ THIS BEFORE COPYING — Azure needs one thing the other clouds do not, and
+# each subchart wants it under a different key.
 #
-# The Entra Workload ID webhook injects the projected token and the four AZURE_*
-# variables, but it only mutates pods carrying the label
-# `azure.workload.identity/use: "true"`.
+# The Entra Workload ID webhook injects the projected token and the AZURE_*
+# variables, but only into pods carrying the label
+# `azure.workload.identity/use: "true"`:
 #
-#   * Loki can be labelled. Its `_pod.tpl` merges `loki.podLabels` into every
-#     pod, so the webhook handles Loki the supported way.
-#   * Thanos cannot. Its pod template's labels are `thanos.labels` plus the
-#     component label, with no extension point — per-component `labels` land on
-#     the StatefulSet, and there is `global.podAnnotations` with no `podLabels`
-#     beside it. The webhook can never see a Thanos pod.
+#   * Loki takes it at `loki.loki.podLabels`, which `_pod.tpl` merges into pods.
+#   * Thanos has no `podLabels`. It takes it at `thanos.global.commonLabels`,
+#     which feeds the `thanos.labels` helper the pod templates render.
 #
-# So the Thanos block below injects what the webhook would. That is deliberately
-# preferred over the two alternatives: a storage-account key is a long-lived
-# credential, and the node pool's identity is node-scoped, so every pod on the
-# node inherits it.
+# `commonLabels` also lands on object metadata, which is harmless, and not in any
+# workload selector — every Thanos selector is a hardcoded match on `component`
+# and `instance` — so this is safe to add to a running install.
+#
+# Do NOT set the token volume or the AZURE_* variables by hand. AZURE_AUTHORITY_HOST
+# differs on Azure Government and Azure China, and the webhook resolves it from the
+# cluster while a hardcoded value silently breaks on a sovereign cloud.
 
 tags: {}
 
@@ -45,50 +45,25 @@ thanos:
       annotations:
         azure.workload.identity/client-id: "<REPLACE-ME: thanos identity client ID>"
 
+    # The label the webhook keys on. Thanos has no `podLabels`, so it travels with
+    # the common set — which reaches the pod templates via `thanos.labels`.
+    commonLabels:
+      azure.workload.identity/use: "true"
+
     objstore:
       # createSecret renders `config` into the objstore Secret the chart
       # references. Without it, `config` is ignored (createSecret defaults false).
       createSecret: true
       # `storage_account` is as required as `container` — the account is not
       # derivable from the container name, and omitting it fails at startup.
-      # Omit `storage_account_key` so the credential chain reaches the federated
-      # token configured below. NOTE: `endpoint`/`region`/`insecure` are S3-only
-      # fields and are NOT valid here.
+      # Omit `storage_account_key` so Thanos's credential chain reaches the
+      # federated token the webhook projects. NOTE: `endpoint`/`region`/`insecure`
+      # are S3-only fields and are NOT valid here.
       config: |
         type: AZURE
         config:
           storage_account: "<REPLACE-ME: storage account name>"
           container: "<REPLACE-ME: thanos container>"
-
-    # --- Workload ID by hand, because the webhook cannot label Thanos pods ---
-    #
-    # The audience is fixed by Entra's token-exchange endpoint and must match the
-    # federated credential's. The mount path is arbitrary but has to agree with
-    # AZURE_FEDERATED_TOKEN_FILE below.
-    extraVolumes:
-      - name: azure-identity-token
-        projected:
-          defaultMode: 420
-          sources:
-            - serviceAccountToken:
-                path: azure-identity-token
-                expirationSeconds: 3600
-                audience: api://AzureADTokenExchange
-
-    extraVolumeMounts:
-      - name: azure-identity-token
-        mountPath: /var/run/secrets/azure/tokens
-        readOnly: true
-
-    extraEnv:
-      - name: AZURE_CLIENT_ID
-        value: "<REPLACE-ME: thanos identity client ID>"
-      - name: AZURE_TENANT_ID
-        value: "<REPLACE-ME: Entra tenant ID>"
-      - name: AZURE_FEDERATED_TOKEN_FILE
-        value: /var/run/secrets/azure/tokens/azure-identity-token
-      - name: AZURE_AUTHORITY_HOST
-        value: https://login.microsoftonline.com/
 
 loki:
   networkPolicy:

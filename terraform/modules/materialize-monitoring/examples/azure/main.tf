@@ -5,9 +5,9 @@
 # the one that needed new fields: both Loki and Thanos name the storage account
 # separately from the container, and neither can derive it.
 #
-# It also carries the Workload Identity wiring the module does by hand, because
-# the bundled Thanos chart has no pod-label lever for the AKS webhook to key on.
-# See azure.tf.
+# It also exercises the Workload Identity labelling, which reaches Thanos through
+# `global.commonLabels` rather than a `podLabels` the chart does not have. See
+# azure.tf.
 
 terraform {
   required_version = ">= 1.3.0"
@@ -57,14 +57,14 @@ module "monitoring" {
     thanos_bucket = "mzmon-thanos"
 
     azure_storage_account = "examplemzmonstg"
-    azure_client_id       = "00000000-0000-0000-0000-000000000001"
-    azure_tenant_id       = "00000000-0000-0000-0000-000000000002"
 
+    # One identity per backend, each scoped to its own container. The webhook
+    # reads the client ID from the annotation; nothing else is needed.
     loki_service_account_annotations = {
       "azure.workload.identity/client-id" = "00000000-0000-0000-0000-000000000001"
     }
     thanos_service_account_annotations = {
-      "azure.workload.identity/client-id" = "00000000-0000-0000-0000-000000000001"
+      "azure.workload.identity/client-id" = "00000000-0000-0000-0000-000000000002"
     }
   }
 

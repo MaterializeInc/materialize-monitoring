@@ -1,34 +1,30 @@
-# Azure Workload Identity, wired by hand.
+# Azure Workload Identity.
 #
-# On AKS the projected token and the four `AZURE_*` variables are normally
-# injected by the workload-identity webhook, which only mutates pods carrying
-# the label `azure.workload.identity/use: "true"`.
+# The Entra Workload ID webhook injects the projected token and the `AZURE_*`
+# variables, but only into pods carrying the label
+# `azure.workload.identity/use: "true"`. Each subchart needs a different lever to
+# get that label onto its pods:
 #
-# Loki can be labelled — `_pod.tpl` merges `loki.podLabels` into every pod. The
-# bundled Thanos chart cannot: its pod template's labels are `thanos.labels` plus
-# the component label, with no extension point. Per-component `labels` land on
-# the StatefulSet, and `global.podAnnotations` exists with no `podLabels` beside
-# it. So the webhook can never see a Thanos pod.
+#   * Loki — `loki.podLabels`, which `_pod.tpl` merges into every pod.
+#   * Thanos — `global.commonLabels`, which feeds the `thanos.labels` helper that
+#     the pod templates render. There is no `podLabels` in this chart, so the
+#     label has to travel with the common set.
 #
-# Rather than fall back to a storage-account key (a long-lived credential) or the
-# node pool's identity (node-scoped, so every pod on the node inherits it), this
-# injects what the webhook would: Thanos's Azure provider tries workload identity
-# as part of its credential chain, and that path needs only the env vars and the
-# token file. Same posture as Loki, no static secret, no chart patch.
+# `commonLabels` also lands on object metadata, which is harmless, and — checked,
+# because it would otherwise be a breaking change — *not* in any workload
+# selector. Every Thanos selector is a hardcoded two-key match on `component` and
+# `instance`, so adding this to a running install does not touch an immutable
+# field.
 #
-# Upstream fix worth filing: `global.podLabels` on the Thanos chart, which would
-# make the webhook work and let this file shrink to the Loki label.
+# Everything else is the webhook's job. Do not set the token volume or the
+# `AZURE_*` variables by hand: `AZURE_AUTHORITY_HOST` differs on Azure Government
+# and Azure China, and the webhook resolves it from the cluster's environment
+# while a hardcoded value silently breaks on a sovereign cloud.
 
 locals {
   azure = local.storage != null && local.storage.cloud == "azure" ? local.storage : null
 
-  # Where the projected token is mounted. The path is arbitrary but has to agree
-  # between the mount and AZURE_FEDERATED_TOKEN_FILE.
-  azure_token_dir  = "/var/run/secrets/azure/tokens"
-  azure_token_file = "azure-identity-token"
-
   azure_identity_document = local.azure == null ? [] : [yamlencode({
-    # Loki takes the label, so the webhook handles it the supported way.
     loki = {
       loki = {
         podLabels = { "azure.workload.identity/use" = "true" }
@@ -37,46 +33,7 @@ locals {
 
     thanos = {
       global = {
-        # The audience is fixed by Entra's token-exchange endpoint; the federated
-        # credential on the Azure side must be created with the same value.
-        extraVolumes = [{
-          name = "azure-identity-token"
-          projected = {
-            defaultMode = 420
-            sources = [{
-              serviceAccountToken = {
-                path              = local.azure_token_file
-                expirationSeconds = 3600
-                audience          = "api://AzureADTokenExchange"
-              }
-            }]
-          }
-        }]
-
-        extraVolumeMounts = [{
-          name      = "azure-identity-token"
-          mountPath = local.azure_token_dir
-          readOnly  = true
-        }]
-
-        extraEnv = [
-          {
-            name  = "AZURE_CLIENT_ID"
-            value = local.azure.azure_client_id
-          },
-          {
-            name  = "AZURE_TENANT_ID"
-            value = local.azure.azure_tenant_id
-          },
-          {
-            name  = "AZURE_FEDERATED_TOKEN_FILE"
-            value = "${local.azure_token_dir}/${local.azure_token_file}"
-          },
-          {
-            name  = "AZURE_AUTHORITY_HOST"
-            value = "https://login.microsoftonline.com/"
-          },
-        ]
+        commonLabels = { "azure.workload.identity/use" = "true" }
       }
     }
   })]

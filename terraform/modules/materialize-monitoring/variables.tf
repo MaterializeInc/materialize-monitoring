@@ -166,6 +166,10 @@ variable "object_storage" {
     workload-identity annotation for each component's ServiceAccount — the chart validates that the
     annotation's cloud matches the objstore backend, so a mismatched pair fails at render time
     rather than at pod start.
+
+    `azure_storage_account` is required when `cloud` is `azure`, and only then: both Loki and Thanos
+    name the account separately from the container. Azure needs nothing else — the annotation plus
+    the pod label the module applies are all the Entra webhook requires.
   EOT
   type = object({
     cloud                               = string
@@ -174,8 +178,6 @@ variable "object_storage" {
     region                              = optional(string)
     endpoint                            = optional(string)
     azure_storage_account               = optional(string)
-    azure_client_id                     = optional(string)
-    azure_tenant_id                     = optional(string)
     loki_service_account_annotations    = optional(map(string), {})
     thanos_service_account_annotations  = optional(map(string), {})
     gateway_service_account_annotations = optional(map(string), {})
