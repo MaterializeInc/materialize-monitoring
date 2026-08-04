@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Design Docs on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-dep-184-azure/reference/internal/design-docs/</link><description>Recent content in Design Docs on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Mon, 03 Aug 2026 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/heather-dep-184-azure/reference/internal/design-docs/index.xml" rel="self" type="application/rss+xml"/><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-dep-184-azure/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-dep-184-azure/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
+
+&lt;table class="param-table"&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;th&gt;author&lt;/th&gt;
+ &lt;td&gt;Heather Lapointe&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;lastmod&lt;/th&gt;
+ &lt;td&gt;2026-06-28 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;publishdate&lt;/th&gt;
+ &lt;td&gt;2026-06-27 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;status&lt;/th&gt;
+ &lt;td&gt;Preview&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;This doc captures the design decisions and open questions for shipping a productionalizable Loki inside the &lt;code&gt;materialize-monitoring&lt;/code&gt; umbrella chart.
+It is the design rationale behind the &lt;code&gt;loki&lt;/code&gt; subchart wiring in &lt;code&gt;charts/materialize-monitoring/Chart.yaml&lt;/code&gt;; day-2 operational procedures (backup/restore, upgrades, migration) will live in customer-facing docs and are only sketched here.&lt;/p&gt;
+&lt;!--
+Agent note: this doc records decisions and their *why*. When a decision lands in code (values, templates, profiles), update the relevant section and check the corresponding open question. The per-component `existing*` audit table is meant to be filled in as we wrap each component.
+--&gt;
+&lt;h2 id="goals"&gt;Goals&lt;a class="anchor" href="#goals"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Functional requirements, framed as value-first user stories.
+Each describes &lt;em&gt;what&lt;/em&gt; a user needs and &lt;em&gt;why it matters&lt;/em&gt;; the &lt;a href="#technical-bluf"&gt;Technical BLUF&lt;/a&gt; and the sections below describe &lt;em&gt;how&lt;/em&gt; we deliver it.
+Priority tags (&lt;strong&gt;Must&lt;/strong&gt; / &lt;strong&gt;Should&lt;/strong&gt; / &lt;strong&gt;Could&lt;/strong&gt;) are relative to the &lt;strong&gt;Production (M2)&lt;/strong&gt; milestone.&lt;/p&gt;</description></item><item><title>Terraform Modules for materialize-monitoring</title><link>https://materializeinc.github.io/materialize-monitoring/preview/heather-dep-184-azure/reference/internal/design-docs/20260803-terraform-modules/</link><pubDate>Mon, 03 Aug 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/heather-dep-184-azure/reference/internal/design-docs/20260803-terraform-modules/</guid><description>&lt;h1 id="terraform-modules-for-materialize-monitoring"&gt;Terraform Modules for materialize-monitoring&lt;a class="anchor" href="#terraform-modules-for-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;
+
+&lt;table class="param-table"&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;th&gt;author&lt;/th&gt;
+ &lt;td&gt;Heather Lapointe&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;lastmod&lt;/th&gt;
+ &lt;td&gt;2026-08-03 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;publishdate&lt;/th&gt;
+ &lt;td&gt;2026-08-03 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;status&lt;/th&gt;
+ &lt;td&gt;Draft&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;This doc captures the design for the &lt;strong&gt;Terraform wrapper&lt;/strong&gt; on the &lt;a href="../../roadmap/"&gt;Roadmap&lt;/a&gt; (M4) and for retiring the hand-rolled observability stack that the &lt;a href="https://github.com/MaterializeInc/materialize-terraform-self-managed" rel="external" class="github-source-link"&gt;&lt;code&gt;materialize-terraform-self-managed&lt;/code&gt;&lt;/a&gt; module ships today.
+Terraform is deliberately downstream of Helm: the chart stays the full-fidelity surface, and Terraform pins a chart version and supplies the cloud resources around it.&lt;/p&gt;
+&lt;!--
+Agent note: this doc records decisions and their *why*. Work is split across two repos — the common module
+and all chart work land here, the cloud wrapper modules land in `materialize-terraform-self-managed`. When
+a decision lands in code, update the section and check the matching open question. The "Chart-side
+prerequisites" table is the work-in-this-repo list; keep it in sync with the Roadmap.
+--&gt;
+&lt;h2 id="goals"&gt;Goals&lt;a class="anchor" href="#goals"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Functional requirements, framed as value-first user stories.
+Each describes &lt;em&gt;what&lt;/em&gt; a user needs and &lt;em&gt;why it matters&lt;/em&gt;; the &lt;a href="#technical-bluf"&gt;Technical BLUF&lt;/a&gt; and the sections below describe &lt;em&gt;how&lt;/em&gt; we deliver it.
+Priority tags (&lt;strong&gt;Must&lt;/strong&gt; / &lt;strong&gt;Should&lt;/strong&gt; / &lt;strong&gt;Could&lt;/strong&gt;) are relative to the first shipped version of the module.&lt;/p&gt;</description></item></channel></rss>
