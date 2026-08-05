@@ -24,9 +24,11 @@ That overruns tools that wait on the rollout with a short default:
 | Pulumi `helm.v4.Chart` | resource await | extend `customTimeouts` |
 | ArgoCD | async (no wait) | tolerant — shows `Progressing` until healthy |
 
-A `--wait` timeout here means **"still rolling," not "failed"** — the rollout completes correctly; the client just stopped watching.
+A `--wait` timeout **on a rollout you deliberately triggered** means "still rolling," not "failed" — the rollout completes correctly and the client just stopped watching.
+
+That is the narrow exception, not the rule. On any other timeout, assume something is broken and inspect events before touching the timeout: see [Troubleshooting](../o11y-troubleshooting/#start-here-a-timeout-is-not-a-duration-problem).
 
 > [!WARNING]
 >   Do not speed the roll by allowing more than one ingester down at a time (`updateStrategy.rollingUpdate.maxUnavailable > 1`, via the alpha `MaxUnavailableStatefulSet` gate).
 >   With RF 3 that can drop you to a single healthy replica and break write quorum mid-roll.
->   `zoneAwareReplication` (roll a whole zone at once) is the only quorum-safe burst, at the cost of cross-AZ replication traffic — see the [logging architecture](../../logs-and-events/#loki-ingester).
+>   `zoneAwareReplication` (roll a whole zone at once) is the only quorum-safe burst, at the cost of cross-AZ replication traffic — see the [logging architecture](../../logs-and-events/architecture/#loki-ingester).

@@ -6,7 +6,7 @@ weight: 20
 # Logging Pipeline
 
 This is the authoritative reference for the log-processing pipelines that run on `alloy-agent` and `alloy-gateway`.
-The customer-facing [Logs & Events](../../../../logs-and-events/) section links here for pipeline detail; this page is for repo contributors.
+The customer-facing [Logs & Events](../../../../logs-and-events/architecture/) section links here for pipeline detail; this page is for repo contributors.
 
 <!--
 Agent note: this page documents pipeline *conventions and shape*, not the full per-application match table — that lives in the pipeline sources and changes often. When you change pipeline behavior, attribute it via the implementing PR (see "Attribution and adoption status") rather than restating the whole config here.
@@ -62,9 +62,9 @@ These are the conventions a contributor must preserve when editing the gateway `
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
-- **Logs → Loki.** The default stub wires `loki.process "egress"` → `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
+- **Logs → Loki.** The default stub wires `loki.process "egress"` → `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/architecture/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
-- **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
+- **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
 Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL).
 
@@ -82,4 +82,4 @@ Current status (see the [Roadmap](../../roadmap/)):
 
 - [Authoring](../authoring/) — schema model and how to extend it.
 - [Metrics](../metrics/) — the metrics-side pipeline conventions.
-- [Logs & Events](../../../../logs-and-events/) — the customer-facing architecture this pipeline feeds.
+- [Logs & Events](../../../../logs-and-events/architecture/) — the customer-facing architecture this pipeline feeds.

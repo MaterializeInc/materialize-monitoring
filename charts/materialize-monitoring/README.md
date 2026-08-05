@@ -70,7 +70,8 @@ Values that are passed to all subcharts
       <td class="helm-value-key">global<wbr>.imageRegistry</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Override the registry for all images in this chart and its subcharts. Leave empty to use upstream defaults.</td>
+      <td class="helm-value-desc">Override the registry for all images in this chart and its subcharts. Leave empty to use upstream defaults.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">global<wbr>.imagePullSecrets</td>
@@ -78,7 +79,8 @@ Values that are passed to all subcharts
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Image pull secrets applied to every workload in this chart and its subcharts.</td>
+      <td class="helm-value-desc">Image pull secrets applied to every workload in this chart and its subcharts.
+</td>
     </tr>
   </tbody>
 </table>
@@ -95,19 +97,22 @@ Configuration for the main chart
       <td class="helm-value-key">nameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Standard Helm name override. Note that in umbrella charts, fullname may be shorted. See fullnameOverride.</td>
+      <td class="helm-value-desc">Standard Helm name override. Note that in umbrella charts, fullname may be shorted. See fullnameOverride.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"mzmon"</code></td>
-      <td class="helm-value-desc">Standard Helm fullname override. Note that in umbrella charts, this may be shortened to avoid long prefixes. (and have more stable names in resources)</td>
+      <td class="helm-value-desc">Standard Helm fullname override. Note that in umbrella charts, this may be shortened to avoid long prefixes. (and have more stable names in resources)
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Namespace override for default workloads.</td>
+      <td class="helm-value-desc">Namespace override for default workloads.
+</td>
     </tr>
   </tbody>
 </table>
@@ -163,79 +168,92 @@ most clusters already run metrics-server; enable it via
       <td class="helm-value-key">tags<wbr>.default</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable all recommended defaults. You can `--set tags.default=false` to disable all services and explicitly enable others.</td>
+      <td class="helm-value-desc">Enable all recommended defaults. You can `--set tags.default=false` to disable all services and explicitly enable others.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.pipeline</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable both Alloy releases (agent + gateway).</td>
+      <td class="helm-value-desc">Enable both Alloy releases (agent + gateway).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.bundled-backends</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable Loki, Thanos, and Alertmanager as a group. (Grafana is in the `managed-grafana` group.)</td>
+      <td class="helm-value-desc">Enable Loki, Thanos, and Alertmanager as a group. (Grafana is in the `managed-grafana` group.)
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.cluster-metrics</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable kube-state-metrics and metrics-server as a group.</td>
+      <td class="helm-value-desc">Enable kube-state-metrics and metrics-server as a group.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alloy-agent</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Alloy agent. OR'd with `tags.default` / `tags.pipeline`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just the Alloy agent. OR'd with `tags.default` / `tags.pipeline`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alloy-gateway</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just the Alloy gateway. OR'd with `tags.default` / `tags.pipeline`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just the Alloy gateway. OR'd with `tags.default` / `tags.pipeline`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.loki</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Loki. OR'd with `tags.default` / `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Loki. OR'd with `tags.default` / `tags.bundled-backends`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.thanos</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Thanos. OR'd with `tags.default` / `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Thanos. OR'd with `tags.default` / `tags.bundled-backends`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.grafana-standalone</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Grafana standalone. OR'd with `tags.default` / `tags.managed-grafana`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Grafana standalone. OR'd with `tags.default` / `tags.managed-grafana`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.grafana-operator</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Grafana operator. OR'd with `tags.default` / `tags.managed-grafana`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Grafana operator. OR'd with `tags.default` / `tags.managed-grafana`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.alertmanager</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just Alertmanager. OR'd with `tags.default` / `tags.bundled-backends`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just Alertmanager. OR'd with `tags.default` / `tags.bundled-backends`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.kube-state-metrics</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just kube-state-metrics. OR'd with `tags.default` / `tags.cluster-metrics`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just kube-state-metrics. OR'd with `tags.default` / `tags.cluster-metrics`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">tags<wbr>.metrics-server</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.</td>
+      <td class="helm-value-desc">Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
+</td>
     </tr>
   </tbody>
 </table>
@@ -254,7 +272,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read.</td>
+      <td class="helm-value-desc">Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor</td>
@@ -267,13 +286,15 @@ Materialize-specific configuration values.
   "targetLabels": []
 }</pre>
 </td>
-      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for environmentd</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for environmentd
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.</td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.selector</td>
@@ -281,7 +302,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Override for default selector</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.targetLabels</td>
@@ -289,7 +311,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
@@ -297,7 +320,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor</td>
@@ -310,13 +334,15 @@ Materialize-specific configuration values.
   "targetLabels": []
 }</pre>
 </td>
-      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for environmentd-sql</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for environmentd-sql
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.</td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.selector</td>
@@ -324,7 +350,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Override for default selector</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.targetLabels</td>
@@ -332,7 +359,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
@@ -340,7 +368,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor</td>
@@ -353,13 +382,15 @@ Materialize-specific configuration values.
   "targetLabels": []
 }</pre>
 </td>
-      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for clusterd</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for clusterd
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.</td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect Materialize metrics.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.selector</td>
@@ -367,7 +398,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Override for default selector</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.targetLabels</td>
@@ -375,7 +407,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
@@ -383,19 +416,22 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.deploymentMode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"self-managed"</code></td>
-      <td class="helm-value-desc">Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.</td>
+      <td class="helm-value-desc">Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-system<wbr>.namespace</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"materialize-environment"</code></td>
-      <td class="helm-value-desc">The namespace materialize-system was deployed into</td>
+      <td class="helm-value-desc">The namespace materialize-system was deployed into
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-system<wbr>.serviceMonitor</td>
@@ -405,13 +441,15 @@ Materialize-specific configuration values.
   "enabled": true
 }</pre>
 </td>
-      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration TODO: nothing uses this yet</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration TODO: nothing uses this yet
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-operator<wbr>.namespace</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"materialize"</code></td>
-      <td class="helm-value-desc">The namespace materialize-operator was deployed into</td>
+      <td class="helm-value-desc">The namespace materialize-operator was deployed into
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor</td>
@@ -424,7 +462,8 @@ Materialize-specific configuration values.
   "targetLabels": []
 }</pre>
 </td>
-      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor<wbr>.selector</td>
@@ -432,7 +471,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Override for default selector</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor<wbr>.targetLabels</td>
@@ -440,7 +480,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize-operator<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
@@ -448,7 +489,8 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
     </tr>
   </tbody>
 </table>
@@ -470,7 +512,8 @@ release instances.
       <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Run a hook/dependency to validate rendered configs before rolling them out</td>
+      <td class="helm-value-desc">Run a hook/dependency to validate rendered configs before rolling them out
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.annotations</td>
@@ -481,13 +524,15 @@ release instances.
   "helm.sh/hook-delete-policy": "before-hook-creation"
 }</pre>
 </td>
-      <td class="helm-value-desc">Job specific annotations This should be used to control when the job is executed. The default is as a helm hook, but setting any other annotation overrides this.</td>
+      <td class="helm-value-desc">Job specific annotations This should be used to control when the job is executed. The default is as a helm hook, but setting any other annotation overrides this.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.backoffLimit</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
-      <td class="helm-value-desc">Number of times to retry the job before failing the release.</td>
+      <td class="helm-value-desc">Number of times to retry the job before failing the release.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.podSecurityContext</td>
@@ -499,7 +544,8 @@ release instances.
   "runAsUser": 473
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the pre-validate job pod. This is the hardened recommendation with the alloy user.</td>
+      <td class="helm-value-desc">Security context for the pre-validate job pod. This is the hardened recommendation with the alloy user.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.preValidateJob<wbr>.containerSecurityContext</td>
@@ -518,7 +564,8 @@ release instances.
   "runAsUser": 473
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the pre-validate job container. This is the hardened recommendation with the alloy user.</td>
+      <td class="helm-value-desc">Security context for the pre-validate job container. This is the hardened recommendation with the alloy user.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.env</td>
@@ -526,19 +573,22 @@ release instances.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Environment variables to set in agent and gateway pods. These support tpl rendering. Since these are injected into an envFrom, any env entries take precedence.</td>
+      <td class="helm-value-desc">Environment variables to set in agent and gateway pods. These support tpl rendering. Since these are injected into an envFrom, any env entries take precedence.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.env<wbr>.CLUSTER_NAME</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"default"</code></td>
-      <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.</td>
+      <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.env<wbr>.GATEWAY_LOG_LEVEL</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"info"</code></td>
-      <td class="helm-value-desc">Level for the gateway logs.</td>
+      <td class="helm-value-desc">Level for the gateway logs.
+</td>
     </tr>
   </tbody>
 </table>
@@ -555,19 +605,22 @@ Configuration for log behavior
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.rateLimit</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>5000</code></td>
-      <td class="helm-value-desc">Rate limit for alloy agent incoming pod logs. This is per agent.</td>
+      <td class="helm-value-desc">Rate limit for alloy agent incoming pod logs. This is per agent.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.burst</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>20000</code></td>
-      <td class="helm-value-desc">Burst limit for alloy agent incoming pod logs.</td>
+      <td class="helm-value-desc">Burst limit for alloy agent incoming pod logs.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"http://alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
-      <td class="helm-value-desc">alloy-gateway push endpoint URL.</td>
+      <td class="helm-value-desc">alloy-gateway push endpoint URL.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.retries</td>
@@ -580,67 +633,78 @@ Configuration for log behavior
   "retryOnHttp429": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Retry configuration.</td>
+      <td class="helm-value-desc">Retry configuration.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.authType</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the alloy-gateway endpoint. Use none if no authentication is required.</td>
+      <td class="helm-value-desc">Type of authentication to use with the alloy-gateway endpoint. Use none if no authentication is required.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for alloy-gateway dest.</td>
+      <td class="helm-value-desc">Whether to enable TLS for alloy-gateway dest.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the alloy-gateway dest.</td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the alloy-gateway dest.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable writing to a loki destination. By default, we use the in-cluster loki</td>
+      <td class="helm-value-desc">Enable writing to a loki destination. By default, we use the in-cluster loki
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"http://loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
-      <td class="helm-value-desc">Loki push endpoint URL.</td>
+      <td class="helm-value-desc">Loki push endpoint URL.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.retries</td>
@@ -653,13 +717,15 @@ Configuration for log behavior
   "retryOnHttp429": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Retry configuration.</td>
+      <td class="helm-value-desc">Retry configuration.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.authType</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials.</td>
+      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.basicAuth</td>
@@ -672,7 +738,8 @@ Configuration for log behavior
   "usernameEnv": "GATEWAY_LOKI_DEST_USERNAME"
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this</td>
+      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.bearer</td>
@@ -683,7 +750,8 @@ Configuration for log behavior
   "tokenEnv": "GATEWAY_LOKI_DEST_BEARER_TOKEN"
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.</td>
+      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.oauth2</td>
@@ -699,61 +767,71 @@ Configuration for log behavior
   "tokenUrlEnv": "GATEWAY_LOKI_DEST_OAUTH2_TOKEN_URL"
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
+      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for the loki destination.</td>
+      <td class="helm-value-desc">Whether to enable TLS for the loki destination.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the loki destination.</td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the loki destination.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. By default, we do not use the OTLP destination. NOTE: This is configured in the pipeline.metrics.gateway.destination.otlp block, not the logging block.</td>
+      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. By default, we do not use the OTLP destination. NOTE: This is configured in the pipeline.metrics.gateway.destination.otlp block, not the logging block.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.tenancy<wbr>.staticTenant</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"loki"</code></td>
-      <td class="helm-value-desc">Default tenant to write logs to. This is used when tenantMap values is set to `static`.</td>
+      <td class="helm-value-desc">Default tenant to write logs to. This is used when tenantMap values is set to `static`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.tenancy<wbr>.tenantMap</td>
@@ -766,7 +844,8 @@ Configuration for log behavior
   "infra": "static"
 }</pre>
 </td>
-      <td class="helm-value-desc">Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).</td>
+      <td class="helm-value-desc">Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).
+</td>
     </tr>
   </tbody>
 </table>
@@ -785,31 +864,36 @@ Configuration for metrics behavior
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Denylist of metrics that are excluded from being exported These are |'d in a regex pattern</td>
+      <td class="helm-value-desc">Denylist of metrics that are excluded from being exported These are |'d in a regex pattern
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable writing to a Prometheus remote write destination. We default to in-cluster Thanos.</td>
+      <td class="helm-value-desc">Enable writing to a Prometheus remote write destination. We default to in-cluster Thanos.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"http://thanos-receive.{{ include \"mzmon.thanos.namespace\" $ }}.svc:10908/api/v1/receive"</code></td>
-      <td class="helm-value-desc">Prometheus remote write endpoint URL.</td>
+      <td class="helm-value-desc">Prometheus remote write endpoint URL.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.minMetricImportance</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"all"</code></td>
-      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.authType</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials. Use sigv4 for AWS SigV4 signing (For AMP).</td>
+      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials. Use sigv4 for AWS SigV4 signing (For AMP).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.basicAuth</td>
@@ -822,7 +906,8 @@ Configuration for metrics behavior
   "usernameEnv": "GATEWAY_PROMETHEUS_DEST_USERNAME"
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth</td>
+      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.bearer</td>
@@ -833,7 +918,8 @@ Configuration for metrics behavior
   "tokenEnv": "GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN"
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.</td>
+      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.oauth2</td>
@@ -849,7 +935,8 @@ Configuration for metrics behavior
   "tokenUrlEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL"
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2</td>
+      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.sigv4</td>
@@ -860,49 +947,57 @@ Configuration for metrics behavior
   "roleArn": ""
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for AWS signatures when using authType=sigv4 This generally does not need to be set (it is derived from IRSA).</td>
+      <td class="helm-value-desc">Configuration for AWS signatures when using authType=sigv4 This generally does not need to be set (it is derived from IRSA).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for the prometheus destination.</td>
+      <td class="helm-value-desc">Whether to enable TLS for the prometheus destination.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.verify</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the prometheus destination.</td>
+      <td class="helm-value-desc">Whether to verify the TLS certificate for the prometheus destination.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.ca</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.</td>
+      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.cert</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.</td>
+      <td class="helm-value-desc">Client certificate PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.key</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.</td>
+      <td class="helm-value-desc">Client private key PEM contents for TLS.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.serverName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.</td>
+      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.minVersion</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.</td>
+      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
+</td>
     </tr>
   </tbody>
 </table>
@@ -922,25 +1017,29 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing metrics to an OpenTelemetry/OTLP destination. By default, we do not use the OTel destination. WARNING: if logging otel destination is enabled, this block will still be used for configuration! (just not for metrics)</td>
+      <td class="helm-value-desc">Enable writing metrics to an OpenTelemetry/OTLP destination. By default, we do not use the OTel destination. WARNING: if logging otel destination is enabled, this block will still be used for configuration! (just not for metrics)
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to a Google Cloud Monitoring / Cloud Logging destination.</td>
+      <td class="helm-value-desc">Enable writing to a Google Cloud Monitoring / Cloud Logging destination.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
-      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.</td>
+      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.minMetricImportance</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"recommended"</code></td>
-      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.handlers</td>
@@ -950,37 +1049,43 @@ Multiple exporters can be enabled at once.
   "otelcol.exporter.googlecloud.destination.input"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter.</td>
+      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.config</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>An `otelcol.exporter.googlecloud.destination` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.googlecloud block. The default config uses Workload Identity Federation (WIF) to authenticate to GCP.</td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.googlecloud block. The default config uses Workload Identity Federation (WIF) to authenticate to GCP.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to a Datadog destination.</td>
+      <td class="helm-value-desc">Enable writing to a Datadog destination.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
-      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Datadog.</td>
+      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Datadog.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.minMetricImportance</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"recommended"</code></td>
-      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.hostMetadata<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to include host metadata in the Datadog exporter. FIXME: how do we support this in an Agent->Gateway architecture?</td>
+      <td class="helm-value-desc">Whether to include host metadata in the Datadog exporter. FIXME: how do we support this in an Agent->Gateway architecture?
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.handlers</td>
@@ -990,43 +1095,50 @@ Multiple exporters can be enabled at once.
   "otelcol.exporter.datadog.destination.input"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Handlers to use for the Datadog exporter.</td>
+      <td class="helm-value-desc">Handlers to use for the Datadog exporter.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.datadogExporter<wbr>.config</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>An `otelcol.exporter.datadog.destination` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.datadog block.</td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.datadog block.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. This is the generic fallback for other destinations. You can also use this if you need to set a custom destination block.</td>
+      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. This is the generic fallback for other destinations. You can also use this if you need to set a custom destination block.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">OTLP push endpoint URL. This does not need a protocol prefix (http:// or https://)</td>
+      <td class="helm-value-desc">OTLP push endpoint URL. This does not need a protocol prefix (http:// or https://)
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.protocol</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grpc"</code></td>
-      <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.</td>
+      <td class="helm-value-desc">Protocol to use for OTLP. Use grpc for gRPC protocol. Use http for HTTP protocol.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
-      <td class="helm-value-desc">Compression to use Use gzip for better compatibility. Use snappy for better performance.</td>
+      <td class="helm-value-desc">Compression to use Use gzip for better compatibility. Use snappy for better performance.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.minMetricImportance</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"all"</code></td>
-      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"</td>
+      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.handlers</td>
@@ -1036,7 +1148,8 @@ Multiple exporters can be enabled at once.
   "otelcol.exporter.otlp[http].destination.input"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Handlers to use for the OTLP exporter. Update this if your config was customized.</td>
+      <td class="helm-value-desc">Handlers to use for the OTLP exporter. Update this if your config was customized.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.otlpExporter<wbr>.config</td>
@@ -1052,7 +1165,8 @@ otelcol.exporter.{{ $exporterType }} "destination" {
     }
 }
 </pre></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.otlp block. Use this if you need to configure multiple destinations or use an alternative endpoint entirely.</td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.otlp block. Use this if you need to configure multiple destinations or use an alternative endpoint entirely.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1069,43 +1183,50 @@ Configuration for OpenTelemetry/OTLP destinations. This is only needed for desti
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.authType</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the OpenTelemetry destination. Valid values are: `none`, `basic`, `bearer`, `awsSigv4`, and `custom`.</td>
+      <td class="helm-value-desc">Type of authentication to use with the OpenTelemetry destination. Valid values are: `none`, `basic`, `bearer`, `awsSigv4`, and `custom`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.basic<wbr>.config</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>An `otelcol.auth.basic.oteldest` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.auth.basic block. This uses the GATEWAY_OTEL_DEST_USERNAME/GATEWAY_OTEL_DEST_PASSWORD env vars.</td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.basic block. This uses the GATEWAY_OTEL_DEST_USERNAME/GATEWAY_OTEL_DEST_PASSWORD env vars.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.bearer<wbr>.config</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>An `otelcol.auth.bearer.oteldest` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.auth.bearer block. This uses the GATEWAY_OTEL_DEST_BEARER_TOKEN env var.</td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.bearer block. This uses the GATEWAY_OTEL_DEST_BEARER_TOKEN env var.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.awsSigv4<wbr>.region</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Override the region to sign requests for.</td>
+      <td class="helm-value-desc">Override the region to sign requests for.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.awsSigv4<wbr>.roleArn</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Override the role ARN to assume for signing requests.</td>
+      <td class="helm-value-desc">Override the role ARN to assume for signing requests.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.awsSigv4<wbr>.config</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>An `otelcol.auth.sigv4.oteldest` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.auth.sigv4 block.</td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.sigv4 block.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.custom<wbr>.handler</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"{{ fail \"Be sure to set this\" }}"</code></td>
-      <td class="helm-value-desc">Handler for a custom auth handler (Advanced escape hatch). This should point to the definition you used. Most auth types use `.handler` for their capsule export. If you need multiple handlers, you can skip this field and instead modify your otlpExporter.config to not use "mzmon.alloyGateway.otelDest.authHandler".</td>
+      <td class="helm-value-desc">Handler for a custom auth handler (Advanced escape hatch). This should point to the definition you used. Most auth types use `.handler` for their capsule export. If you need multiple handlers, you can skip this field and instead modify your otlpExporter.config to not use "mzmon.alloyGateway.otelDest.authHandler".
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.custom<wbr>.config</td>
@@ -1118,7 +1239,8 @@ otelcol.auth.basic "oteldest" {
     }
 }
 </pre></td>
-      <td class="helm-value-desc">Raw configuration for a custom auth handler.</td>
+      <td class="helm-value-desc">Raw configuration for a custom auth handler.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1138,19 +1260,22 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.</td>
+      <td class="helm-value-desc">Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"operator"</code></td>
-      <td class="helm-value-desc">Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).</td>
+      <td class="helm-value-desc">Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.resyncPeriod</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">Time to sync the dashboard from the manifest</td>
+      <td class="helm-value-desc">Time to sync the dashboard from the manifest
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.instanceSelector</td>
@@ -1158,25 +1283,29 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.</td>
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.allowCrossNamespaceImport</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>inferred</code></td>
-      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.</td>
+      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"dashboard.grafana.app/v2"</code></td>
-      <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)</td>
+      <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.</td>
+      <td class="helm-value-desc">Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.selected</td>
@@ -1186,7 +1315,8 @@ from the sources under `packages/` and embedded via `.Files.Get`.
   "env-*"
 ]</pre>
 </td>
-      <td class="helm-value-desc">List of dashboard patterns to render</td>
+      <td class="helm-value-desc">List of dashboard patterns to render
+</td>
     </tr>
   </tbody>
 </table>
@@ -1203,19 +1333,22 @@ Configuration for rules
       <td class="helm-value-key">config<wbr>.rules<wbr>.prometheus<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.</td>
+      <td class="helm-value-desc">Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">config<wbr>.rules<wbr>.loki<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Loki rules.</td>
+      <td class="helm-value-desc">Install the bundled Loki rules.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">config<wbr>.rules<wbr>.thanos<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Thanos rules.</td>
+      <td class="helm-value-desc">Install the bundled Thanos rules.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1232,7 +1365,8 @@ Configuration for alerts
       <td class="helm-value-key">config<wbr>.alerts<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Alertmanager routing and templates.</td>
+      <td class="helm-value-desc">Install the bundled Alertmanager routing and templates.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1249,7 +1383,8 @@ Configuration for scrapers
       <td class="helm-value-key">config<wbr>.scrapers<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.</td>
+      <td class="helm-value-desc">Install ServiceMonitors / Alloy scrape configs for Materialize and adjacent components.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1266,7 +1401,8 @@ How to talk to a grafana instance
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
-      <td class="helm-value-desc">How this establishes its connection to Grafana. `bundled` (default) targets the Grafana deployed by the bundled `grafana` subchart; the URL and admin-credential Secret are derived from it. `external` targets a Grafana you already run — Grafana Cloud, a shared platform Grafana, another cluster — and requires `external.url` plus either `external.apiKey` or `external.adminUser` + `external.adminPassword`. `operator` hands the instance lifecycle to grafana-operator itself, which builds it from the operator's own defaults and is not yet production-ready.</td>
+      <td class="helm-value-desc">How this establishes its connection to Grafana. `bundled` (default) targets the Grafana deployed by the bundled `grafana` subchart; the URL and admin-credential Secret are derived from it. `external` targets a Grafana you already run — Grafana Cloud, a shared platform Grafana, another cluster — and requires `external.url` plus either `external.apiKey` or `external.adminUser` + `external.adminPassword`. `operator` hands the instance lifecycle to grafana-operator itself, which builds it from the operator's own defaults and is not yet production-ready.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.labels</td>
@@ -1274,13 +1410,15 @@ How to talk to a grafana instance
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Additional labels applied to the Grafana instance, and to the `instanceSelector` of every Grafana resource this chart targets at it. Merged over a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is what keeps the selector non-empty — grafana-operator reads an empty `matchLabels` as *every* instance, not none. Add to this to narrow the selector further, e.g. to scope per release when two `materialize-monitoring` releases share a cluster.</td>
+      <td class="helm-value-desc">Additional labels applied to the Grafana instance, and to the `instanceSelector` of every Grafana resource this chart targets at it. Merged over a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is what keeps the selector non-empty — grafana-operator reads an empty `matchLabels` as *every* instance, not none. Add to this to narrow the selector further, e.g. to scope per release when two `materialize-monitoring` releases share a cluster.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">External grafana uri</td>
+      <td class="helm-value-desc">External grafana uri
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.adminPassword</td>
@@ -1288,7 +1426,8 @@ How to talk to a grafana instance
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Secret for Grafana admin password</td>
+      <td class="helm-value-desc">Secret for Grafana admin password
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.adminUser</td>
@@ -1296,7 +1435,8 @@ How to talk to a grafana instance
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Secret for Grafana admin user</td>
+      <td class="helm-value-desc">Secret for Grafana admin user
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.apiKey</td>
@@ -1304,7 +1444,8 @@ How to talk to a grafana instance
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Secret for Grafana API key</td>
+      <td class="helm-value-desc">Secret for Grafana API key
+</td>
     </tr>
   </tbody>
 </table>
@@ -1325,49 +1466,57 @@ reference chart helpers.
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled datasources. Requires the Grafana operator.</td>
+      <td class="helm-value-desc">Install the bundled datasources. Requires the Grafana operator.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.resyncPeriod</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">How often the operator re-pushes each datasource.</td>
+      <td class="helm-value-desc">How often the operator re-pushes each datasource.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.editable</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether the datasources can be edited in the Grafana UI. Edits are reverted on the next resync either way; this only hides the controls so the reversion is not a surprise.</td>
+      <td class="helm-value-desc">Whether the datasources can be edited in the Grafana UI. Edits are reverted on the next resync either way; this only hides the controls so the reversion is not a surprise.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.enabled</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>follows `thanos.enabled</code></td>
-      <td class="helm-value-desc">Provision the Thanos datasource. Unset follows whether the bundled Thanos is enabled. Set it explicitly to point Grafana at metrics storage this chart does not deploy.</td>
+      <td class="helm-value-desc">Provision the Thanos datasource. Unset follows whether the bundled Thanos is enabled. Set it explicitly to point Grafana at metrics storage this chart does not deploy.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.name</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"Thanos"</code></td>
-      <td class="helm-value-desc">Datasource name, as shown in Grafana.</td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.uid</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"mzmon-thanos"</code></td>
-      <td class="helm-value-desc">Stable datasource UID.</td>
+      <td class="helm-value-desc">Stable datasource UID.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"http://thanos-query.{{ include \"mzmon.thanos.namespace\" $ }}.svc:9090"</code></td>
-      <td class="helm-value-desc">Thanos Query endpoint. Rendered with `tpl`.</td>
+      <td class="helm-value-desc">Thanos Query endpoint. Rendered with `tpl`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.isDefault</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Make this Grafana's default datasource. The bundled dashboards deliberately do not pin a datasource: their `${metricsDatasource}` variable resolves to whichever Prometheus-type datasource is default. With no default, every panel renders empty and Grafana reports no error. Only turn this off if something else in the instance is already the default Prometheus datasource.</td>
+      <td class="helm-value-desc">Make this Grafana's default datasource. The bundled dashboards deliberately do not pin a datasource: their `${metricsDatasource}` variable resolves to whichever Prometheus-type datasource is default. With no default, every panel renders empty and Grafana reports no error. Only turn this off if something else in the instance is already the default Prometheus datasource.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.jsonData</td>
@@ -1375,7 +1524,8 @@ reference chart helpers.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.secureJsonData</td>
@@ -1383,7 +1533,8 @@ reference chart helpers.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td>
+      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.valuesFrom</td>
@@ -1400,37 +1551,43 @@ valuesFrom:
       secretKeyRef:
         name: thanos-basic-auth
         key: password
-```</td>
+```
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.enabled</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>follows `loki.enabled</code></td>
-      <td class="helm-value-desc">Provision the Loki datasource. Unset follows whether the bundled Loki is enabled.</td>
+      <td class="helm-value-desc">Provision the Loki datasource. Unset follows whether the bundled Loki is enabled.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.name</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"Loki"</code></td>
-      <td class="helm-value-desc">Datasource name, as shown in Grafana.</td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.uid</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"mzmon-loki"</code></td>
-      <td class="helm-value-desc">Stable datasource UID.</td>
+      <td class="helm-value-desc">Stable datasource UID.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"http://loki-query-frontend.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100"</code></td>
-      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).</td>
+      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tenant</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>follows `pipeline.logging.tenancy.staticTenant</code></td>
-      <td class="helm-value-desc">Tenant to read as, sent in the `X-Scope-OrgID` header. The bundled Loki runs `auth_enabled: true`, so reads without this header fail with `no org id`. Unset follows the tenant the pipeline writes to. Set to `""` to send no header, which is only correct against a Loki with `auth_enabled: false`.</td>
+      <td class="helm-value-desc">Tenant to read as, sent in the `X-Scope-OrgID` header. The bundled Loki runs `auth_enabled: true`, so reads without this header fail with `no org id`. Unset follows the tenant the pipeline writes to. Set to `""` to send no header, which is only correct against a Loki with `auth_enabled: false`.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.jsonData</td>
@@ -1438,7 +1595,8 @@ valuesFrom:
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (the tenant header name, and `timeout`).</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (the tenant header name, and `timeout`).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.secureJsonData</td>
@@ -1446,7 +1604,8 @@ valuesFrom:
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td>
+      <td class="helm-value-desc">Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.valuesFrom</td>
@@ -1454,7 +1613,8 @@ valuesFrom:
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.</td>
+      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1479,13 +1639,15 @@ Upstream reference:
       <td class="helm-value-key">alloy-agent<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"alloy-agent"</code></td>
-      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Namespace override.</td>
+      <td class="helm-value-desc">Namespace override.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.crds</td>
@@ -1495,7 +1657,8 @@ Upstream reference:
   "create": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Control for the PodLogs crd.</td>
+      <td class="helm-value-desc">Control for the PodLogs crd.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.global<wbr>.podSecurityContext</td>
@@ -1507,13 +1670,15 @@ Upstream reference:
   "runAsUser": 473
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the alloy agent pods.</td>
+      <td class="helm-value-desc">Security context for the alloy agent pods.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.stabilityLevel</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"generally-available"</code></td>
-      <td class="helm-value-desc">Stability level of alloy components.</td>
+      <td class="helm-value-desc">Stability level of alloy components.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.extraEnv</td>
@@ -1521,7 +1686,8 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy agent pod.</td>
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy agent pod.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.envFrom</td>
@@ -1541,7 +1707,8 @@ Upstream reference:
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Environment variable configmaps/secrets to pass to the alloy agent pod.</td>
+      <td class="helm-value-desc">Environment variable configmaps/secrets to pass to the alloy agent pod.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.mounts</td>
@@ -1557,7 +1724,8 @@ Upstream reference:
   "varlog": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Volume mounts to expose to alloy agent.</td>
+      <td class="helm-value-desc">Volume mounts to expose to alloy agent.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.securityContext</td>
@@ -1576,7 +1744,8 @@ Upstream reference:
   "runAsUser": 0
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs.</td>
+      <td class="helm-value-desc">Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.resources</td>
@@ -1593,7 +1762,8 @@ Upstream reference:
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy agent containers.</td>
+      <td class="helm-value-desc">Resources for the alloy agent containers.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.extraAnnotations</td>
@@ -1601,7 +1771,8 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-agent`</td>
+      <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-agent`
+</td>
     </tr>
   </tbody>
 </table>
@@ -1622,13 +1793,15 @@ Upstream reference:
       <td class="helm-value-key">alloy-gateway<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"alloy-gateway"</code></td>
-      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Namespace override.</td>
+      <td class="helm-value-desc">Namespace override.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.crds</td>
@@ -1638,7 +1811,8 @@ Upstream reference:
   "create": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Control for the PodLogs crd.</td>
+      <td class="helm-value-desc">Control for the PodLogs crd.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.global<wbr>.podSecurityContext</td>
@@ -1650,13 +1824,15 @@ Upstream reference:
   "runAsUser": 473
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the alloy gateway pods.</td>
+      <td class="helm-value-desc">Security context for the alloy gateway pods.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.stabilityLevel</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"generally-available"</code></td>
-      <td class="helm-value-desc">Stability level of alloy components.</td>
+      <td class="helm-value-desc">Stability level of alloy components.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.extraEnv</td>
@@ -1664,7 +1840,8 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod.</td>
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.envFrom</td>
@@ -1684,7 +1861,8 @@ Upstream reference:
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Environment variable configmaps/secrets to pass to the alloy gateway pod.</td>
+      <td class="helm-value-desc">Environment variable configmaps/secrets to pass to the alloy gateway pod.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.extraPorts</td>
@@ -1717,7 +1895,8 @@ Upstream reference:
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Ports to expose from alloy-gateway.</td>
+      <td class="helm-value-desc">Ports to expose from alloy-gateway.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.mounts</td>
@@ -1733,7 +1912,8 @@ Upstream reference:
   "varlog": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Volume mounts to expose to alloy gateway.</td>
+      <td class="helm-value-desc">Volume mounts to expose to alloy gateway.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.securityContext</td>
@@ -1752,7 +1932,8 @@ Upstream reference:
   "runAsUser": 473
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the alloy gateway containers.</td>
+      <td class="helm-value-desc">Security context for the alloy gateway containers.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.resources</td>
@@ -1769,7 +1950,8 @@ Upstream reference:
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers.</td>
+      <td class="helm-value-desc">Resources for the alloy gateway containers.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.extraAnnotations</td>
@@ -1777,13 +1959,15 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`</td>
+      <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.create</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Create a service account for alloy-gateway.</td>
+      <td class="helm-value-desc">Create a service account for alloy-gateway.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.annotations</td>
@@ -1791,7 +1975,8 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA. Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.</td>
+      <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA. Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.
+</td>
     </tr>
   </tbody>
 </table>
@@ -1812,25 +1997,29 @@ Upstream reference:
       <td class="helm-value-key">loki<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"loki"</code></td>
-      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Namespace override.</td>
+      <td class="helm-value-desc">Namespace override.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.deploymentMode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"Distributed"</code></td>
-      <td class="helm-value-desc">How loki is deployed. We prefer to run in Distributed/Microservices mode.</td>
+      <td class="helm-value-desc">How loki is deployed. We prefer to run in Distributed/Microservices mode.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to enable a network policy for loki In production, this is recommended to be enabled.</td>
+      <td class="helm-value-desc">Whether to enable a network policy for loki In production, this is recommended to be enabled.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.metrics</td>
@@ -1840,7 +2029,8 @@ Upstream reference:
   "namespaceSelector": {}
 }</pre>
 </td>
-      <td class="helm-value-desc">Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td>
+      <td class="helm-value-desc">Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.ingress</td>
@@ -1850,7 +2040,8 @@ Upstream reference:
   "namespaceSelector": {}
 }</pre>
 </td>
-      <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td>
+      <td class="helm-value-desc">Selector for incoming traffic to the read/write endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.externalStorage</td>
@@ -1866,7 +2057,8 @@ Upstream reference:
   ]
 }</pre>
 </td>
-      <td class="helm-value-desc">Outgoing traffic from loki to the object store. This is usually unrestricted, even in many production settings. Adjust if you have a VPCEndpoint in front of S3/STS or are using a non-standard port.</td>
+      <td class="helm-value-desc">Outgoing traffic from loki to the object store. This is usually unrestricted, even in many production settings. Adjust if you have a VPCEndpoint in front of S3/STS or are using a non-standard port.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
@@ -1877,13 +2069,15 @@ Upstream reference:
   "ruler": "\u003cREPLACE-ME\u003e"
 }</pre>
 </td>
-      <td class="helm-value-desc">Bucket names for object storage. These are required to be populated.</td>
+      <td class="helm-value-desc">Bucket names for object storage. These are required to be populated.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.use_thanos_objstore</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Use the thanos object store client</td>
+      <td class="helm-value-desc">Use the thanos object store client
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.object_store</td>
@@ -1893,7 +2087,8 @@ Upstream reference:
   "type": "s3"
 }</pre>
 </td>
-      <td class="helm-value-desc">Object storage configuration. Modify as needed.</td>
+      <td class="helm-value-desc">Object storage configuration. Modify as needed.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.schemaConfig</td>
@@ -1914,7 +2109,8 @@ Upstream reference:
   ]
 }</pre>
 </td>
-      <td class="helm-value-desc">Schema configuration for the loki TSDB. This is append-only and MUST be copied into projects and mutated on upgrades (if v13 stops being in use).</td>
+      <td class="helm-value-desc">Schema configuration for the loki TSDB. This is append-only and MUST be copied into projects and mutated on upgrades (if v13 stops being in use).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.commonConfig</td>
@@ -1924,7 +2120,8 @@ Upstream reference:
   "replication_factor": 3
 }</pre>
 </td>
-      <td class="helm-value-desc">Cluster-wide replication factor. Three is our HA floor and the reason at least three ingesters are required. (This matches the upstream default; surfaced here because it is load-bearing.)</td>
+      <td class="helm-value-desc">Cluster-wide replication factor. Three is our HA floor and the reason at least three ingesters are required. (This matches the upstream default; surfaced here because it is load-bearing.)
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config</td>
@@ -1940,37 +2137,43 @@ Upstream reference:
   "volume_enabled": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Per-tenant limits, sized for a medium install. These are protective caps (per environment), not the expected volume — see Operating > Production Best Practices for the throughput envelope.</td>
+      <td class="helm-value-desc">Per-tenant limits, sized for a medium install. These are protective caps (per environment), not the expected volume — see Operating > Production Best Practices for the throughput envelope.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.retention_period</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"30d"</code></td>
-      <td class="helm-value-desc">Default retention before the compactor deletes logs. Upstream defaults to infinite retention; we set a real bound.</td>
+      <td class="helm-value-desc">Default retention before the compactor deletes logs. Upstream defaults to infinite retention; we set a real bound.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.ingestion_rate_mb</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>10</code></td>
-      <td class="helm-value-desc">Per-tenant ingestion rate / burst, in MB. Per environment, not the fleet aggregate.</td>
+      <td class="helm-value-desc">Per-tenant ingestion rate / burst, in MB. Per environment, not the fleet aggregate.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.max_global_streams_per_user</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>10000</code></td>
-      <td class="helm-value-desc">Active-stream ceiling per tenant; a cardinality guard.</td>
+      <td class="helm-value-desc">Active-stream ceiling per tenant; a cardinality guard.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.reject_old_samples</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Reject writes too far in the past.</td>
+      <td class="helm-value-desc">Reject writes too far in the past.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.limits_config<wbr>.volume_enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the log-volume endpoints Grafana's logs drilldown relies on.</td>
+      <td class="helm-value-desc">Enable the log-volume endpoints Grafana's logs drilldown relies on.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.compactor</td>
@@ -1982,25 +2185,29 @@ Upstream reference:
   "retention_enabled": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Compactor *configuration* (distinct from the compactor deployment below). Retention is enforced by the compactor and is OFF in upstream defaults.</td>
+      <td class="helm-value-desc">Compactor *configuration* (distinct from the compactor deployment below). Retention is enforced by the compactor and is OFF in upstream defaults.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.compactor<wbr>.delete_request_store</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"s3"</code></td>
-      <td class="helm-value-desc">Where delete requests are stored; matches the object-store backend.</td>
+      <td class="helm-value-desc">Where delete requests are stored; matches the object-store backend.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.compactor<wbr>.retention_delete_delay</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"8h"</code></td>
-      <td class="helm-value-desc">Grace period before retention/deletes actually remove data.</td>
+      <td class="helm-value-desc">Grace period before retention/deletes actually remove data.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.gateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Disable gateway by default. We recommend using alloy-gateway for loki writes. Use the query-frontend for loki reads.</td>
+      <td class="helm-value-desc">Disable gateway by default. We recommend using alloy-gateway for loki writes. Use the query-frontend for loki reads.
+</td>
     </tr>
   </tbody>
 </table>
@@ -2019,19 +2226,22 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the distributor microservice. Distributor is required. The Distributor is the stateless front door for writes. It validates incoming streams against per-tenant limits, enforces rate limits, and normalizes labels, then splits the batch into individual streams and forwards each to the owning ingesters.</td>
+      <td class="helm-value-desc">Enable the distributor microservice. Distributor is required. The Distributor is the stateless front door for writes. It validates incoming streams against per-tenant limits, enforces rate limits, and normalizes labels, then splits the batch into individual streams and forwards each to the owning ingesters.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.replicas</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Number of replicas for the distributor microservice. If autoscaling is enabled, this should be set to null.</td>
+      <td class="helm-value-desc">Number of replicas for the distributor microservice. If autoscaling is enabled, this should be set to null.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.kind</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"Deployment"</code></td>
-      <td class="helm-value-desc">Type of workload for the distributor.</td>
+      <td class="helm-value-desc">Type of workload for the distributor.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.autoscaling</td>
@@ -2045,13 +2255,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "targetMemoryUtilizationPercentage": 75
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for autoscaling of distributor For production, this is recommended to be enabled. We provide opinionated defaults.</td>
+      <td class="helm-value-desc">Configuration for autoscaling of distributor For production, this is recommended to be enabled. We provide opinionated defaults.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.service<wbr>.type</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"ClusterIP"</code></td>
-      <td class="helm-value-desc">Service type for the distributor microservice. Without a gateway, this is the exposed write component.</td>
+      <td class="helm-value-desc">Service type for the distributor microservice. Without a gateway, this is the exposed write component.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.podDisruptionBudget</td>
@@ -2062,7 +2274,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "minAvailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">Configuration for pod disruption budget for the distributor microservice.</td>
+      <td class="helm-value-desc">Configuration for pod disruption budget for the distributor microservice.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.distributor<wbr>.resources</td>
@@ -2075,37 +2288,43 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resource requests (medium install). Tune per profile.</td>
+      <td class="helm-value-desc">Resource requests (medium install). Tune per profile.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the ingester microservice. Ingester is required. The Ingester is the stateful heart of the write path, and it also serves the most recent reads. It buffers incoming entries into per-stream in-memory chunks, compresses them, and periodically flushes those chunks and their index to object storage.</td>
+      <td class="helm-value-desc">Enable the ingester microservice. Ingester is required. The Ingester is the stateful heart of the write path, and it also serves the most recent reads. It buffers incoming entries into per-stream in-memory chunks, compresses them, and periodically flushes those chunks and their index to object storage.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.replicas</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>3</code></td>
-      <td class="helm-value-desc">Number of ingester replicas. Three is the floor for replication_factor 3. Scale UP on memory / stream-cardinality (so streams shard across the ring), not on bytes — with replicas == replication_factor every ingester holds every stream.</td>
+      <td class="helm-value-desc">Number of ingester replicas. Three is the floor for replication_factor 3. Scale UP on memory / stream-cardinality (so streams shard across the ring), not on bytes — with replicas == replication_factor every ingester holds every stream.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.kind</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"StatefulSet"</code></td>
-      <td class="helm-value-desc">Ingesters are stateful.</td>
+      <td class="helm-value-desc">Ingesters are stateful.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Run ingesters ephemerally: no PVC, node-local emptyDir for the WAL and not-yet-flushed chunks. Durability comes from replication_factor 3, not from disk — a rescheduled ingester starts fresh and the ring backfills from its peers. This avoids EBS zonal pinning and the slow volume detach/attach that PVCs incur during node replacement.</td>
+      <td class="helm-value-desc">Run ingesters ephemerally: no PVC, node-local emptyDir for the WAL and not-yet-flushed chunks. Durability comes from replication_factor 3, not from disk — a rescheduled ingester starts fresh and the ring backfills from its peers. This avoids EBS zonal pinning and the slow volume detach/attach that PVCs incur during node replacement.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.terminationGracePeriodSeconds</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>60</code></td>
-      <td class="helm-value-desc">Termination grace period for ingesters. flush-on-shutdown is best-effort; if the node force-kills sooner, the other replicas still flush their copies, so do not depend on a long grace period for durability. Kept modest to survive enterprise force-kill windows.</td>
+      <td class="helm-value-desc">Termination grace period for ingesters. flush-on-shutdown is best-effort; if the node force-kills sooner, the other replicas still flush their copies, so do not depend on a long grace period for durability. Kept modest to survive enterprise force-kill windows.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.affinity</td>
@@ -2117,7 +2336,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Pod affinity for ingesters. Drop the chart's default *hard* per-host anti-affinity so host spread can be soft (see topologySpreadConstraints); zone spread stays hard. We null the nested list rather than the whole `affinity` map: `affinity: {}` is a no-op against the subchart default, and `affinity: null` clears it but makes helm-unittest log a noisy "cannot overwrite table" warning — nulling the list avoids both.</td>
+      <td class="helm-value-desc">Pod affinity for ingesters. Drop the chart's default *hard* per-host anti-affinity so host spread can be soft (see topologySpreadConstraints); zone spread stays hard. We null the nested list rather than the whole `affinity` map: `affinity: {}` is a no-op against the subchart default, and `affinity: null` clears it but makes helm-unittest log a noisy "cannot overwrite table" warning — nulling the list avoids both.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.topologySpreadConstraints</td>
@@ -2158,13 +2378,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Topology spread for ingesters: hard across zones, soft across hosts. A pod that cannot satisfy the hard zone rule goes Pending, which is the signal Karpenter (or the cluster-autoscaler) uses to add a node in the deficient zone — soft rules cannot summon capacity that way. Host spread is soft so pods still schedule when nodes are momentarily scarce.</td>
+      <td class="helm-value-desc">Topology spread for ingesters: hard across zones, soft across hosts. A pod that cannot satisfy the hard zone rule goes Pending, which is the signal Karpenter (or the cluster-autoscaler) uses to add a node in the deficient zone — soft rules cannot summon capacity that way. Host spread is soft so pods still schedule when nodes are momentarily scarce.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.zoneAwareReplication<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable zone-aware replication for the ingester microservice. Not needed at our size: topologySpreadConstraints give the AZ spread without the complexity.</td>
+      <td class="helm-value-desc">Enable zone-aware replication for the ingester microservice. Not needed at our size: topologySpreadConstraints give the AZ spread without the complexity.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.podDisruptionBudget</td>
@@ -2175,7 +2397,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "maxUnavailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for the ingester. Protect ingest quorum across rollouts and node drains. Do not set maxUnavailable >= 2 to avoid potential quorum loss.</td>
+      <td class="helm-value-desc">PDB for the ingester. Protect ingest quorum across rollouts and node drains. Do not set maxUnavailable >= 2 to avoid potential quorum loss.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ingester<wbr>.resources</td>
@@ -2188,19 +2411,22 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resource requests (medium install). The memory *limit* is intentionally left unset: an OOM-kill drops in-memory / WAL-buffered logs, so we alert on usage rather than cap hard.</td>
+      <td class="helm-value-desc">Resource requests (medium install). The memory *limit* is intentionally left unset: an OOM-kill drops in-memory / WAL-buffered logs, so we alert on usage rather than cap hard.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.querier<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the querier microservice. Querier is required. It executes LogQL, reading recent data from ingesters and historical data from object storage.</td>
+      <td class="helm-value-desc">Enable the querier microservice. Querier is required. It executes LogQL, reading recent data from ingesters and historical data from object storage.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.querier<wbr>.replicas</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Replicas are managed by autoscaling; leave null.</td>
+      <td class="helm-value-desc">Replicas are managed by autoscaling; leave null.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.querier<wbr>.autoscaling</td>
@@ -2214,7 +2440,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "targetMemoryUtilizationPercentage": 75
 }</pre>
 </td>
-      <td class="helm-value-desc">Autoscale the stateless read workers with query load.</td>
+      <td class="helm-value-desc">Autoscale the stateless read workers with query load.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.querier<wbr>.podDisruptionBudget</td>
@@ -2225,7 +2452,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "minAvailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for querier.</td>
+      <td class="helm-value-desc">PDB for querier.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.querier<wbr>.resources</td>
@@ -2238,25 +2466,29 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resource requests. This assumes a medium install by default.</td>
+      <td class="helm-value-desc">Resource requests. This assumes a medium install by default.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryFrontend<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the query-frontend microservice. Query-frontend is required. It queues and splits queries and caches results.</td>
+      <td class="helm-value-desc">Enable the query-frontend microservice. Query-frontend is required. It queues and splits queries and caches results.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryFrontend<wbr>.replicas</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Static replicas for query-frontend when autoscaling is not enabled.</td>
+      <td class="helm-value-desc">Static replicas for query-frontend when autoscaling is not enabled.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryFrontend<wbr>.kind</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"Deployment"</code></td>
-      <td class="helm-value-desc">Kind of workload for query-frontend. Deployments are recommended for stateless components.</td>
+      <td class="helm-value-desc">Kind of workload for query-frontend. Deployments are recommended for stateless components.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryFrontend<wbr>.autoscaling</td>
@@ -2270,7 +2502,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "targetMemoryUtilizationPercentage": 75
 }</pre>
 </td>
-      <td class="helm-value-desc">Configure autoscaling for query-frontend.</td>
+      <td class="helm-value-desc">Configure autoscaling for query-frontend.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryFrontend<wbr>.podDisruptionBudget</td>
@@ -2281,7 +2514,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "minAvailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for query-frontend.</td>
+      <td class="helm-value-desc">PDB for query-frontend.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryFrontend<wbr>.resources</td>
@@ -2294,13 +2528,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resource requests for query-frontend.</td>
+      <td class="helm-value-desc">Resource requests for query-frontend.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryScheduler<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the query-scheduler microservice. Recommended for scaled deployments: it decouples the read queue from the query-frontend so the two scale independently. Two replicas for availability.</td>
+      <td class="helm-value-desc">Enable the query-scheduler microservice. Recommended for scaled deployments: it decouples the read queue from the query-frontend so the two scale independently. Two replicas for availability.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryScheduler<wbr>.podDisruptionBudget</td>
@@ -2311,7 +2547,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "minAvailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for query-scheduler.</td>
+      <td class="helm-value-desc">PDB for query-scheduler.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.queryScheduler<wbr>.resources</td>
@@ -2324,31 +2561,36 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the query-scheduler microservice.</td>
+      <td class="helm-value-desc">Resources for the query-scheduler microservice.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.compactor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the compactor. Compactor is required and MUST be a singleton: it compacts the index and enforces retention against shared object storage.</td>
+      <td class="helm-value-desc">Enable the compactor. Compactor is required and MUST be a singleton: it compacts the index and enforces retention against shared object storage.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.compactor<wbr>.replicas</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
-      <td class="helm-value-desc">Compactor replicas. This MUST be one, since it runs as a singleton.</td>
+      <td class="helm-value-desc">Compactor replicas. This MUST be one, since it runs as a singleton.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.compactor<wbr>.kind</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"StatefulSet"</code></td>
-      <td class="helm-value-desc">Kind of workload for the compactor. This must be a statefulset.</td>
+      <td class="helm-value-desc">Kind of workload for the compactor. This must be a statefulset.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.compactor<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Run the compactor ephemerally (no PVC, node-local emptyDir). Its local dir is just a working copy of the object-store index, and compaction is idempotent and off the critical path — losing it only restarts the current cycle. Ephemeral also lets the singleton float freely between zones instead of being pinned by a PVC. Our production index is ~30MB, so re-downloading each cycle is negligible.</td>
+      <td class="helm-value-desc">Run the compactor ephemerally (no PVC, node-local emptyDir). Its local dir is just a working copy of the object-store index, and compaction is idempotent and off the critical path — losing it only restarts the current cycle. Ephemeral also lets the singleton float freely between zones instead of being pinned by a PVC. Our production index is ~30MB, so re-downloading each cycle is negligible.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.compactor<wbr>.resources</td>
@@ -2361,13 +2603,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the compactor.</td>
+      <td class="helm-value-desc">Resources for the compactor.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.indexGateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the index-gateway. Index-gateway is required: it serves index lookups so queriers do not each download the whole index from object storage.</td>
+      <td class="helm-value-desc">Enable the index-gateway. Index-gateway is required: it serves index lookups so queriers do not each download the whole index from object storage.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.indexGateway<wbr>.persistence</td>
@@ -2377,7 +2621,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "enabled": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Run the index-gateway ephemerally (no PVC, node-local emptyDir). The local index is a read-through cache of object storage, not authoritative — a fresh pod just re-downloads what it queries. This keeps the read path off EBS zonal pinning; the only cost is a little cold-start warmup and a burst of index reads after a reschedule.</td>
+      <td class="helm-value-desc">Run the index-gateway ephemerally (no PVC, node-local emptyDir). The local index is a read-through cache of object storage, not authoritative — a fresh pod just re-downloads what it queries. This keeps the read path off EBS zonal pinning; the only cost is a little cold-start warmup and a burst of index reads after a reschedule.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.indexGateway<wbr>.podDisruptionBudget</td>
@@ -2388,7 +2633,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "minAvailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for index-gateway.</td>
+      <td class="helm-value-desc">PDB for index-gateway.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.indexGateway<wbr>.resources</td>
@@ -2401,19 +2647,22 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the index-gateway.</td>
+      <td class="helm-value-desc">Resources for the index-gateway.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store.</td>
+      <td class="helm-value-desc">Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Keep a PVC for the ruler (unlike the other components, which are ephemeral). Rule definitions come from object storage, but the ruler's remote-write WAL buffers recording-rule samples when the metric store is unreachable — genuinely useful durability in the run-up to an incident, exactly when you don't want to drop derived signals.</td>
+      <td class="helm-value-desc">Keep a PVC for the ruler (unlike the other components, which are ephemeral). Rule definitions come from object storage, but the ruler's remote-write WAL buffers recording-rule samples when the metric store is unreachable — genuinely useful durability in the run-up to an incident, exactly when you don't want to drop derived signals.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.podDisruptionBudget</td>
@@ -2424,7 +2673,8 @@ https://grafana.com/docs/loki/latest/get-started/components/
   "minAvailable": 1
 }</pre>
 </td>
-      <td class="helm-value-desc">PDB for the ruler.</td>
+      <td class="helm-value-desc">PDB for the ruler.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.resources</td>
@@ -2437,25 +2687,29 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the ruler.</td>
+      <td class="helm-value-desc">Resources for the ruler.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.chunksCache</td>
       <td class="helm-value-type">h5</td>
       <td class="helm-value-default"><code>{"allocatedMemory":2048}</code></td>
-      <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default.</td>
+      <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.</td>
+      <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
       <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td>
-      <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td>
+      <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
     </tr>
   </tbody>
 </table>
@@ -2476,13 +2730,15 @@ Upstream reference:
       <td class="helm-value-key">thanos<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"thanos"</code></td>
-      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Namespace override.</td>
+      <td class="helm-value-desc">Namespace override.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.global<wbr>.pdb</td>
@@ -2510,7 +2766,8 @@ templates test `or <component>.pdb.enabled global.pdb.enabled`.
     (`replicationFactor - ((replicationFactor / 2) + 1)`), which is 1 at
     the replication factor of 3 set below. A validator enforces this.
 
-This matches the Loki convention (ingester `maxUnavailable: 1`).</td>
+This matches the Loki convention (ingester `maxUnavailable: 1`).
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.query</td>
@@ -2526,7 +2783,8 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).</td>
   "enabled": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.</td>
+      <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.query<wbr>.autoscaling</td>
@@ -2539,25 +2797,29 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).</td>
   "targetCPUUtilizationPercentage": 80
 }</pre>
 </td>
-      <td class="helm-value-desc">Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.</td>
+      <td class="helm-value-desc">Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.receive<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.</td>
+      <td class="helm-value-desc">Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.receive<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"standalone"</code></td>
-      <td class="helm-value-desc">Whether to split receive distributors from ingesters. mode=split is not very stable in the helm chart</td>
+      <td class="helm-value-desc">Whether to split receive distributors from ingesters. mode=split is not very stable in the helm chart
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.receive<wbr>.replicaCount</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>3</code></td>
-      <td class="helm-value-desc">Number of receive replicas.</td>
+      <td class="helm-value-desc">Number of receive replicas.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.storegateway</td>
@@ -2574,13 +2836,15 @@ Gateway is a PVC-backed StatefulSet that syncs the bucket's block index on
 startup, so scale-up is slow to become useful (it serves nothing until the
 index is warm) and CPU-triggered scaling reacts long after the load that
 triggered it. Scale-down also leaves orphaned PVCs behind, since
-StatefulSet volumes are not reclaimed. Size it deliberately instead.</td>
+StatefulSet volumes are not reclaimed. Size it deliberately instead.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.compactor</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><em>enabled with default retention policies</em></td>
-      <td class="helm-value-desc">Thanos Compactor configuration. Compactor provides block compaction and downsampling.</td>
+      <td class="helm-value-desc">Thanos Compactor configuration. Compactor provides block compaction and downsampling.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.compactor<wbr>.retention</td>
@@ -2592,7 +2856,8 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.</td>
   "resolutionRaw": "30d"
 }</pre>
 </td>
-      <td class="helm-value-desc">Retention policies for Thanos Compactor downsampled data</td>
+      <td class="helm-value-desc">Retention policies for Thanos Compactor downsampled data
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.queryFrontend</td>
@@ -2613,7 +2878,8 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.</td>
 Note that enabling this is not sufficient on its own: point
 `connections.datasources.thanos.url` at the query-frontend Service too, or
 reads keep going straight to Query and the cache is never consulted. A
-validator warns when the two disagree.</td>
+validator warns when the two disagree.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.queryFrontend<wbr>.autoscaling</td>
@@ -2626,7 +2892,8 @@ validator warns when the two disagree.</td>
   "targetCPUUtilizationPercentage": 80
 }</pre>
 </td>
-      <td class="helm-value-desc">Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.</td>
+      <td class="helm-value-desc">Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">thanos<wbr>.ruler</td>
@@ -2636,7 +2903,8 @@ validator warns when the two disagree.</td>
   "enabled": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.</td>
+      <td class="helm-value-desc">Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.
+</td>
     </tr>
   </tbody>
 </table>
@@ -2657,13 +2925,15 @@ Upstream references:
       <td class="helm-value-key">grafana-operator<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grafana-operator"</code></td>
-      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">grafana-operator<wbr>.namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Namespace override.</td>
+      <td class="helm-value-desc">Namespace override.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
@@ -2673,7 +2943,8 @@ Upstream references:
   "immutable": true
 }</pre>
 </td>
-      <td class="helm-value-desc">CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.</td>
+      <td class="helm-value-desc">CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.
+</td>
     </tr>
   </tbody>
 </table>
@@ -2693,13 +2964,15 @@ Upstream reference:
       <td class="helm-value-key">grafana<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grafana"</code></td>
-      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations. `connections.grafana.mode: bundled` derives the URL it hands grafana-operator from this, so a release-name-derived name would leave the operator dialing a host that does not resolve.</td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations. `connections.grafana.mode: bundled` derives the URL it hands grafana-operator from this, so a release-name-derived name would leave the operator dialing a host that does not resolve.
+</td>
     </tr>
     <tr>
       <td class="helm-value-key">grafana<wbr>.namespaceOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
-      <td class="helm-value-desc">Namespace override.</td>
+      <td class="helm-value-desc">Namespace override.
+</td>
     </tr>
   </tbody>
 </table>
@@ -2716,7 +2989,8 @@ Bundled Alertmanager for routing alerts emitted by the rule packages.
       <td class="helm-value-key">alertmanager<wbr>.persistence<wbr>.size</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"4Gi"</code></td>
-      <td class="helm-value-desc">Volume for silences and the notification log. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.</td>
+      <td class="helm-value-desc">Volume for silences and the notification log. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.
+</td>
     </tr>
   </tbody>
 </table>
@@ -2743,7 +3017,8 @@ Upstream reference:
       <td class="helm-value-key">metrics-server<wbr>.replicas</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
-      <td class="helm-value-desc">Number of replicas for metrics-server.</td>
+      <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
     </tr>
   </tbody>
 </table>

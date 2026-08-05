@@ -56,7 +56,8 @@ Prometheus Operator CRDs (ServiceMonitor, PodMonitor, ScrapeConfig, …), pulled
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Annotations applied to every Prometheus Operator CRD. `helm.sh/resource-policy: keep` stops `helm uninstall` from cascading into the custom resources that customers and the stack depend on.</td>
+      <td class="helm-value-desc">Annotations applied to every Prometheus Operator CRD. `helm.sh/resource-policy: keep` stops `helm uninstall` from cascading into the custom resources that customers and the stack depend on.
+</td>
     </tr>
   </tbody>
 </table>
@@ -79,7 +80,8 @@ Grafana Operator CRDs (Grafana, GrafanaDashboard, GrafanaDatasource, …), defla
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Annotations applied to every Grafana Operator CRD. `helm.sh/resource-policy: keep` stops `helm uninstall` from cascading into the custom resources that customers and the stack depend on.</td>
+      <td class="helm-value-desc">Annotations applied to every Grafana Operator CRD. `helm.sh/resource-policy: keep` stops `helm uninstall` from cascading into the custom resources that customers and the stack depend on.
+</td>
     </tr>
   </tbody>
 </table>

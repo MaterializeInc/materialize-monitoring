@@ -60,7 +60,7 @@ Keep the stub roughly in step with the helper, but the helper is the source of t
 
 The metrics `remote_write` helper (`mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest`) supports `authType` of `none`, `basicAuth`, `bearer`, and `sigv4` (secrets sourced from env vars).
 `sigv4` targets Amazon Managed Prometheus: set `authType: sigv4` + `sigv4.region` (optional `roleArn`) and bind the gateway ServiceAccount via IRSA — the AWS default credential chain then picks up the injected web-identity token, so no static keys.
-See the user-facing [Storing](../../../metrics/storing/) page for the values.
+See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 (In a *hand-authored* pipeline — outside the chart destination — the same is reachable via a `raw:` `sigv4` block nested in the endpoint; see below.)
 
 ## Where relabeling lives (three phases)

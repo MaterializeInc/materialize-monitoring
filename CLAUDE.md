@@ -22,6 +22,15 @@ Break Markdown lines on sentence ends — write one sentence per line.
 You may wrap at 120-150 characters if you like.
 Sentence-per-line keeps diffs small and avoids rewrapping churn when a sentence changes.
 
+## Docsite section indexes
+
+`_index.md` files under `docs/content/` carry frontmatter only — never prose.
+A section's landing content goes in a regular page inside that section at `weight: 1` so it sorts first: `logs-and-events/architecture.md`, `reference/internal/contributing.md`, `overview.md` where nothing more specific fits.
+This way a reader never has to guess whether a directory in the sidebar is also a page.
+The site home, `docs/content/_index.md`, is the one exception.
+
+Remember that a page one level below its old `_index.md` needs one more `../` on every relative link, and that inbound links written as `section/#anchor` or `../#anchor` have to be retargeted at the new page.
+
 ## No customer information
 
 Customer information must never be committed to this repository.

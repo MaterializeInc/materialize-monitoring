@@ -5,9 +5,9 @@ weight: 40
 
 # Log and Event Rules
 
-Alerting and recording rules over logs are evaluated by the [Loki Ruler](../#ruler) on a schedule.
+Alerting and recording rules over logs are evaluated by the [Loki Ruler](../architecture/#ruler) on a schedule.
 This page covers the two rule kinds, where their output goes, and how rules are stored and scaled.
-See the [logging architecture](../) for where the ruler sits in the pipeline.
+See the [logging architecture](../architecture/) for where the ruler sits in the pipeline.
 
 ## Two kinds of rule
 
@@ -29,7 +29,7 @@ This is how log-based conditions — a spike in `ERROR` lines, a specific failur
 
 A **recording rule** evaluates a LogQL expression and turns the result into a **metric sample** (for example, the per-minute rate of error lines for a service).
 
-Because that output is a metric, not a log, the ruler **remote-writes the samples back through [`alloy-gateway`](../#alloy-gateway)**, which forwards them to the long-term metric store ([Thanos](../../o11y-glossary/#stack-components)) along with the rest of the metrics pipeline.
+Because that output is a metric, not a log, the ruler **remote-writes the samples back through [`alloy-gateway`](../architecture/#alloy-gateway)**, which forwards them to the long-term metric store ([Thanos](../../o11y-glossary/#stack-components)) along with the rest of the metrics pipeline.
 The result: log-derived metrics live in the same place — and are queried the same way — as everything else, so a dashboard can mix them freely with native metrics.
 
 > [!INFO]
@@ -39,8 +39,8 @@ The result: log-derived metrics live in the same place — and are queried the s
 ## Rule storage and evaluation
 
 - **Definitions** live in object storage under the `/loki/ruler` prefix (see [Storing](../storing/)).
-- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../#the-hash-ring), so evaluation scales horizontally.
-- **Delegated execution.** A ruler can hand query execution to the [Loki Query Frontend](../#loki-query-frontend) to benefit from query splitting and caching.
+- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so evaluation scales horizontally.
+- **Delegated execution.** A ruler can hand query execution to the [Loki Query Frontend](../architecture/#loki-query-frontend) to benefit from query splitting and caching.
 
 ## Managing rules
 
@@ -50,7 +50,7 @@ The result: log-derived metrics live in the same place — and are queried the s
 
 ## See more
 
-- [Logging Architecture](../) — the ruler in context.
+- [Logging Architecture](../architecture/) — the ruler in context.
 - [Alerting](../../alerting/) — routing and notifying on fired alerts.
 - [Metrics > Rules](../../metrics/rules/) — the metrics-side equivalent (recording and alerting rules over PromQL).
 - [Loki rules](https://grafana.com/docs/loki/latest/alert/) (official).

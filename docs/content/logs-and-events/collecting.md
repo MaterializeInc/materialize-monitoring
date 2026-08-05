@@ -5,13 +5,13 @@ weight: 10
 
 # Collecting Logs & Events
 
-Logs and Kubernetes events enter Loki through its [write path](../#write-path) after Alloy collects and processes them.
-This page covers what the [agent](../#alloy-agent) and [gateway](../#alloy-gateway) do, how to send your own logs in, and the knobs you can tune.
-See the [logging architecture](../) for how collection fits into the full pipeline.
+Logs and Kubernetes events enter Loki through its [write path](../architecture/#write-path) after Alloy collects and processes them.
+This page covers what the [agent](../architecture/#alloy-agent) and [gateway](../architecture/#alloy-gateway) do, how to send your own logs in, and the knobs you can tune.
+See the [logging architecture](../architecture/) for how collection fits into the full pipeline.
 
 ## What the agent collects
 
-The [`alloy-agent`](../#alloy-agent) runs as a DaemonSet — one pod per node — and gathers two things from each node:
+The [`alloy-agent`](../architecture/#alloy-agent) runs as a DaemonSet — one pod per node — and gathers two things from each node:
 
 - **Container logs** for the pods scheduled on that node. The agent discovers those pods, tails their log files, and attaches Kubernetes metadata (namespace, pod, container, node, and node attributes such as region, zone, and instance type).
 - **The systemd journal** of the host, tagged with the node name and the originating unit.
@@ -21,9 +21,9 @@ Collection therefore scales with the number of nodes, and no application needs a
 
 ## What the gateway adds
 
-The [`alloy-gateway`](../#alloy-gateway) is where the real processing happens.
+The [`alloy-gateway`](../architecture/#alloy-gateway) is where the real processing happens.
 In addition to the logs forwarded by the agents, it collects **Kubernetes events** from the API server and turns them into log lines.
-It then normalizes log levels, routes high-cardinality fields into [structured metadata](../#storage), applies drop and rate-limit policies, and writes the result to Loki.
+It then normalizes log levels, routes high-cardinality fields into [structured metadata](../architecture/#storage), applies drop and rate-limit policies, and writes the result to Loki.
 
 > [!INFO]
 >   The gateway is the single place where label-family and [cardinality](../../o11y-glossary/#observability-foundations) decisions are made.
@@ -31,7 +31,7 @@ It then normalizes log levels, routes high-cardinality fields into [structured m
 
 ## Sending your own logs to the gateway
 
-The gateway accepts logs on two endpoints, so sources beyond the agent can feed the same processing pipeline (see [Ingestion interfaces](../#ingestion)):
+The gateway accepts logs on two endpoints, so sources beyond the agent can feed the same processing pipeline (see [Ingestion interfaces](../architecture/#ingestion)):
 
 | Protocol | Endpoint | Typical sender |
 |---|---|---|
@@ -43,7 +43,7 @@ Replace `$namespace` with the namespace the gateway runs in.
 
 ### Chained gateways
 
-Because both endpoints accept gateway-shaped traffic, one `alloy-gateway` can forward to another — for example, a per-cluster gateway forwarding to a central one, or the [remote-only topology](../#alternative-topologies) where the gateway ships logs to a destination outside the cluster.
+Because both endpoints accept gateway-shaped traffic, one `alloy-gateway` can forward to another — for example, a per-cluster gateway forwarding to a central one, or the [remote-only topology](../architecture/#alternative-topologies) where the gateway ships logs to a destination outside the cluster.
 Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki push) or `:4317`/`:4318` (OTLP) endpoint.
 
 ## Tuning collection
@@ -51,17 +51,17 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 - **Per-node rate limit.** The agent caps pod-log throughput per node to protect the pipeline from a single noisy node. The rate (lines/sec) and short-term burst are set with the `AGENT_POD_LOG_RATE_LIMIT` (default `5000`) and `AGENT_POD_LOG_BURST` (default `20000`) environment variables on the agent.
 - **Cluster label.** Set `CLUSTER_NAME` in the agent's environment so every collected line carries a stable `cluster` value — important when several clusters write to the same log store.
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
-- **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../#alternative-topologies).
+- **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
 
 > [!WARNING]
->   What becomes a Loki **label** versus what stays in the body or [structured metadata](../#storage) is the single biggest cost-and-stability lever.
+>   What becomes a Loki **label** versus what stays in the body or [structured metadata](../architecture/#storage) is the single biggest cost-and-stability lever.
 >   Keep volatile attributes (request IDs, trace IDs) out of labels.
 >   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal).
 
 ## See more
 
-- [Logging Architecture](../) — collection in the context of the full pipeline.
+- [Logging Architecture](../architecture/) — collection in the context of the full pipeline.
 - [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative agent/gateway pipeline definition.
 - [Storing](../storing/) — where collected logs go next.
 - [Loki components](https://grafana.com/docs/loki/latest/get-started/components/) (official).

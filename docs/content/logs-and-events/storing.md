@@ -5,9 +5,9 @@ weight: 20
 
 # Storing Logs
 
-Loki keeps all durable log data in a single [object storage](../#storage) backend, maintained by the [Loki Compactor](../#backend).
+Loki keeps all durable log data in a single [object storage](../architecture/#storage) backend, maintained by the [Loki Compactor](../architecture/#backend).
 This page covers the storage layout, the index, retention, and disaster recovery.
-See the [logging architecture](../) for how storage relates to the ingesters that write it and the queriers that read it.
+See the [logging architecture](../architecture/) for how storage relates to the ingesters that write it and the queriers that read it.
 
 ## Object storage
 
@@ -20,7 +20,7 @@ A single bucket holds everything, separated by prefix:
 | Prefix | Contents |
 |---|---|
 | `/loki/chunks` | compressed log chunks and the TSDB index |
-| `/loki/ruler` | [Loki Ruler](../#ruler) rule definitions |
+| `/loki/ruler` | [Loki Ruler](../architecture/#ruler) rule definitions |
 
 > [!INFO]
 >   Prefer granting access through cloud **workload identity** (IRSA on AWS, Workload Identity on GKE, Azure Workload Identity) so no long-lived credentials live in the cluster.
@@ -33,7 +33,7 @@ Every other backend has to be named in **three** places, and all three have to a
 
 | Value | Read by |
 |---|---|
-| `loki.loki.storage.object_store.type` | the chunk and index clients, and the [Ruler](../#ruler) store |
+| `loki.loki.storage.object_store.type` | the chunk and index clients, and the [Ruler](../architecture/#ruler) store |
 | `loki.loki.schemaConfig.configs[].object_store` | the chunk client for that schema period |
 | `loki.loki.compactor.delete_request_store` | the compactor's delete-request store |
 
@@ -184,7 +184,7 @@ Two kinds of data live in the bucket:
 - **The index** — the map from [stream labels](../../o11y-glossary/#logs-and-events) to the chunks that contain them, written in the [TSDB](https://grafana.com/docs/loki/latest/operations/storage/tsdb/) index format (schema **v13**).
 
 Because Loki indexes only labels, the index stays small relative to the log volume — the chunks dominate storage.
-[Structured metadata](../#storage) is stored with the chunks, queryable but not part of the label index.
+[Structured metadata](../architecture/#storage) is stored with the chunks, queryable but not part of the label index.
 
 > [!WARNING]
 >   The schema is configured in append-only **periods** with a future start date; a period that is already in use can never be changed retroactively.
@@ -192,7 +192,7 @@ Because Loki indexes only labels, the index stays small relative to the log volu
 
 ## Compaction
 
-The [Loki Compactor](../#backend) merges the many small index files produced by individual ingesters into a single compacted index per tenant per day.
+The [Loki Compactor](../architecture/#backend) merges the many small index files produced by individual ingesters into a single compacted index per tenant per day.
 This keeps reads efficient as volume grows.
 The compactor is a **singleton** — exactly one instance coordinates against the shared bucket.
 
@@ -212,7 +212,7 @@ Retention is enforced by the compactor, not by the object store's own lifecycle 
 
 > [!WARNING]
 >   Ingester rollouts happen one at a time (guarded by a PodDisruptionBudget). `flush-on-shutdown` is best-effort — a truncated flush is covered by the other replicas, so durability does not depend on a graceful stop.
->   See the [ingester](../#loki-ingester) notes and [Operating > Upgrading](../../operating/upgrading/).
+>   See the [ingester](../architecture/#loki-ingester) notes and [Operating > Upgrading](../../operating/upgrading/).
 
 ## Disaster recovery
 
@@ -229,7 +229,7 @@ Loki has **no native snapshot** mechanism — recovery is a property of the obje
 
 ## See more
 
-- [Logging Architecture](../) — storage in the context of the full pipeline.
+- [Logging Architecture](../architecture/) — storage in the context of the full pipeline.
 - [Collecting](../collecting/) — how logs arrive before they are stored.
 - [Querying](../querying/) — reading stored logs back.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) and [retention](https://grafana.com/docs/loki/latest/operations/storage/retention/) (official).
