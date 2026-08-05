@@ -1,4 +1,8 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Internal Development on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/</link><description>Recent content in Internal Development on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Mon, 01 Jan 0001 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/reference/internal/index.xml" rel="self" type="application/rss+xml"/><item><title>Repo Layout</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/repo-layout/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/repo-layout/</guid><description>&lt;p&gt;This page is a convenience cache of where things live in the repo.
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Internal Development on materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/</link><description>Recent content in Internal Development on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Mon, 01 Jan 0001 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/reference/internal/index.xml" rel="self" type="application/rss+xml"/><item><title>Contributing</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/contributing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/contributing/</guid><description>&lt;h1 id="contributing-to-materialize-monitoring"&gt;Contributing to materialize-monitoring&lt;a class="anchor" href="#contributing-to-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;This is the canonical entry point for repo contributors. The audience is SRE, Field Engineering, and customer infrastructure teams — the setup below assumes Unix-shell comfort but not full-time backend-developer familiarity. If a step is surprising or feels wrong, please file an issue rather than working around it; surprises are bugs in this guide.&lt;/p&gt;
+&lt;p&gt;The root &lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/CONTRIBUTING.md" rel="external" class="github-source-link"&gt;&lt;code&gt;CONTRIBUTING.md&lt;/code&gt;&lt;/a&gt; is a thin pointer at this page.&lt;/p&gt;
+&lt;h2 id="prerequisites"&gt;Prerequisites&lt;a class="anchor" href="#prerequisites"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Install the toolchain once:&lt;/p&gt;</description></item><item><title>Repo Layout</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/repo-layout/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/repo-layout/</guid><description>&lt;p&gt;This page is a convenience cache of where things live in the repo.
 The repository is under active development, so this layout goes stale easily.
 If it disagrees with what is actually in the tree, trust the repo and update this page.&lt;/p&gt;
 &lt;p&gt;The repo is a polyglot monorepo: a Rust workspace, a &lt;code&gt;uv&lt;/code&gt;-managed Python workspace, and a Go-tooled Hugo docsite all share the root.&lt;/p&gt;
@@ -17,7 +21,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;CONTRIBUTING.md&lt;/code&gt; / &lt;code&gt;README.md&lt;/code&gt; / &lt;code&gt;LICENSE&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;renovate.json&lt;/code&gt;: automated dependency bumps&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;.terraform-docs.yml&lt;/code&gt; / &lt;code&gt;.terraform-docs.docsite.yml&lt;/code&gt;: Terraform doc generation — the first injects into module READMEs, the second writes the docsite variable reference&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;.pre-commit-config.yaml&lt;/code&gt;: contributor-experience hooks (see &lt;a href="../"&gt;Internal Development&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.pre-commit-config.yaml&lt;/code&gt;: contributor-experience hooks (see &lt;a href="../contributing/"&gt;Internal Development&lt;/a&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;bin/&lt;/code&gt;: bash dev/CI entrypoints (flat; no subdirectories)
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;check-lfs.sh&lt;/code&gt;: verify/repair Git LFS state&lt;/li&gt;
@@ -85,6 +89,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;hugo.toml&lt;/code&gt;: site config; &lt;code&gt;go.mod&lt;/code&gt; / &lt;code&gt;go.sum&lt;/code&gt; pin the theme&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;content/&lt;/code&gt;: authored Markdown
 &lt;ul&gt;
+&lt;li&gt;&lt;code&gt;_index.md&lt;/code&gt; files carry &lt;strong&gt;frontmatter only&lt;/strong&gt; — no prose. A section&amp;rsquo;s landing content lives in a regular page inside it at &lt;code&gt;weight: 1&lt;/code&gt; (e.g. &lt;code&gt;logs-and-events/architecture.md&lt;/code&gt;, &lt;code&gt;reference/internal/contributing.md&lt;/code&gt;), so every directory in the sidebar is a container and every clickable title is a real page. The site home &lt;code&gt;content/_index.md&lt;/code&gt; is the one exception&lt;/li&gt;
 &lt;li&gt;top-level sections: &lt;code&gt;getting-started/&lt;/code&gt;, &lt;code&gt;metrics/&lt;/code&gt; (incl. &lt;code&gt;collecting/&lt;/code&gt;), &lt;code&gt;logs-and-events/&lt;/code&gt;, &lt;code&gt;dashboards/&lt;/code&gt; (incl. &lt;code&gt;grafana/&lt;/code&gt;), &lt;code&gt;alerting/&lt;/code&gt;, &lt;code&gt;operating/&lt;/code&gt;, plus &lt;code&gt;architecture.md&lt;/code&gt; and &lt;code&gt;o11y-glossary.md&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;reference/&lt;/code&gt;: &lt;code&gt;helm/&lt;/code&gt;, &lt;code&gt;terraform/&lt;/code&gt; (generated variable reference), &lt;code&gt;stable-metrics/&lt;/code&gt;, &lt;code&gt;crds.md&lt;/code&gt;, &lt;code&gt;changelog.md&lt;/code&gt;, and &lt;code&gt;internal/&lt;/code&gt; (this section — &lt;code&gt;dashboard/&lt;/code&gt;, &lt;code&gt;pipelines/&lt;/code&gt;, &lt;code&gt;design-docs/&lt;/code&gt;, plus &lt;code&gt;repo-layout.md&lt;/code&gt;, &lt;code&gt;roadmap.md&lt;/code&gt;, &lt;code&gt;releasing.md&lt;/code&gt;, &lt;code&gt;versioning.md&lt;/code&gt;, &lt;code&gt;skills.md&lt;/code&gt;, &lt;code&gt;helm.md&lt;/code&gt;)&lt;/li&gt;
 &lt;/ul&gt;
@@ -105,7 +110,46 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;.github/&lt;/code&gt;: GitHub Actions workflows — &lt;code&gt;test.yaml&lt;/code&gt; (cargo, helm-unittest, terraform), &lt;code&gt;e2e.yaml&lt;/code&gt; (the kind tiers), &lt;code&gt;lint.yaml&lt;/code&gt;, &lt;code&gt;pipelines.yaml&lt;/code&gt;, &lt;code&gt;docs.yaml&lt;/code&gt;, &lt;code&gt;auto-format.yaml&lt;/code&gt;, &lt;code&gt;propose-bumps.yaml&lt;/code&gt;, &lt;code&gt;publish-*.yaml&lt;/code&gt;. Each workflow that path-filters does so in a &lt;code&gt;changes&lt;/code&gt; job rather than on the trigger, so its &lt;code&gt;*-gate&lt;/code&gt; rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Skills</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/skills/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/skills/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Helm</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/helm/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/helm/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Roadmap</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/roadmap/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/roadmap/</guid><description>&lt;!-- This roadmap is public. Do not include customer-specific or sensitive information --&gt;
+&lt;/ul&gt;</description></item><item><title>Skills</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/skills/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/skills/</guid><description>&lt;h1 id="skills"&gt;Skills&lt;a class="anchor" href="#skills"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;&lt;code&gt;.claude/skills/&lt;/code&gt; holds authoring conventions that are consumed by &lt;strong&gt;both&lt;/strong&gt; contributors and AI agents.
+They exist so a convention lives in one place rather than being re-explained per reviewer, and so an agent picks up the same opinions a reviewer would apply.&lt;/p&gt;
+&lt;p&gt;Each skill is a &lt;code&gt;SKILL.md&lt;/code&gt; with front matter naming when it applies, plus optional &lt;code&gt;references/&lt;/code&gt;, &lt;code&gt;assets/&lt;/code&gt;, and &lt;code&gt;scripts/&lt;/code&gt; beside it.&lt;/p&gt;
+&lt;table&gt;
+ &lt;thead&gt;
+ &lt;tr&gt;
+ &lt;th&gt;Skill&lt;/th&gt;
+ &lt;th&gt;Applies when&lt;/th&gt;
+ &lt;/tr&gt;
+ &lt;/thead&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/yaml-development/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;yaml-development&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;editing any &lt;code&gt;.yaml&lt;/code&gt; / &lt;code&gt;.kyaml&lt;/code&gt; — formatting conventions and the deliberate yamllint relaxations&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/chart-development/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;chart-development&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;changing anything under &lt;code&gt;charts/*&lt;/code&gt; — templates, &lt;code&gt;values.yaml&lt;/code&gt;, subchart wrapping, profiles, helm-unittest&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/platform-development/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;platform-development&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;changing &lt;code&gt;terraform/&lt;/code&gt;, &lt;code&gt;test/e2e/&lt;/code&gt;, or the CI gating them — and chart changes with consequences for either&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/deployment-operations/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;deployment-operations&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;standing up the stack against a real or local cluster, or diagnosing an unhealthy one&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;dashboards-as-code&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;authoring Grafana dashboards in &lt;code&gt;packages/grafana-dashboards&lt;/code&gt;&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;td&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;pipelines-as-code&lt;/code&gt;&lt;/a&gt;&lt;/td&gt;
+ &lt;td&gt;authoring Alloy pipelines in &lt;code&gt;packages/alloy-pipelines&lt;/code&gt;&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="related-skills-outside-this-repo"&gt;Related skills outside this repo&lt;a class="anchor" href="#related-skills-outside-this-repo"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;The &lt;a href="https://github.com/MaterializeInc/agent-skills" rel="external" class="github-source-link"&gt;&lt;code&gt;agent-skills&lt;/code&gt;&lt;/a&gt; repository carries org-wide skills, including one for &lt;a href="https://github.com/MaterializeInc/agent-skills/blob/main/skills/materialize-terraform-self-managed/SKILL.md" rel="external" class="github-source-link"&gt;&lt;code&gt;materialize-terraform-self-managed&lt;/code&gt;&lt;/a&gt; — the repo the per-cloud monitoring wrappers live in.&lt;/p&gt;</description></item><item><title>Helm</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/helm/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/helm/</guid><description>&lt;p&gt;TODO&lt;/p&gt;</description></item><item><title>Roadmap</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/roadmap/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/roadmap/</guid><description>&lt;!-- This roadmap is public. Do not include customer-specific or sensitive information --&gt;
 &lt;h1 id="roadmap"&gt;Roadmap&lt;a class="anchor" href="#roadmap"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;The goal of &lt;code&gt;materialize-monitoring&lt;/code&gt; is &lt;strong&gt;first-class, opt-in observability for self-managed Materialize&lt;/strong&gt; — logs, metrics, events, and alerts — for customers who want a one-stop-shop, without forcing our stack on customers who already run their own.
 This page is the current source of truth for what is built, what is in flight, and what is planned next.
