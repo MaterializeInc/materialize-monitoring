@@ -8,9 +8,18 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.13.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.14.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.13.0
+
+* Update docker.io/grafana/grafana Docker tag to v13.1.1
+    * [materialize-monitoring#193](https://github.com/MaterializeInc/materialize-monitoring/pull/193)
+* CLO-111 DEP-202 DEP-196 Production defaults for Grafana
+    * [materialize-monitoring#192](https://github.com/MaterializeInc/materialize-monitoring/pull/192)
+* More documentation cleanups
+    * [materialize-monitoring#187](https://github.com/MaterializeInc/materialize-monitoring/pull/187)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.12.0
 
