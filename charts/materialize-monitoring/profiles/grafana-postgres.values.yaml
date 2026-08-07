@@ -39,7 +39,20 @@
 
 grafana:
   # Safe to run more than one replica now that state is not on local disk.
+  # Unused while `autoscaling` is on below — the subchart stops rendering a
+  # static `replicas` once an HPA exists, so `minReplicas` is the floor that
+  # actually applies. Kept in step with it so turning autoscaling off does not
+  # silently drop back to one.
   replicas: 2
+
+  # Grafana is stateless once its database is external, so it scales
+  # horizontally. `targetCPU` is a percentage of the CPU request, which comes
+  # from the chart defaults.
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPU: "60"
 
   # Explicit: no PersistentVolume is wanted or needed. Grafana still writes its
   # plugin and search-index scratch to `emptyDir`, both of which it rebuilds.
@@ -66,28 +79,43 @@ grafana:
       max_open_conn: 30
       max_idle_conn: 10
 
+    # The other half of `headlessService` below. String values in this block are
+    # run through `tpl` by the subchart, so the namespace resolves correctly under
+    # `split-namespace` too. `grafana-headless` follows the static
+    # `grafana.fullnameOverride` the chart pins.
+    unified_alerting:
+      ha_peers: 'grafana-headless.{{ include "grafana.namespace" . }}.svc:9094'
+      # POD_IP is set on the container by the subchart.
+      ha_listen_address: ${POD_IP}:9094
+      ha_advertise_address: ${POD_IP}:9094
+
   extraSecretMounts:
     - name: grafana-db
       secretName: grafana-db
       mountPath: /etc/secrets/grafana-db
       readOnly: true
 
-  # With more than one replica, keep at least one serving during disruptions.
-  podDisruptionBudget:
-    minAvailable: 1
+  # The chart already sets `maxUnavailable: 1`, which is what keeps one replica
+  # serving through a node drain and still scales with the replica count. It is
+  # left alone here deliberately: `podDisruptionBudget` deep-merges, so adding
+  # `minAvailable` here would not replace `maxUnavailable` but sit alongside it,
+  # and the API rejects a budget that sets both.
 
-# NOTE: Grafana's unified alerting is not HA out of the box. Each replica
-# evaluates every rule independently, so alerts notify once per replica. If you
-# use Grafana-managed alert rules (as opposed to the Prometheus rules this chart
-# ships, which Alertmanager routes), enable gossip between the replicas:
-#
-#   grafana:
-#     headlessService: true
-#     grafana.ini:
-#       unified_alerting:
-#         enabled: true
-#         ha_peers: grafana-headless.monitoring.svc:9094
-#         ha_listen_address: "${POD_IP}:9094"
-#
-# Adjust the namespace to match, and note `grafana-headless` follows the static
-# `grafana.fullnameOverride` this chart sets.
+  # Gossip between the replicas, so Grafana-managed alert rules notify once for
+  # the cluster instead of once per replica.
+  #
+  # This lives here rather than in the chart defaults because it is inert — and
+  # not free — at one replica: the Alertmanager cluster waits out `ha_peer_timeout`
+  # for peers to settle before it evaluates anything, so a single-replica install
+  # pays a startup delay and logs join failures for a cluster of one. Multiple
+  # replicas is exactly the condition that makes it worth having, and this profile
+  # is the only shipped shape that has them.
+  #
+  # It only affects rules created *in* Grafana. The rules this chart ships are
+  # Prometheus rules, evaluated by Thanos Ruler and routed by Alertmanager, and
+  # they are unaffected either way.
+  headlessService: true
+
+# NOTE: gossip needs pod-to-pod traffic on 9094, TCP *and* UDP. Nothing blocks it
+# today, but a NetworkPolicy that does will make alert notifications duplicate
+# rather than fail — the replicas simply never find each other.

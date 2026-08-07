@@ -170,6 +170,43 @@ locals {
   })]
 
   # ----------------------------------------------------------------------------
+  # Grafana state database
+  # ----------------------------------------------------------------------------
+  # Empty unless `grafana_database_host` is set, so the default install keeps the
+  # chart's SQLite behavior rather than emitting a half-written `[database]`
+  # block. `host` carries the port because Grafana does not default one and a
+  # bare host fails to connect.
+  grafana_database_values = var.grafana_database_host == null ? {} : merge(
+    {
+      "grafana.ini" = {
+        database = merge(
+          {
+            type     = "postgres"
+            host     = "${var.grafana_database_host}:${var.grafana_database_port}"
+            name     = var.grafana_database_name
+            user     = var.grafana_database_user
+            ssl_mode = var.grafana_database_ssl_mode
+          },
+          # `$__file{}` rather than the literal: `grafana.ini` renders into a
+          # ConfigMap. Omitted entirely when there is no password, which is the
+          # Cloud SQL Auth Proxy / peer-authentication shape.
+          var.grafana_database_password == null ? {} : {
+            password = "$__file{/etc/secrets/grafana-db/password}"
+          },
+        )
+      }
+    },
+    var.grafana_database_password == null ? {} : {
+      extraSecretMounts = [{
+        name       = "grafana-db"
+        secretName = one(kubernetes_secret.grafana_database[*].metadata[0].name)
+        mountPath  = "/etc/secrets/grafana-db"
+        readOnly   = true
+      }]
+    },
+  )
+
+  # ----------------------------------------------------------------------------
   # Wiring
   # ----------------------------------------------------------------------------
   wiring_values = {
@@ -196,13 +233,16 @@ locals {
       metrics-server = var.install_metrics_server
     }
 
-    grafana = {
-      admin = {
-        existingSecret = kubernetes_secret.grafana_admin.metadata[0].name
-        userKey        = "admin-user"
-        passwordKey    = "admin-password"
-      }
-    }
+    grafana = merge(
+      {
+        admin = {
+          existingSecret = kubernetes_secret.grafana_admin.metadata[0].name
+          userKey        = "admin-user"
+          passwordKey    = "admin-password"
+        }
+      },
+      local.grafana_database_values,
+    )
 
     # Loki's NetworkPolicy is on by default and the chart requires both
     # namespace selectors when it is — it refuses to render otherwise. They are

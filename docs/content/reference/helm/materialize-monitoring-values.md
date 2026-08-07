@@ -1407,6 +1407,68 @@ How to talk to a grafana instance
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.allowPublicAccess</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Acknowledge that Grafana is deliberately reachable from outside the cluster's private network.
+Left false, the chart refuses to render a `LoadBalancer` (or `NodePort`)
+Service with no `grafana.service.loadBalancerSourceRanges`, and an Ingress
+with no source-range allowlist it can see. That mirrors the load-balancer
+convention the Terraform modules already enforce: internal by default, and
+public only against an explicit allowlist.
+
+Setting this true is the escape hatch for a deployment whose allowlist
+lives somewhere the chart cannot read — a security group, an egress
+firewall, a service mesh, an authenticating proxy in front. It suppresses
+the error, not the exposure: the render still warns, because a Grafana on
+the open internet is protected by nothing but its admin password until you
+configure an identity provider under `grafana.ini`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.operator</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Spec passed through to the `Grafana` resource in `mode: operator`.
+Break-glass. In that mode grafana-operator owns the server lifecycle and
+builds it from its own stock defaults — unpinned image, no persistence, no
+admin secret, no resource requests — none of which this chart models. This
+key is the raw `GrafanaSpec` escape hatch for configuring it anyway:
+whatever you put here is emitted verbatim as the resource's `spec`.
+
+Nothing in it is validated or defaulted, and the production guidance on
+the `grafana` block above does not reach it. Prefer `mode: bundled`, where
+the `grafana` subchart owns the Deployment and all of that applies.
+
+```yaml
+connections:
+  grafana:
+    mode: operator
+    operator:
+      spec:
+        version: "13.0.2"
+        deployment:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: grafana
+                    resources:
+                      requests:
+                        cpu: 100m
+                        memory: 256Mi
+        config:
+          database:
+            type: postgres
+            host: grafana-db.example.internal:5432
+```
+
+Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspec
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.external<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
@@ -2949,6 +3011,30 @@ Bundled Grafana for dashboard rendering.
 Upstream reference:
   * https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
 
+The defaults here are the *safe* shape, not the *production* shape, and the
+two differ in three places you have to close yourself:
+
+1. **State.** Grafana stores users, service accounts and tokens, annotations,
+   dashboard versions and permissions, preferences, and alert-rule state in a
+   database of its own. The default is SQLite on an `emptyDir`, so all of it
+   is lost on every restart, upgrade, and reschedule. The dashboards this
+   chart installs come back on their own (grafana-operator re-pushes them
+   every `resyncPeriod`); anything a human created does not. Apply the
+   `grafana-postgres` profile, or `grafana-pvc` if you have no database.
+2. **Reachability.** The Service is `ClusterIP`, so the only access path is
+   `kubectl port-forward`. Set `ingress` or `service.type` — and read
+   `connections.grafana.allowPublicAccess` before you do.
+3. **Authentication.** The only account is the generated admin. Configure an
+   identity provider under `grafana.ini` before exposing it to anyone but
+   yourself.
+
+Everything under `grafana.ini` is passed through to Grafana's own config file
+verbatim, so any section Grafana understands can be set here — see the
+`[auth.generic_oauth]` example on that key.
+
+See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#grafana)
+for the full checklist.
+
 <table class="helm-values">
   <thead>
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
@@ -2965,6 +3051,298 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
       <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "grafana/grafana",
+  "tag": "13.0.2"
+}</pre>
+</td>
+      <td class="helm-value-desc">Grafana server image.
+Pinned here rather than left to track the subchart's `appVersion`, so
+Renovate can bump the server on its own cadence instead of only when a new
+chart release happens to carry one.
+
+A hardened rebuild is a drop-in swap: point `registry`/`repository` at it and
+keep the tag. Published options, all of which track upstream Grafana versions:
+
+  * Docker Hardened Images — https://docs.docker.com/dhi/ (subscription;
+    images land in your own org namespace, so `registry` is yours)
+  * Chainguard Images — https://images.chainguard.dev/directory/image/grafana/overview
+  * Bitnami Secure Images — https://github.com/bitnami/containers/tree/main/bitnami/grafana
+    (the versioned, hardened tags moved behind a subscription; the free
+    `docker.io/bitnami` namespace is not the same thing)
+
+All of them ship no shell and no package manager, which is the point — and
+which also means `plugins` cannot work, since that installs at container
+start. Bake plugins into the image instead. See the note on `plugins` below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Number of Grafana replicas. More than one requires a shared database (`grafana.ini.database`) — each replica otherwise carries its own divergent SQLite file, which is a correctness bug rather than availability. A render-time check enforces this.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.autoscaling</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false,
+  "maxReplicas": 5,
+  "minReplicas": 1,
+  "targetCPU": "60",
+  "targetMemory": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Horizontal autoscaling for the Grafana Deployment.
+Off by default because it is meaningless on the default SQLite backend:
+every replica would carry its own database. With `grafana.ini.database`
+pointed at PostgreSQL, Grafana is stateless and scales horizontally, so
+enable it then — `minReplicas` becomes the effective replica count and
+`replicas` stops being rendered at all.
+
+`targetCPU` is a percentage of the CPU *request*, so `resources.requests.cpu`
+has to be set or the HPA has no denominator and never scales. A render-time
+check warns when it is missing.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.podDisruptionBudget</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "maxUnavailable": 1
+}</pre>
+</td>
+      <td class="helm-value-desc">PodDisruptionBudget for Grafana. `maxUnavailable` rather than `minAvailable`, matching the convention the Loki and Thanos blocks use: it scales with the replica count, and on a single replica `minAvailable: 1` would permit no voluntary eviction at all and hang node drains.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "1Gi"
+  },
+  "requests": {
+    "cpu": "100m",
+    "memory": "256Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests and limits for the Grafana container. Requests are what the scheduler and the HPA both read — without a CPU request, `autoscaling.targetCPU` has no denominator and the HPA never scales. No CPU limit: query rendering is bursty and throttling it makes the UI feel broken. Raise the memory limit if you run many large dashboards or heavy plugins.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "accessModes": [
+    "ReadWriteOnce"
+  ],
+  "enabled": false,
+  "size": "10Gi"
+}</pre>
+</td>
+      <td class="helm-value-desc">Persistent volume for Grafana's SQLite database and plugin directory.
+Off by default. Turning it on survives restarts but caps you at one replica
+(SQLite tolerates one writer) and, on a `ReadWriteOnce` volume, requires
+`deploymentStrategy.type: Recreate` — a rolling update otherwise deadlocks
+with the new pod waiting for a volume the old pod has not released. Both are
+enforced at render time. The `grafana-pvc` profile is the assembled version.
+
+Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
+is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.deploymentStrategy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "type": "RollingUpdate"
+}</pre>
+</td>
+      <td class="helm-value-desc">Deployment update strategy. Must be `Recreate` alongside a `ReadWriteOnce` PersistentVolume; see `persistence`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.service</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "annotations": {},
+  "enabled": true,
+  "loadBalancerSourceRanges": [],
+  "port": 80,
+  "targetPort": 3000,
+  "type": "ClusterIP"
+}</pre>
+</td>
+      <td class="helm-value-desc">Service exposing Grafana.
+`ClusterIP` is reachable only from inside the cluster, which is the safe
+default and the reason a fresh install needs `kubectl port-forward`. Prefer
+`ingress` over a `LoadBalancer` Service: Grafana is ordinary HTTP that wants
+host-based routing and a certificate, which is what Ingress is for.
+
+A `LoadBalancer` Service with no `loadBalancerSourceRanges` is an error at
+render time unless `connections.grafana.allowPublicAccess` is set.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.ingress</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "annotations": {},
+  "enabled": false,
+  "hosts": null,
+  "ingressClassName": "",
+  "labels": {},
+  "path": "/",
+  "pathType": "Prefix",
+  "tls": null
+}</pre>
+</td>
+      <td class="helm-value-desc">Ingress for Grafana.
+The preferred way to make Grafana reachable. Terminate TLS here: Grafana
+authenticates with a session cookie and, without TLS, that cookie and the
+admin password cross the network in the clear. A render-time check warns
+when an Ingress carries no `tls` block.
+
+Set `grafana.ini.server.root_url` to the same URL — Grafana builds share
+links, alert notification links, and OAuth redirect URIs from it, and all
+three break silently when it disagrees with the Ingress host.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>."grafana<wbr>.ini"</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "analytics": {
+    "check_for_updates": false,
+    "reporting_enabled": false
+  },
+  "date_formats": {
+    "default_timezone": "UTC"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Grafana's own configuration file, as YAML.
+Rendered verbatim into `grafana.ini`, so any section Grafana understands can
+be set here: authentication, SMTP, feature toggles, unified alerting, user
+provisioning. The chart sets only the handful below and merges anything you
+add over them.
+
+Secrets must NOT be inlined — this block renders into a **ConfigMap**, so a
+value here lands in plaintext in the release manifest, in `helm get values`,
+and in whatever Git repo holds your values file. Use Grafana's own
+expansion instead: `$__file{/path}` for a mounted Secret (see
+`extraSecretMounts`) or `$__env{VAR}` for one injected with `envValueFrom`.
+The subchart's `assertNoLeakedSecrets` check fails the render if you forget.
+
+OIDC single sign-on, as an example — this is the shape, not a default:
+
+```yaml
+grafana:
+  grafana.ini:
+    server:
+      root_url: https://grafana.example.com
+    auth:
+      oauth_auto_login: true
+    auth.generic_oauth:
+      enabled: true
+      name: SSO
+      allow_sign_up: true
+      client_id: <client-id>
+      client_secret: $__file{/etc/secrets/grafana-oidc/client-secret}
+      scopes: openid profile email groups
+      auth_url: https://idp.example.com/oauth2/v1/authorize
+      token_url: https://idp.example.com/oauth2/v1/token
+      api_url: https://idp.example.com/oauth2/v1/userinfo
+      allowed_domains: example.com
+      # Map an IdP group claim onto a Grafana role, so membership is the
+      # provisioning mechanism and nobody is added by hand.
+      role_attribute_path: contains(groups[*], 'sre') && 'Admin' || 'Viewer'
+  extraSecretMounts:
+    - name: grafana-oidc
+      secretName: grafana-oidc
+      mountPath: /etc/secrets/grafana-oidc
+      readOnly: true
+```
+
+Every provider, the role-mapping rules, and the break-glass path are in
+[Dashboards > Grafana > Authentication](https://materializeinc.github.io/materialize-monitoring/dashboards/grafana/auth/).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.plugins</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Grafana plugins to install at container start.
+Each entry is downloaded from grafana.com when the pod starts, so this needs
+egress to `grafana.com` on 443 and adds that download to every start and
+every restart — a startup dependency on a third-party service.
+
+For anything load-bearing, bake plugins into the image instead and point
+`image` at it. That is also the only option on a hardened base image, which
+ships no shell for `grafana cli` to run in. Pin an exact plugin version
+either way (`name@version`); an unpinned plugin silently changes underneath
+a pinned Grafana.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.imageRenderer</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Grafana Image Renderer, for server-side PNG rendering of panels. Deliberately off, and it should stay off in production: the renderer is a headless Chromium that fetches arbitrary URLs on Grafana's behalf, which makes it both a large attack surface and a server-side request forgery pivot into the cluster network. A render-time check warns when it is enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.testFramework</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Helm test hooks shipped by the subchart. Off: it pulls a `bats` image this chart does not otherwise use or pin, and the e2e suite covers what it asserts.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.assertNoLeakedSecrets</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Fail the render when a secret is inlined into `grafana.ini`. Leave this on. It is the guard that keeps database and OAuth credentials out of the ConfigMap; see the note on `grafana.ini`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Scrape Grafana's own metrics.
 </td>
     </tr>
   </tbody>

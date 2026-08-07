@@ -14,7 +14,7 @@ output "chart_version" {
 }
 
 output "grafana_url" {
-  description = "In-cluster URL for Grafana. Grafana is ClusterIP-only today, so reaching it from outside the cluster needs a port-forward."
+  description = "In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead."
   value       = "http://grafana.${local.namespace}.svc.cluster.local"
 }
 

@@ -51,6 +51,27 @@ locals {
   )
 }
 
+# Grafana's database password, mounted as a file rather than passed through the
+# environment or inlined into `grafana.ini` — that block renders into a
+# ConfigMap, so a password there would be plaintext in the release manifest and
+# in `helm get values`.
+resource "kubernetes_secret" "grafana_database" {
+  count = var.grafana_database_host != null && var.grafana_database_password != null ? 1 : 0
+
+  metadata {
+    name      = "mzmon-grafana-db"
+    namespace = local.namespace
+  }
+
+  data = {
+    "password" = var.grafana_database_password
+  }
+
+  type = "Opaque"
+
+  depends_on = [kubernetes_namespace.monitoring]
+}
+
 # ==============================================================================
 # Charts
 # ==============================================================================

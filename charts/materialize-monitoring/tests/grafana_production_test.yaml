@@ -1,0 +1,615 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the production surface of the bundled Grafana: the values the chart
+# exposes so Grafana can be reached and can keep its own state, and the
+# validators in `_grafana_helpers.tpl` that guard them.
+#
+# Everything here fails the same way in production — quietly. A second replica
+# on SQLite serves a different set of users depending on which pod answers; a
+# rolling update onto a ReadWriteOnce volume hangs rather than errors; an HPA
+# with no CPU request never scales; a LoadBalancer with no source ranges works
+# exactly as well as an allowlisted one right up until someone finds it. None of
+# them surface at install time unless the render refuses them.
+#
+# Two runner details shape how the cases below are written:
+#
+#   * `grafana.ini` cannot be reached through a dotted `set` path — the runner
+#     splits on `.` without honoring a `\.` escape, so `grafana.grafana\.ini...`
+#     silently creates a nested `ini` map that nothing reads. Set it as a nested
+#     map instead, which merges over the chart defaults the normal Helm way.
+#   * Warnings are asserted against `NOTES.txt`. `templates/validate.yaml`
+#     renders warnings as YAML comments and so produces no document for a
+#     content assertion to match; it is only useful here for `notFailedTemplate`.
+suite: grafana production values and validators
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.managed-grafana: true
+tests:
+  # --- shipped defaults -----------------------------------------------------
+
+  - it: should pin the Grafana image rather than track the subchart appVersion
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^docker\.io/grafana/grafana:\d+\.\d+\.\d+$'
+
+  - it: should request resources so the scheduler and any HPA have a baseline
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+      # No CPU limit: query rendering is bursty and throttling it makes the UI
+      # feel broken.
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+
+  # `maxUnavailable` rather than `minAvailable`: on the single-replica default,
+  # `minAvailable: 1` would permit no voluntary eviction and hang node drains.
+  - it: should ship a PodDisruptionBudget that still allows a node drain
+    template: ../charts/grafana/templates/poddisruptionbudget.yaml
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable
+
+  - it: should stay unreachable from outside the cluster by default
+    template: ../charts/grafana/templates/service.yaml
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+
+  - it: should not render an Ingress by default
+    template: ../charts/grafana/templates/ingress.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not render an image renderer by default
+    template: ../charts/grafana/templates/image-renderer-deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # `grafana.ini` deep-merges over the chart's own keys rather than replacing
+  # them, which is what makes it usable as an arbitrary-config passthrough.
+  - it: should merge user grafana.ini sections over the chart defaults
+    set:
+      grafana:
+        grafana.ini:
+          auth.generic_oauth:
+            enabled: true
+            name: SSO
+    template: ../charts/grafana/templates/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[auth\.generic_oauth\]'
+      # Still there: the chart's own defaults were not clobbered.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'reporting_enabled = false'
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'default_timezone = UTC'
+
+  # --- persistence ----------------------------------------------------------
+
+  - it: errors when more than one replica shares no database
+    set:
+      grafana.replicas: 2
+    asserts:
+      - failedTemplate:
+          errorPattern: "each one carries its own SQLite file"
+
+  # The HPA ceiling is the number that matters, not the static floor: an HPA
+  # that scales a SQLite Grafana out is wrong later, under load, rather than at
+  # install.
+  - it: errors when an HPA can scale past one replica on SQLite
+    set:
+      grafana.autoscaling.enabled: true
+      grafana.autoscaling.maxReplicas: 3
+    asserts:
+      - failedTemplate:
+          errorPattern: "Grafana can run up to 3 replicas"
+
+  # The subchart stops rendering a static `replicas` once an HPA exists, so
+  # `minReplicas` is the floor that actually applies.
+  - it: allows multiple replicas once the database is shared
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: ../charts/grafana/templates/hpa.yaml
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 5
+
+  - it: allows multiple static replicas with no autoscaler
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        autoscaling:
+          enabled: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: errors on the profile's placeholder database host
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "still the profile placeholder"
+
+  - it: warns when a shared database host carries no port
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "with no port"
+
+  # A rolling update deadlocks: the replacement waits for a volume the outgoing
+  # pod has not released, and the outgoing pod is not terminated until the
+  # replacement is Ready.
+  - it: errors on a ReadWriteOnce volume with a rolling update
+    set:
+      grafana.persistence.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "deploymentStrategy.type=Recreate"
+
+  - it: accepts the pvc profile, which pairs the volume with Recreate
+    values:
+      - ../profiles/grafana-pvc.values.yaml
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: errors when a ReadWriteOnce volume is asked to back several replicas
+    values:
+      - ../profiles/grafana-pvc.values.yaml
+    set:
+      grafana:
+        replicas: 2
+        grafana.ini:
+          database:
+            type: postgres
+            host: db.example.internal:5432
+            ssl_mode: verify-full
+    asserts:
+      - failedTemplate:
+          errorPattern: "Only one pod can attach the volume"
+
+  - it: warns when an exposed Grafana keeps its state on an emptyDir
+    values:
+      - ../profiles/grafana-ingress.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "is lost on the next restart, upgrade, or reschedule"
+
+  # Not exposed is not an emergency — a bundled extra reached through
+  # `port-forward` losing its state is the documented default, not a surprise.
+  - it: stays quiet about emptyDir state on an unexposed Grafana
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "is lost on the next restart"
+
+  - it: warns on an unencrypted database connection
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+            ssl_mode: disable
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "cross the network unencrypted"
+
+  # --- exposure -------------------------------------------------------------
+
+  - it: errors on a LoadBalancer with no source ranges
+    set:
+      grafana.service.type: LoadBalancer
+    asserts:
+      - failedTemplate:
+          errorPattern: "no grafana.service.loadBalancerSourceRanges"
+
+  - it: accepts a LoadBalancer that carries an allowlist
+    set:
+      grafana.service.type: LoadBalancer
+      grafana.service.loadBalancerSourceRanges:
+        - 10.0.0.0/8
+    template: templates/NOTES.txt
+    asserts:
+      - notFailedTemplate: {}
+      - notMatchRegexRaw:
+          pattern: "loadBalancerSourceRanges"
+
+  # The escape hatch downgrades the error to a warning; it does not silence it.
+  - it: downgrades the unallowlisted LoadBalancer to a warning when acknowledged
+    set:
+      grafana.service.type: LoadBalancer
+      connections.grafana.allowPublicAccess: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "allowPublicAccess is set, so this is permitted"
+
+  - it: errors on a NodePort, which has no allowlist mechanism of its own
+    set:
+      grafana.service.type: NodePort
+    asserts:
+      - failedTemplate:
+          errorPattern: "opens a port on every node"
+
+  - it: errors when the Ingress is enabled with no host
+    set:
+      grafana.ingress.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "grafana.ingress.hosts is empty"
+
+  - it: errors on the upstream placeholder host
+    set:
+      grafana.ingress.enabled: true
+      grafana.ingress.hosts:
+        - chart-example.local
+    asserts:
+      - failedTemplate:
+          errorPattern: "chart-example.local"
+
+  - it: warns when an Ingress terminates no TLS
+    set:
+      grafana.ingress.enabled: true
+      grafana.ingress.hosts:
+        - grafana.example.com
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "cross the network in the clear"
+
+  - it: warns when an exposed Grafana has no root_url
+    set:
+      grafana.ingress.enabled: true
+      grafana.ingress.hosts:
+        - grafana.example.com
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "root_url is unset"
+
+  - it: warns when an exposed Grafana has no identity provider
+    values:
+      - ../profiles/grafana-ingress.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no identity provider configured"
+
+  - it: stops warning about identity once a provider is configured
+    values:
+      - ../profiles/grafana-ingress.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          auth.generic_oauth:
+            enabled: true
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "no identity provider configured"
+
+  # Anonymous access on a reachable Grafana hands every dashboard and every
+  # datasource behind it to anyone who can route to it.
+  - it: errors on anonymous access to an exposed Grafana
+    values:
+      - ../profiles/grafana-ingress.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          auth.anonymous:
+            enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "without signing in"
+
+  - it: leaves anonymous access alone when Grafana is only reachable in-cluster
+    set:
+      grafana:
+        grafana.ini:
+          auth.anonymous:
+            enabled: true
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # --- disruption and autoscaling -------------------------------------------
+
+  - it: warns when an HPA targets CPU with no CPU request to measure against
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        resources:
+          requests: null
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "there is no denominator and it never scales"
+
+  - it: warns when the budget forbids eviction of a singleton
+    set:
+      grafana.podDisruptionBudget:
+        minAvailable: 1
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "node drains hang indefinitely"
+
+  - it: warns when several replicas run with no budget at all
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        podDisruptionBudget: null
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no PodDisruptionBudget"
+
+  # Grafana's unified alerting is not HA on its own: without gossip every
+  # replica evaluates every rule and notifies separately.
+  - it: warns when several replicas run with no gossip between them
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        headlessService: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+          unified_alerting: null
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no gossip between them"
+
+  # A failed join is not a failed start — the pods come up healthy and quietly
+  # duplicate every notification.
+  - it: warns when ha_peers names a headless Service that was never created
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        headlessService: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no headless Service for that name to resolve to"
+
+  - it: stays quiet about gossip on the postgres profile as shipped
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "gossip"
+
+  # The headless Service is half of the gossip wiring; `ha_peers` resolves
+  # through it, and the namespace has to survive `split-namespace`.
+  - it: renders a headless Service on the gossip port
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: ../charts/grafana/templates/headless-service.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: grafana-headless
+      - equal:
+          path: spec.clusterIP
+          value: None
+      - equal:
+          path: spec.ports[0].port
+          value: 9094
+
+  - it: resolves the gossip peer address against Grafana's own namespace
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+      - ../profiles/split-namespace.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: ../charts/grafana/templates/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: 'ha_peers = grafana-headless\.grafana\.svc:9094'
+
+  # --- security -------------------------------------------------------------
+
+  - it: warns when the image renderer is enabled
+    set:
+      grafana.imageRenderer.enabled: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "server-side request forgery pivot"
+
+  - it: warns when the leaked-secret guard is turned off
+    set:
+      grafana.assertNoLeakedSecrets: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "assertNoLeakedSecrets is disabled"
+
+  - it: warns on an unpinned plugin
+    set:
+      grafana.plugins:
+        - grafana-clock-panel
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "pins no version"
+
+  - it: accepts a version-pinned plugin
+    set:
+      grafana.plugins:
+        - grafana-clock-panel@2.1.8
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "pins no version"
+
+  # --- nulled sections ------------------------------------------------------
+
+  # Setting a `grafana.ini` section to `null` is how a values file removes one a
+  # profile set — an empty map would just merge back into the default. The
+  # validators have to read that as absent rather than walking into it, which
+  # `dig`'s multi-key form does not: it type-asserts each level and errors on a
+  # nil one, failing the whole render.
+  #
+  # Only `grafana.ini` sections are covered here. The subchart dereferences its
+  # own top-level keys (`persistence.enabled`, `autoscaling.enabled`, …) without
+  # guarding, so nulling those was never supported by it either.
+  - it: reads a nulled grafana.ini section as absent rather than erroring
+    values:
+      - ../profiles/grafana-ingress.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database: null
+          server: null
+          security: null
+          unified_alerting: null
+          analytics: null
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # Read as absent, so the checks that depend on the section still reach their
+  # own conclusion rather than being skipped.
+  - it: still errors on multi-replica SQLite when the database section is nulled
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "each one carries its own SQLite file"
+
+  - it: survives a nulled PodDisruptionBudget, which the subchart does allow
+    set:
+      grafana:
+        podDisruptionBudget: null
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # --- operator-mode break-glass --------------------------------------------
+
+  - it: emits an empty spec in operator mode with nothing to pass through
+    set:
+      connections.grafana.mode: operator
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec
+          value: {}
+
+  - it: passes an operator-mode spec through verbatim
+    set:
+      connections.grafana.mode: operator
+      connections.grafana.operator.spec:
+        version: "13.0.2"
+        config:
+          database:
+            type: postgres
+            host: grafana-db.example.internal:5432
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.version
+          value: "13.0.2"
+      - equal:
+          path: spec.config.database.host
+          value: grafana-db.example.internal:5432
+      # Still an operator-managed instance: an `external` block is what marks it
+      # as one the operator did not create.
+      - notExists:
+          path: spec.external
+
+  # The bundled Grafana's validators must not fire against an instance this
+  # chart does not deploy.
+  - it: leaves the production checks alone when the bundled Grafana is off
+    set:
+      tags.managed-grafana: false
+      tags.grafana-operator: true
+      connections.grafana.mode: operator
+      grafana.replicas: 5
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}

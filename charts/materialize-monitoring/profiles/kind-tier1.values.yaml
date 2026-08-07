@@ -37,8 +37,7 @@ pipeline:
           enabled: false
 
 grafana:
-  grafana:
-    # No PVC and no Postgres: Grafana's default SQLite on an emptyDir is fine for
-    # a cluster that lives for one CI job. Tier 2 covers the CNPG shape.
-    persistence:
-      enabled: false
+  # No PVC and no Postgres: Grafana's default SQLite on an emptyDir is fine for a
+  # cluster that lives for one CI job. Tier 2 covers the CNPG shape.
+  persistence:
+    enabled: false

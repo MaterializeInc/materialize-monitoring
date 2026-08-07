@@ -48,20 +48,46 @@ Thanos is installed and configured to store metrics.
   {{- $gfNamespace := include "mzmon.grafana.namespace" $ }}
   {{- $gfName := include "mzmon.grafana.fullname" $ }}
   {{- $gfPort := include "mzmon.grafana.servicePort" $ }}
-  {{- $database := dig "grafana.ini" "database" "type" "" $.Values.grafana }}
+  {{- /*
+  Read through the section helpers, not `dig`'s multi-key form: a section set to
+  `null` — how a values file removes one a profile set — makes that form error on
+  the type assertion rather than read as absent.
+  */}}
+  {{- $database := ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "database" ) | fromYaml ).type | default "" }}
+  {{- $gfAuto := include "mzmon.grafana.section" ( dict "root" $ "name" "autoscaling" ) | fromYaml }}
+  {{- $gfIngress := include "mzmon.grafana.section" ( dict "root" $ "name" "ingress" ) | fromYaml }}
+  {{- $gfPersistence := include "mzmon.grafana.section" ( dict "root" $ "name" "persistence" ) | fromYaml }}
+  {{- $gfSvcType := ( include "mzmon.grafana.section" ( dict "root" $ "name" "service" ) | fromYaml ).type | default "ClusterIP" }}
 
 Grafana is installed and configured to visualize metrics and logs.
   Grafana namespace: {{ $gfNamespace }}
-  Service: {{ $gfName }}.{{ $gfNamespace }}:{{ $gfPort }}
+  Service: {{ $gfName }}.{{ $gfNamespace }}:{{ $gfPort }} ({{ $gfSvcType }})
+  {{- if $gfAuto.enabled }}
+  Replicas: {{ $gfAuto.minReplicas | default 1 }}-{{ $gfAuto.maxReplicas | default 5 }} (autoscaled on {{ $gfAuto.targetCPU | default "60" }}% CPU)
+  {{- else }}
   Replicas: {{ $.Values.grafana.replicas | default 1 }}
+  {{- end }}
   {{- if $database }}
   State: external {{ $database }} database
-  {{- else if $.Values.grafana.persistence.enabled }}
-  State: SQLite on a PersistentVolume ({{ $.Values.grafana.persistence.size }}); caps Grafana at one replica
+  {{- else if $gfPersistence.enabled }}
+  State: SQLite on a PersistentVolume ({{ $gfPersistence.size }}); caps Grafana at one replica
   {{- else }}
   State: SQLite on emptyDir -- NOT PERSISTED. Every restart loses users, annotations,
          and anything else created in the UI. Dashboards this chart installs come back
          on their own. Apply the `grafana-postgres` profile before production.
+  {{- end }}
+  {{- if $gfIngress.enabled }}
+
+  Reachable at:
+    {{- $scheme := ternary "https" "http" ( not ( empty ( $gfIngress.tls | default list ) ) ) }}
+    {{- range $host := ( $gfIngress.hosts | default list ) }}
+    {{ $scheme }}://{{ $host }}{{ $gfIngress.path | default "/" }}
+    {{- end }}
+    DNS for that name is yours to create; the Ingress does not publish it.
+  {{- else if eq $gfSvcType "LoadBalancer" }}
+
+  Reachable at the load balancer's address, once it is provisioned:
+    kubectl --namespace {{ $gfNamespace }} get svc {{ $gfName }} -o wide
   {{- end }}
 
   Reach it from your machine:

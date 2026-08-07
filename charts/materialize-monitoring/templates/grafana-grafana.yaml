@@ -25,11 +25,20 @@ spec:
   {{- if ( eq $.Values.connections.grafana.mode "operator" ) }}
   {{- /*
   No `external` block at all: an operator-managed instance is signalled by its
-  absence. Emitting the key with a null value is ambiguous, so leave the spec
-  empty. Note that the operator then builds the instance from its own stock
-  defaults, which this chart cannot configure — see the Grafana Architecture docs.
+  absence. Emitting the key with a null value is ambiguous, so the spec carries
+  only what `connections.grafana.operator.spec` supplies.
+
+  That key is the break-glass surface for this mode: the operator otherwise
+  builds the instance from its own stock defaults, which none of the `grafana`
+  block's production defaults reach. It is passed through verbatim and
+  deliberately unvalidated — see the Grafana Architecture docs.
   */}}
+  {{- $spec := $.Values.connections.grafana.operator.spec | default dict }}
+  {{- if $spec }}
+  {{- $spec | toYaml | nindent 2 }}
+  {{- else }}
   {}
+  {{- end }}
   {{- else }}
   external:
     {{- if $ext.url }}
