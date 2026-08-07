@@ -106,6 +106,25 @@ Lets the Grafana Operator own the server lifecycle.
 > This mode is not yet production-ready — see [Known gaps](#known-gaps).
 > Use `bundled` or `external`.
 
+The operator builds the instance from its own stock defaults, and none of the production defaults on the `grafana` block reach it — not the pinned image, not the resource requests, not the PodDisruptionBudget, not the persistence guardrails.
+`connections.grafana.operator.spec` is the break-glass for configuring it anyway: whatever it holds is emitted verbatim as the `Grafana` resource's `spec`.
+
+```yaml
+connections:
+  grafana:
+    mode: operator
+    operator:
+      spec:
+        version: "13.0.2"
+        config:
+          database:
+            type: postgres
+            host: grafana-db.example.internal:5432
+```
+
+Nothing in it is validated or defaulted, which is the trade: it exists so the mode is not a dead end, not because it is a good place to configure Grafana.
+See the [`GrafanaSpec` reference](https://grafana.github.io/grafana-operator/docs/api/#grafanaspec) for the shape.
+
 ## Resource map
 
 Shown in the default shared-namespace layout, where everything lands in the release namespace.
@@ -302,6 +321,69 @@ Those modes need a datasource per tenant, or a multi-tenant read path in front o
 The Loki **gateway is disabled by default** (`loki.gateway.enabled: false`) — writes go through `alloy-gateway` and reads go straight to the query frontend.
 Do not point a datasource at a `loki-gateway` service; it does not exist.
 
+## Reaching Grafana
+
+The Service is `ClusterIP` by default, so a fresh install is reachable only through `kubectl port-forward`.
+That is the safe default rather than an oversight: the only account is the generated admin, and every datasource behind Grafana reads every metric in Thanos and every log in the tenant.
+
+Two values open it up, and they are the upstream subchart's own — the chart surfaces them rather than inventing a path, so a Helm-only install has the same capability the Terraform module does.
+The `grafana-ingress` profile is the assembled shape.
+
+### Ingress or Service is not L7 or L4
+
+It is tempting to read `grafana.ingress` as "the HTTPS one" and `grafana.service.type: LoadBalancer` as "the raw TCP one".
+That is not how the cloud controllers work, and getting it backwards leads to the wrong shape on platforms where Ingress is not the idiom.
+
+**Both are ways of asking for the same cloud load balancer.**
+AWS's Load Balancer Controller provisions an ALB from an Ingress and an NLB from an annotated `LoadBalancer` Service; GKE and AKS have the same duality.
+In both cases the load balancer sits in front of Grafana, holds the certificate, and terminates TLS — the Kubernetes object only decides which controller reads the configuration and where the annotations go.
+
+| | `grafana.ingress` | `grafana.service` |
+|---|---|---|
+| Consumed by | an ingress controller | a cloud provider or LB controller |
+| Typical result on AWS | ALB | NLB |
+| TLS | Ingress `tls`, or a certificate named in annotations | a certificate named in annotations |
+| Host-based routing | yes | no — one load balancer, one backend |
+| Allowlist the chart can read | no; it lives in controller annotations | `loadBalancerSourceRanges` |
+
+The one shape that really is bare L4 with no TLS is a `LoadBalancer` Service on a cluster with no controller interpreting it — a plain cloud L4 forward to port 80.
+That is the case the chart's TLS warning is aimed at, and it is also the case that cannot be fixed with annotations.
+
+**So pick by what your platform's controller consumes**, not by which sounds more like HTTP.
+Where you have an ingress controller, Ingress is the better fit: host-based routing and a certificate reference are what it is for, and several Grafanas can share one load balancer.
+Where the platform expects an annotated Service, use that; the chart validates it more tightly, not less.
+
+### Internal by default, public against an allowlist
+
+This follows the convention the Terraform repo already uses for load balancers, and copies the *enforcement*, not just the default:
+
+* Nothing is exposed unless you ask.
+* A `LoadBalancer` Service with no `loadBalancerSourceRanges` is a render-time **error**. So is a `NodePort`, which has no allowlist mechanism of its own.
+* `connections.grafana.allowPublicAccess: true` is the escape hatch for an allowlist the chart cannot see — a security group, an egress firewall, an authenticating proxy. It downgrades the error to a warning. It is an acknowledgement, not a silencer.
+
+An Ingress is the case the chart genuinely cannot characterize, because the scope lives in the controller's annotations.
+So it checks the things it can see instead, all as warnings: no `tls` block, no `server.root_url`, no identity provider configured.
+
+### What to set alongside
+
+**TLS.** Grafana authenticates with a session cookie; without TLS that cookie and the admin password cross the network in the clear.
+Either an Ingress `tls` block backed by cert-manager, or termination at the load balancer against a cloud-held certificate (ACM on AWS) — in the second case the `tls` block stays empty and the chart's warning is asking you to confirm that, not to add a Secret you do not have.
+Set `security.cookie_secure: true` once it is in place, and not before: until then the cookie is never sent and nobody can log in.
+
+**DNS.** Neither object publishes the hostname, and the chart has no view of your zone, so the record is a separate step.
+It is easy to forget until an ACME challenge fails against a name that does not resolve.
+
+**`server.root_url`.** Grafana builds share links, alert notification links, and OAuth redirect URIs from it.
+All three break silently when it disagrees with the host users actually reach.
+
+**An identity provider.** Until one exists, the generated admin password is the whole of the access control.
+See [Authentication](../auth/).
+
+> [!WARNING]
+> Grafana's own roles are **not a data boundary**.
+> Every datasource is queryable by anyone who can reach Grafana, so a Viewer still reads every metric in Thanos and every log in the tenant.
+> Exposure decisions should be made against that, not against what a role appears to permit.
+
 ## State and persistence
 
 Grafana keeps its own state — users, orgs, service accounts and tokens, annotations, dashboard versions and permissions, preferences, and alert-rule state — in a database of its own.
@@ -313,16 +395,19 @@ Everything a human created through the UI does not.
 | Backing store | Set with | Replicas | Suitable for |
 |---|---|---|---|
 | SQLite on `emptyDir` (**default**) | — | 1 | demos; state is lost on every pod restart |
-| SQLite on a PersistentVolume | `grafana.persistence.enabled: true` | 1 | a single small instance |
-| External PostgreSQL | the `[database]` section of `grafana.ini` | 2+ | production |
+| SQLite on a PersistentVolume | the `grafana-pvc` profile | 1 | a single small instance |
+| External PostgreSQL | the `grafana-postgres` profile | 2+ | production |
 
 SQLite tolerates exactly one writer, so both SQLite options pin you to a single replica.
 On a `ReadWriteOnce` volume a rolling update also deadlocks — the new pod cannot attach the volume until the old one releases it — so a PVC additionally needs `grafana.deploymentStrategy.type: Recreate`.
 External PostgreSQL is the only option that lifts both constraints.
 
+All three of those are enforced rather than documented.
+The chart refuses to render more than one replica — including an HPA whose ceiling is above one — without a shared database, refuses a `ReadWriteOnce` volume paired with a rolling update, and warns when an exposed Grafana is still on the `emptyDir` default.
+
 ### Wiring PostgreSQL
 
-The `grafana-postgres` profile is the assembled version of everything below — the config block, the secret mount, two replicas, a PodDisruptionBudget, and notes on Grafana-managed alerting in HA.
+The `grafana-postgres` profile is the assembled version of everything below — the config block, the secret mount, two replicas behind an HPA, and notes on Grafana-managed alerting in HA.
 Layer it over your platform profile and fill in the host:
 
 ```bash
@@ -423,8 +508,10 @@ Tracked under [CLO-111](https://linear.app/materializeinc/issue/CLO-111/establis
 
 | Gap | Impact |
 |---|---|
-| `mode: operator` is unconfigurable | The operator builds the instance from stock defaults — unpinned version, no persistence, no admin secret, no resource requests — none of it reachable from this chart's values |
+| `mode: operator` is modelled only as a raw spec | `connections.grafana.operator.spec` is passed through unvalidated; nothing the chart knows about Grafana applies inside it. Prefer `mode: bundled` |
 | `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
-| Bundled Grafana defaults to `emptyDir` storage | All UI-created state is lost on restart unless you apply the `grafana-postgres` profile or enable a PVC — see [State and persistence](#state-and-persistence) |
+| Bundled Grafana defaults to `emptyDir` storage | All UI-created state is lost on restart unless you apply the `grafana-postgres` or `grafana-pvc` profile — see [State and persistence](#state-and-persistence) |
+| No NetworkPolicy | The subchart ships `networkPolicy` values but the chart neither enables nor opinionates them ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) |
+| Grafana-managed unified alerting is not HA | Each replica evaluates every rule independently, so alerts notify once per replica unless gossip is configured — see the note in the `grafana-postgres` profile |
 | No datasource is shipped for a non-static Loki tenancy | `byNamespace` / `byEnvironment` / `byLabel` installs get one datasource reading one tenant, plus a warning; the rest need adding by hand |
 | Leader-election leases are namespaced, but the operator watches cluster-wide | Two releases in different namespaces both reconcile every `Grafana` in the cluster; scope `WATCH_NAMESPACE` or add a per-release label to `connections.grafana.labels` |

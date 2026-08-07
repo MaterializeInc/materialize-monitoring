@@ -139,6 +139,8 @@ Thanos sizing profiles are not written yet, so `small` and `large` currently siz
 |---|---|
 | `profiles/existing-grafana.values.yaml` | point at a Grafana you already run instead of installing one |
 | `profiles/grafana-postgres.values.yaml` | Grafana state in Postgres rather than SQLite — the production shape |
+| `profiles/grafana-pvc.values.yaml` | Grafana state on a PersistentVolume — durable, but still one replica. For a Helm-only install with no database |
+| `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |

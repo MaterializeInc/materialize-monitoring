@@ -1,0 +1,64 @@
+# Profile: keep the bundled Grafana's state on a PersistentVolume.
+#
+# The fallback for a Helm-only install with no database to hand. Grafana keeps
+# its own state — users, service accounts and tokens, annotations, dashboard
+# versions and permissions, preferences, and alert-rule state — in SQLite, and
+# the chart default puts that file on an `emptyDir` where it is lost on every
+# pod restart, upgrade, and reschedule. A volume makes it survive.
+#
+# Prefer `grafana-postgres` wherever a database is available. This profile buys
+# durability and nothing else:
+#
+#   * SQLite tolerates exactly one writer, so you are pinned to one replica.
+#     No HPA, and no availability during a restart.
+#   * A ReadWriteOnce volume is pinned to one availability zone, so Grafana can
+#     only reschedule onto a node in that zone.
+#   * Every upgrade is a short outage, because the rolling update has to be
+#     replaced with `Recreate` — see below.
+#   * Backups are yours. A volume snapshot is the only copy; nothing in this
+#     chart replicates it.
+#
+# Layer it over your platform profile:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/grafana-pvc.values.yaml
+#
+# Prerequisite: a dynamic-provisioning StorageClass the Grafana pod's nodes can
+# actually attach. "Present" is not the same as "usable" — on GCP's C4 and N4
+# machine families every StorageClass GKE creates by default is Persistent Disk
+# and none of them will attach. Set `storageClassName` below if the cluster
+# default is not the one you want.
+#
+# Moving to PostgreSQL later does not carry this state over. Grafana has no
+# SQLite-to-Postgres migration; export what you care about through the HTTP API
+# first.
+
+grafana:
+  # SQLite has one writer. More than one replica is a correctness bug, not
+  # availability, and the chart refuses to render it.
+  replicas: 1
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    # Uncomment to pin the class rather than take the cluster default.
+    # storageClassName: gp3
+
+  # Required alongside a ReadWriteOnce volume, and enforced at render time. A
+  # rolling update deadlocks: the replacement pod waits for a volume the
+  # outgoing pod has not released, and the outgoing pod is not terminated until
+  # the replacement is Ready. `Recreate` accepts a short outage on every upgrade
+  # in exchange for upgrades that finish.
+  deploymentStrategy:
+    type: Recreate
+
+  # The subchart's chown init container runs as root to fix ownership on a fresh
+  # volume. Most CSI drivers apply `fsGroup` themselves, which makes it
+  # unnecessary — and it cannot run at all on a hardened base image, which ships
+  # no shell. Left on by default because the drivers that ignore `fsGroup` fail
+  # confusingly without it; turn it off once you have confirmed yours does not.
+  initChownData:
+    enabled: true

@@ -8,7 +8,7 @@ weight: 10
 Production guidance for the `materialize-monitoring` stack, organized by backend.
 Every checklist item is tagged with its **primary owner** under the [shared responsibility model](#shared-responsibility-model), and is checked (`[x]`) when the chart already ships it as a default — unchecked items are the deployment-time actions (or still-to-build chart work) that remain.
 
-Today this covers the **collection tier (Alloy)**, the bundled **logging backend (Loki)**, and the bundled **metrics backend (Thanos)**; Grafana and Alertmanager sections will follow the same shape.
+Today this covers the **collection tier (Alloy)**, the bundled **logging backend (Loki)**, the bundled **metrics backend (Thanos)**, and the bundled **Grafana**; an Alertmanager section will follow the same shape.
 
 ## Shared responsibility model
 
@@ -412,3 +412,115 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [Metrics](../../metrics/) — the metrics architecture these items configure.
 - [Storing](../../metrics/storing/) — object storage and retention in depth.
 - [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.
+
+## Grafana
+
+For the architecture these items configure, see [Grafana Architecture](../../dashboards/grafana/architecture/).
+
+Grafana is the one component here that is not a data store, and that changes what "production" means for it.
+Nothing observable is lost when Grafana breaks — the metrics are in Thanos and the logs are in Loki, and the dashboards this chart installs are re-pushed by grafana-operator every `resyncPeriod`.
+What *is* at risk is everything a human created through the UI, plus the fact that Grafana is where an incident starts.
+
+The chart defaults are the safe shape, not the production shape.
+Three things separate them, and they compound: state, reachability, and authentication.
+
+| | Default | Production |
+|---|---|---|
+| State | SQLite on `emptyDir`, lost on every restart | External PostgreSQL |
+| Reachability | `ClusterIP`; `kubectl port-forward` only | Ingress, TLS-terminated, internal by default |
+| Authentication | The generated admin password | An identity provider, with group-mapped roles |
+| Replicas | 1 | 2+ behind an HPA — only meaningful once state is external |
+
+**Reachability and persistence are one decision, not two.**
+Exposing Grafana without a durable backend turns a bundled extra nobody depended on into the primary interface to the stack — one that silently discards every dashboard, annotation, and API token its users create.
+The chart warns at exactly that combination rather than on every install.
+
+### Three shapes, and what each one costs
+
+| Backing store | Set with | Replicas | Suitable for |
+|---|---|---|---|
+| SQLite on `emptyDir` (**default**) | — | 1 | demos and `kind`; state is lost on every pod restart |
+| SQLite on a PersistentVolume | `grafana-pvc` profile | 1 | a single small instance with no database available |
+| External PostgreSQL | `grafana-postgres` profile | 2+ | production |
+
+SQLite tolerates exactly one writer, so both SQLite options pin you to a single replica — more than one is a correctness bug rather than availability, and the chart refuses to render it.
+A `ReadWriteOnce` volume additionally forces `deploymentStrategy.type: Recreate`, because a rolling update deadlocks: the replacement pod waits for a volume the outgoing pod has not released, and the outgoing pod is not terminated until the replacement is Ready.
+External PostgreSQL is the only option that lifts both constraints.
+See [State and persistence](../../dashboards/grafana/architecture/#state-and-persistence) for the full wiring, including why IAM database authentication does not remove the need for a password secret.
+
+### Checklist
+
+#### 1. State
+
+- [x] `[chart]` A render-time check **errors** on more than one replica — including an HPA ceiling above one — without `grafana.ini.database` pointed at a shared database.
+- [x] `[chart]` A render-time check **errors** on a `ReadWriteOnce` volume paired with a rolling update, and on a volume asked to back several replicas.
+- [x] `[chart]` A render-time check **warns** when an exposed Grafana keeps its state on an `emptyDir`, and on a database connection with `ssl_mode` unset or `disable`.
+- [x] `[chart]` `grafana-postgres` and `grafana-pvc` profiles ship the assembled shapes.
+- [ ] `[consumer]` Provision the **database and an owning user**. Grafana runs its own schema migrations at startup, so a read/write-only grant fails the migration.
+- [ ] `[consumer]` Provide the database password as a **Secret**, in the namespace the Grafana *pod* runs in — under `split-namespace` that is `grafana`, not the release namespace. The chart consumes it by name; it does not mint it.
+- [ ] `[operator]` Never inline the password into `grafana.ini` — it renders into a **ConfigMap**. Use `$__file{}` against a mounted Secret, or `$__env{}` against `envValueFrom`. The subchart's `assertNoLeakedSecrets` check fails the render if you forget; leave it on.
+- [ ] `[operator]` **Back the database up.** It holds every service-account token, alert rule, and annotation. Nothing in this chart replicates it, and a PVC snapshot is the only copy on the `grafana-pvc` path.
+- [ ] `[operator]` Switching an existing install from SQLite to PostgreSQL **does not carry state over** — Grafana has no migration between them. Export what matters through the HTTP API first.
+
+#### 2. Reachability
+
+- [x] `[chart]` `grafana.ingress` and `grafana.service` are surfaced, so a Helm-only install has the same capability the Terraform path does.
+- [x] `[chart]` **Internal by default:** the Service is `ClusterIP` and no Ingress is rendered.
+- [x] `[chart]` **Public requires an allowlist, enforced.** A `LoadBalancer` Service with no `loadBalancerSourceRanges` — and a `NodePort`, which has no allowlist mechanism at all — is a render-time **error**. `connections.grafana.allowPublicAccess: true` downgrades it to a warning; it is an acknowledgement, not a silencer.
+- [ ] `[consumer]` **Pick the object your platform's controller actually reads.** An Ingress and a `LoadBalancer` Service are two ways to ask for the same cloud load balancer, not an L7-versus-L4 choice — AWS's load-balancer controller provisions an ALB or NLB from either, and both can terminate TLS in front of Grafana. Ingress where you have a controller that consumes one; an annotated Service where the platform expects that instead. The `grafana-ingress` profile is the assembled shape. See [Reaching Grafana](../../dashboards/grafana/architecture/#reaching-grafana).
+- [ ] `[consumer]` **Terminate TLS in front of Grafana.** It authenticates with a session cookie; without TLS that cookie and the admin password cross the network in the clear. Either an Ingress `tls` block or termination at the load balancer against a cloud-held certificate (ACM on AWS, a managed certificate on GKE). A render-time check warns on an Ingress with no `tls` — it cannot see the second case, so confirm rather than dismiss it. A bare `LoadBalancer` Service with no controller in front is the one shape with no TLS anywhere.
+- [ ] `[operator]` **Supply the certificate or the issuer.** The consumer wires it; where the trust comes from — a cert-manager `ClusterIssuer`, an ACM ARN, an uploaded certificate — is a policy decision.
+- [ ] `[consumer]` Set `security.cookie_secure: true` **once TLS is in place** — before that the session cookie is never sent and nobody can log in.
+- [ ] `[operator]` Set **`grafana.ini.server.root_url`** to the URL users actually reach. Share links, alert notification links, and OAuth redirect URIs are all built from it, and all three break silently when it disagrees with the host. Checked at render time.
+- [ ] `[operator]` **Create the DNS record.** Neither the Ingress nor the Service publishes the hostname, and the chart cannot: it has no view of your zone. Unless something like external-dns is already reconciling records in the cluster, this is a manual step that is easy to forget until the certificate fails to issue.
+
+#### 3. Authentication and authorization
+
+See [Authentication](../../dashboards/grafana/auth/) for the wiring.
+
+- [ ] `[operator]` **Configure an identity provider** under `grafana.ini` before exposing Grafana to anyone but yourself. Any `auth.*` section Grafana supports works. A render-time check warns when an exposed Grafana has none.
+- [ ] `[consumer]` Provide the OAuth **client secret as a Secret**, referenced with `$__file{}` or `$__env{}`. Never a literal in `grafana.ini` — that renders into a ConfigMap.
+- [ ] `[operator]` Map an IdP group claim onto Grafana roles with **`role_attribute_path`**, so group membership does the provisioning and nobody is added by hand. Set `role_attribute_strict: true` once it is right, so a broken claim fails the login instead of quietly falling back to `Viewer`.
+- [ ] `[operator]` Keep the **local admin as break-glass**. `disable_login_form: true` still leaves `/login?disableAutoLogin` reachable; know that before an IdP outage takes your incident tooling with it.
+- [x] `[chart]` A render-time check **errors** on `auth.anonymous` enabled while Grafana is exposed, unless `connections.grafana.allowPublicAccess` says the exposure is deliberate.
+- [ ] `[operator]` Rotate the generated admin password, or supply your own with `grafana.admin.existingSecret`. Grafana reads it once at startup, so a rotation needs a restart.
+- [ ] `[operator]` Grafana's own permissions are **not a data boundary**. Every datasource is queryable by anyone who can reach it, so a Viewer in Grafana still reads every metric in Thanos and every log in the tenant. See [Tenancy & auth](#9-tenancy--auth).
+
+#### 4. Availability & sizing
+
+- [x] `[chart]` Resource **requests and limits** are set (100m / 256Mi requests, 1Gi memory limit). No CPU limit: query rendering is bursty and throttling it makes the UI feel broken.
+- [x] `[chart]` **PodDisruptionBudget** (`maxUnavailable: 1`), matching the Loki and Thanos convention — it scales with the replica count, and on a singleton `minAvailable: 1` would permit no eviction and hang node drains. A validator warns on `minAvailable` for a single replica, and on several replicas with no budget.
+- [x] `[chart]` **HPA** surfaced and off by default, because it is meaningless on SQLite. The `grafana-postgres` profile turns it on (2–5 replicas, 60% CPU). Note the subchart stops rendering a static `replicas` once an HPA exists, so `minReplicas` becomes the effective floor.
+- [x] `[chart]` A validator warns when `autoscaling.targetCPU` is set with no CPU request — the HPA measures utilization against the request, so with no request there is no denominator and it never scales.
+- [x] `[chart]` **Probes** on `/api/health` (liveness and readiness) come from the subchart and are left at their defaults.
+- [x] `[chart]` Grafana-managed **unified alerting is not HA out of the box** — each replica evaluates every rule independently and notifies separately. The `grafana-postgres` profile enables gossip (`headlessService: true` plus `unified_alerting.ha_peers`), and validators warn both on several replicas with no gossip and on `ha_peers` pointing at a headless Service that was never created. Gossip is *not* a chart default: at one replica it is inert and costs a `ha_peer_timeout` settle on every start. The Prometheus rules this chart ships are unaffected either way.
+- [ ] `[operator]` Gossip needs pod-to-pod **9094 on TCP and UDP**. A NetworkPolicy that blocks it makes notifications duplicate rather than fail, because the replicas simply never find each other.
+- [ ] `[consumer]` `priorityClassName` so Grafana is not evicted under node pressure — it is where an incident starts.
+
+#### 5. Images & supply chain
+
+- [x] `[chart]` The Grafana image is **pinned explicitly in `values.yaml`** (registry, repository, tag) rather than tracking the subchart's `appVersion`, so Renovate bumps the server on its own cadence instead of only when a chart release happens to carry one.
+- [ ] `[operator]` **Hardened base images** are a drop-in swap: point `image.registry`/`image.repository` at one and keep the tag. Published options that track upstream Grafana versions are [Docker Hardened Images](https://docs.docker.com/dhi/) (subscription; images land in your own org namespace), [Chainguard Images](https://images.chainguard.dev/directory/image/grafana/overview), and [Bitnami Secure Images](https://github.com/bitnami/containers/tree/main/bitnami/grafana) — note the versioned hardened Bitnami tags moved behind a subscription, and the free `docker.io/bitnami` namespace is not the same thing. All of them ship no shell and no package manager, which is the point, and which means start-time plugin installation cannot work — bake plugins into the image instead.
+- [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
+- [x] `[chart]` **Image Renderer disabled**, and a validator warns when it is turned on. It is a headless Chromium that fetches URLs on Grafana's behalf — a large attack surface and a server-side request forgery pivot into the cluster network. It has no place in a production deployment.
+- [x] `[chart]` The subchart's `testFramework` hook is off; it pulls a `bats` image this chart does not otherwise use or pin.
+
+#### 6. Configuration & dashboards as code
+
+- [x] `[chart]` **grafana-operator manages dashboards and datasources as code** — `GrafanaManifest` and `GrafanaDatasource` resources, reconciled in one direction with Kubernetes as the source of truth. Anything the operator owns is re-pushed on drift; anything it does not is yours to keep.
+- [x] `[chart]` `grafana.ini` is a **verbatim passthrough**, so any section Grafana understands — auth, SMTP, feature toggles, unified alerting, user provisioning — is reachable from values and deep-merges over the chart's own keys.
+- [x] `[chart]` `connections.grafana.operator.spec` is the **break-glass** for `mode: operator`, where grafana-operator owns the server lifecycle and none of the above applies. Prefer `mode: bundled`.
+- [ ] `[operator]` Treat the running Grafana as a **cache, not a source**. Dashboards edited in the UI are overwritten at the next resync; change them in `packages/grafana-dashboards/` instead.
+
+#### 7. Network & meta-monitoring
+
+- [x] `[chart]` ServiceMonitor for Grafana's own metrics.
+- [ ] `[chart]` **NetworkPolicy** — the subchart ships `networkPolicy` values but the chart neither enables nor opinionates them yet ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Grafana needs ingress from the operator and from whatever fronts it, and egress to Thanos Query, the Loki query frontend, its database, and its identity provider.
+- [x] `[chart]` `analytics.reporting_enabled` and `check_for_updates` are off — egress a monitoring stack does not need, and update banners are noise when the version is pinned by the chart.
+- [ ] `[operator]` Alert on Grafana being down. It is not a data-loss incident, but it is the interface every other alert is investigated through.
+
+### See also
+
+- [Grafana Architecture](../../dashboards/grafana/architecture/) — connection modes, namespaces, and the resource map.
+- [State and persistence](../../dashboards/grafana/architecture/#state-and-persistence) — the PostgreSQL wiring in depth.
+- [Grafana configuration reference](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) (official) — every `grafana.ini` key.

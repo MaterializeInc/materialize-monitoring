@@ -309,12 +309,398 @@ Usage:
 {{- end }}
 
 {{- /*
-Validate the Grafana datasource configuration.
+Grafana's own `grafana.ini` config, as a dict.
+
+The key has a dot in it, so it is not reachable with `dig`'s path form.
+
+Usage:
+  {{- $ini := include "mzmon.grafana.ini" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.ini" }}
+  {{- index ( $.Values.grafana | default dict ) "grafana.ini" | default dict | toYaml }}
+{{- end }}
+
+{{- /*
+One section of `grafana.ini`, as a dict, safe when it is absent or explicitly
+null.
+
+`dig`'s multi-key form walks the intermediate levels with a type assertion, so
+`unified_alerting: null` — which is how a values file *removes* a section a
+profile set — errors the render rather than reading as absent. Every section
+lookup goes through here instead.
+
+Usage:
+  {{- $db := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "database" ) | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.iniSection" }}
+  {{- $ini := include "mzmon.grafana.ini" .root | fromYaml }}
+  {{- $section := index $ini .name }}
+  {{- if kindIs "map" $section }}
+    {{- $section | toYaml }}
+  {{- else }}
+    {{- dict | toYaml }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+One sub-map of the `grafana` subchart's values, safe when absent or null.
+
+Same hazard as `mzmon.grafana.iniSection`, one level up.
+
+Usage:
+  {{- $svc := include "mzmon.grafana.section" ( dict "root" $ "name" "service" ) | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.section" }}
+  {{- $values := .root.Values.grafana | default dict }}
+  {{- $section := index $values .name }}
+  {{- if kindIs "map" $section }}
+    {{- $section | toYaml }}
+  {{- else }}
+    {{- dict | toYaml }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Whether Grafana's state lives in a database more than one replica can share.
+
+SQLite — the default, on `emptyDir` or on a PersistentVolume — tolerates exactly
+one writer, so it is what pins the bundled Grafana to a single replica.
+
+Returns a truthy string when the backend is shared, empty when not.
+
+Usage:
+  {{- if ( include "mzmon.grafana.sharedDatabase" $ ) }}
+*/}}
+{{- define "mzmon.grafana.sharedDatabase" }}
+  {{- $db := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "database" ) | fromYaml }}
+  {{- $type := $db.type | default "" }}
+  {{- if has $type ( list "postgres" "mysql" ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+The most Grafana replicas this configuration can run at once.
+
+`replicas` is the floor; an enabled HPA raises the ceiling to its `maxReplicas`.
+Correctness checks have to read the ceiling, not the floor — an HPA that scales
+a SQLite-backed Grafana out is just as wrong as setting `replicas: 3`, and it
+happens later, under load, rather than at install.
+
+Usage:
+  {{- $max := int ( include "mzmon.grafana.maxReplicas" $ ) }}
+*/}}
+{{- define "mzmon.grafana.maxReplicas" }}
+  {{- $replicas := int ( dig "replicas" 1 ( $.Values.grafana | default dict ) ) }}
+  {{- $auto := include "mzmon.grafana.section" ( dict "root" $ "name" "autoscaling" ) | fromYaml }}
+  {{- if $auto.enabled }}
+    {{- $max := int ( $auto.maxReplicas | default 1 ) }}
+    {{- if gt $max $replicas }}
+      {{- $replicas = $max }}
+    {{- end }}
+  {{- end }}
+  {{- $replicas }}
+{{- end }}
+
+{{- /*
+Whether Grafana is reachable from outside the cluster.
+
+An Ingress or any Service type other than `ClusterIP` puts Grafana on a network
+this chart cannot characterize, which is the point at which its state, its TLS
+posture, and its authentication stop being demo concerns.
+
+Returns a truthy string when exposed, empty when not.
+
+Usage:
+  {{- if ( include "mzmon.grafana.exposed" $ ) }}
+*/}}
+{{- define "mzmon.grafana.exposed" }}
+  {{- $service := include "mzmon.grafana.section" ( dict "root" $ "name" "service" ) | fromYaml }}
+  {{- $ingress := include "mzmon.grafana.section" ( dict "root" $ "name" "ingress" ) | fromYaml }}
+  {{- if or $ingress.enabled ( ne ( $service.type | default "ClusterIP" ) "ClusterIP" ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate the Grafana configuration.
 
 Usage:
   {{- $res := include "mzmon.grafana.validate" $ | fromYaml }}
 */}}
 {{- define "mzmon.grafana.validate" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- /*
+  These read the `grafana` subchart's values, so they only mean anything when
+  this release actually deploys it. An `external` or `operator` instance is
+  configured somewhere this chart cannot see.
+  */}}
+  {{- if ( include "mzmon.grafana.enabled" $ ) }}
+    {{- range $name := list "persistence" "exposure" "disruption" "security" }}
+      {{- $res := include ( printf "mzmon.grafana.validate.%s" $name ) $ | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
+  {{- end }}
+
+  {{- $res := include "mzmon.grafana.validate.datasources" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that Grafana's own state survives the pod it runs in.
+
+Grafana keeps users, service accounts and tokens, annotations, dashboard
+versions and permissions, preferences, and alert-rule state in a database of its
+own — separate from the observability data in Thanos and Loki, which is never at
+risk here. The dashboards this chart installs are re-pushed by grafana-operator
+every `resyncPeriod`, so they come back on their own. Everything a human created
+through the UI does not.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.persistence" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.persistence" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.grafana | default dict }}
+  {{- $db := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "database" ) | fromYaml }}
+  {{- $shared := include "mzmon.grafana.sharedDatabase" $ }}
+  {{- $replicas := int ( include "mzmon.grafana.maxReplicas" $ ) }}
+  {{- $persistence := include "mzmon.grafana.section" ( dict "root" $ "name" "persistence" ) | fromYaml }}
+  {{- $modes := $persistence.accessModes | default ( list "ReadWriteOnce" ) }}
+  {{- $rwo := not ( or ( has "ReadWriteMany" $modes ) ( has "ReadWriteOncePod" $modes ) ) }}
+
+  {{- if and ( gt $replicas 1 ) ( not $shared ) }}
+    {{- $errors = append $errors ( printf "Grafana can run up to %d replicas but grafana.ini.database is not set, so each one carries its own SQLite file. Users, service accounts, annotations, and preferences would differ depending on which pod answered the request. Point grafana.ini.database at PostgreSQL (see the grafana-postgres profile), or run a single replica." $replicas ) }}
+  {{- end }}
+
+  {{- if $persistence.enabled }}
+    {{- if and ( gt $replicas 1 ) $rwo }}
+      {{- $errors = append $errors ( printf "grafana.persistence is enabled with %s access but Grafana can run up to %d replicas. Only one pod can attach the volume, so the rest stay Pending. Use ReadWriteMany, or drop the volume and use PostgreSQL." ( join "/" $modes ) $replicas ) }}
+    {{- end }}
+    {{- $strategy := ( include "mzmon.grafana.section" ( dict "root" $ "name" "deploymentStrategy" ) | fromYaml ).type | default "RollingUpdate" }}
+    {{- $sts := or ( dig "useStatefulSet" false $values ) ( has ( $persistence.type | default "pvc" ) ( list "sts" "StatefulSet" "statefulset" ) ) }}
+    {{- if and $rwo ( not $sts ) ( ne $strategy "Recreate" ) }}
+      {{- $errors = append $errors ( printf "grafana.persistence is enabled on a %s volume but grafana.deploymentStrategy.type is %q. A rolling update deadlocks: the replacement pod waits for a volume the outgoing pod has not released, and the outgoing pod is not terminated until the replacement is Ready. Set grafana.deploymentStrategy.type=Recreate, which accepts a short outage on every upgrade in exchange for upgrades that finish." ( join "/" $modes ) $strategy ) }}
+    {{- end }}
+  {{- else if not $shared }}
+    {{- /*
+    Losing UI state every restart is tolerable while Grafana is a bundled extra
+    reached through `port-forward`. It stops being tolerable the moment Grafana
+    is the primary interface to the stack, so warn at exactly that point rather
+    than on every demo install.
+    */}}
+    {{- if ( include "mzmon.grafana.exposed" $ ) }}
+      {{- $warnings = append $warnings "Grafana is reachable from outside the cluster but stores its state in SQLite on an emptyDir, so every user, service-account token, annotation, and preference created through the UI is lost on the next restart, upgrade, or reschedule. Apply the grafana-postgres profile, or grafana-pvc if no database is available." }}
+    {{- end }}
+  {{- end }}
+
+  {{- if $shared }}
+    {{- $host := $db.host | default "" }}
+    {{- if not $host }}
+      {{- $errors = append $errors ( printf "grafana.ini.database.type is %q but no host is set, so Grafana falls back to localhost and crash-loops on connect. Set grafana.ini.database.host, including the port." ( $db.type | default "" ) ) }}
+    {{- else if contains "<" $host }}
+      {{- $errors = append $errors ( printf "grafana.ini.database.host is still the profile placeholder (%s). Set it to the real database host, including the port." $host ) }}
+    {{- else if not ( contains ":" $host ) }}
+      {{- $warnings = append $warnings ( printf "grafana.ini.database.host is %q with no port. Grafana does not default one for a bare host and the connection fails; write it as host:5432." $host ) }}
+    {{- end }}
+    {{- $sslMode := $db.ssl_mode | default "" }}
+    {{- if or ( not $sslMode ) ( eq $sslMode "disable" ) }}
+      {{- $warnings = append $warnings ( printf "grafana.ini.database.ssl_mode is %q, so Grafana's credentials and every row it reads cross the network unencrypted. Prefer verify-full with ca_cert_path; require encrypts but does not authenticate the server." ( $sslMode | default "unset" ) ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate how Grafana is reached.
+
+Follows the load-balancer convention the Terraform modules already enforce:
+internal by default, and public only against an explicit allowlist. Where the
+chart can see the allowlist it requires one; where it cannot — an Ingress, whose
+scope lives in the controller's annotations — it checks the things it can see
+instead: TLS, `root_url`, and whether anything but the admin password stands
+between the internet and the data.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.exposure" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.exposure" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $ini := include "mzmon.grafana.ini" $ | fromYaml }}
+  {{- $ingress := include "mzmon.grafana.section" ( dict "root" $ "name" "ingress" ) | fromYaml }}
+  {{- $service := include "mzmon.grafana.section" ( dict "root" $ "name" "service" ) | fromYaml }}
+  {{- $svcType := $service.type | default "ClusterIP" }}
+  {{- $acked := $.Values.connections.grafana.allowPublicAccess }}
+
+  {{- if $ingress.enabled }}
+    {{- $hosts := $ingress.hosts | default list }}
+    {{- if not $hosts }}
+      {{- $errors = append $errors "grafana.ingress is enabled but grafana.ingress.hosts is empty, so the Ingress carries no rules and routes nothing. Set the hostname Grafana should answer on." }}
+    {{- else if has "chart-example.local" $hosts }}
+      {{- $errors = append $errors "grafana.ingress.hosts still contains the upstream placeholder chart-example.local. Set the hostname Grafana should answer on." }}
+    {{- end }}
+    {{- if not ( $ingress.tls | default list ) }}
+      {{- $warnings = append $warnings "grafana.ingress has no tls block. Grafana authenticates with a session cookie, so without TLS that cookie and the admin password cross the network in the clear. Terminate TLS at the Ingress, or at the load balancer in front of it if the certificate lives there." }}
+    {{- end }}
+  {{- end }}
+
+  {{- if eq $svcType "LoadBalancer" }}
+    {{- if not ( $service.loadBalancerSourceRanges | default list ) }}
+      {{- $msg := "grafana.service.type is LoadBalancer with no grafana.service.loadBalancerSourceRanges, so Grafana answers every address the load balancer accepts. Set the CIDRs allowed to reach it." }}
+      {{- if $acked }}
+        {{- $warnings = append $warnings ( printf "%s connections.grafana.allowPublicAccess is set, so this is permitted — confirm the allowlist really is enforced somewhere the chart cannot see it, such as a security group or an authenticating proxy." $msg ) }}
+      {{- else }}
+        {{- $errors = append $errors ( printf "%s If the allowlist is enforced elsewhere — a security group, an egress firewall, an authenticating proxy — set connections.grafana.allowPublicAccess=true to say so." $msg ) }}
+      {{- end }}
+    {{- end }}
+  {{- else if eq $svcType "NodePort" }}
+    {{- if not $acked }}
+      {{- $errors = append $errors "grafana.service.type is NodePort, which opens a port on every node with no allowlist mechanism of its own — reachable by anything that can route to a node. Prefer an Ingress, or set connections.grafana.allowPublicAccess=true if node access is already restricted." }}
+    {{- end }}
+  {{- end }}
+
+  {{- if ( include "mzmon.grafana.exposed" $ ) }}
+    {{- if not ( ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "server" ) | fromYaml ).root_url | default "" ) }}
+      {{- $warnings = append $warnings "Grafana is exposed but grafana.ini.server.root_url is unset, so it falls back to its own Service address. Share links, alert notification links, and OAuth redirect URIs are all built from that value, and all three break silently when it does not match the URL users actually reach." }}
+    {{- end }}
+
+    {{- /*
+    Every `auth.*` section Grafana understands names a provider; `auth` itself
+    holds cross-provider settings, and `auth.anonymous` grants access rather
+    than establishing identity.
+    */}}
+    {{- $providers := list }}
+    {{- range $section, $config := $ini }}
+      {{- if and ( hasPrefix "auth." $section ) ( ne $section "auth.anonymous" ) ( kindIs "map" $config ) }}
+        {{- if ( dig "enabled" true $config ) }}
+          {{- $providers = append $providers $section }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if not $providers }}
+      {{- $warnings = append $warnings "Grafana is exposed with no identity provider configured, so the only account is the generated admin and the only credential is its password. Configure one under grafana.ini — any auth.* section Grafana supports — and map an IdP group claim onto Grafana roles with role_attribute_path so membership does the provisioning." }}
+    {{- end }}
+
+    {{- if ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "auth.anonymous" ) | fromYaml ).enabled }}
+      {{- $msg := "grafana.ini has auth.anonymous enabled while Grafana is reachable from outside the cluster, so anyone who can reach it reads every dashboard and every datasource behind it without signing in." }}
+      {{- if $acked }}
+        {{- $warnings = append $warnings ( printf "%s connections.grafana.allowPublicAccess is set, so this is permitted." $msg ) }}
+      {{- else }}
+        {{- $errors = append $errors ( printf "%s Disable it, or set connections.grafana.allowPublicAccess=true if the exposure is deliberate and gated elsewhere." $msg ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate scheduling, disruption, and autoscaling for the bundled Grafana.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.disruption" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.disruption" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.grafana | default dict }}
+  {{- $maxReplicas := int ( include "mzmon.grafana.maxReplicas" $ ) }}
+  {{- $pdb := include "mzmon.grafana.section" ( dict "root" $ "name" "podDisruptionBudget" ) | fromYaml }}
+  {{- $auto := include "mzmon.grafana.section" ( dict "root" $ "name" "autoscaling" ) | fromYaml }}
+  {{- $requests := ( include "mzmon.grafana.section" ( dict "root" $ "name" "resources" ) | fromYaml ).requests | default dict }}
+
+  {{- if and ( gt $maxReplicas 1 ) ( not $pdb ) }}
+    {{- $warnings = append $warnings ( printf "Grafana can run up to %d replicas with no PodDisruptionBudget, so a node drain can evict all of them at once. Set grafana.podDisruptionBudget.maxUnavailable=1." $maxReplicas ) }}
+  {{- end }}
+  {{- if and $pdb.minAvailable ( le $maxReplicas 1 ) }}
+    {{- $warnings = append $warnings "grafana.podDisruptionBudget sets minAvailable on a single replica, which permits no voluntary eviction at all, so node drains hang indefinitely. Use maxUnavailable: 1 instead; on a singleton it is a harmless no-op." }}
+  {{- end }}
+
+  {{- if $auto.enabled }}
+    {{- if and $auto.targetCPU ( not $requests.cpu ) }}
+      {{- $warnings = append $warnings "grafana.autoscaling.targetCPU is set but grafana.resources.requests.cpu is not. An HPA measures utilization against the request, so with no request there is no denominator and it never scales." }}
+    {{- end }}
+    {{- if and $auto.targetMemory ( not $requests.memory ) }}
+      {{- $warnings = append $warnings "grafana.autoscaling.targetMemory is set but grafana.resources.requests.memory is not, so the HPA has nothing to measure utilization against." }}
+    {{- end }}
+  {{- end }}
+
+  {{- if not $requests }}
+    {{- $warnings = append $warnings "grafana.resources.requests is empty, so Grafana is BestEffort — first to be evicted under node pressure, and invisible to the scheduler when it packs the node. Set at least a CPU and memory request." }}
+  {{- end }}
+
+  {{- /*
+  Grafana's unified alerting is not HA on its own: without gossip every replica
+  evaluates every rule and notifies independently. This only affects rules
+  created *in* Grafana — the Prometheus rules this chart ships are evaluated
+  elsewhere and routed by Alertmanager — but unified alerting is on by default,
+  so the trap is latent from the first rule someone writes.
+  */}}
+  {{- $haPeers := ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "unified_alerting" ) | fromYaml ).ha_peers | default "" }}
+  {{- if and ( gt $maxReplicas 1 ) ( not $haPeers ) }}
+    {{- $warnings = append $warnings ( printf "Grafana can run up to %d replicas with no gossip between them, so any Grafana-managed alert rule is evaluated by each replica and notifies %d times. Set grafana.headlessService=true and grafana.ini.unified_alerting.ha_peers, as the grafana-postgres profile does. Rules this chart ships are Prometheus rules and are unaffected." $maxReplicas $maxReplicas ) }}
+  {{- end }}
+  {{- /*
+  `ha_peers` names the headless Service by DNS. Without it the name does not
+  resolve, and a failed join is not a failed start — the replicas come up
+  healthy and quietly duplicate every notification.
+  */}}
+  {{- if and $haPeers ( not ( dig "headlessService" false $values ) ) }}
+    {{- $warnings = append $warnings "grafana.ini.unified_alerting.ha_peers is set but grafana.headlessService is false, so there is no headless Service for that name to resolve to. The replicas start healthy, never find each other, and each notifies separately. Set grafana.headlessService=true." }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate the bundled Grafana's security-relevant surface.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.security" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.security" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.grafana | default dict }}
+
+  {{- if ( include "mzmon.grafana.section" ( dict "root" $ "name" "imageRenderer" ) | fromYaml ).enabled }}
+    {{- $warnings = append $warnings "grafana.imageRenderer is enabled. The renderer is a headless Chromium that fetches URLs on Grafana's behalf, which makes it both a large attack surface and a server-side request forgery pivot into the cluster network. Leave it off in production and export panels client-side." }}
+  {{- end }}
+
+  {{- if not ( dig "assertNoLeakedSecrets" true $values ) }}
+    {{- $warnings = append $warnings "grafana.assertNoLeakedSecrets is disabled, so nothing stops a database or OAuth secret being inlined into grafana.ini — which renders into a ConfigMap, visible in the release manifest and in helm get values. Re-enable it and use $__file{} or $__env{} expansion instead." }}
+  {{- end }}
+
+  {{- range $plugin := ( $values.plugins | default list ) }}
+    {{- if not ( contains "@" $plugin ) }}
+      {{- $warnings = append $warnings ( printf "grafana.plugins entry %q pins no version, so it is re-resolved from grafana.com on every pod start and can change underneath a pinned Grafana. Pin it as name@version, or bake the plugin into the image — which is also the only option on a hardened base image, since installing at start needs a shell." $plugin ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate the Grafana datasource configuration.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.datasources" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.datasources" }}
   {{- $errors := list }}
   {{- $warnings := list }}
   {{- $ds := $.Values.connections.datasources }}

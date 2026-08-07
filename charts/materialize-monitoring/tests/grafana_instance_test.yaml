@@ -246,6 +246,12 @@ tests:
   - it: should keep the database password out of the config ConfigMap
     values:
       - ../profiles/grafana-postgres.values.yaml
+    set:
+      # The profile ships a placeholder host, which the chart refuses to render.
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
     template: ../charts/grafana/templates/configmap.yaml
     asserts:
       - matchRegex:
@@ -261,11 +267,18 @@ tests:
   - it: should mount the database Secret the profile reads from
     values:
       - ../profiles/grafana-postgres.values.yaml
+    set:
+      # The profile ships a placeholder host, which the chart refuses to render.
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
     template: ../charts/grafana/templates/deployment.yaml
     asserts:
-      - equal:
+      # No static `replicas`: the profile enables an HPA, and the subchart stops
+      # rendering one once it does. See grafana_production_test.yaml.
+      - notExists:
           path: spec.replicas
-          value: 2
       - contains:
           path: spec.template.spec.volumes
           content:
@@ -286,6 +299,12 @@ tests:
   - it: should not provision a PersistentVolume alongside the database
     values:
       - ../profiles/grafana-postgres.values.yaml
+    set:
+      # The profile ships a placeholder host, which the chart refuses to render.
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
     template: ../charts/grafana/templates/pvc.yaml
     asserts:
       - hasDocuments:
@@ -312,6 +331,12 @@ tests:
   - it: should report an external database instead of the emptyDir warning
     values:
       - ../profiles/grafana-postgres.values.yaml
+    set:
+      # The profile ships a placeholder host, which the chart refuses to render.
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
     template: templates/NOTES.txt
     asserts:
       - matchRegexRaw:

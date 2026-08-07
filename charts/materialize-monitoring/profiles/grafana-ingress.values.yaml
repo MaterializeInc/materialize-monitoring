@@ -1,0 +1,125 @@
+# Profile: make the bundled Grafana reachable over an Ingress.
+#
+# The chart default is a `ClusterIP` Service, so the only access path is
+# `kubectl port-forward`. This is the shape that replaces it.
+#
+# Ingress rather than a `LoadBalancer` Service, deliberately: Grafana is
+# ordinary HTTP that wants host-based routing and a certificate, which is what
+# Ingress is for, and it keeps the cloud-specific parts in annotations rather
+# than in the Service type. On AWS that means the load-balancer controller; on
+# GKE and AKS the platform ingress controller does the same job.
+#
+# Layer it over your platform profile and replace every `example.com`:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/grafana-ingress.values.yaml
+#
+# Exposing Grafana changes what its state is worth. Pair this with
+# `grafana-postgres` (or `grafana-pvc`): an exposed Grafana that discards every
+# dashboard, annotation, and API token its users create on the next restart is
+# worse than an unreachable one, and the chart warns about exactly that.
+#
+# ## Internal by default
+#
+# The annotations below put the load balancer on the private network. That is
+# the posture the Terraform modules already enforce, and the one to keep: a
+# public Grafana is protected by nothing but its admin password until an
+# identity provider is configured, and the datasources behind it read every
+# metric and log in the stack.
+#
+# To go public, do all three:
+#
+#   1. Flip the scheme annotation to `internet-facing`.
+#   2. Scope it with an allowlist the controller enforces — on AWS that is
+#      `alb.ingress.kubernetes.io/inbound-cidrs`, on GKE a Cloud Armor policy.
+#   3. Configure an identity provider under `grafana.ini` (see the commented
+#      block at the bottom) and set `connections.grafana.allowPublicAccess: true`
+#      to record that the exposure is deliberate.
+
+grafana:
+  ingress:
+    enabled: true
+    # The controller that should claim this Ingress. Names vary by platform:
+    # `alb` (AWS Load Balancer Controller), `gce` / `gce-internal` (GKE),
+    # `webapprouting.kubernetes.azure.com` (AKS), `nginx`.
+    ingressClassName: alb
+
+    hosts:
+      - grafana.example.com
+
+    # TLS terminates here. Grafana authenticates with a session cookie, so
+    # without it that cookie and the admin password cross the network in the
+    # clear. Two shapes, pick one:
+    #
+    #   * cert-manager or an equivalent issues a Secret into this namespace,
+    #     which is the `tls` block below.
+    #   * The cloud terminates TLS at the load balancer against a certificate it
+    #     already holds, which is an annotation instead (ACM on AWS). Leave the
+    #     `tls` block empty in that case; the chart's TLS warning is telling you
+    #     to confirm that, not to add a Secret you do not have.
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.example.com
+
+    annotations:
+      # --- AWS Load Balancer Controller ---
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/healthcheck-path: /api/health
+      # Terminate at the ALB against an ACM certificate instead of the `tls`
+      # block above:
+      # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+      # Required before flipping `scheme` to `internet-facing`:
+      # alb.ingress.kubernetes.io/inbound-cidrs: 203.0.113.0/24
+      #
+      # --- GKE ---
+      # kubernetes.io/ingress.class: gce-internal
+      # networking.gke.io/managed-certificates: grafana-cert
+      #
+      # --- cert-manager, on any platform ---
+      # cert-manager.io/cluster-issuer: letsencrypt-prod
+
+  grafana.ini:
+    server:
+      # Must match the URL users actually reach. Grafana builds share links,
+      # alert notification links, and OAuth redirect URIs from this value, and
+      # all three break silently when it disagrees with the Ingress host.
+      root_url: https://grafana.example.com
+    security:
+      # Both require TLS end to end — set them once the certificate is in place,
+      # not before, or the session cookie is never sent and nobody can log in.
+      cookie_secure: true
+      cookie_samesite: lax
+      # Grafana is a dashboard, not a frame. Leave embedding off unless
+      # something specific needs it.
+      allow_embedding: false
+
+    # An identity provider goes here. Until one exists the only account is the
+    # generated admin, which is why the chart warns on an exposed Grafana with
+    # no `auth.*` section. The shape, with the secret kept out of the ConfigMap:
+    #
+    # auth:
+    #   oauth_auto_login: true
+    # auth.generic_oauth:
+    #   enabled: true
+    #   name: SSO
+    #   allow_sign_up: true
+    #   client_id: <client-id>
+    #   client_secret: $__file{/etc/secrets/grafana-oidc/client-secret}
+    #   scopes: openid profile email groups
+    #   auth_url: https://idp.example.com/oauth2/v1/authorize
+    #   token_url: https://idp.example.com/oauth2/v1/token
+    #   api_url: https://idp.example.com/oauth2/v1/userinfo
+    #   allowed_domains: example.com
+    #   role_attribute_path: contains(groups[*], 'sre') && 'Admin' || 'Viewer'
+    #
+    # with the matching mount:
+    #
+    # extraSecretMounts:
+    #   - name: grafana-oidc
+    #     secretName: grafana-oidc
+    #     mountPath: /etc/secrets/grafana-oidc
+    #     readOnly: true

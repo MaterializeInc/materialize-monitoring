@@ -250,6 +250,83 @@ variable "grafana_admin_user" {
   nullable    = false
 }
 
+# Grafana keeps its own state — users, service accounts and tokens, annotations,
+# dashboard versions and permissions, preferences, and alert-rule state — in a
+# database separate from the observability data in Thanos and Loki. The chart
+# default is SQLite on an `emptyDir`, which loses all of it on every restart.
+#
+# These variables point it at PostgreSQL instead. They are the Terraform
+# equivalent of the chart's `grafana-postgres` profile, minus the replica count:
+# raising `grafana.replicas` is a cost decision, so it stays with the caller
+# through `additional_values`. Durability across restarts does not need it.
+#
+# The database and an owning user are the caller's to provision. Grafana runs
+# its own schema migrations at startup, so a read/write-only grant fails the
+# migration.
+
+variable "grafana_database_host" {
+  description = "Hostname of the PostgreSQL database backing Grafana's own state. Null (the default) leaves Grafana on SQLite, where everything created through the UI is lost on every restart. Host only — the port is `grafana_database_port`."
+  type        = string
+  default     = null
+}
+
+variable "grafana_database_port" {
+  description = "Port for `grafana_database_host`."
+  type        = number
+  default     = 5432
+  nullable    = false
+}
+
+variable "grafana_database_name" {
+  description = "Name of the database Grafana owns."
+  type        = string
+  default     = "grafana"
+  nullable    = false
+}
+
+variable "grafana_database_user" {
+  description = "Database user Grafana connects as. Must own `grafana_database_name`, because Grafana runs schema migrations at startup."
+  type        = string
+  default     = "grafana"
+  nullable    = false
+}
+
+variable "grafana_database_ssl_mode" {
+  description = <<-EOT
+    libpq SSL mode for the Grafana database connection.
+
+    `require` encrypts but does not authenticate the server. `verify-full` also authenticates it
+    and is the better choice — but it needs a CA bundle on disk, which this module does not mount:
+    supply `grafana.ini.database.ca_cert_path` and the matching `grafana.extraSecretMounts` through
+    `additional_values` when you use it.
+  EOT
+  type        = string
+  default     = "require"
+  nullable    = false
+
+  validation {
+    condition     = contains(["disable", "require", "verify-ca", "verify-full"], var.grafana_database_ssl_mode)
+    error_message = "grafana_database_ssl_mode must be one of: disable, require, verify-ca, verify-full."
+  }
+}
+
+variable "grafana_database_password" {
+  description = <<-EOT
+    Password for `grafana_database_user`, supplied to Grafana as a Secret this module owns and read
+    from a mounted file rather than the environment.
+
+    Never inlined into `grafana.ini`, which renders into a ConfigMap.
+
+    Null when the connection needs no password — a Cloud SQL Auth Proxy sidecar with
+    `--auto-iam-authn`, or a `trust`/peer-authenticated database. Note that IAM database
+    authentication *without* a proxy does not work: Grafana reads its password once at startup and
+    has no refresh hook, so the first reconnect after the token expires fails.
+  EOT
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 # ==============================================================================
 # Escape hatch
 # ==============================================================================
