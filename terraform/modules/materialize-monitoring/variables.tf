@@ -327,6 +327,45 @@ variable "grafana_database_password" {
   sensitive   = true
 }
 
+# The two below exist because Terraform decides how many of a resource to create
+# *before* it knows any value that resource's creation depends on. A wrapper
+# module that provisions the database in the same apply hands `..._host` an RDS
+# endpoint and `..._password` a generated secret, and neither is knowable at plan
+# time — so inferring "is there a database" from them fails the plan outright
+# with "Invalid count argument", rather than degrading.
+#
+# Leave both null when the values are literals; the inference is correct there and
+# a direct caller never has to think about it. A wrapper sets them explicitly from
+# its own plan-time-known intent.
+
+variable "grafana_database_enabled" {
+  description = <<-EOT
+    Whether to point Grafana at PostgreSQL at all.
+
+    Null infers it from `grafana_database_host`, which is right whenever that host is a literal. Set
+    it explicitly when the host is computed from a resource created in the same apply.
+  EOT
+  type        = bool
+  default     = null
+}
+
+variable "grafana_database_manage_password_secret" {
+  description = <<-EOT
+    Whether this module creates the Secret holding the database password, and references it from
+    `grafana.ini` with `$__file{}`.
+
+    Null infers it from `grafana_database_password`. Set it explicitly when that password is
+    generated in the same apply.
+
+    False is not a way to supply the password by another route: it means no Secret and no
+    `$__file{}` reference at all, so a connection that needs one has to get both from
+    `additional_values`. That is also the shape for a genuinely passwordless connection — a Cloud
+    SQL Auth Proxy sidecar, or peer authentication.
+  EOT
+  type        = bool
+  default     = null
+}
+
 # ==============================================================================
 # Escape hatch
 # ==============================================================================

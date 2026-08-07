@@ -51,12 +51,30 @@ locals {
   )
 }
 
+locals {
+  # Resolved once here rather than at each use, because `count` and the values
+  # block have to agree: a Secret that exists with no mount referencing it is as
+  # broken as a mount referencing a Secret that was never created.
+  #
+  # Both fall back to inferring from the value itself, which is correct for a
+  # literal and fails the plan for a computed one — see the variables.
+  grafana_database_enabled = coalesce(
+    var.grafana_database_enabled,
+    var.grafana_database_host != null,
+  )
+
+  grafana_database_password_secret = local.grafana_database_enabled && coalesce(
+    var.grafana_database_manage_password_secret,
+    var.grafana_database_password != null,
+  )
+}
+
 # Grafana's database password, mounted as a file rather than passed through the
 # environment or inlined into `grafana.ini` — that block renders into a
 # ConfigMap, so a password there would be plaintext in the release manifest and
 # in `helm get values`.
 resource "kubernetes_secret" "grafana_database" {
-  count = var.grafana_database_host != null && var.grafana_database_password != null ? 1 : 0
+  count = local.grafana_database_password_secret ? 1 : 0
 
   metadata {
     name      = "mzmon-grafana-db"

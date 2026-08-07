@@ -144,9 +144,35 @@ the role.
         <td class="tf-var-default"><code>admin</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="grafana_database_enabled" href="#grafana_database_enabled">grafana_<wbr>database_<wbr>enabled</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Whether to point Grafana at PostgreSQL at all.
+
+Null infers it from `grafana_database_host`, which is right whenever that host is a literal. Set
+it explicitly when the host is computed from a resource created in the same apply.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="grafana_database_host" href="#grafana_database_host">grafana_<wbr>database_<wbr>host</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Hostname of the PostgreSQL database backing Grafana's own state. Null (the default) leaves Grafana on SQLite, where everything created through the UI is lost on every restart. Host only — the port is `grafana_database_port`.</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="grafana_database_manage_password_secret" href="#grafana_database_manage_password_secret">grafana_<wbr>database_<wbr>manage_<wbr>password_<wbr>secret</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Whether this module creates the Secret holding the database password, and references it from
+`grafana.ini` with `$__file{}`.
+
+Null infers it from `grafana_database_password`. Set it explicitly when that password is
+generated in the same apply.
+
+False is not a way to supply the password by another route: it means no Secret and no
+`$__file{}` reference at all, so a connection that needs one has to get both from
+`additional_values`. That is also the shape for a genuinely passwordless connection — a Cloud
+SQL Auth Proxy sidecar, or peer authentication.
+</td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
