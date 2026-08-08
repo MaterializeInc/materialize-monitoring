@@ -39,7 +39,7 @@ annotations:
 # `make grafana-operator-crds` after bumping the vendored operator.
 dependencies:
   - name: prometheus-operator-crds
-    version: "^29.0.0"
+    version: "^31.0.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: prometheus-operator-crds.enabled
     tags:

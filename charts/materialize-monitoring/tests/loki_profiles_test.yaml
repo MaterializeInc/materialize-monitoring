@@ -14,7 +14,7 @@ set:
   loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
 tests:
   - it: medium (base defaults) runs 3 ephemeral ingesters spread hard across zones
-    template: ../charts/loki/templates/ingester/statefulset.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
     asserts:
       - equal:
           path: spec.replicas
@@ -40,7 +40,7 @@ tests:
   - it: small profile keeps ingesters ephemeral
     values:
       - ../profiles/loki-small.values.yaml
-    template: ../charts/loki/templates/ingester/statefulset.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
     asserts:
       - notExists:
           path: spec.volumeClaimTemplates
@@ -48,7 +48,7 @@ tests:
   - it: large profile scales ingesters past replication_factor (6), still ephemeral
     values:
       - ../profiles/loki-large.values.yaml
-    template: ../charts/loki/templates/ingester/statefulset.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
     asserts:
       - equal:
           path: spec.replicas
@@ -59,7 +59,7 @@ tests:
   - it: test profile runs single-binary, so no distributed ingester is rendered
     values:
       - ../profiles/loki-test.values.yaml
-    template: ../charts/loki/templates/ingester/statefulset.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
     asserts:
       - hasDocuments:
           count: 0

@@ -295,6 +295,31 @@ charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts
 materialize-monitoring-chart: charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz
 .PHONY: materialize-monitoring-chart
 
+# Charts whose charts/ directory holds committed subchart archives.
+HELM_DEP_CHARTS = \
+	charts/materialize-monitoring \
+	charts/materialize-monitoring-crds
+
+# Populate charts/*/charts/ from Chart.lock and drop archives that no longer
+# match. The .tgz files are committed (through LFS, see .gitattributes), so this
+# has to run whenever Chart.yaml or Chart.lock moves or the checked-in archives
+# go stale against the lock.
+#
+# `build` is preferred: it installs exactly the locked versions, so a bump PR
+# gets the version its lock names rather than whatever is newest in the range
+# at CI time. It refuses to run when Chart.lock has drifted from Chart.yaml,
+# which is what a PR that edits only the version range looks like — fall back to
+# `update` there, which re-resolves the range and rewrites the lock.
+helm-deps:
+	@for c in $(HELM_DEP_CHARTS); do \
+		echo "==> helm dependency build $$c"; \
+		helm dependency build "$$c" || { \
+			echo "==> Chart.lock out of sync with Chart.yaml; falling back to update"; \
+			helm dependency update "$$c"; \
+		}; \
+	done
+.PHONY: helm-deps
+
 HELM_UNITTEST_ARGS ?=
 
 helm-tests:

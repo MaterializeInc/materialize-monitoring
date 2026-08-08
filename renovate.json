@@ -40,6 +40,18 @@
       "pinDigests": false
     },
     {
+      "description": "Make `oci://` subcharts visible to Renovate. helmv3 extracts them with the `docker` datasource, and docker versioning cannot parse a semver range, so every OCI dependency was silently dropped as `unsupported/unversioned value ^x.y.z (versioning=docker)` while the https:// charts (helm datasource) updated normally. `helm` versioning understands the ranges. Charts sourced over https:// are unaffected — this rule only matches the docker datasource.",
+      "matchManagers": ["helmv3"],
+      "matchDatasources": ["docker"],
+      "versioning": "helm"
+    },
+    {
+      "description": "A Chart.yaml `version:` must stay a semver range, but the `docker:pinDigests` preset matches on datasource alone and would try to pin a digest onto the OCI subchart entries now that they resolve. The existing helm-values rule above does not cover them (different manager).",
+      "matchManagers": ["helmv3"],
+      "matchDatasources": ["docker"],
+      "pinDigests": false
+    },
+    {
       "description": "Bump Chart.yaml subchart ranges (e.g. ^1.8.0 -> ^1.11.0) so in-range releases still open PRs; helmUpdateSubChartArchives then refreshes Chart.lock",
       "matchManagers": ["helmv3"],
       "rangeStrategy": "bump"
