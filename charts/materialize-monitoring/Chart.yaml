@@ -39,13 +39,20 @@ annotations:
 # Registries currently in use:
 #   oci://ghcr.io/grafana/helm-charts          → alloy, loki, grafana
 #   oci://ghcr.io/thanos-community/helm-charts → thanos
-#   oci://ghcr.io/prometheus-community/charts  → alertmanager, kube-state-metrics, prometheus-operator-crds
+#   oci://ghcr.io/prometheus-community/charts  → alertmanager, kube-state-metrics,
+#                                                prometheus-node-exporter, prometheus-operator-crds
 #   https://kubernetes-sigs.github.io/metrics-server → metrics-server (TODO: switch to OCI when upstream publishes one)
 #
 # Alloy is declared twice via `alias` so the same upstream chart powers
 # both the agent (scrape / collection / pre-egress shaping) and the
 # gateway (cardinality reduction / egress to backends). `helm dep update`
 # resolves both aliases from a single tarball.
+#
+# `prometheus-node-exporter` is aliased to `node-exporter`. An alias rewrites
+# the subchart's `.Chart.Name`, which is what its own helpers build
+# `app.kubernetes.io/name` from — so the alias is what makes the pods carry
+# `app.kubernetes.io/name: node-exporter`, matching the label the gateway
+# pipeline and the dashboards already expect.
 #
 # Enablement is driven primarily by Helm tags: each dependency carries a
 # group tag and a per-chart tag, and customers flip entries under `tags:`
@@ -126,6 +133,15 @@ dependencies:
       - default
       - cluster-metrics
       - kube-state-metrics
+  - name: prometheus-node-exporter
+    alias: node-exporter
+    version: "^4.56.0"
+    repository: oci://ghcr.io/prometheus-community/charts
+    condition: node-exporter.enabled
+    tags:
+      - default
+      - cluster-metrics
+      - node-exporter
   - name: metrics-server
     version: "^3.13.0"
     repository: https://kubernetes-sigs.github.io/metrics-server

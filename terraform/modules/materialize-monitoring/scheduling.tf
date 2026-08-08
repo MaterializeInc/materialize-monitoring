@@ -15,6 +15,15 @@
 #   * `tolerations` ARE applied to it. Tolerations widen where a pod may run, so
 #     a DaemonSet wants them in order to reach tainted nodes.
 #
+# `node-exporter` is deliberately absent from all three maps, which is the same
+# reasoning taken one step further. Its chart default already tolerates every
+# NoSchedule taint (`{effect: NoSchedule, operator: Exists}`), so it reaches
+# everywhere a node-metrics DaemonSet should. Writing `var.tolerations` into it
+# would *replace* that list rather than extend it — Helm merges maps but
+# overwrites lists — silently narrowing collection to the tainted nodes the
+# caller happened to name. A caller who genuinely needs to change it can reach
+# `node-exporter.tolerations` through `additional_values`.
+#
 # This map is coupled to the pinned chart version. `make terraform-check`
 # re-derives it from the vendored subcharts and fails on drift.
 

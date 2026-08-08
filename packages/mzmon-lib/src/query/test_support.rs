@@ -18,10 +18,29 @@
 //! (Extraction — names, labels, usage — still matches Python; that parity is
 //! checked out-of-band, not committed, since the Python tool is being retired.)
 //!
-//! Keep the snapshot in sync with `packages/queries/`: when a query file changes,
-//! regenerate it with
-//! `mz-monitoring-build extract-metrics --source-dir packages/queries --out-dir packages/mzmon-lib/src/query/testdata`
-//! then rename `metrics.yaml` to `metrics.yaml.snap`.
+//! Keep the snapshot in sync with [`FIXTURES`]: when a registry file changes,
+//! regenerate it. Two details the obvious command gets wrong, both of which
+//! produce a snapshot the test then rejects:
+//!
+//! * **Source the fixtures, not `packages/queries/`.** That directory also holds
+//!   `infra-alerts.yaml` and `materialize-alerts.yaml`, whose queries are not in
+//!   [`FIXTURES`] — pointing at it yields a superset (cilium, cert-manager, …)
+//!   that `corpus_registry()` never builds.
+//! * **Pass `--sql-metric-prefix v2_mz_`.** The CLI defaults to `mz_`, while the
+//!   snapshot test renders under `doc_context(.., "v2_mz_")`.
+//!
+//! ```sh
+//! mkdir -p /tmp/qfix
+//! cp packages/queries/{materialize-clusters,materialize-compute,\
+//! materialize-connections,materialize-health,materialize-kubernetes,\
+//! materialize-storage,node-debug,node-health}.yaml /tmp/qfix/
+//! mz-monitoring-build extract-metrics \
+//!     --source-dir /tmp/qfix \
+//!     --out-dir packages/mzmon-lib/src/query/testdata \
+//!     --sql-metric-prefix v2_mz_
+//! mv packages/mzmon-lib/src/query/testdata/metrics.yaml \
+//!    packages/mzmon-lib/src/query/testdata/metrics.yaml.snap
+//! ```
 
 use serde_json::Value;
 
@@ -30,6 +49,14 @@ use crate::query::registry::QueryRegistry;
 
 /// The real registry files under `packages/queries/`, embedded. Keep in sync
 /// with that directory.
+///
+/// The node-exporter registries are the corpus's only `canonical` queries —
+/// their definitions come from the upstream Node Exporter Full dashboard rather
+/// than being invented here, so the metric selection and arithmetic are already
+/// settled. The schema's "canonical requires test coverage" clause is
+/// aspirational for now; real query-level assertions land with the E2E suite
+/// (DEP-185). Registering them here gets them schema validation, registry
+/// loading, and doc-context rendering in the meantime.
 pub(crate) const FIXTURES: &[(&str, &str)] = &[
     (
         "materialize-clusters",
@@ -54,6 +81,14 @@ pub(crate) const FIXTURES: &[(&str, &str)] = &[
     (
         "materialize-storage",
         include_str!("../../../queries/materialize-storage.yaml"),
+    ),
+    (
+        "node-debug",
+        include_str!("../../../queries/node-debug.yaml"),
+    ),
+    (
+        "node-health",
+        include_str!("../../../queries/node-health.yaml"),
     ),
 ];
 
@@ -86,19 +121,21 @@ mod tests {
     #[test]
     fn corpus_loads_all_queries() {
         let registry = corpus_registry();
-        // 71 queries across the six files, matching the Python loader.
-        assert_eq!(registry.len(), 71);
+        // 118 queries across the eight files: 71 Materialize (matching the
+        // Python loader) plus 47 node-exporter.
+        assert_eq!(registry.len(), 118);
         // A representative spread of engines / shapes is present.
         assert!(registry.get("materialize.clusters.count").is_some());
-        assert_eq!(registry.iter_metric_queries().count(), 71);
+        assert!(registry.get("node.cpu.utilization").is_some());
+        assert_eq!(registry.iter_metric_queries().count(), 118);
         assert_eq!(registry.iter_log_queries(false).count(), 0);
     }
 
     #[test]
     fn importance_is_stamped_from_the_file_hint() {
         let registry = corpus_registry();
-        // materialize-kubernetes.yaml is hinted `essential`; the others
-        // `recommended`. Spot-check one query from each.
+        // materialize-kubernetes.yaml and node-health.yaml are hinted
+        // `essential`; the others `recommended`. Spot-check one from each hint.
         assert_eq!(
             registry
                 .get("materialize.kubernetes.pods.readiness")
@@ -107,10 +144,18 @@ mod tests {
             crate::query::importance::Importance::Essential
         );
         assert_eq!(
+            registry.get("node.cpu.utilization").unwrap().importance,
+            crate::query::importance::Importance::Essential
+        );
+        assert_eq!(
             registry
                 .get("materialize.clusters.count")
                 .unwrap()
                 .importance,
+            crate::query::importance::Importance::Recommended
+        );
+        assert_eq!(
+            registry.get("node.debug.cpu.by_mode").unwrap().importance,
             crate::query::importance::Importance::Recommended
         );
     }

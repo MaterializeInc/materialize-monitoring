@@ -69,6 +69,17 @@ containers.
 ## `node-exporter`: Node Metrics
 
 [`node-exporter`](https://github.com/prometheus/node_exporter) is a Prometheus exporter that collects hardware and OS metrics from the nodes in the cluster.
+It runs as a DaemonSet, is scraped by [`alloy-gateway`](#alloy-gateway-grafana-alloy-gateway-deployment) through a ServiceMonitor, and covers the layer nothing else in the stack sees: swap, memory pressure, node-level network counters, disk I/O, and conntrack.
+
+Two things about it are worth knowing before you change anything:
+
+- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/internal/design-docs/20260803-terraform-modules/) for the full argument.
+- **Collectors are an allowlist, not the upstream defaults.** The chart passes `--collector.disable-defaults` and names each collector it wants, so a new default-on collector in a future node_exporter release cannot silently join the cardinality budget. The list, and the reasoning behind every inclusion and exclusion, is in the [values reference](../reference/helm/materialize-monitoring-values/) under Node Exporter.
+
+The pods run with `hostNetwork: true`, which the network collectors require — `netdev`, `netclass`, `netstat`, `sockstat` and `conntrack` all read namespaced files under `/proc/net`, and in a pod network namespace they would report the pod's traffic rather than the node's.
+A consequence worth stating plainly: the exporter listens on the node's own interfaces, so a NetworkPolicy is not what keeps port 9100 private.
+Most CNIs, Cilium and Calico among them, do not apply pod NetworkPolicy to host-networked pods.
+The chart ships one anyway — it is enforced where the CNI supports it, and it documents intent everywhere else — but the node firewall or security group is the real control.
 
 ## `loki`: Grafana Loki
 

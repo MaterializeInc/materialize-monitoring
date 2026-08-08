@@ -124,6 +124,176 @@
   name: kube_statefulset_status_replicas_ready
   usage:
   - materialize.kubernetes.statefulsets.ready
+- importance: essential
+  labels:
+  - instance
+  name: node_boot_time_seconds
+  usage:
+  - node.uptime
+- importance: essential
+  labels:
+  - instance
+  - mode
+  name: node_cpu_seconds_total
+  usage:
+  - node.cpu.utilization
+  - node.debug.cpu.by_mode
+  - node.debug.cpu.per_core
+  - node.load.normalized
+- importance: essential
+  labels:
+  - instance
+  name: node_disk_io_time_seconds_total
+  usage:
+  - node.disk.io_utilization
+- importance: essential
+  labels:
+  - instance
+  name: node_filefd_allocated
+  usage:
+  - node.filefd.utilization
+- importance: essential
+  labels:
+  - instance
+  name: node_filefd_maximum
+  usage:
+  - node.filefd.utilization
+- importance: essential
+  labels:
+  - fstype
+  - instance
+  name: node_filesystem_avail_bytes
+  usage:
+  - node.filesystem.available.ratio
+- importance: essential
+  labels:
+  - fstype
+  - instance
+  name: node_filesystem_readonly
+  usage:
+  - node.filesystem.readonly
+- importance: essential
+  labels:
+  - fstype
+  - instance
+  name: node_filesystem_size_bytes
+  usage:
+  - node.filesystem.available.ratio
+- importance: essential
+  labels:
+  - instance
+  name: node_load1
+  usage:
+  - node.load.normalized
+- importance: essential
+  labels:
+  - instance
+  name: node_memory_MemAvailable_bytes
+  usage:
+  - node.memory.available.ratio
+- importance: essential
+  labels:
+  - instance
+  name: node_memory_MemTotal_bytes
+  usage:
+  - node.debug.memory.breakdown
+  - node.memory.available.ratio
+- importance: essential
+  labels:
+  - instance
+  name: node_memory_SwapFree_bytes
+  usage:
+  - node.swap.used.ratio
+- importance: essential
+  labels:
+  - instance
+  name: node_memory_SwapTotal_bytes
+  usage:
+  - node.swap.used.ratio
+- importance: essential
+  labels:
+  - instance
+  name: node_network_receive_drop_total
+  usage:
+  - node.network.drops
+- importance: essential
+  labels:
+  - instance
+  name: node_network_receive_errs_total
+  usage:
+  - node.network.errors
+- importance: essential
+  labels:
+  - instance
+  name: node_network_transmit_drop_total
+  usage:
+  - node.network.drops
+- importance: essential
+  labels:
+  - instance
+  name: node_network_transmit_errs_total
+  usage:
+  - node.network.errors
+- importance: essential
+  labels:
+  - instance
+  name: node_nf_conntrack_entries
+  usage:
+  - node.conntrack.utilization
+- importance: essential
+  labels:
+  - instance
+  name: node_nf_conntrack_entries_limit
+  usage:
+  - node.conntrack.utilization
+- importance: essential
+  labels:
+  - instance
+  name: node_pressure_cpu_waiting_seconds_total
+  usage:
+  - node.cpu.pressure
+- importance: essential
+  labels:
+  - instance
+  name: node_pressure_memory_stalled_seconds_total
+  usage:
+  - node.memory.pressure
+- importance: essential
+  labels:
+  - instance
+  name: node_pressure_memory_waiting_seconds_total
+  usage:
+  - node.memory.pressure
+- importance: essential
+  labels:
+  - instance
+  name: node_scrape_collector_success
+  usage:
+  - node.collector.success
+- importance: essential
+  labels:
+  - instance
+  name: node_time_seconds
+  usage:
+  - node.uptime
+- importance: essential
+  labels:
+  - instance
+  name: node_vmstat_oom_kill
+  usage:
+  - node.memory.oom_kills
+- importance: essential
+  labels:
+  - instance
+  name: node_vmstat_pswpin
+  usage:
+  - node.swap.activity
+- importance: essential
+  labels:
+  - instance
+  name: node_vmstat_pswpout
+  usage:
+  - node.swap.activity
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
@@ -335,6 +505,363 @@
   name: mz_source_offset_known
   usage:
   - materialize.storage.sources.upstream_errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_arp_entries
+  usage:
+  - node.debug.arp.entries
+- importance: recommended
+  labels:
+  - instance
+  name: node_context_switches_total
+  usage:
+  - node.debug.context_switches
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_io_time_weighted_seconds_total
+  usage:
+  - node.debug.disk.queue_depth
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_read_bytes_total
+  usage:
+  - node.debug.disk.throughput
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_read_time_seconds_total
+  usage:
+  - node.debug.disk.latency
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_reads_completed_total
+  usage:
+  - node.debug.disk.iops
+  - node.debug.disk.latency
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_write_time_seconds_total
+  usage:
+  - node.debug.disk.latency
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_writes_completed_total
+  usage:
+  - node.debug.disk.iops
+  - node.debug.disk.latency
+- importance: recommended
+  labels:
+  - instance
+  name: node_disk_written_bytes_total
+  usage:
+  - node.debug.disk.throughput
+- importance: recommended
+  labels:
+  - instance
+  name: node_entropy_available_bits
+  usage:
+  - node.debug.entropy.available
+- importance: recommended
+  labels:
+  - instance
+  name: node_entropy_pool_size_bits
+  usage:
+  - node.debug.entropy.available
+- importance: recommended
+  labels:
+  - fstype
+  - instance
+  name: node_filesystem_files
+  usage:
+  - node.debug.filesystem.inodes.available.ratio
+- importance: recommended
+  labels:
+  - fstype
+  - instance
+  name: node_filesystem_files_free
+  usage:
+  - node.debug.filesystem.inodes.available.ratio
+- importance: recommended
+  labels:
+  - instance
+  name: node_intr_total
+  usage:
+  - node.debug.context_switches
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_Buffers_bytes
+  usage:
+  - node.debug.memory.breakdown
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_Cached_bytes
+  usage:
+  - node.debug.memory.breakdown
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_Committed_AS_bytes
+  usage:
+  - node.debug.memory.kernel
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_MemFree_bytes
+  usage:
+  - node.debug.memory.breakdown
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_SReclaimable_bytes
+  usage:
+  - node.debug.memory.breakdown
+  - node.debug.memory.kernel
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_SUnreclaim_bytes
+  usage:
+  - node.debug.memory.kernel
+- importance: recommended
+  labels:
+  - instance
+  name: node_memory_Slab_bytes
+  usage:
+  - node.debug.memory.kernel
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_TcpExt_ListenDrops
+  usage:
+  - node.debug.tcp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_TcpExt_ListenOverflows
+  usage:
+  - node.debug.tcp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_TcpExt_TCPRcvQDrop
+  usage:
+  - node.debug.tcp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_TcpExt_TCPSynRetrans
+  usage:
+  - node.debug.tcp.retransmits
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_TcpExt_TCPTimeouts
+  usage:
+  - node.debug.tcp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_Tcp_OutSegs
+  usage:
+  - node.debug.tcp.retransmits
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_Tcp_RetransSegs
+  usage:
+  - node.debug.tcp.retransmits
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_Udp_InErrors
+  usage:
+  - node.debug.udp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_Udp_NoPorts
+  usage:
+  - node.debug.udp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_netstat_Udp_RcvbufErrors
+  usage:
+  - node.debug.udp.errors
+- importance: recommended
+  labels:
+  - instance
+  name: node_network_carrier
+  usage:
+  - node.debug.network.operstate
+- importance: recommended
+  labels:
+  - instance
+  name: node_network_receive_bytes_total
+  usage:
+  - node.debug.network.saturation
+  - node.debug.network.throughput
+- importance: recommended
+  labels:
+  - instance
+  name: node_network_speed_bytes
+  usage:
+  - node.debug.network.saturation
+- importance: recommended
+  labels:
+  - instance
+  name: node_network_transmit_bytes_total
+  usage:
+  - node.debug.network.saturation
+  - node.debug.network.throughput
+- importance: recommended
+  labels:
+  - instance
+  name: node_network_up
+  usage:
+  - node.debug.network.operstate
+- importance: recommended
+  labels:
+  - instance
+  name: node_schedstat_waiting_seconds_total
+  usage:
+  - node.debug.schedstat.waiting
+- importance: recommended
+  labels:
+  - instance
+  name: node_scrape_collector_duration_seconds
+  usage:
+  - node.debug.exporter.scrape_duration
+- importance: recommended
+  labels:
+  - instance
+  name: node_sockstat_TCP_alloc
+  usage:
+  - node.debug.sockets.tcp
+- importance: recommended
+  labels:
+  - instance
+  name: node_sockstat_TCP_inuse
+  usage:
+  - node.debug.sockets.tcp
+- importance: recommended
+  labels:
+  - instance
+  name: node_sockstat_TCP_mem_bytes
+  usage:
+  - node.debug.sockets.memory
+- importance: recommended
+  labels:
+  - instance
+  name: node_sockstat_TCP_orphan
+  usage:
+  - node.debug.sockets.tcp
+- importance: recommended
+  labels:
+  - instance
+  name: node_sockstat_TCP_tw
+  usage:
+  - node.debug.sockets.tcp
+- importance: recommended
+  labels:
+  - instance
+  name: node_sockstat_UDP_mem_bytes
+  usage:
+  - node.debug.sockets.memory
+- importance: recommended
+  labels:
+  - instance
+  name: node_softnet_dropped_total
+  usage:
+  - node.debug.softnet.dropped
+- importance: recommended
+  labels:
+  - instance
+  name: node_softnet_processed_total
+  usage:
+  - node.debug.softnet.processed
+- importance: recommended
+  labels:
+  - instance
+  name: node_softnet_times_squeezed_total
+  usage:
+  - node.debug.softnet.squeezed
+- importance: recommended
+  labels:
+  - instance
+  name: node_timex_estimated_error_seconds
+  usage:
+  - node.debug.time.drift
+- importance: recommended
+  labels:
+  - instance
+  name: node_timex_maxerror_seconds
+  usage:
+  - node.debug.time.drift
+- importance: recommended
+  labels:
+  - instance
+  name: node_timex_offset_seconds
+  usage:
+  - node.debug.time.drift
+- importance: recommended
+  labels:
+  - instance
+  name: node_timex_sync_status
+  usage:
+  - node.debug.time.sync_status
+- importance: recommended
+  labels:
+  - instance
+  - ip
+  - queue
+  name: node_udp_queues
+  usage:
+  - node.debug.udp.queues
+- importance: recommended
+  labels:
+  - instance
+  name: node_vmstat_pgfault
+  usage:
+  - node.debug.memory.page_faults
+- importance: recommended
+  labels:
+  - instance
+  name: node_vmstat_pgmajfault
+  usage:
+  - node.debug.memory.page_faults
+- importance: recommended
+  labels:
+  - instance
+  name: node_vmstat_pgscan_direct
+  usage:
+  - node.debug.memory.reclaim
+- importance: recommended
+  labels:
+  - instance
+  name: node_vmstat_pgscan_kswapd
+  usage:
+  - node.debug.memory.reclaim
+- importance: recommended
+  labels:
+  - instance
+  name: node_vmstat_pgsteal_direct
+  usage:
+  - node.debug.memory.reclaim
+- importance: recommended
+  labels:
+  - instance
+  name: node_vmstat_pgsteal_kswapd
+  usage:
+  - node.debug.memory.reclaim
 - importance: recommended
   labels:
   - job

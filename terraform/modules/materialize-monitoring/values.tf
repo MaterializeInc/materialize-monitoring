@@ -246,6 +246,13 @@ locals {
       metrics-server = var.install_metrics_server
     }
 
+    # node-exporter is in the chart's `default` tag, so opting out needs the
+    # circuit breaker: tags are OR'd, and `tags.node-exporter = false` would lose
+    # to `tags.default = true`.
+    node-exporter = {
+      enabled = var.install_node_exporter
+    }
+
     grafana = {
       admin = {
         existingSecret = kubernetes_secret.grafana_admin.metadata[0].name

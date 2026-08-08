@@ -1,0 +1,38 @@
+{{/*
+The stack's two PriorityClasses.
+
+Rendered from the chart rather than left to the operator because the subchart
+blocks reference them by name: a `priorityClassName` naming a class that does
+not exist is not a degraded pod, it is a rejected one. Shipping the classes with
+the references keeps that pair atomic.
+
+PriorityClass is cluster-scoped, so `create: false` exists for the cases where
+something else owns them — a second release of this chart in the same cluster,
+or a platform team that manages priority centrally.
+*/}}
+{{- if $.Values.priorityClasses.create }}
+  {{- range $tier := ( list "critical" "scalable" ) }}
+    {{- $pc := index $.Values.priorityClasses $tier | required ( printf "priorityClasses.%s is missing from values." $tier ) }}
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ $pc.name | required ( printf "priorityClasses.%s.name is required." $tier ) }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: priority-class
+ {{ if not ( hasKey $pc "value" ) }}
+   {{ printf "priorityClasses.%s.value is required." $tier | fail }}
+ {{ end }}
+value: {{ $pc.value | int }}
+{{- with $pc.preemptionPolicy }}
+preemptionPolicy: {{ . }}
+{{- end }}
+{{- /* Never a global default: that would silently re-prioritize every pod in
+       the namespace, including workloads this chart has nothing to do with. */}}
+globalDefault: false
+{{- with $pc.description }}
+description: {{ . | trim | quote }}
+{{- end }}
+  {{- end }}
+{{- end }}

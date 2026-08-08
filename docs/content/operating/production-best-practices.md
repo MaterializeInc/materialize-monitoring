@@ -8,7 +8,7 @@ weight: 10
 Production guidance for the `materialize-monitoring` stack, organized by backend.
 Every checklist item is tagged with its **primary owner** under the [shared responsibility model](#shared-responsibility-model), and is checked (`[x]`) when the chart already ships it as a default — unchecked items are the deployment-time actions (or still-to-build chart work) that remain.
 
-Today this covers the **collection tier (Alloy)**, the bundled **logging backend (Loki)**, the bundled **metrics backend (Thanos)**, and the bundled **Grafana**; an Alertmanager section will follow the same shape.
+Today this covers the **collection tier (Alloy)**, **node metrics (node-exporter)**, the bundled **logging backend (Loki)**, the bundled **metrics backend (Thanos)**, and the bundled **Grafana**; an Alertmanager section will follow the same shape.
 
 ## Shared responsibility model
 
@@ -78,6 +78,31 @@ Two layouts are supported; both are fine, so pick per your isolation needs.
 
 `[consumer]` selects the layout at install time; `[operator]` owns the namespace/RBAC policy it implies.
 
+## Scheduling priority {#scheduling-priority}
+
+The chart creates two PriorityClasses and assigns every long-running workload to one of them.
+The split is about **what losing a pod costs you**, not about how important the component feels.
+
+| Class | Value | Assigned to | Losing a pod means |
+|---|---:|---|---|
+| `monitoring-critical` | 1000000 | `alloy-agent`, `node-exporter`, `alloy-gateway` | a blind spot with no replica to cover it |
+| `monitoring-scalable` | 1000 | `loki`, `thanos`, `grafana`, `grafana-operator`, `alertmanager`, `kube-state-metrics` | reduced capacity a surviving replica or a retry absorbs |
+
+The per-node collectors are singletons *per node*.
+When one is evicted, nothing else reports that node and the gap never backfills — there is no equivalent of a replica picking up the slack.
+The backends are replicated, buffered, or both: Alloy retries its writes, so an evicted Loki ingester costs latency rather than data.
+The gateway is graded critical despite being a Deployment, because it is the single egress choke point for every signal in the stack.
+
+Both classes set **`preemptionPolicy: Never`**, which is the load-bearing choice.
+Priority still decides scheduling-queue order and, more importantly, which pod the kubelet evicts first under node pressure — but monitoring will never evict a Materialize pod to make room for itself.
+Monitoring that takes down the thing it monitors is worse than monitoring that is late.
+Both sit well below `system-cluster-critical` (2000000000) and `system-node-critical` (2000001000), so cluster plumbing still outranks the stack.
+
+- [x] `[chart]` Both classes created, and referenced by name from every subchart that accepts a `priorityClassName`.
+- [ ] `[operator]` **PriorityClasses are cluster-scoped.** Two releases of this chart in one cluster will fight over these objects. Set `priorityClasses.create: false` on all but one, or rename them per release with `priorityClasses.critical.name` / `priorityClasses.scalable.name`.
+- [ ] `[operator]` **If you rename or disable them, update the `priorityClassName` values in the subchart blocks to match.** A `priorityClassName` naming a class that does not exist does not degrade — the API server *rejects* the pod, and the only evidence is an admission error on a ReplicaSet nobody is watching. A render-time check warns when it can tell that has happened.
+- [ ] `[operator]` If your platform already defines a priority scheme, point the subchart values at your own classes instead. `metrics-server` is left on the upstream `system-cluster-critical` deliberately: it backs the metrics API that HPAs and the Materialize Console read, so it is cluster plumbing rather than monitoring.
+
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
@@ -122,6 +147,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 ### Agent placement & durability
 
 - [ ] `[consumer]` Tolerate node taints so the DaemonSet actually lands on every node you want logs from (tainted/spot/system pools included) — a missing toleration is a silent per-node blind spot.
+- [x] `[chart]` `priorityClassName: monitoring-critical` on both roles. The agent is a per-node singleton, so an eviction is a log gap on that node with nothing to cover it; the gateway is the single egress choke point for every signal. See [Scheduling priority](#scheduling-priority).
 - [ ] `[operator]` Persist the agent's file **positions** and journal cursor (hostPath) so a restart resumes where it left off instead of re-tailing (duplicate lines) or skipping (gaps).
 - [ ] `[consumer]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
 
@@ -130,6 +156,99 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [x] `[chart]` Distroless Alloy image: FIPS boringcrypto, multi-arch, non-root, GHCR-published.
 - [x] `[chart]` ServiceMonitor/PodMonitor (or GCP `PodMonitoring`) for both Alloy roles — scrape Alloy's own component metrics (received/sent bytes, dropped lines, write failures).
 - [ ] `[operator]` Alert on gateway write failures and drop counters (`drop_counter_reason`) so shedding or a broken destination is visible rather than silent data loss.
+
+## Node metrics (node-exporter)
+
+For where this sits in the stack, see [Architecture](../../architecture/#node-exporter-node-metrics).
+
+[`node-exporter`](https://github.com/prometheus/node_exporter) is a DaemonSet that reads the host kernel and exposes what no other collector in this stack sees: swap, memory pressure, node-level network counters, disk I/O, conntrack, and clock sync.
+The Alloy gateway scrapes it through the ServiceMonitor the subchart ships.
+
+It is a **separate workload on purpose**, and not folded into the Alloy agent even though Alloy's `prometheus.exporter.unix` is the same program.
+Keeping them apart keeps their resource limits apart: sharing one envelope means a metrics regression starves log collection, which is the signal you most need during the incident it caused.
+Separate DaemonSets also have independent eviction and can be excluded from specific node pools.
+The trade accepted in exchange is one more per-node workload.
+
+### Coverage is the thing to get right
+
+Everything else on this list is a tuning decision.
+Coverage is a correctness one, because the failure is silent: a node the DaemonSet never lands on produces no error anywhere — it simply has no metrics, and no dashboard shows a hole where a node should be.
+
+The chart keeps the upstream toleration (`{effect: NoSchedule, operator: Exists}`), which tolerates **every** `NoSchedule` taint, including Materialize's `node.materialize.com/daemonsets-not-scheduled`.
+That is deliberate for a node-metrics DaemonSet, and it is why `node-exporter` is left out of the Terraform module's scheduling fan-out: writing `var.tolerations` into it would *replace* that list rather than extend it, since Helm merges maps but overwrites lists.
+
+- [x] `[chart]` Tolerates all `NoSchedule` taints, so it reaches tainted, spot, and system pools without configuration.
+- [ ] `[operator]` **Verify coverage rather than assume it**, after any node-pool change: `count(up{job="node-exporter"})` against `count(kube_node_info)`. They should be equal; a persistent gap is a pool the DaemonSet is not reaching.
+- [ ] `[operator]` `NoExecute` taints are **not** tolerated by default. That is usually right — a node being drained for a problem should shed the DaemonSet too — but if you use `NoExecute` for routine pool separation, add a toleration or lose those nodes.
+- [ ] `[operator]` Excluding it from a node pool is a deliberate blind spot, not a saving. Do it only for pools where the per-node budget genuinely cannot absorb ~64Mi, and record which pools those are.
+
+### Collectors and cardinality
+
+The chart passes `--collector.disable-defaults` and names each collector it wants, rather than taking the upstream defaults and subtracting.
+The reason is drift: the default set changes with each node_exporter release, and an allowlist means a new default-on collector cannot silently join your cardinality budget on a Renovate bump.
+The full list, with the reasoning behind every inclusion *and* every exclusion, is in the [values reference](../../reference/helm/materialize-monitoring-values/) under Node Exporter.
+
+**Cardinality scales with vCPU count, not with pod count.**
+The per-CPU collectors (`cpu`, `cpufreq`, `schedstat`) run roughly 20–25 series per vCPU and dominate everything else on large instances — a 96-vCPU node is ~2k series from those alone, before disks and NICs.
+This is the opposite shape from cAdvisor and kube-state-metrics, which scale with what is *running* on the node.
+Sizing Thanos for node metrics therefore keys off your instance shapes and node count, and is unaffected by workload density.
+
+Two exclusions are worth knowing because they are the difference between a bounded series count and an unbounded one:
+
+- **Pod veths.** On a Cilium node every pod adds an `lxc*` interface to the host network namespace. Left unfiltered, `netdev` and `netclass` emit ~10 series each *and churn the interface names on every pod restart* — which costs more in TSDB churn than in raw series. The chart excludes the per-pod veths and keeps the `cilium_*` devices, which have stable names and carry real signal. The per-pod network view comes from cAdvisor.
+- **Kubelet per-pod mounts.** Every emptyDir, secret, configMap, and projected token is its own mount under `/var/lib/kubelet/pods/<uid>/`, with the same churn problem. The chart excludes those and keeps `/var/lib/kubelet` itself, which is the ephemeral-storage filesystem and a real and common node failure.
+
+Measure your own footprint before sizing:
+
+```promql
+# series per node, and the fleet total
+count by (instance) ({job="node-exporter"})
+count({job="node-exporter"})
+```
+
+- [x] `[chart]` Allowlist rather than upstream defaults, so a node_exporter release cannot add collectors behind you.
+- [x] `[chart]` Swap covered on both axes — `swap` and `meminfo` for the level, `vmstat` for the rate (`pswpin`/`pswpout`), and `pressure` (PSI) as the leading indicator. Materialize swaps deliberately, so the level alone does not distinguish healthy swapping from thrash.
+- [x] `[chart]` The `vmstat` field filter is widened past upstream's default to admit `pgscan_*` / `pgsteal_*`, which separate background reclaim (`kswapd`, fine) from direct reclaim (`direct`, an allocating thread is stalled).
+- [x] `[chart]` Per-pod veths and kubelet per-pod mounts excluded from the network and filesystem collectors.
+- [ ] `[operator]` **On AWS, consider enabling `ethtool`** with `--collector.ethtool.device-include=^(eth|ens|enp)`. It is where the ENA allowance counters live (`bw_in_allowance_exceeded`, `bw_out_allowance_exceeded`, `pps_allowance_exceeded`, `conntrack_allowance_exceeded`) — instance-level network throttling that is invisible in every other metric and directly relevant to a network-hungry workload. It is off by default because the stat set is driver-specific (gVNIC and Azure expose different counters), so validate it on your AMI before relying on it.
+- [ ] `[operator]` On bare metal, `edac` (ECC errors) and `rapl` are worth adding; hypervisors do not expose either to guests, which is why they are off.
+- [ ] `[operator]` `slabinfo` is off: it costs ~1.5k series per node and needs a root init container to chmod `/proc/slabinfo`. `meminfo` already reports `Slab` / `SReclaimable` / `SUnreclaim`, which answers the alerting question. Turn `slabinfo` on during an investigation, not as a default.
+
+### Sizing
+
+- [x] `[chart]` 64Mi memory request **and** limit, 10m CPU request, **no CPU limit**.
+- [ ] `[operator]` Understand why there is no CPU limit before adding one. This is a DaemonSet that idles between scrapes and then bursts for the length of one collection; a CPU limit turns that burst into CFS throttling, which surfaces as scrape timeouts on exactly the loaded nodes whose samples matter most. The 10m request is the average, not the cost of a scrape.
+- [ ] `[operator]` Memory is request == limit for the opposite reason: the working set is flat and bounded, so a limit equal to the request costs nothing and makes the per-node footprint a number the cluster autoscaler can plan with. This lands the pod in **Burstable** QoS — Guaranteed would require the CPU limit above, and being evicted slightly earlier under node pressure is the better trade, with `monitoring-critical` covering the ordering.
+- [x] `[chart]` `updateStrategy.rollingUpdate.maxUnavailable: 10%` rather than upstream's `1`, so an image bump does not walk a large fleet one node at a time. Metrics are gap-tolerant and the pod restarts in seconds.
+
+### Exposure
+
+> [!WARNING]
+>   **A NetworkPolicy is not what keeps port 9100 private.** The pods run with `hostNetwork: true`, which the network collectors require — `netdev`, `netclass`, `netstat`, `sockstat`, and `conntrack` all read namespaced files under `/proc/net`, and in a pod network namespace they would report the pod's own traffic rather than the node's.
+>
+>   Most CNIs, **Cilium and Calico among them, do not apply pod NetworkPolicy to host-networked pods**, because that traffic belongs to the node identity rather than the pod's. The chart ships a policy anyway — it is enforced where the CNI supports it, and it declares intent everywhere else — but the node firewall or security group is the actual control. Do not treat the endpoint as private because a NetworkPolicy exists.
+
+- [x] `[chart]` NetworkPolicy on by default: ingress restricted to the Alloy gateway on 9100, egress denied outright (node_exporter never initiates a connection).
+- [ ] `[consumer]` Under the [split-namespace](#namespace-layout) layout the default ingress rule stops matching — it selects the gateway by pod label within the release namespace. Replace `node-exporter.networkPolicy.ingress` with a rule carrying a `namespaceSelector`.
+- [ ] `[operator]` **Confirm port 9100 is not reachable from outside the cluster.** With `hostNetwork`, the exporter listens on the node's interfaces, so this is a security-group / firewall question, not a Kubernetes one.
+- [x] `[chart]` `kube-rbac-proxy` is **off**. It would authenticate scrapes via TokenReview/SubjectAccessReview over HTTPS, but it is a second container on *every* node with a request comparable to node_exporter's — roughly doubling the per-node cost of node metrics to protect an endpoint that exposes no secrets. DaemonSet overhead is the constraint being managed.
+- [ ] `[operator]` **TLS client authentication is available and deliberately parked.** `kubeRBACProxy.tls.tlsClientAuth` plus `tlsSecret` restricts `/metrics` to a scraper holding a certificate signed by the configured CA — the shape an in-cluster mTLS story would use. It is not enabled pending the cert-manager integration ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)), which is where certificate issuance and renewal for the rest of the stack lands; wiring it here first would mean minting and rotating a CA by hand for one component. Turn it on yourself if your environment requires authenticated scrapes today, accepting the per-node cost above.
+- [x] `[chart]` Distroless image (no shell, no package manager), non-root, read-only root filesystem, `automountServiceAccountToken: false`. The container reads the host's `/proc`, `/sys`, and `/`, which makes a shell there a materially better foothold than in most containers.
+- [x] `[chart]` The image is pinned explicitly in `values.yaml` (registry, repository, tag) rather than tracking the subchart's `appVersion`, so Renovate bumps the exporter on its own cadence — a chart release is not a prerequisite for a node_exporter CVE fix.
+
+### Scraping and meta-monitoring
+
+- [x] `[chart]` ServiceMonitor enabled. This is how collection happens: without it the DaemonSet runs and is never read.
+- [x] `[chart]` `prometheus.io/scrape: "false"` on the Service, overriding the subchart's `"true"`. Once generic annotation-based discovery lands ([DEP-193](https://linear.app/materializeinc/issue/DEP-193)), a `"true"` here would make every target scraped twice under two different `job` labels — which double-counts silently in any `sum()` or `rate()` over them.
+- [ ] `[operator]` **If your cluster already runs a node-exporter**, turn ours off rather than running both, for the same double-counting reason. Set `node-exporter.enabled: false` — the circuit breaker, not the tag, because tags are OR'd and `tags.node-exporter: false` loses to `tags.default: true`. On the Terraform path, `install_node_exporter = false`.
+- [ ] `[operator]` **Alert on collectors failing, not just on the exporter being up.** `node_scrape_collector_success == 0` means that collector returned nothing while the scrape as a whole succeeded, so `up` stays green and the metrics simply never appear. Some of these are expected and worth allowlisting rather than chasing: `hwmon` is usually empty on cloud VMs, `nvme` needs NVMe devices, and `kernel_hung` needs Linux 6.13+ for `/proc/sys/kernel/hung_task_detect_count`.
+- [ ] `[operator]` `schedstat` has two kernel gates and fails quietly on the second. `/proc/schedstat` needs `CONFIG_SCHEDSTATS`, and since Linux 4.6 the counters are additionally off at runtime unless `kernel.sched_schedstats=1`. A missing file shows up in `node_scrape_collector_success`; the sysctl being off does not — the file just reads as zeros.
+
+### See also
+
+- [Architecture](../../architecture/#node-exporter-node-metrics) — where node-exporter sits in the stack.
+- [Values reference](../../reference/helm/materialize-monitoring-values/) — the collector allowlist and the reasoning behind each choice, under Node Exporter.
+- [node_exporter collectors](https://github.com/prometheus/node_exporter#collectors) (official) — every collector, its platform, and its default state.
 
 ## Logging (Loki)
 
@@ -229,7 +348,7 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 - [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3; set `minDomains` to the zone count your node pool can launch in. With 2 zones, know an AZ loss can break write quorum until the ring recovers.
 - [ ] `[operator]` If you bring nodes up **tainted** until DaemonSets are healthy, the spread already sets `nodeTaintsPolicy: Honor` (tainted nodes stay out of the skew math) — model the taint as a Karpenter `startupTaint` so it doesn't over-provision. Taints only gate placement.
 - [x] `[chart]` PodDisruptionBudget on ingesters (`maxUnavailable: 1`), with a render-time warning if it or the rollout `maxUnavailable` is set > 1.
-- [ ] `[operator]` `priorityClassName` so ingesters/compactor are not evicted under node pressure.
+- [x] `[chart]` `priorityClassName` on every Loki pod (`monitoring-scalable`), so ingesters and the compactor outrank ordinary workloads under node pressure. `loki.global.priorityClassName` covers everything that renders through the chart's `_pod.tpl`; the two memcached StatefulSets read only their own component key and are set separately. See [Scheduling priority](#scheduling-priority).
 
 #### 4. Ingester durability & rollouts
 
@@ -369,7 +488,7 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [ ] `[operator]` Keep `replicaCount >= replicationFactor`. At `replicaCount == replicationFactor` every pod holds every series — good availability, no horizontal capacity.
 - [x] `[chart]` PodDisruptionBudgets on **every** component (`thanos.global.pdb`, `maxUnavailable: 1`) — matching the Loki ingester convention. `maxUnavailable` rather than `minAvailable` deliberately: it scales with the replica count, and on the single-replica Compactor `minAvailable: 1` would permit no eviction at all and hang node drains. A validator errors when the Receive budget exceeds what write quorum tolerates, and warns on `minAvailable` for the singleton.
 - [ ] `[chart]` `topologySpreadConstraints` across zones for Receive, so RF 3 actually survives an AZ loss rather than landing three copies in one zone. Receive is PVC-backed and therefore AZ-pinned, so this matters more here than for Loki's ephemeral ingesters.
-- [ ] `[operator]` `priorityClassName` so Receive and Compactor are not evicted under node pressure.
+- [x] `[chart]` `priorityClassName` on every Thanos pod (`monitoring-scalable`, via `thanos.global`), so Receive and the Compactor outrank ordinary workloads under node pressure. See [Scheduling priority](#scheduling-priority).
 
 #### 2. Object storage & credentials
 
@@ -495,7 +614,7 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` **Probes** on `/api/health` (liveness and readiness) come from the subchart and are left at their defaults.
 - [x] `[chart]` Grafana-managed **unified alerting is not HA out of the box** — each replica evaluates every rule independently and notifies separately. The `grafana-postgres` profile enables gossip (`headlessService: true` plus `unified_alerting.ha_peers`), and validators warn both on several replicas with no gossip and on `ha_peers` pointing at a headless Service that was never created. Gossip is *not* a chart default: at one replica it is inert and costs a `ha_peer_timeout` settle on every start. The Prometheus rules this chart ships are unaffected either way.
 - [ ] `[operator]` Gossip needs pod-to-pod **9094 on TCP and UDP**. A NetworkPolicy that blocks it makes notifications duplicate rather than fail, because the replicas simply never find each other.
-- [ ] `[consumer]` `priorityClassName` so Grafana is not evicted under node pressure — it is where an incident starts.
+- [x] `[chart]` `priorityClassName` on Grafana and grafana-operator (`monitoring-scalable`), so neither is evicted ahead of ordinary workloads — Grafana is where an incident starts. See [Scheduling priority](#scheduling-priority).
 
 #### 5. Images & supply chain
 

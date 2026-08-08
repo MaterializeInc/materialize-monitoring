@@ -1,0 +1,627 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Node debugging queries (node-exporter).
+
+description: |
+  The breakdowns you reach for once `node-health.yaml` has told you a node is in
+  trouble: which mode the CPU is in, where the memory went, which device is
+  slow, and where the packets are being lost. Adapted from the Node Exporter
+  Full dashboard (https://grafana.com/grafana/dashboards/1860, revision 45).
+
+  Split from `node-health.yaml` on tier rather than on subject. These sit at
+  `recommended`, so a deployment collecting only the essential tier still gets
+  the health surface and pays nothing for the detail. Nothing here should back
+  an alert — if something here is worth paging on, it belongs in
+  `node-health.yaml` instead.
+
+  The conventions are the same as `node-health.yaml`: `instance=~"$node"` rather
+  than `=`, every query wrapped in `max by (instance, ...)` (or `min` where low
+  is the bad direction) so a second scrape job cannot double-count, inner
+  aggregations carrying `by (instance, job)` so the outer wrapper is what
+  collapses `job`, and `%%{interval}` as the rate window.
+
+  Only collectors this chart's allowlist enables are referenced. Notable
+  omissions, because the dashboard has panels for them and they will render
+  empty: `node_processes_*` (processes collector), `node_interrupts_total`
+  (interrupts), `node_tcp_connection_states` (tcpstat), `node_systemd_*`
+  (systemd), and `node_textfile_scrape_error` (textfile).
+
+metricImportanceHint: recommended
+
+queries:
+  # --- CPU -----------------------------------------------------------------
+  - id: node.debug.cpu.by_mode
+    stability: canonical
+    description:
+      summary: |
+        CPU time by mode — system, user, iowait, and the interrupt modes —
+        averaged across cores.
+      notes: |
+        The first split to make when `node.cpu.utilization` is high. `iowait`
+        points at storage rather than compute; a large `system` share on a
+        network-heavy node often means softirq work, which
+        `node.debug.softnet.*` quantifies.
+    promQL:
+      - |
+        max by (instance) (
+          avg by (instance, job) (
+            rate(node_cpu_seconds_total{mode="system", instance=~"$node"}%%{interval})
+          )
+        )
+      - |
+        max by (instance) (
+          avg by (instance, job) (
+            rate(node_cpu_seconds_total{mode="user", instance=~"$node"}%%{interval})
+          )
+        )
+      - |
+        max by (instance) (
+          avg by (instance, job) (
+            rate(node_cpu_seconds_total{mode="iowait", instance=~"$node"}%%{interval})
+          )
+        )
+      - |
+        max by (instance) (
+          avg by (instance, job) (
+            sum without (mode) (
+              rate(node_cpu_seconds_total{mode=~".*irq", instance=~"$node"}%%{interval})
+            )
+          )
+        )
+      - |
+        max by (instance) (
+          avg by (instance, job) (
+            rate(node_cpu_seconds_total{mode="steal", instance=~"$node"}%%{interval})
+          )
+        )
+  - id: node.debug.cpu.per_core
+    stability: canonical
+    description:
+      summary: |
+        Non-idle CPU time per core, so a single saturated core is visible.
+      notes: |
+        `node.cpu.utilization` averages across cores and therefore hides this.
+        A workload pinned to one core, or a NIC whose interrupts all land on
+        CPU 0, shows up here and nowhere else.
+    promQL: |
+      1 - max by (instance, cpu) (
+        rate(node_cpu_seconds_total{mode="idle", instance=~"$node"}%%{interval})
+      )
+  - id: node.debug.schedstat.waiting
+    stability: canonical
+    description:
+      summary: |
+        Time tasks spent runnable but not running, per core, from
+        `/proc/schedstat`.
+      notes: |
+        The direct measure of scheduling contention — threads were ready and the
+        CPU was not available. More actionable than load average for a
+        latency-sensitive engine, because it is measured rather than smoothed.
+
+        Two kernel gates, and the second fails quietly: `CONFIG_SCHEDSTATS` must
+        be built in, and since Linux 4.6 the counters are additionally off at
+        runtime unless `kernel.sched_schedstats=1`. A missing file shows up in
+        `node.collector.success`; the sysctl being off does not — the file just
+        reads as zeros.
+    promQL: |
+      max by (instance, cpu) (
+        rate(node_schedstat_waiting_seconds_total{instance=~"$node"}%%{interval})
+      )
+  - id: node.debug.context_switches
+    stability: canonical
+    description:
+      summary: Context switches and hardware interrupts per second.
+      notes: |
+        A climb with no matching rise in throughput suggests thrashing between
+        runnable threads or an interrupt storm.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_context_switches_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_intr_total{instance=~"$node"}%%{interval})
+        )
+
+  # --- memory --------------------------------------------------------------
+  - id: node.debug.memory.breakdown
+    stability: canonical
+    description:
+      summary: |
+        Where RAM went: total, used by processes, reclaimable cache, and free.
+      notes: |
+        "Used" here is total minus free minus cache/buffers/reclaimable-slab,
+        which is the figure that matters — the page cache is returnable and
+        `MemFree` being near zero is healthy.
+    promQL:
+      - |
+        max by (instance) (node_memory_MemTotal_bytes{instance=~"$node"})
+      - |
+        max by (instance) (
+          node_memory_MemTotal_bytes{instance=~"$node"}
+          - node_memory_MemFree_bytes{instance=~"$node"}
+          - node_memory_Cached_bytes{instance=~"$node"}
+          - node_memory_Buffers_bytes{instance=~"$node"}
+          - node_memory_SReclaimable_bytes{instance=~"$node"}
+        )
+      - |
+        max by (instance) (
+          node_memory_Cached_bytes{instance=~"$node"}
+          + node_memory_Buffers_bytes{instance=~"$node"}
+          + node_memory_SReclaimable_bytes{instance=~"$node"}
+        )
+      - |
+        min by (instance) (node_memory_MemFree_bytes{instance=~"$node"})
+  - id: node.debug.memory.kernel
+    stability: canonical
+    description:
+      summary: |
+        Kernel-side memory: slab total, reclaimable and unreclaimable slab, and
+        committed address space.
+      notes: |
+        Answers "how much kernel memory" without the per-cache cardinality of
+        the `slabinfo` collector, which is off by default. Unreclaimable slab
+        growing without bound is the shape of a kernel-side leak; a
+        connection-heavy node with a large conntrack table also lands here.
+    promQL:
+      - |
+        max by (instance) (node_memory_Slab_bytes{instance=~"$node"})
+      - |
+        max by (instance) (node_memory_SReclaimable_bytes{instance=~"$node"})
+      - |
+        max by (instance) (node_memory_SUnreclaim_bytes{instance=~"$node"})
+      - |
+        max by (instance) (node_memory_Committed_AS_bytes{instance=~"$node"})
+  - id: node.debug.memory.page_faults
+    stability: canonical
+    description:
+      summary: Total and major page faults per second.
+      notes: |
+        Minor faults are ordinary. **Major** faults are the ones that touched
+        disk, so on a node that swaps deliberately this is where the cost shows
+        up — a major fault is a thread stopped until the page comes back.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_vmstat_pgfault{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_vmstat_pgmajfault{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.memory.reclaim
+    stability: canonical
+    description:
+      summary: |
+        Pages scanned and reclaimed per second, split by who did the reclaiming:
+        `kswapd` (background) or `direct` (an allocating thread).
+      notes: |
+        This is the distinction that separates swap working from swap hurting.
+        Background reclaim by `kswapd` is the kernel keeping ahead of demand and
+        costs the workload nothing. **Direct** reclaim means a thread asked for
+        memory, none was free, and it had to go find some itself — it is
+        stalled for the duration.
+
+        These fields are outside node_exporter's default `vmstat` filter; the
+        chart widens `--collector.vmstat.fields` specifically to admit them.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_vmstat_pgscan_kswapd{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_vmstat_pgscan_direct{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_vmstat_pgsteal_kswapd{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_vmstat_pgsteal_direct{instance=~"$node"}%%{interval})
+        )
+
+  # --- storage -------------------------------------------------------------
+  - id: node.debug.disk.iops
+    stability: canonical
+    description:
+      summary: Completed reads and writes per second, per device.
+      notes: |
+        Pair with `node.debug.disk.throughput`: high IOPS at low throughput is a
+        small-random-I/O pattern, which is what exhausts cloud volume IOPS
+        budgets long before it exhausts bandwidth.
+    promQL:
+      - |
+        max by (instance, device) (
+          rate(node_disk_reads_completed_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance, device) (
+          rate(node_disk_writes_completed_total{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.disk.throughput
+    stability: canonical
+    description:
+      summary: Bytes read and written per second, per device.
+      notes: |
+        The other half of the volume-limit question. Cloud block storage
+        enforces bandwidth and IOPS as separate ceilings, and hitting either
+        presents identically as latency.
+    promQL:
+      - |
+        max by (instance, device) (
+          rate(node_disk_read_bytes_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance, device) (
+          rate(node_disk_written_bytes_total{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.disk.latency
+    stability: canonical
+    description:
+      summary: |
+        Average time per completed read and per completed write, per device.
+      notes: |
+        Time divided by completions, guarded with `> bool 0` so an idle device
+        reports 0 rather than dividing by zero and dropping out of the panel.
+        This is device-level service time, not the latency any one process saw.
+    promQL:
+      - |
+        max by (instance, device) (
+          (rate(node_disk_reads_completed_total{instance=~"$node"}%%{interval}) > bool 0)
+          *
+          (
+            rate(node_disk_read_time_seconds_total{instance=~"$node"}%%{interval})
+            / rate(node_disk_reads_completed_total{instance=~"$node"}%%{interval})
+          )
+        )
+      - |
+        max by (instance, device) (
+          (rate(node_disk_writes_completed_total{instance=~"$node"}%%{interval}) > bool 0)
+          *
+          (
+            rate(node_disk_write_time_seconds_total{instance=~"$node"}%%{interval})
+            / rate(node_disk_writes_completed_total{instance=~"$node"}%%{interval})
+          )
+        )
+  - id: node.debug.disk.queue_depth
+    stability: canonical
+    description:
+      summary: Average I/O queue depth per device.
+      notes: |
+        Derived from the weighted I/O time counter. A queue that grows while
+        `node.disk.io_utilization` sits at 1.0 confirms the device is the
+        bottleneck rather than the workload having gone idle.
+    promQL: |
+      max by (instance, device) (
+        rate(node_disk_io_time_weighted_seconds_total{instance=~"$node"}%%{interval})
+      )
+  - id: node.debug.filesystem.inodes.available.ratio
+    stability: canonical
+    description:
+      summary: Fraction of inodes still free, per mountpoint.
+      notes: |
+        A filesystem can exhaust inodes with plenty of bytes left, and the
+        failure is the same `ENOSPC` — which sends everyone looking at free
+        space and finding nothing wrong. Many small files is the way there.
+        `min` because low is the bad direction.
+    promQL: |
+      min by (instance, mountpoint) (
+        node_filesystem_files_free{instance=~"$node", fstype!="rootfs"}
+      )
+      /
+      max by (instance, mountpoint) (
+        node_filesystem_files{instance=~"$node", fstype!="rootfs"}
+      )
+
+  # --- network -------------------------------------------------------------
+  - id: node.debug.network.throughput
+    stability: canonical
+    description:
+      summary: Bytes received and transmitted per second, per interface.
+      notes: |
+        Node-level only. The per-pod view comes from cAdvisor — per-pod veths
+        are excluded at the collector because their names churn on every pod
+        restart.
+    promQL:
+      - |
+        max by (instance, device) (
+          rate(node_network_receive_bytes_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance, device) (
+          rate(node_network_transmit_bytes_total{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.network.saturation
+    stability: canonical
+    description:
+      summary: |
+        Receive and transmit throughput as a fraction of the interface's
+        reported link speed.
+      notes: |
+        Only meaningful where the driver reports a speed; the `> bool 0` guard
+        makes interfaces that do not report one contribute 0 rather than
+        dropping the series. On EC2 the *instance* allowance usually binds well
+        before the reported link speed does, and that ceiling is only visible
+        through the `ethtool` collector, which is off by default.
+    promQL:
+      - |
+        max by (instance, device) (
+          (node_network_speed_bytes{instance=~"$node"} > bool 0)
+          *
+          (
+            rate(node_network_receive_bytes_total{instance=~"$node"}%%{interval})
+            / node_network_speed_bytes{instance=~"$node"}
+          )
+        )
+      - |
+        max by (instance, device) (
+          (node_network_speed_bytes{instance=~"$node"} > bool 0)
+          *
+          (
+            rate(node_network_transmit_bytes_total{instance=~"$node"}%%{interval})
+            / node_network_speed_bytes{instance=~"$node"}
+          )
+        )
+  - id: node.debug.network.operstate
+    stability: canonical
+    description:
+      summary: |
+        Whether each interface is operationally up, and whether it has carrier.
+      notes: |
+        `min` because down is the bad direction. Useful mainly for confirming an
+        interface disappeared rather than went quiet.
+
+        The upstream dashboard writes this as `node_network_up{operstate="up"}`,
+        which matches nothing on node_exporter 1.12: `node_network_up` is a plain
+        0/1 gauge per device, and `operstate` lives on `node_network_info`. The
+        selector is dropped here rather than carried over.
+    promQL:
+      - |
+        min by (instance, device) (
+          node_network_up{instance=~"$node"}
+        )
+      - |
+        min by (instance, device) (
+          node_network_carrier{instance=~"$node"}
+        )
+  - id: node.debug.softnet.processed
+    stability: canonical
+    description:
+      summary: Packets processed by the network softirq path, per CPU.
+      notes: |
+        The denominator for the two counters below, and a way to see whether
+        receive processing is spread across cores or piled onto one.
+    promQL: |
+      max by (instance, cpu) (
+        rate(node_softnet_processed_total{instance=~"$node"}%%{interval})
+      )
+  - id: node.debug.softnet.dropped
+    stability: canonical
+    description:
+      summary: |
+        Packets dropped in the network softirq path because the backlog queue
+        was full, per CPU.
+      notes: |
+        These are packets the kernel discarded before any socket saw them, so
+        they are invisible to the application and to per-pod metrics. On a
+        network-hungry workload behind an eBPF dataplane this is one of the few
+        places the loss is attributable.
+    promQL: |
+      max by (instance, cpu) (
+        rate(node_softnet_dropped_total{instance=~"$node"}%%{interval})
+      )
+  - id: node.debug.softnet.squeezed
+    stability: canonical
+    description:
+      summary: |
+        Times the softirq handler exhausted its budget with work still queued,
+        per CPU.
+      notes: |
+        Squeezing is the precursor to dropping: the handler ran out of budget
+        and deferred the rest. A rising rate here with drops still at zero is
+        the warning you get before `node.debug.softnet.dropped` moves.
+    promQL: |
+      max by (instance, cpu) (
+        rate(node_softnet_times_squeezed_total{instance=~"$node"}%%{interval})
+      )
+  - id: node.debug.sockets.tcp
+    stability: canonical
+    description:
+      summary: |
+        TCP sockets by state: in use, allocated, orphaned, and TIME_WAIT.
+      notes: |
+        A TIME_WAIT count climbing toward the ephemeral port range is the
+        classic symptom of short-lived connections being opened faster than they
+        can be retired — a connection-pooling problem, not a network one.
+    promQL:
+      - |
+        max by (instance) (node_sockstat_TCP_inuse{instance=~"$node"})
+      - |
+        max by (instance) (node_sockstat_TCP_alloc{instance=~"$node"})
+      - |
+        max by (instance) (node_sockstat_TCP_orphan{instance=~"$node"})
+      - |
+        max by (instance) (node_sockstat_TCP_tw{instance=~"$node"})
+  - id: node.debug.sockets.memory
+    stability: canonical
+    description:
+      summary: Kernel socket buffer memory held by TCP and UDP.
+      notes: |
+        Counts against `net.ipv4.tcp_mem`, and hitting that ceiling makes the
+        kernel prune socket buffers — which looks like packet loss to the
+        application while every interface counter stays clean. Worth watching on
+        a node that is both memory-hungry and network-hungry, because the two
+        budgets are the same RAM.
+    promQL:
+      - |
+        max by (instance) (node_sockstat_TCP_mem_bytes{instance=~"$node"})
+      - |
+        max by (instance) (node_sockstat_UDP_mem_bytes{instance=~"$node"})
+  - id: node.debug.tcp.retransmits
+    stability: canonical
+    description:
+      summary: |
+        TCP segment retransmits and SYN retransmits per second, against total
+        segments out.
+      notes: |
+        Read as a ratio against `OutSegs` rather than in absolute terms — a busy
+        node retransmits constantly and that is fine. SYN retransmits rising
+        specifically means new connections are failing to establish, which is a
+        different problem from an established connection losing packets.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_netstat_Tcp_RetransSegs{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_TcpExt_TCPSynRetrans{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_Tcp_OutSegs{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.tcp.errors
+    stability: canonical
+    description:
+      summary: |
+        TCP listen-queue overflows, listen drops, receive-queue drops, and
+        timeouts per second.
+      notes: |
+        Listen overflows and drops mean the accept queue was full — the peer
+        completed a handshake the server never accepted, so the client sees a
+        connection that hangs and then dies. That is a `somaxconn`/backlog
+        problem in the application, surfaced here because nothing in the
+        application will report it.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_netstat_TcpExt_ListenOverflows{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_TcpExt_ListenDrops{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_TcpExt_TCPRcvQDrop{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_TcpExt_TCPTimeouts{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.udp.errors
+    stability: canonical
+    description:
+      summary: |
+        UDP receive errors, receive-buffer errors, and packets to no listening
+        port, per second.
+      notes: |
+        In a Kubernetes cluster this is usually DNS. Receive-buffer errors mean
+        datagrams arrived faster than the socket was drained, which surfaces as
+        intermittent resolution failures rather than as a network alarm.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_netstat_Udp_InErrors{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_Udp_RcvbufErrors{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_netstat_Udp_NoPorts{instance=~"$node"}%%{interval})
+        )
+  - id: node.debug.udp.queues
+    stability: canonical
+    description:
+      summary: Bytes queued in UDP receive and transmit buffers.
+      notes: |
+        The level behind `node.debug.udp.errors`: a receive queue that stays
+        deep is a socket nobody is draining fast enough, and the buffer errors
+        follow.
+    promQL:
+      - |
+        max by (instance) (
+          node_udp_queues{ip="v4", queue="rx", instance=~"$node"}
+        )
+      - |
+        max by (instance) (
+          node_udp_queues{ip="v4", queue="tx", instance=~"$node"}
+        )
+  - id: node.debug.arp.entries
+    stability: canonical
+    description:
+      summary: ARP table entries per interface.
+      notes: |
+        Approaching `gc_thresh3` makes the kernel start evicting neighbours,
+        which presents as intermittent unreachability to pods on other nodes.
+        Large flat clusters are how you get there.
+    promQL: |
+      max by (instance, device) (
+        node_arp_entries{instance=~"$node"}
+      )
+
+  # --- time and entropy ----------------------------------------------------
+  - id: node.debug.time.sync_status
+    stability: canonical
+    description:
+      summary: |
+        Whether the kernel clock is synchronized (1) or NTP has given up (0).
+      notes: |
+        `min` because unsynchronized is the bad direction. Materialize has
+        timestamp semantics, so clock divergence is correctness-adjacent rather
+        than cosmetic — and on cloud VMs it is rare enough that nobody looks for
+        it until something else is unexplainable.
+    promQL: |
+      min by (instance) (
+        node_timex_sync_status{instance=~"$node"}
+      )
+  - id: node.debug.time.drift
+    stability: canonical
+    description:
+      summary: |
+        Estimated clock offset, maximum error, and estimated error, in seconds.
+      notes: |
+        The magnitude behind `node.debug.time.sync_status`. `max` on all three
+        so the worst-drifting node in the selection is what surfaces.
+    promQL:
+      - |
+        max by (instance) (node_timex_offset_seconds{instance=~"$node"})
+      - |
+        max by (instance) (node_timex_maxerror_seconds{instance=~"$node"})
+      - |
+        max by (instance) (node_timex_estimated_error_seconds{instance=~"$node"})
+  - id: node.debug.entropy.available
+    stability: canonical
+    description:
+      summary: Available entropy, against the pool size.
+      notes: |
+        Largely historical on modern kernels, where the CRNG does not block once
+        seeded. Kept because it is two series and it explains an otherwise
+        inexplicable class of hang on TLS-heavy workloads on older kernels.
+        `min` on the available side because low is the bad direction.
+    promQL:
+      - |
+        min by (instance) (node_entropy_available_bits{instance=~"$node"})
+      - |
+        max by (instance) (node_entropy_pool_size_bits{instance=~"$node"})
+
+  # --- exporter itself -----------------------------------------------------
+  - id: node.debug.exporter.scrape_duration
+    stability: canonical
+    description:
+      summary: |
+        How long each node-exporter collector took on the last scrape.
+      notes: |
+        The cost side of the collector allowlist. A collector whose duration
+        climbs with cluster size is a candidate for exclusion — and a total
+        approaching the scrape timeout is why samples start going missing on the
+        busiest nodes first.
+    promQL: |
+      max by (instance, collector) (
+        node_scrape_collector_duration_seconds{instance=~"$node"}
+      )

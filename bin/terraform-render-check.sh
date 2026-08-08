@@ -108,6 +108,39 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
         echo "    storageClass reached all ${got} volumeClaimTemplates"
     fi
 
+    # node-exporter's toggle writes the chart's circuit breaker rather than a
+    # tag, because tags are OR'd and the chart carries it under `default`. That
+    # makes the failure mode specific: `tags.node-exporter = false` is valid
+    # YAML, reaches a key the chart really reads, and does nothing at all. The
+    # DaemonSet either renders or it does not, so assert on that directly.
+    # The composed documents are YAML, not JSON, so this reads them as text
+    # rather than through jq. Terraform's `yamlencode` quotes every key, hence
+    # the optional quotes. `tail -1` mirrors Helm's own last-document-wins merge,
+    # so a caller overriding this through `additional_values` is respected.
+    want_ne="$(grep -h -A2 '^"\?node-exporter"\?:' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \
+        | grep -oE '"?enabled"?:[[:space:]]*(true|false)' | grep -oE '(true|false)' | tail -1 || true)"
+    if [ -z "${want_ne}" ]; then
+        echo "  !! ${example}: the module wrote no top-level node-exporter.enabled" >&2
+        echo "     install_node_exporter has to write the circuit breaker. A tag cannot" >&2
+        echo "     switch it off, so moving it under tags: makes the input silently inert." >&2
+        status=1
+        continue
+    fi
+    got_ne="no"
+    grep -q '^  name: node-exporter$' "${rendered}" && got_ne="yes"
+    if [ "${want_ne}" = "true" ] && [ "${got_ne}" != "yes" ]; then
+        echo "  !! ${example}: install_node_exporter is true but no node-exporter rendered" >&2
+        status=1
+        continue
+    fi
+    if [ "${want_ne}" != "true" ] && [ "${got_ne}" = "yes" ]; then
+        echo "  !! ${example}: install_node_exporter is false but node-exporter still rendered" >&2
+        echo "     A tag cannot switch it off; the circuit breaker is what does." >&2
+        status=1
+        continue
+    fi
+    echo "    node-exporter enabled=${want_ne}, rendered=${got_ne}"
+
     # Same reasoning for the Google Cloud Monitoring exporter: the observable
     # proof it landed is the per-destination filter env var, which only renders
     # when the chart actually sees the exporter enabled.

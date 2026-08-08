@@ -1,0 +1,387 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Node health queries (node-exporter).
+
+description: |
+  Node-level health: the at-a-glance answers to "is this machine in trouble",
+  adapted from the Node Exporter Full dashboard
+  (https://grafana.com/grafana/dashboards/1860, revision 45) and narrowed to
+  what actually alerts.
+
+  These read node-exporter, NOT Materialize metrics. Only collectors this
+  chart's allowlist enables are referenced — see the Node Exporter section of
+  the chart's values reference for the list and the reasoning. The deeper
+  breakdowns live in `node-debug.yaml` at the `recommended` tier.
+
+  Three conventions apply to every query here:
+
+  * **`instance=~"$node"`, never `instance="$node"`.** A regex match makes the
+    selector work unchanged whether the dashboard variable resolves to one node
+    or many, so the same query backs a single-node view and a fleet view.
+
+  * **Every query is wrapped in `max by (instance, ...)`, which drops `job`.**
+    A node should only ever be scraped by one job. If a second one appears —
+    a pre-existing node-exporter alongside ours, or a migration with both
+    running — the same series arrives twice under different `job` labels, and
+    every `sum()` silently doubles while every binary operation between two
+    metrics loses its match. Aggregating `job` away makes both failure modes
+    impossible rather than merely unlikely. `max` is the default; **`min` where
+    low is the bad direction** (available memory, free space, collector
+    success), so the aggregate always reports the worst case rather than hiding
+    it behind a healthy duplicate.
+
+  * Where an inner aggregation is needed (averaging across CPUs, summing across
+    devices), it carries `by (instance, job)` and the outer `max`/`min` collapses
+    `job` afterwards. Aggregating both in one step would blend two jobs'
+    readings into one number instead of picking one.
+
+  `%%{interval}` is the rate window, including its brackets.
+
+metricImportanceHint: essential
+
+queries:
+  # --- CPU and scheduling --------------------------------------------------
+  - id: node.cpu.utilization
+    stability: canonical
+    description:
+      summary: |
+        Fraction of CPU time the node spent doing anything other than idling,
+        averaged across its cores.
+      nominal: Well below 1.0, with headroom for the bursty half of the workload.
+      degraded: |
+        Sustained above ~0.8 means the node has no burst capacity left; check
+        `node.cpu.pressure` to see whether threads are actually waiting.
+      notes: |
+        The average across cores, not the busiest core — a single saturated core
+        on a large node is invisible here and shows up in
+        `node.debug.cpu.by_mode` and `node.debug.schedstat.waiting`.
+    promQL: |
+      1 - max by (instance) (
+        avg by (instance, job) (
+          rate(node_cpu_seconds_total{mode="idle", instance=~"$node"}%%{interval})
+        )
+      )
+  - id: node.load.normalized
+    stability: canonical
+    description:
+      summary: |
+        One-minute load average divided by the node's core count, so it is
+        comparable across instance sizes.
+      nominal: Below 1.0 — runnable work fits in the cores available.
+      degraded: |
+        Above 1.0 means more threads are runnable than there are cores to run
+        them. On a database doing deliberate I/O this is not automatically bad;
+        read it with `node.cpu.pressure`, which distinguishes "busy" from
+        "waiting".
+    promQL: |
+      max by (instance) (node_load1{instance=~"$node"})
+      /
+      max by (instance) (
+        count by (instance, job) (
+          count by (instance, job, cpu) (node_cpu_seconds_total{instance=~"$node"})
+        )
+      )
+  - id: node.cpu.pressure
+    stability: canonical
+    description:
+      summary: |
+        PSI: the fraction of wall time at least one task was stalled waiting for
+        CPU.
+      nominal: Near zero.
+      degraded: |
+        Rising means runnable threads are queueing. For a latency-sensitive
+        dataflow engine this is the signal that shows up as peek latency before
+        it shows up as CPU utilization.
+      notes: |
+        Needs Linux 4.20+. Where `/proc/pressure` is absent the collector reports
+        `node_scrape_collector_success{collector="pressure"} == 0` rather than
+        returning a misleading zero.
+    promQL: |
+      max by (instance) (
+        rate(node_pressure_cpu_waiting_seconds_total{instance=~"$node"}%%{interval})
+      )
+
+  # --- memory and swap -----------------------------------------------------
+  #
+  # Materialize swaps deliberately, so swap being *in use* is not by itself a
+  # problem and must not page anyone. What distinguishes healthy swapping from
+  # thrash is the rate and the pressure, which is why all three are here.
+  - id: node.memory.available.ratio
+    stability: canonical
+    description:
+      summary: |
+        Fraction of RAM the kernel estimates is available for new allocations
+        without swapping, from `MemAvailable`.
+      nominal: Comfortably above 0.2.
+      degraded: |
+        Approaching zero means the next allocation reclaims or swaps. Read with
+        `node.memory.pressure` — pressure is what says the reclaim is hurting.
+      notes: |
+        `MemAvailable`, not `MemFree`: free memory is expected to be near zero on
+        a healthy Linux box, because the page cache uses what is not otherwise
+        claimed.
+    promQL: |
+      min by (instance) (
+        node_memory_MemAvailable_bytes{instance=~"$node"}
+      )
+      /
+      max by (instance) (
+        node_memory_MemTotal_bytes{instance=~"$node"}
+      )
+  - id: node.memory.pressure
+    stability: canonical
+    description:
+      summary: |
+        PSI: the fraction of wall time at least one task was stalled on memory
+        (`waiting`), and the fraction where *every* task was (`stalled`).
+      nominal: Near zero for both.
+      degraded: |
+        The `waiting` series rising while swap activity is steady is healthy
+        reclaim. Both series rising together is thrash — the node is spending
+        its time moving pages rather than running the workload.
+      notes: |
+        This is the leading indicator for the swap-as-a-feature workload:
+        `node.swap.used.ratio` says swap is in use, and this says whether that
+        is costing anything.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_pressure_memory_waiting_seconds_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_pressure_memory_stalled_seconds_total{instance=~"$node"}%%{interval})
+        )
+  - id: node.swap.used.ratio
+    stability: canonical
+    description:
+      summary: |
+        Fraction of configured swap in use. Zero when the node has no swap
+        configured, rather than returning no data.
+      nominal: |
+        Any value is nominal on its own. Materialize uses swap as a feature, so
+        this is a capacity gauge, not an alert.
+      degraded: |
+        Approaching 1.0 leaves nowhere to spill; the next allocation pressure
+        becomes an OOM kill instead.
+      notes: |
+        The `> bool 0` guard makes a swapless node report 0 rather than dividing
+        by zero, so a panel over a mixed fleet stays readable.
+    promQL: |
+      (max by (instance) (node_memory_SwapTotal_bytes{instance=~"$node"}) > bool 0)
+      *
+      (
+        (
+          max by (instance) (node_memory_SwapTotal_bytes{instance=~"$node"})
+          -
+          min by (instance) (node_memory_SwapFree_bytes{instance=~"$node"})
+        )
+        /
+        max by (instance) (node_memory_SwapTotal_bytes{instance=~"$node"})
+      )
+  - id: node.swap.activity
+    stability: canonical
+    description:
+      summary: |
+        Pages swapped in and out per second, from `vmstat`.
+      nominal: |
+        Steady low-rate activity is normal here, unlike on most workloads.
+      degraded: |
+        A sustained climb in both directions at once is thrash: the same pages
+        are going out and coming straight back. Confirm against the `stalled`
+        series of `node.memory.pressure`.
+      notes: |
+        The rate is the half of the swap story that the level cannot tell you.
+        `node.swap.used.ratio` can sit flat and high on a perfectly healthy node.
+    promQL:
+      - |
+        max by (instance) (
+          rate(node_vmstat_pswpin{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance) (
+          rate(node_vmstat_pswpout{instance=~"$node"}%%{interval})
+        )
+  - id: node.memory.oom_kills
+    stability: canonical
+    description:
+      summary: Rate of OOM-killer invocations on the node.
+      nominal: Zero.
+      unhealthy: |
+        Any non-zero value means the kernel killed a process to reclaim memory.
+        On a node running Materialize this is very likely a replica dying; cross
+        it with container restarts in the Kubernetes view.
+    promQL: |
+      max by (instance) (
+        rate(node_vmstat_oom_kill{instance=~"$node"}%%{interval})
+      )
+
+  # --- storage -------------------------------------------------------------
+  - id: node.filesystem.available.ratio
+    stability: canonical
+    description:
+      summary: |
+        Fraction of each mounted filesystem still available, per mountpoint.
+      nominal: Above 0.2.
+      degraded: |
+        Below ~0.1 on `/` or on the kubelet's filesystem triggers kubelet disk
+        pressure, which evicts pods — including, without a priority class, the
+        monitoring that would tell you about it.
+      notes: |
+        `min` across duplicates: a filesystem that is nearly full on one reading
+        must not be averaged back to healthy. Per-pod kubelet mounts are
+        excluded at the collector, so the mountpoint set here is bounded and
+        stable.
+    promQL: |
+      min by (instance, mountpoint) (
+        node_filesystem_avail_bytes{instance=~"$node", fstype!="rootfs"}
+      )
+      /
+      max by (instance, mountpoint) (
+        node_filesystem_size_bytes{instance=~"$node", fstype!="rootfs"}
+      )
+  - id: node.filesystem.readonly
+    stability: canonical
+    description:
+      summary: |
+        Whether a filesystem has been remounted read-only, per mountpoint.
+      nominal: Zero everywhere.
+      unhealthy: |
+        A 1 means the kernel remounted the filesystem read-only, which it does
+        after I/O errors. Every write on that node is failing; the workload
+        usually looks hung rather than broken.
+    promQL: |
+      max by (instance, mountpoint) (
+        node_filesystem_readonly{instance=~"$node", fstype!="rootfs"}
+      )
+  - id: node.disk.io_utilization
+    stability: canonical
+    description:
+      summary: |
+        Fraction of wall time each block device had at least one I/O in flight.
+      nominal: Below ~0.8 on the devices backing Materialize's spill and scratch.
+      degraded: |
+        Sustained near 1.0 means the device is the bottleneck. On cloud block
+        storage this is often a burst-credit or provisioned-IOPS ceiling rather
+        than a hardware limit.
+      notes: |
+        Device-level saturation, not per-process. The `%%{interval}` rate of a
+        seconds-per-second counter, so it is already a ratio.
+    promQL: |
+      max by (instance, device) (
+        rate(node_disk_io_time_seconds_total{instance=~"$node"}%%{interval})
+      )
+  - id: node.filefd.utilization
+    stability: canonical
+    description:
+      summary: |
+        Allocated file descriptors as a fraction of the system-wide maximum.
+      nominal: Well below 1.0.
+      degraded: |
+        Exhaustion fails `accept()` and `open()` across every process on the
+        node at once, which presents as unrelated components failing together.
+        A connection-heavy database plus a log collector tailing every container
+        is a realistic way to get there.
+    promQL: |
+      max by (instance) (node_filefd_allocated{instance=~"$node"})
+      /
+      max by (instance) (node_filefd_maximum{instance=~"$node"})
+
+  # --- network -------------------------------------------------------------
+  - id: node.network.errors
+    stability: canonical
+    description:
+      summary: |
+        Receive and transmit error rates per interface.
+      nominal: Zero.
+      degraded: |
+        Non-zero on a physical interface points at the NIC, the driver, or the
+        link. Sustained errors on a cloud instance are more often a hypervisor
+        or allowance problem than a cable.
+      notes: |
+        Per-pod veths are excluded at the collector, so `device` here is the
+        node's real interfaces plus the stable `cilium_*` devices.
+    promQL:
+      - |
+        max by (instance, device) (
+          rate(node_network_receive_errs_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance, device) (
+          rate(node_network_transmit_errs_total{instance=~"$node"}%%{interval})
+        )
+  - id: node.network.drops
+    stability: canonical
+    description:
+      summary: |
+        Receive and transmit packet drop rates per interface.
+      nominal: Zero.
+      degraded: |
+        Receive drops usually mean the kernel could not keep up rather than the
+        wire being faulty — check `node.debug.softnet.dropped` and
+        `node.debug.softnet.squeezed`, which say whether the softirq budget was
+        the limit.
+    promQL:
+      - |
+        max by (instance, device) (
+          rate(node_network_receive_drop_total{instance=~"$node"}%%{interval})
+        )
+      - |
+        max by (instance, device) (
+          rate(node_network_transmit_drop_total{instance=~"$node"}%%{interval})
+        )
+  - id: node.conntrack.utilization
+    stability: canonical
+    description:
+      summary: |
+        Netfilter connection-tracking table occupancy as a fraction of its
+        limit.
+      nominal: Below ~0.7.
+      degraded: |
+        At 1.0 the kernel drops new connections and logs `nf_conntrack: table
+        full`. This is the classic failure behind a NAT gateway, and it presents
+        as intermittent connection timeouts from a node that looks otherwise
+        healthy.
+      notes: |
+        Both sides are aggregated before dividing, so the ratio still resolves
+        if the entries and the limit ever arrive under different `job` labels.
+    promQL: |
+      max by (instance) (node_nf_conntrack_entries{instance=~"$node"})
+      /
+      max by (instance) (node_nf_conntrack_entries_limit{instance=~"$node"})
+
+  # --- node and exporter liveness -----------------------------------------
+  - id: node.uptime
+    stability: canonical
+    description:
+      summary: Seconds since the node booted.
+      nominal: Monotonically increasing.
+      degraded: |
+        A reset to near zero is a reboot. Unexplained resets across a pool are
+        worth correlating with spot reclamation or node auto-repair.
+      notes: |
+        `min` so that the freshest reboot in the selection is what surfaces,
+        rather than being masked by a long-lived neighbour.
+    promQL: |
+      min by (instance) (
+        node_time_seconds{instance=~"$node"} - node_boot_time_seconds{instance=~"$node"}
+      )
+  - id: node.collector.success
+    stability: canonical
+    description:
+      summary: |
+        Whether each enabled node-exporter collector returned data on the last
+        scrape, per collector.
+      nominal: 1 for every collector.
+      degraded: |
+        A 0 means that collector returned nothing while the scrape as a whole
+        succeeded — so `up` stays green and the metrics simply never appear.
+        This is the failure mode that goes unnoticed for months.
+      notes: |
+        Some zeros are expected and should be allowlisted rather than chased:
+        `hwmon` is usually empty on cloud VMs, `nvme` needs NVMe devices,
+        `kernel_hung` needs Linux 6.13+, and `schedstat` needs
+        `CONFIG_SCHEDSTATS`. `min` because low is the bad direction.
+    promQL: |
+      min by (instance, collector) (
+        node_scrape_collector_success{instance=~"$node"}
+      )
