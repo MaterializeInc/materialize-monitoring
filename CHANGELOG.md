@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.10.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.15.0 (Unreleased)
 
 _Changes Pending_
@@ -95,9 +99,22 @@ _Changes Pending_
 * CLO-153 Add profile example for otel pipelines
     * [materialize-monitoring#159](https://github.com/MaterializeInc/materialize-monitoring/pull/159)
 
-## Pipelines v0.9.0 (Unreleased)
+## Pipelines v0.9.0
 
-_Changes Pending_
+* DEP-188 Add node-exporter; support priorityClasses
+    * [materialize-monitoring#196](https://github.com/MaterializeInc/materialize-monitoring/pull/196)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * Release mzmon-lib (shared library) v0.9.0
+        * [materialize-monitoring#114](https://github.com/MaterializeInc/materialize-monitoring/pull/114)
+    * Update dependency uv_build to >=0.12,<0.13
+        * [materialize-monitoring#168](https://github.com/MaterializeInc/materialize-monitoring/pull/168)
+    * Update Rust crate jsonschema to 0.49.0
+        * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
+    * Update Rust crate glob to v0.3.4
+        * [materialize-monitoring#149](https://github.com/MaterializeInc/materialize-monitoring/pull/149)
 
 ## Pipelines v0.8.0
 
