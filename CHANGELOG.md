@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.13.1 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.14.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.13.1
+
+* CLO-111 Remaining fixes for grafana LB/persistence
+    * [materialize-monitoring#194](https://github.com/MaterializeInc/materialize-monitoring/pull/194)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.13.0
 
