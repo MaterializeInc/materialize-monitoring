@@ -1,33 +1,33 @@
 dependencies:
 - name: alloy
   repository: https://grafana.github.io/helm-charts
-  version: 1.10.0
+  version: 1.11.1
 - name: alloy
   repository: https://grafana.github.io/helm-charts
-  version: 1.10.0
+  version: 1.11.1
 - name: loki
   repository: oci://ghcr.io/grafana-community/helm-charts
-  version: 15.0.1
+  version: 18.7.5
 - name: thanos
   repository: oci://ghcr.io/thanos-community/helm-charts
-  version: 0.11.0
+  version: 0.30.0
 - name: grafana
   repository: oci://ghcr.io/grafana-community/helm-charts
-  version: 12.4.5
+  version: 12.10.4
 - name: grafana-operator
   repository: oci://ghcr.io/grafana/helm-charts
   version: 5.24.0
 - name: alertmanager
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 1.39.0
+  version: 1.41.0
 - name: kube-state-metrics
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 7.4.1
+  version: 8.2.0
 - name: prometheus-node-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 4.56.1
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.13.1
-digest: sha256:0a60787661ba2cb41039acf055cadc1523288108612d0946e749c91d16c139b2
-generated: "2026-08-08T12:42:42.899858-04:00"
+digest: sha256:31fabdde752363cd47f6a2d824e87d382931d1c17c4a2cf41bd201e910b83e32
+generated: "2026-08-08T15:02:51.010323-04:00"

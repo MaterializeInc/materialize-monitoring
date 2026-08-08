@@ -58,9 +58,16 @@ loki:
         memory: 128Mi
 
   queryScheduler:
-    # -- A dedicated scheduler is unnecessary at this scale; the query-frontend's
-    # built-in queue is sufficient. (The validator will warn — expected for small.)
-    enabled: false
+    # -- A dedicated scheduler decouples the read queue from the query-frontend.
+    # One replica is sufficient at this scale.
+    # This cannot be disabled while `loki.deploymentMode` is Distributed: the chart
+    # wires `frontend.scheduler_address` and `frontend_worker.scheduler_address`
+    # off the deployment mode alone, never off `queryScheduler.enabled`, so
+    # disabling the component leaves both pointing at an endpointless Service and
+    # breaks the read path. Loki chart 15 masked this by rendering the scheduler
+    # regardless of `enabled`; 18 honors the flag and the dangling address shows up.
+    enabled: true
+    replicas: 1
 
     podDisruptionBudget:
       enabled: false

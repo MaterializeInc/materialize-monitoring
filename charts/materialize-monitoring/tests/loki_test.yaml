@@ -154,7 +154,7 @@ tests:
   - it: fails in downstream chart when buckets are not defined
     set:
       loki.loki.storage.bucketNames.chunks: ""
-    template: ../charts/loki/templates/ruler/statefulset.yaml
+    template: ../charts/loki/templates/ruler/workload.yaml
     asserts:
       - failedTemplate:
           errorPattern: "Please define loki.storage.bucketNames.chunks"
