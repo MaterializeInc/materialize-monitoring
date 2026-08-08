@@ -8,13 +8,27 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.15.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.10.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.14.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.14.0
 
-_Changes Pending_
+* DEP-188 Add node-exporter; support priorityClasses
+    * [materialize-monitoring#196](https://github.com/MaterializeInc/materialize-monitoring/pull/196)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.8.0..v0.9.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * Release mzmon-lib (shared library) v0.9.0
+        * [materialize-monitoring#114](https://github.com/MaterializeInc/materialize-monitoring/pull/114)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.13.1
 
