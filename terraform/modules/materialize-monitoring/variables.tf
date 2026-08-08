@@ -127,6 +127,23 @@ variable "install_metrics_server" {
   nullable    = false
 }
 
+variable "install_node_exporter" {
+  description = <<-EOT
+    Install node-exporter as part of this stack.
+
+    On by default: node-level metrics are part of the stack's baseline, and nothing else in it
+    collects them. Set false when the cluster already runs its own node-exporter DaemonSet — a
+    second one wastes a per-node slot and produces the same series twice under two `job` labels,
+    which double-counts in any `sum()` over them.
+
+    This writes the chart's `node-exporter.enabled` circuit breaker rather than a tag. Tags are
+    OR'd, so `tags.node-exporter = false` would not turn it off while `tags.default` is true.
+  EOT
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
 # ==============================================================================
 # Sizing
 # ==============================================================================

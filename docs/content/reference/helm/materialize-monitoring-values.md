@@ -47,6 +47,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | ^5.22.2 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | ^1.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | ^7.3.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | ^4.56.0 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | ^0.11.0 |
 
 ## Values {#values}
@@ -140,7 +141,8 @@ Group ↔ chart mapping:
 | `pipeline`         | `alloy-agent`, `alloy-gateway`                      |
 | `bundled-backends` | `loki`, `thanos`, `alertmanager`                    |
 | `managed-grafana`  | `grafana`, `grafana-operator`                       |
-| `cluster-metrics`  | `kube-state-metrics`, `metrics-server`              |
+| `cluster-metrics`  | `kube-state-metrics`, `node-exporter`,              |
+|                    | `metrics-server`                                    |
 | `crds`             | `prometheus-operator-crds`, `grafana-operator-crds` |
 |                    | (in the sibling `materialize-monitoring-crds` chart)|
 
@@ -149,9 +151,13 @@ recommended stack. `--set tags.default=false` turns everything off, so
 you can enable a single group (`bundled-backends`, `managed-grafana`,
 `pipeline`, `cluster-metrics`) or individual charts on top. Profile
 preset values files under `profiles/` flip these appropriately.
-(`kube-state-metrics` is in `default`, but `metrics-server` is not —
-most clusters already run metrics-server; enable it via
-`tags.cluster-metrics` or `tags.metrics-server` if yours doesn't.)
+(`kube-state-metrics` and `node-exporter` are in `default`, but
+`metrics-server` is not — most clusters already run metrics-server;
+enable it via `tags.cluster-metrics` or `tags.metrics-server` if yours
+doesn't. A cluster that already runs its own node-exporter should turn
+ours off with the `node-exporter.enabled: false` circuit breaker —
+setting `tags.node-exporter: false` does nothing while `tags.default`
+is true, because tags are OR'd.)
 
 <table class="helm-values">
   <thead>
@@ -242,10 +248,93 @@ most clusters already run metrics-server; enable it via
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">tags<wbr>.node-exporter</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Per-chart override: enable just node-exporter. OR'd with `tags.default` / `tags.cluster-metrics`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">tags<wbr>.metrics-server</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+### Priority classes
+
+Scheduling priority shared across the stack's subcharts.
+Two PriorityClasses, created here and referenced by name from the subchart
+blocks further down. The split is about **what losing a pod costs you**:
+
+| Class                 | Used by                                          | Losing a pod means                                      |
+| --------------------- | ------------------------------------------------ | ------------------------------------------------------- |
+| `monitoring-critical` | `alloy-agent`, `node-exporter`, `alloy-gateway`   | a blind spot with no replica to cover it                |
+| `monitoring-scalable` | `loki`, `thanos`, `grafana`, `alertmanager`, KSM  | reduced capacity a surviving replica or a retry absorbs |
+
+The per-node collectors are singletons *per node*: when the agent or
+node-exporter is evicted from a node, nothing else reports that node, and the
+gap is permanent (there is no backfill). The backends are replicated, buffered,
+or both — Alloy retries writes, so a Loki ingester that is evicted costs
+latency rather than data. The gateway is graded critical despite being a
+Deployment because it is the single egress choke point for every signal.
+
+Both classes set **`preemptionPolicy: Never`**. That is the load-bearing
+choice: priority still decides scheduling-queue order and, more importantly,
+which pod the kubelet evicts first under node pressure — but monitoring will
+never evict a Materialize pod to make room for itself. Monitoring that takes
+down the thing it monitors is worse than monitoring that is late.
+
+Both sit well below `system-cluster-critical` (2000000000) and
+`system-node-critical` (2000001000), so cluster plumbing still outranks us.
+
+**PriorityClasses are cluster-scoped.** Two releases of this chart in one
+cluster will fight over these objects. Set `create: false` on all but one, or
+rename them per release — and if you rename, update the `priorityClassName`
+values in the subchart blocks to match. A `priorityClassName` naming a class
+that does not exist does not degrade: the API server *rejects* the pod. The
+chart warns at render time when it can tell that has happened.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">priorityClasses<wbr>.create</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create the PriorityClass objects. Set false when they are managed elsewhere (another release, or cluster-wide by a platform team); the `priorityClassName` references below still apply, so the classes must already exist.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">priorityClasses<wbr>.critical</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "description": "Materialize monitoring components whose loss creates a blind spot with no replica to cover it. Never preempts other workloads.",
+  "name": "monitoring-critical",
+  "preemptionPolicy": "Never",
+  "value": 1000000
+}</pre>
+</td>
+      <td class="helm-value-desc">Priority for components whose loss creates an unrecoverable blind spot — the per-node collectors and the egress gateway.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">priorityClasses<wbr>.scalable</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "description": "Materialize monitoring backends that are replicated or write-buffered. Evicted before the critical tier; never preempts other workloads.",
+  "name": "monitoring-scalable",
+  "preemptionPolicy": "Never",
+  "value": 1000
+}</pre>
+</td>
+      <td class="helm-value-desc">Priority for replicated or buffered components, where losing a pod costs capacity rather than visibility.
 </td>
     </tr>
   </tbody>
@@ -1829,6 +1918,13 @@ Upstream reference:
       <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-agent`
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-critical"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical: this is a per-node singleton, so an eviction is a log gap on that node with no replica to cover it.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -2018,6 +2114,13 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-critical"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical despite being a Deployment: every signal in the stack leaves through here, so losing it stops logs and metrics at once.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.serviceAccount<wbr>.create</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -2060,6 +2163,13 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
       <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.global<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority for Loki. See the Priority classes section. `global` covers every component that renders through the chart's `_pod.tpl` — but *not* the two memcached StatefulSets, which read only their own component key. They are set explicitly further down. This is the same asymmetry `terraform/modules/materialize-monitoring/scheduling.tf` calls out for nodeSelector and tolerations; rendering is what catches it.
 </td>
     </tr>
     <tr>
@@ -2748,8 +2858,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.chunksCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"allocatedMemory":2048}</code></td>
-      <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default.
+      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.resultsCache</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-desc">Query results cache (memcached).
 </td>
     </tr>
     <tr>
@@ -2793,6 +2910,13 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
       <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
 </td>
     </tr>
     <tr>
@@ -2977,6 +3101,13 @@ Upstream references:
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Scalable tier: while the operator is down, dashboard and datasource reconciliation stops, but Grafana keeps serving what it already has.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.fullnameOverride</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"grafana-operator"</code></td>
@@ -3051,6 +3182,13 @@ for the full checklist.
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
       <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section.
 </td>
     </tr>
     <tr>
@@ -3357,6 +3495,13 @@ Bundled Alertmanager for routing alerts emitted by the rule packages.
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alertmanager<wbr>.persistence<wbr>.size</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"4Gi"</code></td>
@@ -3372,6 +3517,316 @@ kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize
 
 Upstream reference:
    * https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+#### Node Exporter
+
+node-exporter for hardware and OS metrics from every node.
+
+Upstream reference:
+   * https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-node-exporter/values.yaml
+   * https://github.com/prometheus/node_exporter#collectors
+
+Run as its own DaemonSet rather than folded into the Alloy agent's
+`prometheus.exporter.unix`, so its resource envelope stays known and separate:
+a metrics regression cannot then starve log collection out of a shared limit.
+See the Terraform modules design doc for the full argument.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"node-exporter"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.namespaceOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-critical"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical: a node with no node-exporter is a node nothing else reports on, and the gap does not backfill.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "distroless": true,
+  "registry": "quay.io",
+  "repository": "prometheus/node-exporter",
+  "tag": "v1.12.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Container image. Split into registry / repository / tag so Renovate's `helm-values` manager can bump the exporter independently of the subchart version — the two move on different cadences and a chart release is not a prerequisite for a node_exporter CVE fix.  `distroless: true` appends `-distroless` to the tag, giving an image with no shell and no package manager. node_exporter reads the host's `/proc`, `/sys` and `/` — a shell in that container is a materially better foothold than a shell in most others, and nothing in our configuration needs one.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "64Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource envelope, matching what Materialize runs in production today.
+
+Deliberately **no CPU limit**. This is a DaemonSet that does nothing between
+scrapes and then bursts for the length of one collection; a CPU limit turns
+that burst into CFS throttling, which shows up as scrape timeouts on exactly
+the loaded nodes where you most need the sample. The 10m request is what it
+averages, not what a scrape costs.
+
+Memory is request == limit, which is the opposite call for the opposite
+reason: node_exporter's working set is flat and bounded (~20-30 MiB for this
+collector set), so a limit equal to the request costs nothing and makes the
+per-node footprint a number the cluster autoscaler can actually plan with.
+This lands the pod in Burstable QoS. Guaranteed would require the CPU limit
+we just argued against; being evicted a little earlier under node pressure
+is the better trade, and `monitoring-critical` covers the ordering.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.updateStrategy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "rollingUpdate": {
+    "maxUnavailable": "10%"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Rolling update budget for the DaemonSet. Upstream's `maxUnavailable: 1` walks a large fleet one node at a time, which makes an image bump take hours. Metrics are gap-tolerant and the pod restarts in seconds, so a percentage keeps rollout time flat as the fleet grows.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.kubeRBACProxy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-rbac-proxy sidecar, which would put the exporter behind TokenReview/SubjectAccessReview over HTTPS.
+
+**Off deliberately.** It is a second container on *every* node, and DaemonSet
+overhead is the constraint we are managing here — the sidecar's own request
+is comparable to node_exporter's, so it roughly doubles the per-node cost of
+node metrics to protect an endpoint that exposes no secrets.
+
+What it would buy, for when that trade changes: authenticated scrapes, and
+(via `kubeRBACProxy.tls` + `tlsSecret`) TLS with **client-certificate auth**,
+so only a scraper holding a cert signed by the configured CA can read
+`/metrics`. That is the shape an in-cluster-mTLS story would use, and it is
+parked, not rejected — see the cert-manager mTLS item on the roadmap.
+
+Note that with `hostNetwork: true` the exporter listens on the node's own
+interfaces, so today the real perimeter is the node firewall / security
+group, not anything Kubernetes enforces. Do not treat port 9100 as private
+just because a NetworkPolicy exists.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "ingress": [
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 9100,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for the exporter.
+
+Ingress is narrowed to the Alloy gateway, which is what actually scrapes it
+(`prometheus.operator.servicemonitors` in the gateway pipeline). Egress is
+denied outright — node_exporter never initiates a connection.
+
+**Read the hostNetwork caveat before relying on this.** The pods run with
+`hostNetwork: true` (required: `netdev`, `netclass`, `netstat`, `sockstat`
+and `conntrack` all read namespaced files under `/proc/net`, so in a pod
+netns they would report the *pod's* traffic, not the node's). Most CNIs —
+Cilium and Calico among them — do not apply pod NetworkPolicy to
+host-networked pods, because that traffic belongs to the node identity. So
+this policy is a correct declaration of intent and is enforced where the CNI
+supports it, but it is not the control that keeps port 9100 private. The
+node's firewall is.
+
+The default `from` selects by pod label within the release namespace. Running
+the gateway in a different namespace (see `profiles/split-namespace.values.yaml`)
+requires replacing this list with one that adds a `namespaceSelector`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.prometheus<wbr>.monitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Emit a ServiceMonitor. This is how collection actually happens: the Alloy gateway discovers ServiceMonitors cluster-wide and scrapes the endpoints behind them. Without this the DaemonSet runs and is never read.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--collector.disable-defaults",
+  "--collector.cpu",
+  "--collector.cpufreq",
+  "--collector.loadavg",
+  "--collector.schedstat",
+  "--collector.stat",
+  "--collector.pressure",
+  "--collector.meminfo",
+  "--collector.vmstat",
+  "--collector.swap",
+  "--collector.vmstat.fields=^(oom_kill|pgpg|pswp|pg.*fault|pgscan|pgsteal|workingset).*$",
+  "--collector.diskstats",
+  "--collector.filesystem",
+  "--collector.filesystem.mount-points-exclude=^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+|var/lib/containers/storage/.+|var/lib/kubelet/(pods|plugins)/.+|run/containerd/.+)($|/)",
+  "--collector.nvme",
+  "--collector.xfs",
+  "--collector.netdev",
+  "--collector.netdev.device-exclude=^(lo|lxc.*|veth.*|cali.*|azv.*|docker.*|br-.*|nodelocal.*|kube-ipvs.*|dummy.*)$",
+  "--collector.netclass",
+  "--collector.netclass.ignored-devices=^(lo|lxc.*|veth.*|cali.*|azv.*|docker.*|br-.*|nodelocal.*|kube-ipvs.*|dummy.*)$",
+  "--collector.netstat",
+  "--collector.sockstat",
+  "--collector.softnet",
+  "--collector.udp_queues",
+  "--collector.conntrack",
+  "--collector.arp",
+  "--collector.os",
+  "--collector.uname",
+  "--collector.time",
+  "--collector.timex",
+  "--collector.filefd",
+  "--collector.entropy",
+  "--collector.hwmon",
+  "--collector.selinux",
+  "--collector.kernel_hung"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra arguments to node_exporter, which is where the collector allowlist lives.
+
+`--collector.disable-defaults` turns everything off; each `--collector.<name>`
+then turns one back on. An allowlist rather than a denylist because the
+default set drifts with each node_exporter release — a new default-on
+collector should not silently appear in our cardinality budget.
+
+**Every name here must exist on Linux.** An unknown `--collector.*` flag is a
+parse error and node_exporter exits, so a typo or a platform-specific
+collector crash-loops the DaemonSet on every node at once. In particular
+`boottime` is a Darwin/BSD collector; on Linux `node_boot_time_seconds` comes
+from `stat`, which is why `stat` is in the list and `boottime` is not.
+
+Chosen for a network- and memory-hungry Rust database that swaps on purpose:
+
+* **Swap, explicitly.** `swap` (per-device swap, off by default upstream) and
+  `meminfo` (`SwapTotal`/`SwapFree`) give the level; `vmstat` gives the rate
+  (`pswpin`/`pswpout`), which is the half that distinguishes healthy
+  deliberate swapping from thrash. `pressure` (PSI) is the leading indicator
+  for both.
+* **Memory reclaim.** The `vmstat` field filter is widened below to admit
+  `pgscan_*`/`pgsteal_*`, which separate background reclaim (`kswapd`, fine)
+  from direct reclaim (`direct`, an allocating thread is stalled) — the
+  difference between swap working and swap hurting.
+* **Network.** `netdev`/`netclass` for the NICs, `netstat` for TCP
+  retransmits, `sockstat` for socket and TCP-memory pressure, `softnet` for
+  packets the kernel dropped before userspace saw them, `udp_queues` for DNS,
+  and `conntrack` for table exhaustion behind NAT gateways.
+* **CPU.** `cpu` (including `mode="steal"`), plus `schedstat` for run-queue
+  wait — "threads were runnable and did not run", which is the contention a
+  tightly-optimized dataflow engine feels first — and `stat` for context
+  switches and blocked processes.
+* **Correctness-adjacent.** `timex` for clock sync; a database with timestamp
+  semantics on cloud VMs wants to know when NTP has given up.
+
+Left off on purpose, with the reason, since each is one line to re-add:
+
+* `slabinfo` — kernel slab accounting. Costs ~1.5k series per node (every
+  slab cache × several metrics) and needs a root init container to chmod
+  `/proc/slabinfo` (`permissionInitContainer.fixes.slabinfo`). `meminfo`
+  already answers "how much kernel memory" via `Slab`/`SReclaimable`/
+  `SUnreclaim`; `slabinfo` only adds *which cache*, which is forensics you
+  turn on during an investigation.
+* `ethtool` — on EC2 this is where the ENA allowance counters live
+  (`bw_*_allowance_exceeded`, `pps_allowance_exceeded`,
+  `conntrack_allowance_exceeded`): instance-level network throttling that is
+  invisible in every other metric. Genuinely valuable on AWS and worth
+  enabling there, paired with
+  `--collector.ethtool.device-include=^(eth|ens|enp)` — held back only
+  because the stat set is driver-specific (gVNIC and Azure expose different
+  counters) and unverified on our images.
+* `interrupts`, `softirqs` — per-CPU × per-IRQ, so thousands of series on a
+  large instance. `softnet` covers the actionable part.
+* `tcpstat` — parses every socket in `/proc/net/tcp`, which is most expensive
+  on exactly the busiest nodes. `sockstat` gives the aggregate cheaply.
+* `processes` — walks all of `/proc` each scrape. `stat` already reports
+  running and blocked counts.
+* `edac`, `rapl`, `thermal_zone`, `dmi` — hypervisors do not expose ECC,
+  powercap or thermals to guests, and instance type comes from node labels.
+  Worth revisiting on bare metal.
+* `meminfo_numa`, `zoneinfo`, `buddyinfo` — NUMA and fragmentation detail for
+  very large instances; opt in when investigating.
+* `ipvs`, `nfs`, `nfsd`, `bonding`, `mdadm`, `zfs`, `btrfs`, `bcache` — none
+  apply to a cloud node running ext4/xfs on network block storage with
+  Cilium replacing kube-proxy. `ipvs` matters if you run kube-proxy in IPVS
+  mode; `nfs` if you mount EFS/Filestore.
+* `sysctl` — no default set, but `--collector.sysctl.include=vm.swappiness,
+  vm.overcommit_memory,vm.overcommit_ratio` is a cheap guard against AMI
+  drift changing swap behaviour underneath a swap-dependent workload.
+* `textfile` — the node-local extension point, but it needs a hostPath mount
+  this chart does not create.
+</td>
+    </tr>
+  </tbody>
+</table>
 
 #### Metrics Server
 

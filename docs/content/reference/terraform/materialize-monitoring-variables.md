@@ -232,6 +232,21 @@ metrics API and the Materialize Console silently loses cluster metrics.
         <td class="tf-var-default"><code>false</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="install_node_exporter" href="#install_node_exporter">install_<wbr>node_<wbr>exporter</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Install node-exporter as part of this stack.
+
+On by default: node-level metrics are part of the stack's baseline, and nothing else in it
+collects them. Set false when the cluster already runs its own node-exporter DaemonSet — a
+second one wastes a per-node slot and produces the same series twice under two `job` labels,
+which double-counts in any `sum()` over them.
+
+This writes the chart's `node-exporter.enabled` circuit breaker rather than a tag. Tags are
+OR'd, so `tags.node-exporter = false` would not turn it off while `tags.default` is true.
+</td>
+        <td class="tf-var-default"><code>true</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="install_timeout" href="#install_timeout">install_<wbr>timeout</a></td>
         <td class="tf-var-type"><code>number</code></td>
       <td class="tf-var-desc">Timeout for each Helm release, in seconds. Well above Helm's 300s default: a first install brings up Loki, Thanos, Grafana, and both Alloy roles together.</td>

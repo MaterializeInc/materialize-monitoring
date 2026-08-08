@@ -139,13 +139,14 @@ These ship as the released **Prometheus Scrapers** component and are bundled int
 | ServiceMonitors / PodMonitors (incl. GCP `PodMonitoring`) | FCO-M1 | ✅ |
 | Sync scrapers into the charts and docs | FCO-M1 | ✅ |
 | **cAdvisor on the bundled path** ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — the shipped `ScrapeConfig` is only consumable by Prometheus, and Alloy has no `prometheus.operator.scrapeconfigs` equivalent, so the Kubernetes dashboards have no data on the default Alloy → Thanos path | OO-M1 | ⬜ |
-| **node-exporter subchart** ([DEP-188](https://linear.app/materializeinc/issue/DEP-188)) — no node-level metrics ship today; kept a separate workload rather than folded into the agent so its resource envelope stays known for bin-packed clusters | OO-M1 | ⬜ |
-| NetworkPolicy for Thanos / Grafana / Alloy / Alertmanager / kube-state-metrics ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) — only Loki has one | OO-M1 | ⬜ |
+| **node-exporter subchart** ([DEP-188](https://linear.app/materializeinc/issue/DEP-188)) — kept a separate workload rather than folded into the agent so its resource envelope stays known for bin-packed clusters. Ships on the `default` tag with a collector allowlist, a ServiceMonitor, a NetworkPolicy, and the `monitoring-critical` priority class | OO-M1 | ✅ |
+| NetworkPolicy for Thanos / Grafana / Alloy / Alertmanager / kube-state-metrics ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) — Loki and node-exporter have one | OO-M1 | ⬜ |
 | Generic `prometheus.io/scrape` discovery ([DEP-193](https://linear.app/materializeinc/issue/DEP-193)), default off, with exclusions generated from the same source as the monitors | OO-M3 | ⬜ |
 | Move scrapers to the `materialize-operator` Helm chart ([DEP-221](https://linear.app/materializeinc/issue/DEP-221)) | OO-M3 | ⬜ (long-term) |
 
 The cAdvisor and node-exporter rows are **parity gaps against the stack the Terraform repo shipped before the cutover**, which collected both.
 They are functional gaps in the chart's own default path, not Terraform-specific — the Terraform work only makes the bundled path everyone's default, which is what moved them to OO-M1.
+node-exporter has landed; cAdvisor is the remaining half, and until it does the Kubernetes container panels stay empty on the bundled path.
 
 Long term, ServiceMonitors belong in the `materialize-operator` Helm chart rather than here.
 This repo carries them now to fill the gap, with the intent to hand them off once the operator owns that surface.

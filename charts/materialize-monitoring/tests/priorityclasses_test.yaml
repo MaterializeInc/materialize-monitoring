@@ -1,0 +1,171 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# The template renders two documents, so every document-scoped assertion needs
+# an explicit `documentIndex` — without one the runner applies the assertion to
+# each document in turn and both fail against the other. Warnings are asserted
+# against `NOTES.txt`: `templates/validate.yaml` emits them as YAML comments and
+# so produces no document to match on.
+suite: priority classes
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  tags.default: false
+tests:
+  - it: should create both classes by default
+    template: templates/priorityclasses.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          apiVersion: scheduling.k8s.io/v1
+          kind: PriorityClass
+          name: monitoring-critical
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: scheduling.k8s.io/v1
+          kind: PriorityClass
+          name: monitoring-scalable
+        documentIndex: 1
+
+  # The load-bearing property: monitoring gets scheduling-queue position and
+  # eviction ordering, but never takes a running Materialize pod's place.
+  - it: should never preempt other workloads
+    template: templates/priorityclasses.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: preemptionPolicy
+          value: Never
+      - equal:
+          path: globalDefault
+          value: false
+
+  - it: should rank critical above scalable and both below system-cluster-critical
+    template: templates/priorityclasses.yaml
+    asserts:
+      - equal:
+          path: value
+          value: 1000000
+        documentIndex: 0
+      - equal:
+          path: value
+          value: 1000
+        documentIndex: 1
+
+  - it: should create nothing when create is false
+    set:
+      priorityClasses.create: false
+    template: templates/priorityclasses.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should honor renamed classes
+    set:
+      priorityClasses.critical.name: mz-crit
+      priorityClasses.scalable.name: mz-scale
+    template: templates/priorityclasses.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: scheduling.k8s.io/v1
+          kind: PriorityClass
+          name: mz-crit
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: scheduling.k8s.io/v1
+          kind: PriorityClass
+          name: mz-scale
+        documentIndex: 1
+
+  # --- wiring into subcharts -------------------------------------------------
+  - it: should put the per-node collectors in the critical tier
+    set:
+      tags.node-exporter: true
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-critical
+
+  - it: should put the agent in the critical tier and the gateway with it
+    set:
+      tags.pipeline: true
+      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-critical
+
+  - it: should put kube-state-metrics in the scalable tier
+    set:
+      tags.kube-state-metrics: true
+    template: ../charts/kube-state-metrics/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  # `loki.global.priorityClassName` does not reach the memcached StatefulSets —
+  # their template reads only their own component key — so both caches set it
+  # explicitly. This is the assertion that catches a regression there.
+  - it: should reach the loki memcached caches, which global does not cover
+    set:
+      tags.loki: true
+      loki.loki.storage.bucketNames.chunks: test-chunks
+      loki.loki.storage.bucketNames.ruler: test-ruler
+      loki.networkPolicy.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+    template: ../charts/loki/templates/chunks-cache/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  # --- validation ------------------------------------------------------------
+  # A priorityClassName naming a class nothing creates does not degrade: the API
+  # server rejects the pod. The chart warns rather than fails, because pointing
+  # at an externally-managed class is legitimate.
+  - it: should warn when a subchart references a class the chart does not create
+    set:
+      tags.node-exporter: true
+      priorityClasses.create: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'node-exporter\.priorityClassName is "monitoring-critical", which this chart does not create'
+
+  # A warning, not an error: pointing at an externally-managed class is
+  # legitimate and the chart cannot see the cluster to know whether it exists.
+  - it: should warn without failing the render
+    set:
+      tags.node-exporter: true
+      priorityClasses.create: false
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should not warn about built-in system classes
+    set:
+      tags.metrics-server: true
+      priorityClasses.create: false
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'metrics-server\.priorityClassName'
+
+  # Only subcharts Helm actually resolved are checked, so a chart switched off by
+  # tag cannot raise a warning about a value nothing will read.
+  - it: should not warn about disabled subcharts
+    set:
+      tags.node-exporter: false
+      priorityClasses.create: false
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'node-exporter\.priorityClassName'

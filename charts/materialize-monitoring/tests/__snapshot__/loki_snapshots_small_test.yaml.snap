@@ -748,6 +748,7 @@ small workloads:
                   type: RuntimeDefault
           initContainers: []
           nodeSelector: {}
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 11211
             runAsGroup: 11211
@@ -874,6 +875,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1012,6 +1014,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1145,6 +1148,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1276,6 +1280,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1412,6 +1417,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1537,6 +1543,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1681,6 +1688,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1817,6 +1825,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch
@@ -1959,6 +1968,7 @@ small workloads:
                   type: RuntimeDefault
           initContainers: []
           nodeSelector: {}
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 11211
             runAsGroup: 11211
@@ -2082,6 +2092,7 @@ small workloads:
                 - mountPath: /tmp
                   name: temp
           enableServiceLinks: true
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch

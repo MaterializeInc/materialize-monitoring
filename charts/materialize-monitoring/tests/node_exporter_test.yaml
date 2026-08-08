@@ -1,0 +1,241 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: node-exporter subchart
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.node-exporter: true
+tests:
+  # --- enablement ------------------------------------------------------------
+  - it: should be enabled by the default tag
+    set:
+      tags.default: true
+      tags.node-exporter: false
+      # `tags.default` pulls in the whole recommended stack, and Loki and Thanos
+      # both refuse to render without object storage configured. Neither has
+      # anything to do with what this test asserts.
+      loki.enabled: false
+      thanos.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: DaemonSet
+          name: node-exporter
+          namespace: test-monitoring
+
+  - it: should be enabled by the cluster-metrics group tag
+    set:
+      tags.default: false
+      tags.node-exporter: false
+      tags.cluster-metrics: true
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: DaemonSet
+          name: node-exporter
+          namespace: test-monitoring
+
+  - it: should be enabled by the circuit breaker with every tag off
+    set:
+      tags.default: false
+      tags.node-exporter: false
+      node-exporter.enabled: true
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  # The alias is what makes the subchart name itself `node-exporter` rather than
+  # `prometheus-node-exporter`, which is the label the gateway pipeline and the
+  # dashboards select on.
+  - it: should carry the aliased app name on its pods
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: node-exporter
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: node-exporter
+
+  # --- image -----------------------------------------------------------------
+  - it: should use the pinned distroless image rather than the chart appVersion
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/prometheus/node-exporter:v1.12.1-distroless
+
+  - it: should honor the global image registry override
+    set:
+      global.imageRegistry: mirror.example.com
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example.com/prometheus/node-exporter:v1.12.1-distroless
+
+  # --- resources -------------------------------------------------------------
+  # A CPU limit is deliberately absent: this is a DaemonSet that bursts for the
+  # length of one collection, and throttling it shows up as scrape timeouts on
+  # exactly the busy nodes whose samples matter most.
+  - it: should request 10m CPU and cap memory at the request
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 10m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 64Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 64Mi
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+
+  # --- collectors ------------------------------------------------------------
+  - it: should allowlist collectors rather than denylist them
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.disable-defaults
+
+  - it: should enable the collectors Materialize depends on
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      # Swap is a Materialize feature, so the level (swap, meminfo) and the rate
+      # (vmstat pswpin/pswpout) both have to be collected.
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.swap
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.meminfo
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.vmstat
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.pressure
+      # Conntrack table exhaustion behind a NAT gateway.
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.conntrack
+      # Boot time on Linux comes from `stat`; there is no `boottime` collector
+      # outside Darwin/BSD, and passing one that does not exist would make
+      # node_exporter exit on every node at once.
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.stat
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.boottime
+
+  - it: should keep the deliberately excluded collectors off
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      # Needs a root init container to chmod /proc/slabinfo and costs ~1.5k
+      # series per node; meminfo already reports Slab totals.
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.slabinfo
+      # Per-CPU x per-IRQ series.
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.interrupts
+      # Parses every socket in /proc/net/tcp; sockstat gives the aggregate.
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.tcpstat
+
+  # Per-pod veths churn their names on every pod restart, which is worse for the
+  # TSDB than the raw series count. The per-pod view comes from cAdvisor.
+  - it: should exclude pod veths from the network collectors
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.netdev.device-exclude=^(lo|lxc.*|veth.*|cali.*|azv.*|docker.*|br-.*|nodelocal.*|kube-ipvs.*|dummy.*)$
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.netclass.ignored-devices=^(lo|lxc.*|veth.*|cali.*|azv.*|docker.*|br-.*|nodelocal.*|kube-ipvs.*|dummy.*)$
+
+  # Every emptyDir, secret and projected token is its own mount under
+  # /var/lib/kubelet/pods/<uid>/. /var/lib/kubelet itself stays collected: it is
+  # the ephemeral-storage filesystem.
+  - it: should exclude kubelet per-pod mounts but keep the kubelet root
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.filesystem.mount-points-exclude=^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+|var/lib/containers/storage/.+|var/lib/kubelet/(pods|plugins)/.+|run/containerd/.+)($|/)
+
+  # --- scraping and policy ---------------------------------------------------
+  - it: should emit a ServiceMonitor, which is how collection happens
+    template: ../charts/node-exporter/templates/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: node-exporter
+          namespace: test-monitoring
+
+  # Once generic prometheus.io/scrape discovery lands, a "true" here would make
+  # every target get scraped twice under two different job labels.
+  - it: should opt out of annotation-based discovery
+    template: ../charts/node-exporter/templates/service.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["prometheus.io/scrape"]
+          value: "false"
+
+  - it: should restrict ingress to the alloy gateway and deny all egress
+    template: ../charts/node-exporter/templates/networkpolicy.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: node-exporter
+          namespace: test-monitoring
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/name"]
+          value: alloy-gateway
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 9100
+      # Egress is in policyTypes with no egress rules, which denies it outright.
+      - contains:
+          path: spec.policyTypes
+          content: Egress
+      - notExists:
+          path: spec.egress
+
+  # --- rollout ---------------------------------------------------------------
+  - it: should roll by percentage so fleet-wide upgrades stay bounded
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.updateStrategy.rollingUpdate.maxUnavailable
+          value: 10%
+
+  # --- kube-rbac-proxy -------------------------------------------------------
+  # Off because it is a second container on every node, and DaemonSet overhead is
+  # the constraint. See the values.yaml note for what it would buy (TLS client
+  # auth), which is parked rather than rejected.
+  - it: should run a single container with no rbac proxy
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 1
