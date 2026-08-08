@@ -74,6 +74,21 @@ default it fails to set.
 - **The provider version constraint in this module caps what a downstream root can
   select.** Widening it is a prerequisite for a downstream provider major, not a
   consequence.
+- **`count` cannot depend on a value a wrapper computes.** A wrapper that
+  provisions a database in the same apply hands this module an endpoint and a
+  generated password, and Terraform expands `count` before it knows either —
+  `Invalid count argument`. Anything gating a resource's existence needs a
+  plan-time-known input, which is what `grafana_database_enabled` and
+  `grafana_database_manage_password_secret` are for. Infer from the value when it
+  is null, so a caller with literals never has to think about it.
+- **`coalesce` errors when *every* argument is null**, rather than returning null.
+  On an optional credential that is the default path, so it fails the one case
+  with nothing to decide. Use a conditional.
+- **A stale pinned ref masks variable validation.** When a downstream wrapper
+  passes an input the pinned tag does not have, the plan dies on
+  `Unsupported argument` *before* any `validation` block runs — so a test of a
+  validation rule reads as passing when it never executed. Confirm the failure
+  case actually fails before trusting the success cases.
 
 ## Tests
 
@@ -91,15 +106,56 @@ install, restart, and delete.
 ## Iterating without cutting a release
 
 The default loop makes you release the chart, release the module, and bump the
-downstream ref before you can test anything. Three shortcuts remove that, all
-temporary and all documented in
-[Iterating against a live cluster](../../../docs/content/reference/internal/contributing.md#iterating-against-a-live-cluster):
-point a wrapper's `source` at a relative path to this repo, point
-`chart_registry` at a local chart directory, and install a second release with
-everything disabled except the component you are working on.
+downstream ref before you can test anything. Two edits in
+`materialize-terraform-self-managed` remove that entirely, and they are what to
+reach for whenever you need a real `plan` or a real cluster.
 
-Revert all three before committing. A relative `source` that reaches main is a
-broken module for every consumer.
+**1. Point the wrapper at this checkout** — in each
+`{aws,gcp,azure}/modules/monitoring/main.tf`:
+
+```hcl
+module "monitoring" {
+- source = "github.com/MaterializeInc/materialize-monitoring//terraform/modules/materialize-monitoring?ref=materialize-monitoring/<CURRENT_TAG>"
++ source = "../../../../materialize-monitoring/terraform/modules/materialize-monitoring"
+```
+
+Four `..` lands in the directory holding both repos. It **must** stay relative —
+an absolute path is copied into `.terraform/modules/` without `charts/` beside
+it. The swap itself needs one `terraform init`; edits to the module after that
+take effect on the next `plan` with no re-init.
+
+**2. Point the chart at this checkout** — in each
+`{aws,gcp,azure}/examples/simple/main.tf` (and `enterprise`):
+
+```hcl
+module "monitoring" {
+  ...
++ chart_registry = "/Users/you/workspace/materialize-monitoring/charts"
+```
+
+`chart_registry` is not required to be an OCI registry. A local directory
+installs from your working tree, and the module reads its version from that
+directory's `Chart.yaml`, so the pair cannot drift.
+
+A third shortcut — installing one component at a time with a scratch release —
+and the reasoning behind all of them are in
+[Iterating against a live cluster](../../../docs/content/reference/internal/contributing.md#iterating-against-a-live-cluster).
+
+Revert both before committing. A relative `source` that reaches main is a broken
+module for every consumer.
+
+### Planning without a cloud account
+
+Most plan-time failures reproduce with no credentials, because Terraform
+evaluates variable validation and expands `count` before it calls a provider.
+Instantiate the module from a scratch directory with only its required inputs
+(`prefix`, `project_id`, `region` on GCP) and dummy values, feed it the case you
+want to test, and read the error. Anything that fails in the graph shows up
+before the provider is ever contacted.
+
+To reproduce a value that is *unknown at plan time* — the shape a wrapper
+produces when it provisions a database in the same apply — drive the input from a
+`random_password` result rather than a literal.
 
 ## Releasing
 

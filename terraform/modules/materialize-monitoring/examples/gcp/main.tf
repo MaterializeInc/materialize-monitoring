@@ -50,6 +50,14 @@ module "monitoring" {
   materialize_instance_namespace = "materialize-environment"
   materialize_operator_namespace = "materialize"
 
+  # Grafana's own state in PostgreSQL rather than SQLite on an emptyDir. Set here
+  # so the render check has something to assert against: the observable proof is
+  # a `[database]` block in grafana.ini plus the Secret mount the password is read
+  # through, neither of which renders if the values miss the paths the subchart
+  # actually reads.
+  grafana_database_host     = "grafana-db.example.internal"
+  grafana_database_password = "example-not-a-real-password"
+
   # No `region` or `endpoint`: those are S3-only fields, and Thanos rejects them
   # in a GCS objstore config.
   object_storage = {

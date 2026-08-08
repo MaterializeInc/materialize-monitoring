@@ -326,8 +326,20 @@ Do not point a datasource at a `loki-gateway` service; it does not exist.
 The Service is `ClusterIP` by default, so a fresh install is reachable only through `kubectl port-forward`.
 That is the safe default rather than an oversight: the only account is the generated admin, and every datasource behind Grafana reads every metric in Thanos and every log in the tenant.
 
-Two values open it up, and they are the upstream subchart's own — the chart surfaces them rather than inventing a path, so a Helm-only install has the same capability the Terraform module does.
+Two values open it up, and they are the upstream subchart's own — the chart surfaces them rather than inventing a path, so a Helm-only install has the same capability the Terraform path does.
 The `grafana-ingress` profile is the assembled shape.
+
+### Which layer you set it at
+
+The values are the same either way; what differs is who fills in the cloud specifics.
+
+| | Set | Cloud specifics |
+|---|---|---|
+| Helm | `grafana.ingress` / `grafana.service` directly, or layer the `grafana-ingress` profile | Yours — annotations, certificate reference, allowlist |
+| Terraform | `grafana_ingress` (AWS) / `grafana_load_balancer` (GCP, Azure) on the per-cloud monitoring module | The wrapper's — it renders the annotations and passes them as chart values |
+
+The Terraform wrapper does not invent a path around the chart: it computes these same values and appends them ahead of your `additional_values`, so every render-time check below still applies, and anything the wrapper does not model stays reachable.
+See [Reaching Grafana](../../../getting-started/terraform/#reaching-grafana) on the Terraform side for the variables and what each one implies.
 
 ### Ingress or Service is not L7 or L4
 
@@ -360,6 +372,11 @@ This follows the convention the Terraform repo already uses for load balancers, 
 * Nothing is exposed unless you ask.
 * A `LoadBalancer` Service with no `loadBalancerSourceRanges` is a render-time **error**. So is a `NodePort`, which has no allowlist mechanism of its own.
 * `connections.grafana.allowPublicAccess: true` is the escape hatch for an allowlist the chart cannot see — a security group, an egress firewall, an authenticating proxy. It downgrades the error to a warning. It is an acknowledgement, not a silencer.
+
+On the Terraform path the same rule is enforced a second time, one layer up: the wrapper's `ingress_cidr_blocks` carries a `validation` block copied from the load-balancer module the Materialize console already uses, so a public exposure with no allowlist fails at `terraform plan` rather than at chart render.
+An internal load balancer still passes an allowlist there, because the chart cannot see the internal-scheme annotation — the CIDR list is the only thing that makes the intent legible to it.
+
+Note what that enforcement does and does not buy. It requires you to *state* an allowlist; it cannot judge whether the one you stated is narrow. The examples inherit `["0.0.0.0/0"]` from the variable the Materialize load balancers use, which is a reasonable default only while the load balancer is internal — on a public one it is open to the internet, and passes both checks.
 
 An Ingress is the case the chart genuinely cannot characterize, because the scope lives in the controller's annotations.
 So it checks the things it can see instead, all as warnings: no `tls` block, no `server.root_url`, no identity provider configured.
@@ -394,9 +411,13 @@ Everything a human created through the UI does not.
 
 | Backing store | Set with | Replicas | Suitable for |
 |---|---|---|---|
-| SQLite on `emptyDir` (**default**) | — | 1 | demos; state is lost on every pod restart |
+| SQLite on `emptyDir` (**chart default**) | — | 1 | demos; state is lost on every pod restart |
 | SQLite on a PersistentVolume | the `grafana-pvc` profile | 1 | a single small instance |
 | External PostgreSQL | the `grafana-postgres` profile | 2+ | production |
+
+On the **Terraform path this is not a choice you have to make**: the per-cloud wrapper modules provision a dedicated small PostgreSQL instance and wire it up, and the examples turn that on wherever `enable_observability` is on.
+The chart default stands where nothing else decides — a plain `helm install`, which is also where `port-forward` is the access path and losing UI state matters least.
+See [Reaching Grafana](../../../getting-started/terraform/#1-give-it-somewhere-to-keep-state) for the variables.
 
 SQLite tolerates exactly one writer, so both SQLite options pin you to a single replica.
 On a `ReadWriteOnce` volume a rolling update also deadlocks — the new pod cannot attach the volume until the old one releases it — so a PVC additionally needs `grafana.deploymentStrategy.type: Recreate`.
@@ -438,6 +459,9 @@ grafana:
 
 Everything under `grafana.ini` is config, not secret material.
 The password has to arrive by one of two routes, both of which keep it in a Secret you create out of band.
+
+> [!INFO]
+> On the Terraform path the module does this for you: it generates the password, creates the Secret, and wires the mounted-file route below. Terraform is one of the few delivery targets where generating a credential actually works, which is the same reason it owns the Grafana admin Secret. Read it back with `terraform output -raw grafana_database_password`.
 
 **Environment variable.** Grafana maps `GF_DATABASE_PASSWORD` onto `[database].password`:
 

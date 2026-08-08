@@ -176,8 +176,18 @@ locals {
   # chart's SQLite behavior rather than emitting a half-written `[database]`
   # block. `host` carries the port because Grafana does not default one and a
   # bare host fails to connect.
-  grafana_database_values = var.grafana_database_host == null ? {} : merge(
-    {
+  # Gated on the resolved locals rather than on the values themselves, so a
+  # wrapper computing host and password inside the same apply still gets a plan.
+  # See `grafana_database_enabled` in variables.tf.
+  #
+  # Its own document rather than a map merged into `wiring_values`, for the same
+  # reason as `storage_documents`: a ternary has to unify the types of both
+  # branches, and `{}` against this object cannot be unified — `terraform plan`
+  # fails with "Inconsistent conditional result types". A conditionally empty
+  # *list* of documents has no such constraint. The keys here do not collide with
+  # the `grafana` block in `wiring_values`, so the two documents compose.
+  grafana_database_documents = !local.grafana_database_enabled ? [] : [yamlencode({
+    grafana = {
       "grafana.ini" = {
         database = merge(
           {
@@ -188,23 +198,26 @@ locals {
             ssl_mode = var.grafana_database_ssl_mode
           },
           # `$__file{}` rather than the literal: `grafana.ini` renders into a
-          # ConfigMap. Omitted entirely when there is no password, which is the
-          # Cloud SQL Auth Proxy / peer-authentication shape.
-          var.grafana_database_password == null ? {} : {
+          # ConfigMap. Omitted entirely when there is no Secret, which is the
+          # Cloud SQL Auth Proxy / peer-authentication shape. Both branches are
+          # maps of string, so this ternary does unify.
+          local.grafana_database_password_secret ? {
             password = "$__file{/etc/secrets/grafana-db/password}"
-          },
+          } : {},
         )
       }
-    },
-    var.grafana_database_password == null ? {} : {
-      extraSecretMounts = [{
+
+      # Always emitted, empty when there is no Secret to mount. An empty list is
+      # the subchart's own default, so it contributes nothing — and it keeps the
+      # conditional inside a list, where the types unify.
+      extraSecretMounts = local.grafana_database_password_secret ? [{
         name       = "grafana-db"
         secretName = one(kubernetes_secret.grafana_database[*].metadata[0].name)
         mountPath  = "/etc/secrets/grafana-db"
         readOnly   = true
-      }]
-    },
-  )
+      }] : []
+    }
+  })]
 
   # ----------------------------------------------------------------------------
   # Wiring
@@ -233,16 +246,13 @@ locals {
       metrics-server = var.install_metrics_server
     }
 
-    grafana = merge(
-      {
-        admin = {
-          existingSecret = kubernetes_secret.grafana_admin.metadata[0].name
-          userKey        = "admin-user"
-          passwordKey    = "admin-password"
-        }
-      },
-      local.grafana_database_values,
-    )
+    grafana = {
+      admin = {
+        existingSecret = kubernetes_secret.grafana_admin.metadata[0].name
+        userKey        = "admin-user"
+        passwordKey    = "admin-password"
+      }
+    }
 
     # Loki's NetworkPolicy is on by default and the chart requires both
     # namespace selectors when it is — it refuses to render otherwise. They are
@@ -271,6 +281,7 @@ locals {
   module_documents = concat(
     [yamlencode(local.wiring_values)],
     local.sizing_profiles,
+    local.grafana_database_documents,
     local.storage_documents,
     local.azure_identity_document,
     local.storage_class_document,

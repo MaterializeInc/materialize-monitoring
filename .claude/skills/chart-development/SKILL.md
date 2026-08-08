@@ -15,6 +15,32 @@ and vary by quality greatly.
 This skill brings strong opinions about quality and maintainability of helm templates
 and how to test them.
 
+## When the change reaches Terraform
+
+The Terraform module in `terraform/modules/materialize-monitoring` encodes this
+chart's value paths, and the two are **one release**. Chart work runs into it
+more often than it looks like it should, so read the
+[platform-development skill](../platform-development/SKILL.md) as soon as any of
+these is true:
+
+- **You touched `terraform/`, `test/e2e/`, or `bin/terraform-*`** — that is its
+  stated scope, including a one-variable change made in passing while doing
+  chart work.
+- **You added a value a consumer is expected to set.** The module usually has to
+  grow an input for it, and `make terraform-check` wants an assertion that it
+  reaches the subchart path it was aimed at. A value written to a path no
+  subchart reads is still valid HCL and renders perfectly.
+- **You renamed or moved a `values.yaml` key.** The module writes into these
+  paths, so a rename here silently orphans whatever writes to it — nothing
+  errors, the setting just stops applying.
+- **You are about to run only `helm unittest`.** It does not see the module.
+  `make terraform-check` plans each example and renders the chart against the
+  values it composes, which is the only check that proves the pair still agrees.
+
+That coupling is already wired into the hooks: the `terraform-render` pre-push
+hook triggers on `values.yaml`, `Chart.yaml`, `profiles/`, and `templates/`, not
+just on `.tf` files. If a chart-only change fails it, the module is what broke.
+
 ## YAML Best Practices
 
 For YAML best practices, consult the [yaml-development skill](../yaml-development/SKILL.md)
