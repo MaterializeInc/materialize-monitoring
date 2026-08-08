@@ -119,6 +119,35 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
         fi
         echo "    GCM exporter reached the gateway pipeline"
     fi
+
+    # Grafana's state database. Three things have to land together and each is
+    # written to a different subchart path, so any one of them missing is a
+    # Grafana that comes up on SQLite — or crash-loops on a half-written config —
+    # while the plan looks entirely correct.
+    if grep -q '"grafana_database_host"\|"host":.*:5432' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \
+        || grep -q '"database"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
+        missing=""
+        grep -q 'type = postgres' "${rendered}" || missing="${missing} grafana.ini[database]"
+        # -F: the pattern is a literal. `$__file{...}` is Grafana's own expansion
+        # syntax, read by Grafana at startup — not by the shell or by grep.
+        # shellcheck disable=SC2016 # the literal $ is the point
+        grep -qF 'password = $__file{/etc/secrets/grafana-db/password}' "${rendered}" || missing="${missing} password-file-ref"
+        grep -q 'mountPath: /etc/secrets/grafana-db' "${rendered}" || missing="${missing} secret-mount"
+        # The Secret itself is a Terraform resource, so it is never in `helm
+        # template` output. What the chart can prove is that the mount names the
+        # Secret Terraform creates — a mismatch there is a pod stuck on a volume
+        # that does not exist.
+        grep -q 'secretName: mzmon-grafana-db' "${rendered}" || missing="${missing} mount-names-tf-secret"
+
+        if [ -n "${missing}" ]; then
+            echo "  !! ${example}: grafana database configured but missing:${missing}" >&2
+            echo "     The password never reaches grafana.ini as a literal by design, so the" >&2
+            echo "     mount and the Secret are what make the [database] block usable." >&2
+            status=1
+            continue
+        fi
+        echo "    grafana database reached grafana.ini and the Secret mount"
+    fi
 done
 
 if [ "${status}" -ne 0 ]; then

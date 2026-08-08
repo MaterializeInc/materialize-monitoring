@@ -24,8 +24,12 @@ One module per cloud creates the storage and identity the stack needs, then inst
 | **Collection** | Alloy — an agent DaemonSet on every node, and a gateway for shaping and egress |
 | **Dashboards** | The released Grafana dashboard set, via grafana-operator |
 | **Alerting** | Alertmanager with the bundled rules |
+| **Grafana state** | A dedicated small PostgreSQL instance, so what users build in the UI survives a restart |
 
 Cloud-side, per backend: one bucket, and one IAM role (AWS) or Google service account with a Workload Identity binding (GCP).
+Plus, unless you turn it off, one small PostgreSQL instance for Grafana — see [Reaching Grafana](#reaching-grafana).
+
+On GCP and Azure Grafana gets an internal load balancer with the rest of the stack; on AWS it stays `ClusterIP` until you name a host. Either way DNS, a certificate, and an identity provider are still yours — see [Reaching Grafana](#reaching-grafana).
 
 ## Usage
 
@@ -155,6 +159,19 @@ See [Metrics > Storing](../../metrics/storing/) for what each tier contains.
 | `materialize_operator_namespace` | `"materialize"` | |
 | `grafana_admin_password` | `null` | Generated when unset. Read it with `terraform output -raw grafana_admin_password` |
 
+### Grafana persistence and exposure
+
+Set on the wrapper's `monitoring` module block, with root variables for them in the examples.
+See [Reaching Grafana](#reaching-grafana) for what each one implies.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `enable_grafana_database` | `true` | Example root variable. A dedicated small PostgreSQL instance for Grafana's own state. Inert without `enable_observability` |
+| `grafana_host` | `null` | Example root variable. Optional on GCP and Azure, where the load balancer exists regardless and this only fixes `root_url`; on AWS it is what creates the ALB at all |
+| `grafana_certificate_arn` | `null` | AWS only. ACM certificate for the ALB listener |
+| `grafana_ingress` / `grafana_load_balancer` | `null` | The wrapper's own input. Internal by default; public requires `ingress_cidr_blocks` |
+| `grafana_database_ssl_mode` | `"require"` | `verify-full` also authenticates the server, but needs a CA bundle mounted through `additional_values` |
+
 ### Anything else
 
 | Variable | Default | Notes |
@@ -185,20 +202,89 @@ $ terraform output -raw grafana_admin_password
 
 | Output | |
 |---|---|
-| `grafana_url` | In-cluster address (see [Reaching Grafana](#reaching-grafana)) |
+| `grafana_url` | Conditional: the external URL once Grafana is exposed, the in-cluster Service otherwise. See [Reaching Grafana](#reaching-grafana) |
 | `grafana_admin_password` | Sensitive |
+| `grafana_database_endpoint` | `host:port` of the database backing Grafana's state, or null while it is on SQLite. Wrapper modules only |
+| `grafana_database_password` | Sensitive. Generated when the wrapper creates the instance |
 | `metrics_url` | Thanos Query. Prometheus-API-compatible, so anything that spoke to the old `prometheus_url` works against it |
 | `logs_url` | Loki read endpoint |
 
 ## Reaching Grafana
 
-Grafana is `ClusterIP` today — the chart exposes no ingress or service-type values yet — so access is a port-forward:
+Out of the box Grafana is `ClusterIP`, so access is a port-forward:
 
 ```bash
 kubectl -n monitoring port-forward svc/grafana 3000:80
 ```
 
 Log in as `admin` with the password from `terraform output -raw grafana_admin_password`.
+
+That is the right default, not a gap: the only account is the generated admin, and every datasource behind Grafana reads every metric in Thanos and every log in the tenant.
+Exposing it is a deliberate step with three parts.
+
+### 1. Give it somewhere to keep state
+
+**Do this first.**
+Grafana stores users, service accounts and tokens, annotations, dashboard versions and permissions, preferences, and alert-rule state in a database of its own, and the chart default is SQLite on an `emptyDir` — lost on every restart, upgrade, and reschedule.
+An exposed Grafana that silently discards everything its users build in it is worse than an unreachable one.
+
+The per-cloud wrapper modules provision a **dedicated** small PostgreSQL instance for it, and the examples turn that on wherever `enable_observability` is on:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `enable_grafana_database` | `true` | Root variable in the examples. Inert without `enable_observability`, so a `simple` apply — where observability is off — creates nothing |
+| `grafana_database` | — | The wrapper's own input: the networking facts its cloud needs. The examples fill it in |
+| `grafana_database_host` and friends | `null` | Point at a database you already run instead. Mutually exclusive with `grafana_database` |
+
+Dedicated rather than a database inside the Materialize instance, for reasons that differ per cloud and happen to agree — RDS has no API to add a database to an existing instance, and an Azure Flexible Server has one administrator login and no ARM resource for extra roles.
+The default sizes are the smallest each cloud offers, which is enough: Grafana's state is small and its query rate is a handful per page load.
+
+> [!INFO]
+> Switching an existing install from SQLite to PostgreSQL **does not carry state over** — Grafana has no migration between the two. Export what matters through the HTTP API first.
+
+### 2. Put a load balancer in front
+
+| Cloud | Variable | Shape | Wired in the examples |
+|---|---|---|---|
+| AWS | `grafana_ingress` | An Ingress the AWS Load Balancer Controller turns into an ALB | Only once `grafana_host` is set |
+| GCP | `grafana_load_balancer` | An annotated `LoadBalancer` Service | Always, alongside the Materialize load balancers |
+| Azure | `grafana_load_balancer` | An annotated `LoadBalancer` Service | Always, alongside the Materialize load balancers |
+
+That last column is a Kubernetes constraint, not an opinion. A `LoadBalancer` Service answers on an IP whether or not you have a hostname, so on GCP and Azure there is nothing to gate on and the examples create it with the rest of the stack. An ALB comes from an Ingress, and an Ingress with no hosts renders no rules and routes nothing — so on AWS a hostname *is* the exposure.
+
+The split follows what each platform's controllers actually consume, not a protocol tier.
+An Ingress and an annotated Service are two ways of asking the same cloud for a load balancer, and both terminate TLS in front of Grafana — see [Ingress or Service is not L7 or L4](../../dashboards/grafana/architecture/#ingress-or-service-is-not-l7-or-l4).
+On AWS the controller has to already be installed; the examples install it as `module.aws_lbc`.
+
+Both are **internal by default**, and both read the `internal_load_balancer` and `ingress_cidr_blocks` variables the Materialize load balancers already use, with the presence check enforced by a `validation` block copied from the repo's `nlb` module rather than left as a convention.
+
+```hcl
+# At an example root
+enable_observability = true
+
+# Optional on GCP and Azure, where the load balancer exists either way; required
+# on AWS before an ALB is created at all.
+grafana_host = "grafana.example.com"
+
+# Public instead of internal. Narrow the allowlist yourself: it defaults to
+# ["0.0.0.0/0"], inherited from the variable the Materialize load balancers use,
+# which is only a sensible default while the load balancer is internal.
+internal_load_balancer = false
+ingress_cidr_blocks    = ["203.0.113.0/24"]
+```
+
+Two things the modules cannot do for you:
+
+- **DNS.** Neither the Ingress nor the Service publishes the hostname, and Terraform has no view of your zone. An ACME challenge against a name that does not resolve is the usual way this gets noticed.
+- **TLS material.** On AWS pass `grafana_certificate_arn`; elsewhere terminate at the load balancer against a certificate the platform holds, or put cert-manager in front.
+
+### 3. Configure an identity provider
+
+Until you do, the generated admin password is the whole of the access control.
+Everything under `grafana.ini` is passed through verbatim, so any provider Grafana supports is reachable — through `additional_values` on the Terraform path.
+The chart warns at render time when an exposed Grafana has none.
+
+See [Authentication](../../dashboards/grafana/auth/) for the wiring, including why client secrets cannot live in `grafana.ini` and how to map an IdP group claim onto Grafana roles.
 
 ## Scheduling
 
@@ -221,10 +307,11 @@ The modules cover the cloud-resource half of a production deployment — buckets
 
 [Production Best Practices](../../operating/production-best-practices/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/#terraform-consumer), then work the items still tagged `[operator]`.
 
-Two that catch people out on a first production install:
+Three that catch people out on a first production install:
 
 - **A default StorageClass must exist.** Several components are PVC-backed and the modules do not create one.
 - **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/#metrics-thanos).
+- **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/#grafana).
 
 ## Before the first release
 

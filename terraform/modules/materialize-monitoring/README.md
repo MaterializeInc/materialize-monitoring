@@ -55,11 +55,18 @@ The sizing profiles are read out of the chart directory beside the module, which
 
 An **absolute** local path is different: Terraform copies just the module directory into `.terraform/modules/` and leaves `charts/` behind. The module raises a precondition rather than silently dropping the profile.
 
+## Grafana persistence and exposure
+
+This module takes the connection details for Grafana's own state database (`grafana_database_host` and friends) and creates the Secret holding its password. It does not provision the database — that is the per-cloud wrapper's job, since the instance is a cloud resource.
+
+It does not model an ingress or service type either. Those are plain chart values, so a wrapper computes the cloud-specific annotations and passes them through `additional_values`, which lands ahead of the caller's own documents and so keeps every chart-side validator in play.
+
+> **Computed hosts need the gates set explicitly.** `grafana_database_enabled` and `grafana_database_manage_password_secret` default to inferring from `grafana_database_host` and `grafana_database_password`, which is right for literals. A wrapper that provisions the instance in the same apply must set both, because Terraform decides resource counts before it can know an endpoint or a generated password — leaving them null there fails the plan with `Invalid count argument`.
+
 ## Known gaps
 
-- **Grafana ingress is not modelled.** The chart exposes no ingress or service-type values yet.
-- **Grafana is not reachable from outside the cluster.** The chart exposes no ingress or service-type values yet, so `grafana_url` is an in-cluster address and access means a port-forward.
 - **mTLS between components is not wired.** The chart's TLS surface exists but is not yet driven by cert-manager.
+- **No identity provider is configured for Grafana.** Reachable is not the same as protected; the admin password is the whole of the access control until one is set through `additional_values`.
 
 Each is tracked; see the [design doc](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260803-terraform-modules/).
 
