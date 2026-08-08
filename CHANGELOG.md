@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring Optional CRDs v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.15.0 (Unreleased)
 
 _Changes Pending_
@@ -82,9 +86,10 @@ _Changes Pending_
     * Update Rust crate jsonschema to 0.49.0
         * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
 
-## materialize-monitoring Optional CRDs v0.4.0 (Unreleased)
+## materialize-monitoring Optional CRDs v0.4.0
 
-_Changes Pending_
+* More documentation cleanups
+    * [materialize-monitoring#187](https://github.com/MaterializeInc/materialize-monitoring/pull/187)
 
 ## materialize-monitoring Helm Chart v0.8.0
 
