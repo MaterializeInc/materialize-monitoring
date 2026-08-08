@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.10.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.14.0 (Unreleased)
 
 _Changes Pending_
@@ -165,9 +169,34 @@ _Changes Pending_
     * CLO-152 add schema support for otelcol pipeline blocks
         * [materialize-monitoring#110](https://github.com/MaterializeInc/materialize-monitoring/pull/110)
 
-## mzmon-lib (shared library) v0.9.0 (Unreleased)
+## mzmon-lib (shared library) v0.9.0
 
-_Changes Pending_
+* DEP-188 Add node-exporter; support priorityClasses
+    * [materialize-monitoring#196](https://github.com/MaterializeInc/materialize-monitoring/pull/196)
+* Update dependency uv_build to >=0.12,<0.13
+    * [materialize-monitoring#168](https://github.com/MaterializeInc/materialize-monitoring/pull/168)
+* Update Rust crate jsonschema to 0.49.0
+    * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
+* Update Rust crate glob to v0.3.4
+    * [materialize-monitoring#149](https://github.com/MaterializeInc/materialize-monitoring/pull/149)
+* CLO-152 Support splitting metrics into tiers
+    * [materialize-monitoring#151](https://github.com/MaterializeInc/materialize-monitoring/pull/151)
+* Update Rust crate regex to v1.13.1
+    * [materialize-monitoring#133](https://github.com/MaterializeInc/materialize-monitoring/pull/133)
+* CLO-152 Support importance axis for extracted metrics
+    * [materialize-monitoring#132](https://github.com/MaterializeInc/materialize-monitoring/pull/132)
+* Update Rust crate tokio to v1.52.4
+    * [materialize-monitoring#131](https://github.com/MaterializeInc/materialize-monitoring/pull/131)
+* Port metric registry to rust
+    * [materialize-monitoring#129](https://github.com/MaterializeInc/materialize-monitoring/pull/129)
+* Implement a Query Registry for reducing total metric set
+    * [materialize-monitoring#125](https://github.com/MaterializeInc/materialize-monitoring/pull/125)
+* Update Rust crate clap to v4.6.2
+    * [materialize-monitoring#124](https://github.com/MaterializeInc/materialize-monitoring/pull/124)
+* Enable MZ podmonitors by default
+    * [materialize-monitoring#116](https://github.com/MaterializeInc/materialize-monitoring/pull/116)
+* CLO-152 add schema support for otelcol pipeline blocks
+    * [materialize-monitoring#110](https://github.com/MaterializeInc/materialize-monitoring/pull/110)
 
 ## Pipelines v0.6.0
 
