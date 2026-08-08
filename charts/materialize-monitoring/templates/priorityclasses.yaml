@@ -21,7 +21,10 @@ metadata:
   labels:
     {{- include "mzmon.labels" $ | nindent 4 }}
     app.kubernetes.io/component: priority-class
-value: {{ $pc.value | required ( printf "priorityClasses.%s.value is required." $tier ) | int }}
+ {{ if not ( hasKey $pc "value" ) }}
+   {{ printf "priorityClasses.%s.value is required." $tier | fail }}
+ {{ end }}
+value: {{ $pc.value | int }}
 {{- with $pc.preemptionPolicy }}
 preemptionPolicy: {{ . }}
 {{- end }}

@@ -91,12 +91,23 @@ tests:
           path: spec.template.spec.priorityClassName
           value: monitoring-critical
 
-  - it: should put the agent in the critical tier and the gateway with it
+  - it: should put the agent in the critical tier
     set:
       tags.pipeline: true
       pipeline.logging.gateway.destination.loki.enabled: false
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
     template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-critical
+
+  - it: should put the gateway in the critical tier
+    set:
+      tags.pipeline: true
+      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
       - equal:
           path: spec.template.spec.priorityClassName
