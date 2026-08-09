@@ -69,6 +69,14 @@ discovery.relabel "local_pods" {
 	targets = discovery.kubernetes.local_pods.targets
 
 	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_label_app_kubernetes_io_name",
+		]
+		regex = "alloy-agent"
+	}
+
+	rule {
 		action = "replace"
 		source_labels = [
 			"__meta_kubernetes_namespace",

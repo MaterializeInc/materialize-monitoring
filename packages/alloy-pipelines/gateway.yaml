@@ -121,6 +121,107 @@ blocks:
         forward_to:
           - ref: loki.process.inputProcessor.receiver
 
+  # --- agent log sidechannel ------------------------------------------
+  #
+  # The gateway reads the agent DaemonSet's own logs straight from the
+  # Kubernetes API, independently of the agents shipping them.
+  #
+  # Every other log in this stack arrives because an agent tailed a file on its
+  # node and pushed it here. That makes the agent a single point of failure for
+  # exactly one set of logs: **its own**. When an agent OOMs, crash-loops on a
+  # bad config, wedges on a full disk, or simply cannot reach the gateway, the
+  # logs explaining why are the ones it was about to send — so the failure
+  # erases its own evidence, and the operator sees silence rather than a cause.
+  #
+  # This path shares nothing with that one: a different process (gateway, not
+  # agent), a different host, a different transport (API server, not node-local
+  # file tailing), a different failure domain. It also covers the windows where
+  # the agent legitimately is not running — first install, a DaemonSet rollout,
+  # a node that just came up — where file tailing has nothing to read yet.
+  #
+  # It is always on rather than a failover, because a path that only activates
+  # during an incident is a path nobody knows is broken. Running it constantly
+  # means its own health is visible on an ordinary day.
+  #
+  # The API-server cost that normally rules this approach out does not apply
+  # here: the target set is the agent DaemonSet only — one pod per node, all
+  # emitting alloy's own modest logfmt output — and the label selector is applied
+  # server-side, so the watch never returns other pods. This is emphatically NOT
+  # a general log-collection path; pointing it at application pods would put the
+  # whole cluster's log volume through the API server.
+  #
+  # Because this is always on, the agents no longer collect their own logs (see
+  # the drop rule in agent.yaml). One path, not two, so nothing is duplicated.
+  - discovery.kubernetes:
+      label: agent_pods
+      role: pod
+      blocks:
+        # Server-side label selector: the API returns only agent pods rather
+        # than every pod in the cluster filtered client-side. This is what keeps
+        # the watch cheap, so it is load-bearing rather than tidiness.
+        #
+        # `app.kubernetes.io/name` is derived from the subchart alias, not the
+        # release name, so it is `alloy-agent` in every install.
+        - selectors:
+            role: pod
+            label: app.kubernetes.io/name=alloy-agent
+        - attach_metadata:
+            node: true
+
+  # Shape the discovered pods into the same label set the agent applies to
+  # everything else, so a sidechannel log is indistinguishable from a
+  # primary-path one downstream. The `__meta_kubernetes_*` labels survive
+  # relabeling and loki.source.kubernetes reads them to know what to tail.
+  - discovery.relabel:
+      label: agent_pods
+      targets: ["discovery.kubernetes.agent_pods.targets"]
+      blocks:
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_namespace"]
+            target_label: namespace
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_name"]
+            target_label: pod
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_node_name"]
+            target_label: node
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_container_name"]
+            target_label: container
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label: app
+        - rule:
+            action: replace
+            source_labels:
+              - "__meta_kubernetes_namespace"
+              - "__meta_kubernetes_pod_container_name"
+            separator: "/"
+            target_label: job
+
+  # Tail those pods through the API server.
+  # loki.source.kubernetes is not typed yet, so raw.
+  - raw:
+      component: loki.source.kubernetes
+      label: agent_logs
+      attributes:
+        targets:
+          ref: discovery.relabel.agent_pods.output
+        forward_to:
+          - ref: loki.process.inputProcessor.receiver
+      blocks:
+        # Without this every gateway replica tails every agent pod and each log
+        # line lands in Loki once per replica. The gateway is expected to run
+        # 2+, so this is required, not an optimization.
+        - component: clustering
+          attributes:
+            enabled: true
+
   # --- input bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
@@ -211,8 +312,18 @@ blocks:
                     reportingcontroller: ""
 
         # --- alloy ----------------------------------------------------------
+        # `app` is set from `app.kubernetes.io/name`, which the subchart aliases
+        # make `alloy-agent` / `alloy-gateway` here — NOT the bare `alloy` the
+        # reference deployment used. Matching only `alloy` meant this block never
+        # fired in this chart, so alloy's own logs were never parsed and, more
+        # importantly, the loki.echo drop below never ran. That was harmless
+        # while nothing collected agent logs; the agent-log sidechannel makes it
+        # load-bearing, because the echo tap re-emits sampled pod logs into the
+        # agent's stdout and this is what stops them being ingested a second
+        # time. The bare `alloy` stays matchable for a self-hosted agent that
+        # labels itself that way.
         - stage.match:
-            selector: '{app="alloy"}'
+            selector: '{app=~"alloy-agent|alloy-gateway"}'
             blocks:
               - stage.logfmt:
                   mapping:
