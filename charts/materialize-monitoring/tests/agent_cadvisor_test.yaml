@@ -21,7 +21,7 @@ tests:
       # `encoding.from_json` in the pipeline turns these back into list(string).
       - equal:
           path: data.ALLOY_CADVISOR_DISABLED
-          value: '["advtcp","cpu_topology","cpuset","hugetlb","memory_numa","percpu","perf_event","process","referenced_memory","resctrl","sched","tcp","udp"]'
+          value: '["advtcp","cpu_topology","cpuset","hugetlb","memory_numa","percpu","perf_event","referenced_memory","resctrl","sched","tcp","udp"]'
       # Empty means "unset", which leaves disabled_metrics in charge. It must
       # still be emitted as `[]` rather than omitted.
       - equal:
@@ -41,7 +41,7 @@ tests:
           value: '["cpu","memory"]'
 
   # `percpu` is per-container x per-CPU; on a large dense node it is ~10k series
-  # on its own. `process` is off because it reads 0 without hostPid.
+  # on its own.
   - it: should keep the high-cardinality collectors off by default
     template: templates/pipelines/cm-alloy-agent-env.yaml
     asserts:
@@ -49,6 +49,17 @@ tests:
           path: data.ALLOY_CADVISOR_DISABLED
           pattern: '"percpu"'
       - matchRegex:
+          path: data.ALLOY_CADVISOR_DISABLED
+          pattern: '"perf_event"'
+
+  # `process` is enabled, unlike upstream: it is the only source of
+  # container_file_descriptors / container_ulimits_soft, which the
+  # descriptor-exhaustion alerts divide against each other. It only reports real
+  # values with hostPid, which is asserted below — the two move together.
+  - it: should enable the process collector
+    template: templates/pipelines/cm-alloy-agent-env.yaml
+    asserts:
+      - notMatchRegex:
           path: data.ALLOY_CADVISOR_DISABLED
           pattern: '"process"'
 
@@ -140,11 +151,28 @@ tests:
           path: spec.template.spec.containers[0].securityContext.privileged
 
   # `process` is the one collector that needs more, and what it needs is the host
-  # PID namespace rather than a capability. Left false, cAdvisor reports 0
-  # descriptors for every container but its own — silently, which is why the
-  # collector ships disabled.
-  - it: should not share the host PID namespace by default
+  # PID namespace rather than a capability. Without it cAdvisor reports 0
+  # descriptors for every container but its own — silently. The collector and
+  # this flag are a pair; asserted here so neither can be flipped alone without
+  # a test failing.
+  - it: should share the host PID namespace for the process collector
     template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
     asserts:
-      - notExists:
+      - equal:
           path: spec.template.spec.hostPID
+          value: true
+
+  # The agent became bursty when cAdvisor moved in: it idles between scrapes,
+  # then does a housekeeping pass that scales with containers-per-node. A CPU
+  # limit equal to the request would turn that into CFS throttling, which
+  # surfaces as scrape timeouts on the densest nodes. The request stays low
+  # because a DaemonSet request is reserved on every node in the fleet.
+  - it: should allow CPU burst headroom above the request
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 250m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m

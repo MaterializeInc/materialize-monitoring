@@ -264,8 +264,10 @@ blocks:
             - function: coalesce
               arguments:
                 - env: ALLOY_CADVISOR_DISABLED
-                # cAdvisor's own default-disabled set, plus three we add:
+                # cAdvisor's own default-disabled set, plus three we add and one
+                # we take away.
                 #
+                # Added:
                 #  * `percpu` — per-container x per-CPU. On a 96-vCPU node
                 #    running 100 containers that one collector is ~10k series.
                 #  * `perf_event` — emits nothing without `perf_events_config`,
@@ -273,25 +275,31 @@ blocks:
                 #  * `sched` — per-container scheduler detail whose cost
                 #    outweighs its value outside an investigation.
                 #
-                # `process` stays disabled (as upstream has it) for a reason
-                # worth knowing before turning it on: it is the only source of
-                # `container_file_descriptors`, which some shipped infra alerts
-                # read — but reading another container's fd count means reading
-                # /proc/<pid>/fd, which needs the host PID namespace. With
-                # `controller.hostPid: false` (our default) cAdvisor still emits
-                # the series and reports **0** for every container but its own.
-                # That is worse than absent: a "descriptors near the limit"
-                # alert silently never fires. Enabling `process` therefore means
-                # also setting `alloy-agent.controller.hostPid: true`, which is a
-                # real privilege increase and an operator's call, not a default.
-                # (`container_processes` / `container_threads` come from the
-                # cgroup and are accurate either way.)
+                # Removed: `process`, which upstream disables. It is the only
+                # source of `container_file_descriptors` / `container_ulimits_soft`,
+                # which the shipped descriptor-exhaustion alerts divide against
+                # each other, plus `container_processes` / `container_sockets` /
+                # `container_threads`.
+                #
+                # It carries a hard requirement: reading another container's fd
+                # count means reading /proc/<pid>/fd, so the agent runs with
+                # `controller.hostPid: true`. WITHOUT that, cAdvisor still emits
+                # every series and reports **0** for every container but the
+                # agent's own — measured 1-of-80 non-zero without the host PID
+                # namespace versus 19-of-80 with it. Silently-zero is worse than
+                # absent, because a "descriptors near the limit" alert then never
+                # fires. If you ever set hostPid back to false, disable this
+                # collector in the same change.
+                #
+                # Cost, measured rather than assumed: +5 series per container
+                # (~9% on top of cAdvisor's ~53) and ~+1ms of scrape time. The
+                # series count is flat per container, not per-CPU or per-device.
                 #
                 # Everything not listed here is collected: app, cpu, cpuLoad,
-                # disk, diskIO, memory, network, oom_event — including the
-                # per-container PSI series (`container_pressure_*`), which pair
-                # with the node-level pressure metrics from node-exporter.
-                - '["advtcp","cpu_topology","cpuset","hugetlb","memory_numa","percpu","perf_event","process","referenced_memory","resctrl","sched","tcp","udp"]'
+                # disk, diskIO, memory, network, oom_event, process — including
+                # the per-container PSI series (`container_pressure_*`), which
+                # pair with the node-level pressure metrics from node-exporter.
+                - '["advtcp","cpu_topology","cpuset","hugetlb","memory_numa","percpu","perf_event","referenced_memory","resctrl","sched","tcp","udp"]'
         # Do NOT promote every container label to a metric label — in Kubernetes
         # that is every pod label on every container series. The allowlist below
         # keeps only the four the CRI sets, which are what carries pod identity;

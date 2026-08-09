@@ -268,7 +268,7 @@ loki.echo "stub" { }
 
 prometheus.exporter.cadvisor "local" {
 	enabled_metrics = encoding.from_json(coalesce(sys.env("ALLOY_CADVISOR_ENABLED"), "[]"))
-	disabled_metrics = encoding.from_json(coalesce(sys.env("ALLOY_CADVISOR_DISABLED"), "[\"advtcp\",\"cpu_topology\",\"cpuset\",\"hugetlb\",\"memory_numa\",\"percpu\",\"perf_event\",\"process\",\"referenced_memory\",\"resctrl\",\"sched\",\"tcp\",\"udp\"]"))
+	disabled_metrics = encoding.from_json(coalesce(sys.env("ALLOY_CADVISOR_DISABLED"), "[\"advtcp\",\"cpu_topology\",\"cpuset\",\"hugetlb\",\"memory_numa\",\"percpu\",\"perf_event\",\"referenced_memory\",\"resctrl\",\"sched\",\"tcp\",\"udp\"]"))
 	store_container_labels = false
 	allowlisted_container_labels = [
 		"io.kubernetes.pod.namespace",

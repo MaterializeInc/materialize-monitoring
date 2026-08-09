@@ -950,7 +950,7 @@ Configuration for metrics behavior
   <tbody>    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "process", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"60s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
+      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"60s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
       <td class="helm-value-desc">Node-local metric collection on the Alloy agent DaemonSet.
 
 cAdvisor runs in-process in the agent rather than being scraped off the
@@ -1001,7 +1001,6 @@ enabled below. Verified by running the rendered config under
   "memory_numa",
   "percpu",
   "perf_event",
-  "process",
   "referenced_memory",
   "resctrl",
   "sched",
@@ -1011,14 +1010,22 @@ enabled below. Verified by running the rendered config under
 </td>
       <td class="helm-value-desc">Collectors to disable. cAdvisor's default-disabled set, plus `percpu` (per-container x per-CPU — ~10k series on a large dense node), `perf_event` (emits nothing without `perf_events_config`), and `sched` (investigation-grade detail at steady-state cost).
 
-`process` is disabled with the rest, and turning it back on needs one
-extra step. It is the only source of `container_file_descriptors`, but
-reading another container's descriptor count means reading
-`/proc/<pid>/fd`, which needs the host PID namespace. Left at the
-default `alloy-agent.controller.hostPid: false`, cAdvisor still emits
-the series and reports **0** for every container but the agent's own —
-so a descriptor-exhaustion alert silently never fires. Enable
-`process` only together with `alloy-agent.controller.hostPid: true`.
+**`process` is deliberately NOT in this list**, unlike upstream. It is
+the only source of `container_file_descriptors` and
+`container_ulimits_soft` — which the descriptor-exhaustion alerts
+divide against each other — plus `container_processes`,
+`container_sockets` and `container_threads`.
+
+It is why `alloy-agent.controller.hostPID` is true. Reading another
+container's descriptor count means reading `/proc/<pid>/fd`, and
+without the host PID namespace cAdvisor still emits every series and
+reports **0** for every container but the agent's own — so the alert
+never fires and nothing indicates why. **If you set `hostPID` back to
+false, add `process` here in the same change.**
+
+Measured cost of keeping it on: +5 series per container (~9% on top of
+cAdvisor's ~53) and roughly +1ms of scrape time. Flat per container —
+it does not scale with vCPU or device count the way `percpu` does.
 
 Valid names: advtcp, app, cpu, cpuLoad, cpu_topology, cpuset, disk,
 diskIO, hugetlb, memory, memory_numa, network, oom_event, percpu,
@@ -2015,9 +2022,10 @@ data. Do not add `SYS_ADMIN` or set `privileged` here on the assumption
 that cAdvisor needs it — the common "cadvisor needs privileged" guidance is
 about the standalone DaemonSet on older runtimes, not this configuration.
 
-The one collector that genuinely needs more is `process`, and what it needs
-is `controller.hostPid: true` rather than a capability. See
-`pipeline.metrics.agent.cadvisor.disabledCollectors`.
+The one collector that needs more is `process`, and what it needs is
+`controller.hostPID: true` rather than a capability — that is set, and the
+`/proc` exposure it grants is an accepted risk. See `controller.hostPID`
+and `pipeline.metrics.agent.cadvisor.disabledCollectors`.
 </td>
     </tr>
     <tr>
@@ -2026,7 +2034,7 @@ is `controller.hostPid: true` rather than a capability. See
       <td class="helm-value-default"><pre>
 {
   "limits": {
-    "cpu": "100m",
+    "cpu": "250m",
     "memory": "200Mi"
   },
   "requests": {
@@ -2036,6 +2044,23 @@ is `controller.hostPid: true` rather than a capability. See
 }</pre>
 </td>
       <td class="helm-value-desc">Resources for the alloy agent containers.
+
+The CPU **limit** is 2.5x the request, which is deliberate and is a change
+from the request==limit shape this had before cAdvisor. The agent is now
+bursty: it idles between scrapes and then does a cAdvisor housekeeping
+pass whose cost scales with containers-per-node. A limit equal to the
+request turns that burst into CFS throttling, which surfaces as scrape
+timeouts and delayed log shipping on the densest nodes — the ones whose
+data you least want to lose.
+
+The request stays at 100m on purpose: a DaemonSet request is reserved on
+every node, so raising it to 250m would take 150m per node away from
+schedulable capacity across the fleet for headroom that is only used in
+bursts.
+
+Note this makes the pod **Burstable** rather than Guaranteed (QoS requires
+request==limit on every resource). `monitoring-critical` is what covers
+the eviction ordering that costs — see the Priority classes section.
 </td>
     </tr>
     <tr>
@@ -2045,6 +2070,28 @@ is `controller.hostPid: true` rather than a capability. See
 {}</pre>
 </td>
       <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-agent`
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.hostPID</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Share the host PID namespace.
+
+Required by cAdvisor's `process` collector, which is enabled in
+`pipeline.metrics.agent.cadvisor.disabledCollectors`. Counting another
+container's file descriptors means reading `/proc/<pid>/fd`, and without
+this the agent's `/proc` shows only its own processes — cAdvisor then
+emits `container_file_descriptors` for every container and reports 0,
+which is worse than emitting nothing. **The two settings move together:**
+turning this off means disabling `process` in the same change.
+
+The privilege this grants is real and accepted deliberately: combined with
+`runAsUser: 0` the agent can read `/proc/<pid>/environ` for every process
+on the node, i.e. every container's environment variables. It does not
+change which clusters can run the DaemonSet — the agent already sits
+outside the Pod Security Standards *baseline* profile on account of its
+hostPath mounts — but it widens what an exemption covers.
 </td>
     </tr>
     <tr>
