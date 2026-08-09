@@ -12,7 +12,7 @@
 //! Both `loki.relabel` and `discovery.relabel` accept a list of `rule` blocks
 //! with the same shape — defined here so they share one source of truth.
 
-use crate::alloy::ast::{AttributeValue, Block, ToBlock, impl_to_block_dispatch};
+use crate::alloy::ast::{AttributeValue, Block, Expressable, ToBlock, impl_to_block_dispatch};
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -44,8 +44,10 @@ pub struct RelabelRule {
     pub target_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regex: Option<String>,
+    /// `Expressable`, so a rule can stamp a value derived from the environment
+    /// (e.g. the node name from `HOSTNAME`) rather than only a literal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replacement: Option<String>,
+    pub replacement: Option<Expressable<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modulus: Option<f64>,
 }
@@ -83,10 +85,7 @@ impl ToBlock for RelabelRule {
             attributes.insert("regex".into(), AttributeValue::String(regex.clone()));
         }
         if let Some(replacement) = &self.replacement {
-            attributes.insert(
-                "replacement".into(),
-                AttributeValue::String(replacement.clone()),
-            );
+            attributes.insert("replacement".into(), replacement.to_attribute_value()?);
         }
         if let Some(modulus) = self.modulus {
             attributes.insert("modulus".into(), AttributeValue::Number(modulus));

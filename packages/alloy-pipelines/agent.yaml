@@ -205,19 +205,12 @@ blocks:
                 env: CLUSTER_NAME
 
   # Tail the pod log files discovered above.
-  # loki.source.file has no typed `blocks` support, and we need a `file_match`
-  # sub-block, so the whole component is a raw escape.
-  - raw:
-      component: loki.source.file
+  - loki.source.file:
       label: pod_logs
-      attributes:
-        targets:
-          ref: discovery.relabel.local_pods.output
-        forward_to:
-          - ref: loki.process.pod_logs.receiver
+      targets: ["discovery.relabel.local_pods.output"]
+      forward_to: ["loki.process.pod_logs.receiver"]
       blocks:
-        - component: file_match
-          attributes:
+        - file_match:
             enabled: true
 
   # --- local sampled debug tap ----------------------------------------------
@@ -246,83 +239,79 @@ blocks:
   # set ours and removes the proxy from the collection path. See the Terraform
   # modules design doc for the full argument.
   #
-  # `prometheus.exporter.*` has no typed schema yet, so this is a `raw:` escape.
-  # Harden it into `prometheus.schema.yaml` once the argument set settles.
-  - raw:
-      component: prometheus.exporter.cadvisor
+  - prometheus.exporter.cadvisor:
       label: local
-      attributes:
-        # Collector selection, both from the environment as JSON arrays.
-        #
-        # Precedence is cAdvisor's own and is blunt: a NON-EMPTY enabled_metrics
-        # replaces disabled_metrics outright rather than merging per collector.
-        # So ALLOY_CADVISOR_ENABLED wins over ALLOY_CADVISOR_DISABLED — but
-        # setting it also turns off every collector it does not name. Treat it as
-        # "the exhaustive list", not "these extras on top".
-        #
-        # HACK: the `encoding.from_json` wrapper is the same string->typed
-        # coercion used for stage.limit's rate/burst — sys.env returns a string
-        # and these want list(string). Provisional, not a blessed pattern.
-        enabled_metrics:
-          function: encoding.from_json
-          arguments:
-            - function: coalesce
-              arguments:
-                - env: ALLOY_CADVISOR_ENABLED
-                # Empty means "unset", which leaves disabled_metrics in charge.
-                - "[]"
-        disabled_metrics:
-          function: encoding.from_json
-          arguments:
-            - function: coalesce
-              arguments:
-                - env: ALLOY_CADVISOR_DISABLED
-                # cAdvisor's own default-disabled set, plus three we add and one
-                # we take away.
-                #
-                # Added:
-                #  * `percpu` — per-container x per-CPU. On a 96-vCPU node
-                #    running 100 containers that one collector is ~10k series.
-                #  * `perf_event` — emits nothing without `perf_events_config`,
-                #    and wants perf_event_open privileges we do not grant.
-                #  * `sched` — per-container scheduler detail whose cost
-                #    outweighs its value outside an investigation.
-                #
-                # Removed: `process`, which upstream disables. It is the only
-                # source of `container_file_descriptors` / `container_ulimits_soft`,
-                # which the shipped descriptor-exhaustion alerts divide against
-                # each other, plus `container_processes` / `container_sockets` /
-                # `container_threads`.
-                #
-                # It carries a hard requirement: reading another container's fd
-                # count means reading /proc/<pid>/fd, so the agent runs with
-                # `controller.hostPid: true`. WITHOUT that, cAdvisor still emits
-                # every series and reports **0** for every container but the
-                # agent's own — measured 1-of-80 non-zero without the host PID
-                # namespace versus 19-of-80 with it. Silently-zero is worse than
-                # absent, because a "descriptors near the limit" alert then never
-                # fires. If you ever set hostPid back to false, disable this
-                # collector in the same change.
-                #
-                # Cost, measured rather than assumed: +5 series per container
-                # (~9% on top of cAdvisor's ~53) and ~+1ms of scrape time. The
-                # series count is flat per container, not per-CPU or per-device.
-                #
-                # Everything not listed here is collected: app, cpu, cpuLoad,
-                # disk, diskIO, memory, network, oom_event, process — including
-                # the per-container PSI series (`container_pressure_*`), which
-                # pair with the node-level pressure metrics from node-exporter.
-                - '["advtcp","cpu_topology","cpuset","hugetlb","memory_numa","percpu","perf_event","referenced_memory","resctrl","sched","tcp","udp"]'
-        # Do NOT promote every container label to a metric label — in Kubernetes
-        # that is every pod label on every container series. The allowlist below
-        # keeps only the four the CRI sets, which are what carries pod identity;
-        # `allowlisted_container_labels` is honored ONLY when this is false.
-        store_container_labels: false
-        allowlisted_container_labels:
-          - io.kubernetes.pod.namespace
-          - io.kubernetes.pod.name
-          - io.kubernetes.pod.uid
-          - io.kubernetes.container.name
+      # Collector selection, both from the environment as JSON arrays.
+      #
+      # Precedence is cAdvisor's own and is blunt: a NON-EMPTY enabled_metrics
+      # replaces disabled_metrics outright rather than merging per collector.
+      # So ALLOY_CADVISOR_ENABLED wins over ALLOY_CADVISOR_DISABLED — but
+      # setting it also turns off every collector it does not name. Treat it as
+      # "the exhaustive list", not "these extras on top".
+      #
+      # HACK: the `encoding.from_json` wrapper is the same string->typed
+      # coercion used for stage.limit's rate/burst — sys.env returns a string
+      # and these want list(string). Provisional, not a blessed pattern.
+      enabled_metrics:
+        function: encoding.from_json
+        arguments:
+          - function: coalesce
+            arguments:
+              - env: ALLOY_CADVISOR_ENABLED
+              # Empty means "unset", which leaves disabled_metrics in charge.
+              - "[]"
+      disabled_metrics:
+        function: encoding.from_json
+        arguments:
+          - function: coalesce
+            arguments:
+              - env: ALLOY_CADVISOR_DISABLED
+              # cAdvisor's own default-disabled set, plus three we add and one
+              # we take away.
+              #
+              # Added:
+              #  * `percpu` — per-container x per-CPU. On a 96-vCPU node
+              #    running 100 containers that one collector is ~10k series.
+              #  * `perf_event` — emits nothing without `perf_events_config`,
+              #    and wants perf_event_open privileges we do not grant.
+              #  * `sched` — per-container scheduler detail whose cost
+              #    outweighs its value outside an investigation.
+              #
+              # Removed: `process`, which upstream disables. It is the only
+              # source of `container_file_descriptors` / `container_ulimits_soft`,
+              # which the shipped descriptor-exhaustion alerts divide against
+              # each other, plus `container_processes` / `container_sockets` /
+              # `container_threads`.
+              #
+              # It carries a hard requirement: reading another container's fd
+              # count means reading /proc/<pid>/fd, so the agent runs with
+              # `controller.hostPid: true`. WITHOUT that, cAdvisor still emits
+              # every series and reports **0** for every container but the
+              # agent's own — measured 1-of-80 non-zero without the host PID
+              # namespace versus 19-of-80 with it. Silently-zero is worse than
+              # absent, because a "descriptors near the limit" alert then never
+              # fires. If you ever set hostPid back to false, disable this
+              # collector in the same change.
+              #
+              # Cost, measured rather than assumed: +5 series per container
+              # (~9% on top of cAdvisor's ~53) and ~+1ms of scrape time. The
+              # series count is flat per container, not per-CPU or per-device.
+              #
+              # Everything not listed here is collected: app, cpu, cpuLoad,
+              # disk, diskIO, memory, network, oom_event, process — including
+              # the per-container PSI series (`container_pressure_*`), which
+              # pair with the node-level pressure metrics from node-exporter.
+              - '["advtcp","cpu_topology","cpuset","hugetlb","memory_numa","percpu","perf_event","referenced_memory","resctrl","sched","tcp","udp"]'
+      # Do NOT promote every container label to a metric label — in Kubernetes
+      # that is every pod label on every container series. The allowlist below
+      # keeps only the four the CRI sets, which are what carries pod identity;
+      # `allowlisted_container_labels` is honored ONLY when this is false.
+      store_container_labels: false
+      allowlisted_container_labels:
+        - io.kubernetes.pod.namespace
+        - io.kubernetes.pod.name
+        - io.kubernetes.pod.uid
+        - io.kubernetes.container.name
 
   # Scrape the in-process exporter. Interval is the dominant cost lever for
   # per-container metrics, so it is env-driven like the gateway's.
@@ -364,20 +353,16 @@ blocks:
             action: replace
             source_labels: ["container_label_io_kubernetes_container_name"]
             target_label: container
-        # The node this DaemonSet pod runs on. `replacement` is a plain String on
-        # the typed rule, so an env-derived value needs the raw escape. An empty
-        # `source_labels` with the default `(.*)` regex is the standard
-        # set-a-constant-label idiom.
-        - raw:
-            component: rule
-            attributes:
-              action: replace
-              target_label: node
-              replacement:
-                function: coalesce
-                arguments:
-                  - env: HOSTNAME
-                  - ref: constants.hostname
+        # The node this DaemonSet pod runs on. An empty `source_labels` with the
+        # default `(.*)` regex is the standard set-a-constant-label idiom.
+        - rule:
+            action: replace
+            target_label: node
+            replacement:
+              function: coalesce
+              arguments:
+                - env: HOSTNAME
+                - ref: constants.hostname
         # Drop the originals now that they have been copied to short names.
         - rule:
             action: labeldrop
@@ -406,46 +391,38 @@ blocks:
   # tracked separately.
 
   # Bridge: converts the scraped Prometheus metrics into OTLP.
-  # otelcol.receiver.* is not typed yet, so raw.
-  - raw:
-      component: otelcol.receiver.prometheus
+  - otelcol.receiver.prometheus:
       label: cadvisorBridge
       blocks:
-        - component: output
-          attributes:
+        - output:
             metrics:
-              - ref: otelcol.exporter.otlp.gateway.input
+              - otelcol.exporter.otlp.gateway.input
 
   # Static stub, like loki.write.gateway above: the endpoint is the gateway and
   # nothing else. Richer/remote configuration comes later.
-  - raw:
-      component: otelcol.exporter.otlp
+  - otelcol.exporter.otlp:
       label: gateway
       blocks:
-        - component: client
-          attributes:
+        - client:
             endpoint:
               function: coalesce
               arguments:
                 - env: AGENT_OTLP_DEST
                 - "alloy-gateway.alloy.svc:4317"
-          blocks:
-            # In-cluster hop to a sibling Deployment. TLS lands with the
-            # cert-manager work, at which point this becomes configurable.
-            - component: tls
-              attributes:
-                insecure: true
+            blocks:
+              # In-cluster hop to a sibling Deployment. TLS lands with the
+              # cert-manager work, at which point this becomes configurable.
+              - tls:
+                  insecure: true
 
   # --- forwarding sink ------------------------------------------------------
 
   # Static stub: forwards everything to the alloy-gateway. This endpoint will
   # gain richer (per-tenant / configurable) wiring later.
-  - raw:
-      component: loki.write
+  - loki.write:
       label: gateway
       blocks:
-        - component: endpoint
-          attributes:
+        - endpoint:
             url:
               function: coalesce
               arguments:

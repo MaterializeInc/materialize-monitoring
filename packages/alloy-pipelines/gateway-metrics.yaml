@@ -18,15 +18,13 @@ blocks:
             listen_port: 9090
 
   # Bridge: turns Prometheus metrics into OTLP metrics and feeds the main processor.
-  - raw:
-      component: otelcol.receiver.prometheus
+  - otelcol.receiver.prometheus:
       label: inputBridge
       blocks:
-        - component: output
-          attributes:
+        - output:
             metrics:
               # switches to gateway-metrics.yaml
-              - ref: otelcol.processor.filter.inputMetricProcessor.input
+              - otelcol.processor.filter.inputMetricProcessor.input
 
   # --- collectors ---
 
@@ -107,10 +105,7 @@ blocks:
   # prometheus.relabel.egress seam. add_metric_suffixes=false keeps names stable
   # across the OTLP round-trip (no _total/_ratio/unit suffixes appended), so
   # dashboards and alerts keep matching the original metric names.
-  - raw:
-      component: otelcol.exporter.prometheus
+  - otelcol.exporter.prometheus:
       label: outputBridge
-      attributes:
-        forward_to:
-          - ref: prometheus.relabel.egress.receiver
-        add_metric_suffixes: false
+      forward_to: ["prometheus.relabel.egress.receiver"]
+      add_metric_suffixes: false

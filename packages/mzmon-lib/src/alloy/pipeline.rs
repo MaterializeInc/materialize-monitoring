@@ -77,6 +77,28 @@ pub enum ComponentBlock {
     OtelcolProcessorGroupByAttrs(otelcol::OtelcolProcessorGroupByAttrsBlock),
     #[serde(rename = "otelcol.processor.filter")]
     OtelcolProcessorFilter(otelcol::OtelcolProcessorFilterBlock),
+    #[serde(rename = "loki.source.api")]
+    LokiSourceApi(loki::LokiSourceApiBlock),
+    #[serde(rename = "loki.source.kubernetes")]
+    LokiSourceKubernetes(loki::LokiSourceKubernetesBlock),
+    #[serde(rename = "loki.source.kubernetes_events")]
+    LokiSourceKubernetesEvents(loki::LokiSourceKubernetesEventsBlock),
+    #[serde(rename = "loki.write")]
+    LokiWrite(loki::LokiWriteBlock),
+    #[serde(rename = "prometheus.exporter.cadvisor")]
+    // Boxed: fifteen mostly-optional cAdvisor knobs, several `ExpressableList`,
+    // make this the widest variant otherwise (clippy::large_enum_variant).
+    PrometheusExporterCadvisor(Box<prometheus::PrometheusExporterCadvisorBlock>),
+    #[serde(rename = "otelcol.receiver.otlp")]
+    OtelcolReceiverOtlp(otelcol::OtelcolReceiverOtlpBlock),
+    #[serde(rename = "otelcol.receiver.prometheus")]
+    OtelcolReceiverPrometheus(otelcol::OtelcolReceiverPrometheusBlock),
+    #[serde(rename = "otelcol.exporter.otlp")]
+    OtelcolExporterOtlp(otelcol::OtelcolExporterOtlpBlock),
+    #[serde(rename = "otelcol.exporter.loki")]
+    OtelcolExporterLoki(otelcol::OtelcolExporterLokiBlock),
+    #[serde(rename = "otelcol.exporter.prometheus")]
+    OtelcolExporterPrometheus(otelcol::OtelcolExporterPrometheusBlock),
     #[serde(rename = "otelcol.processor.transform")]
     OtelcolProcessorTransform(otelcol::OtelcolProcessorTransformBlock),
 }
@@ -102,6 +124,16 @@ impl_to_block_dispatch!(ComponentBlock {
     OtelcolProcessorGroupByAttrs,
     OtelcolProcessorFilter,
     OtelcolProcessorTransform,
+    LokiSourceApi,
+    LokiSourceKubernetes,
+    LokiSourceKubernetesEvents,
+    LokiWrite,
+    PrometheusExporterCadvisor,
+    OtelcolReceiverOtlp,
+    OtelcolReceiverPrometheus,
+    OtelcolExporterOtlp,
+    OtelcolExporterLoki,
+    OtelcolExporterPrometheus
 });
 
 impl Pipeline {

@@ -77,6 +77,12 @@ oneOf:
         $ref: "#/$defs/prometheus.operator.servicemonitors"
     required: [prometheus.operator.servicemonitors]
     additionalProperties: false
+  - type: object
+    properties:
+      prometheus.exporter.cadvisor:
+        $ref: "#/$defs/prometheus.exporter.cadvisor"
+    required: [prometheus.exporter.cadvisor]
+    additionalProperties: false
 
 $defs:
   label:
@@ -709,8 +715,12 @@ $defs:
     type: object
     properties:
       url:
-        description: Full URL of the remote-write endpoint.
-        type: string
+        description: |
+          Full URL of the remote-write endpoint. Accepts an expression, so it
+          can be wired to an environment variable with an in-cluster default.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
       name:
         description: |
           Optional human-readable name for the endpoint (surfaced in metrics).
@@ -749,4 +759,109 @@ $defs:
           `write_relabel_config`, ...) via the `raw:` escape.
         $ref: "#/$defs/rawOnlyBlock"
     required: [url]
+    additionalProperties: false
+
+  expressionOrStringList:
+    description: |
+      A `list(string)` attribute that may instead come from an expression — for
+      example `encoding.from_json(sys.env("VAR"))`, which is how a JSON array in
+      an environment variable becomes a list here.
+
+      Unlike a literal *map*, a literal *list* is shape-distinguishable from the
+      expression object, so this union is unambiguous.
+    oneOf:
+      - type: array
+        items:
+          type: string
+      - $ref: "./common/expression.schema.yaml"
+
+  prometheus.exporter.cadvisor:
+    description: |
+      Runs cAdvisor in-process and exports per-container resource metrics as
+      scrape targets.
+
+      Two argument interactions are easy to get wrong:
+
+        * A NON-EMPTY `enabled_metrics` replaces `disabled_metrics` outright
+          rather than merging per collector — it is the exhaustive list, not
+          extras on top. Empty means "unset", leaving `disabled_metrics` in
+          charge.
+        * `allowlisted_container_labels` is honored ONLY when
+          `store_container_labels` is false. Left at its `true` upstream
+          default, every container label becomes a metric label, which in
+          Kubernetes means every pod label on every container series.
+
+      Reading container metadata needs the CRI socket mounted into the pod
+      (`containerd_host`, default `/run/containerd/containerd.sock`); without it
+      the `io.kubernetes.*` labels never appear.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cadvisor/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      enabled_metrics:
+        description: |
+          Collectors to enable. A non-empty list overrides `disabled_metrics`
+          entirely.
+        $ref: "#/$defs/expressionOrStringList"
+      disabled_metrics:
+        description: |
+          Collectors to disable, overriding cAdvisor's own default-disabled set.
+        $ref: "#/$defs/expressionOrStringList"
+      store_container_labels:
+        description: |
+          Promote every container label and environment variable to metric
+          labels. Defaults to true upstream; false is almost always correct in
+          Kubernetes.
+        type: boolean
+      allowlisted_container_labels:
+        description: |
+          Container labels to promote. Honored only when
+          `store_container_labels` is false.
+        $ref: "#/$defs/expressionOrStringList"
+      env_metadata_allowlist:
+        description: Environment-variable prefixes to collect for containers.
+        $ref: "#/$defs/expressionOrStringList"
+      raw_cgroup_prefix_allowlist:
+        description: cgroup path prefixes to collect even under `docker_only`.
+        $ref: "#/$defs/expressionOrStringList"
+      docker_only:
+        description: Report only Docker containers plus root stats.
+        type: boolean
+      disable_root_cgroup_stats:
+        description: Skip the root cgroup's own stats.
+        type: boolean
+      docker_host:
+        description: Docker endpoint.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      containerd_host:
+        description: |
+          containerd socket path. Defaults to
+          `/run/containerd/containerd.sock`, which must be mounted into the pod.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      containerd_namespace:
+        description: containerd namespace to read. Defaults to `k8s.io`.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      storage_duration:
+        description: How long to retain samples in memory.
+        type: string
+        format: go-duration
+      resctrl_interval:
+        description: Interval for refreshing resctrl monitoring groups.
+        type: string
+        format: go-duration
+      perf_events_config:
+        description: |
+          Path to a perf-events configuration file, required by the
+          `perf_event` collector.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
     additionalProperties: false
