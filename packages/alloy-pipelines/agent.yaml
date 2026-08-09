@@ -81,6 +81,19 @@ blocks:
       label: local_pods
       targets: ["discovery.kubernetes.local_pods.targets"]
       blocks:
+        # The agent does not tail its own logs. The gateway reads them straight
+        # from the Kubernetes API instead (the sidechannel in gateway.yaml),
+        # which is the path that still works when this agent is the thing that
+        # is broken. Dropping the target here rather than filtering later is
+        # what keeps the two paths from each delivering a copy.
+        #
+        # Discovery-time, so the agent never opens the file at all — and so the
+        # echoed lines from `loki.echo.stub` below can never re-enter this
+        # pipeline and be forwarded a second time.
+        - rule:
+            action: drop
+            source_labels: ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            regex: alloy-agent
         - rule:
             action: replace
             source_labels: ["__meta_kubernetes_namespace"]

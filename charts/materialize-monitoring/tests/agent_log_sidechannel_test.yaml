@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# The backup path for the agents' own logs.
+#
+# Every other log in the stack reaches Loki because an agent tailed a file and
+# pushed it. That makes the agent a single point of failure for its own logs
+# specifically — when it OOMs or cannot reach the gateway, the logs explaining
+# why are the ones it was about to send. The gateway therefore reads the agent
+# DaemonSet's logs straight from the Kubernetes API, always on.
+#
+# The pipelines are pre-rendered and `alloy validate`d by `make pipelines`; these
+# assert the properties that would otherwise regress silently, since a broken
+# backup path looks exactly like a working one until the day it is needed.
+suite: alloy agent log sidechannel
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.logging.gateway.destination.loki.enabled: false
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+tests:
+  - it: should tail agent pods from the Kubernetes API on the gateway
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.source\.kubernetes "agent_logs"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'targets\s+= discovery\.relabel\.agent_pods\.output'
+
+  # Server-side, so the API returns only agent pods instead of every pod in the
+  # cluster filtered client-side. This is what keeps the watch cheap enough to
+  # justify running it constantly, so it is load-bearing rather than tidiness.
+  - it: should select only the agent DaemonSet, server-side
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'label = "app.kubernetes.io/name=alloy-agent"'
+
+  # Without clustering every gateway replica tails every agent pod and each line
+  # lands in Loki once per replica. Production runs 2+ replicas, so this is
+  # required rather than an optimization.
+  - it: should cluster the tail so replicas do not duplicate
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.source\.kubernetes "agent_logs" \{[\s\S]*?clustering \{\s+enabled = true'
+
+  # The other half of the deduplication: with the sidechannel always on, an
+  # agent that also tailed its own log file would deliver every line twice. The
+  # drop is at discovery time so the file is never opened at all.
+  - it: should stop the agent collecting its own logs
+    template: templates/pipelines/cm-alloy-agent.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'action = "drop"\s+source_labels = \[\s+"__meta_kubernetes_pod_label_app_kubernetes_io_name",\s+\]\s+regex = "alloy-agent"'
+
+  # `app` comes from app.kubernetes.io/name, which the subchart aliases make
+  # `alloy-agent` / `alloy-gateway` — not the bare `alloy` the reference
+  # deployment used. Matching only `alloy` meant this block never fired, so the
+  # loki.echo drop never ran. Harmless until the sidechannel started collecting
+  # agent logs; now it is what stops echoed pod logs being ingested twice.
+  - it: should match this chart's alloy app labels when dropping echo output
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'selector = "\{app=~\\"alloy-agent\|alloy-gateway\\"\}"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'drop_counter_reason = "alloy loki.echo"'
+
+  # The chart does not set rbac rules, so this comes from the alloy subchart's
+  # defaults. loki.source.kubernetes cannot read logs without pods/log, and the
+  # failure would be a permission error at runtime rather than a render error.
+  - it: should have the pods/log permission the tail needs
+    template: ../charts/alloy-gateway/templates/rbac.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: ["pods", "pods/log", "namespaces"]
+            verbs: ["get", "list", "watch"]
+        documentIndex: 0

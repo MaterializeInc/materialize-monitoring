@@ -30,6 +30,28 @@ also provides many opionated configurations such as o11y pipelines, Grafana dash
 
 `alloy-agent` is a [Grafana Alloy](https://grafana.com/docs/alloy/latest/introduction/) Agent DaemonSet that runs on every node in the cluster and is responsible for collecting logs from the node and forwarding them to the [`alloy-gateway`](#alloy-gateway-grafana-alloy-gateway-deployment).
 
+The agent does **not** collect its own logs.
+Those arrive by a second, independent route: the gateway reads them straight from the Kubernetes API — see [the agent log sidechannel](#the-agent-log-sidechannel) below.
+
+### The agent log sidechannel
+
+Every other log in this stack reaches Loki because an agent tailed a file on its node and pushed it to the gateway.
+That makes the agent a single point of failure for exactly one set of logs: **its own**.
+When an agent OOMs, crash-loops on bad config, wedges on a full disk, or simply cannot reach the gateway, the logs explaining why are the ones it was about to send.
+The failure erases its own evidence, and the operator sees silence where they need a cause.
+
+So the gateway tails the agent DaemonSet's logs directly from the Kubernetes API, using `loki.source.kubernetes` against a `discovery.kubernetes` selector scoped to those pods.
+The two paths share nothing: a different process, on a different host, over a different transport, with a different failure domain.
+It also covers the windows where the agent legitimately is not running — a first install, a DaemonSet rollout, a node that has just come up — during which there is no file to tail yet.
+
+Three properties are deliberate:
+
+- **Always on, not a failover.** A path that only activates during an incident is a path nobody notices is broken. Running it constantly means its health is visible on an ordinary day, and there is no failure detection to get wrong.
+- **The agents do not also collect their own logs.** With the sidechannel always on, an agent tailing its own log file would deliver every line twice. The agent's discovery drops its own pods, so there is one path rather than two.
+- **Scoped to the agent DaemonSet only, server-side.** The label selector goes to the API server, so the watch never returns other pods. The target set is one pod per node emitting alloy's own modest output — which is what makes reading logs through the API server affordable here. This is **not** a general log-collection mechanism: pointed at application pods it would put the cluster's entire log volume through the API server.
+
+The gateway runs several replicas, so the tail is clustered — otherwise each replica would tail every agent pod and every line would land in Loki once per replica.
+
 ## `alloy-gateway`: Grafana Alloy Gateway Deployment
 
 `alloy-gateway` is a [Grafana Alloy](https://grafana.com/docs/alloy/latest/introduction/) Gateway Deployment that is responsible for the main observability pipeline processing and forwarding.
