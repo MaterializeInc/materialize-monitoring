@@ -941,6 +941,95 @@ Configuration for metrics behavior
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "process", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"60s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
+      <td class="helm-value-desc">Node-local metric collection on the Alloy agent DaemonSet.
+
+cAdvisor runs in-process in the agent rather than being scraped off the
+kubelet, so the metric set is ours rather than whatever the kubelet
+chooses, and the API-server proxy leaves the collection path. Metrics exit
+the agent over OTLP to the gateway's `otelcol.receiver.otlp`.
+
+Enabling this requires host mounts on the agent (`/sys`, `/`,
+`/run/containerd`, `/dev/disk`); the chart adds them by default. It needs
+**no added Linux capabilities** — the agent already runs as uid 0 with
+`capabilities.drop: [ALL]`, and that is sufficient for every collector
+enabled below. Verified by running the rendered config under
+`alloy run` with exactly that security context.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect per-container metrics on every node.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"60s"</code></td>
+      <td class="helm-value-desc">Scrape interval for the in-process cAdvisor exporter. The dominant cost lever: cAdvisor's series count scales with containers-per-node, so this is what you turn down on dense pools.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.enabledCollectors</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Collectors to enable. **If non-empty this REPLACES `disabledCollectors` outright** — cAdvisor's own precedence, not ours — so it is the exhaustive list, not extras on top. A collector named here wins over the same name in `disabledCollectors`. Leave empty to let `disabledCollectors` decide.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.disabledCollectors</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "advtcp",
+  "cpu_topology",
+  "cpuset",
+  "hugetlb",
+  "memory_numa",
+  "percpu",
+  "perf_event",
+  "process",
+  "referenced_memory",
+  "resctrl",
+  "sched",
+  "tcp",
+  "udp"
+]</pre>
+</td>
+      <td class="helm-value-desc">Collectors to disable. cAdvisor's default-disabled set, plus `percpu` (per-container x per-CPU — ~10k series on a large dense node), `perf_event` (emits nothing without `perf_events_config`), and `sched` (investigation-grade detail at steady-state cost).
+
+`process` is disabled with the rest, and turning it back on needs one
+extra step. It is the only source of `container_file_descriptors`, but
+reading another container's descriptor count means reading
+`/proc/<pid>/fd`, which needs the host PID namespace. Left at the
+default `alloy-agent.controller.hostPid: false`, cAdvisor still emits
+the series and reports **0** for every container but the agent's own —
+so a descriptor-exhaustion alert silently never fires. Enable
+`process` only together with `alloy-agent.controller.hostPid: true`.
+
+Valid names: advtcp, app, cpu, cpuLoad, cpu_topology, cpuset, disk,
+diskIO, hugetlb, memory, memory_numa, network, oom_event, percpu,
+perf_event, process, referenced_memory, resctrl, sched, tcp, udp.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.destination<wbr>.otlp</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "url": "alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"
+}</pre>
+</td>
+      <td class="helm-value-desc">OTLP endpoint the agent ships metrics to. Statically the gateway's `otelcol.receiver.otlp` gRPC listener. A `host:port`, not a URL — the OTLP gRPC exporter takes no scheme.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.denyMetrics</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -1863,12 +1952,32 @@ Upstream reference:
     {
       "mountPath": "/tmp",
       "name": "tmp"
+    },
+    {
+      "mountPath": "/sys",
+      "name": "sys",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/rootfs",
+      "name": "rootfs",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/run/containerd",
+      "name": "containerd",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/dev/disk",
+      "name": "devdisk",
+      "readOnly": true
     }
   ],
   "varlog": true
 }</pre>
 </td>
-      <td class="helm-value-desc">Volume mounts to expose to alloy agent.
+      <td class="helm-value-desc">Volume mounts to expose to alloy agent. The host paths below are what the in-process cAdvisor exporter reads; drop them (and their `controller.volumes.extra` entries) if you disable `pipeline.metrics.agent.cadvisor`. All are read-only.
 </td>
     </tr>
     <tr>
@@ -1889,6 +1998,19 @@ Upstream reference:
 }</pre>
 </td>
       <td class="helm-value-desc">Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs.
+
+**No capabilities are added for cAdvisor, and none are needed.** Everything
+it reads — the cgroup hierarchy under `/sys/fs/cgroup`, the containerd
+socket, `/proc` — is reachable by uid 0 under ordinary DAC, so
+`drop: [ALL]` holds. Verified by running the rendered agent config under
+`alloy run` with exactly this context: every enabled collector produced
+data. Do not add `SYS_ADMIN` or set `privileged` here on the assumption
+that cAdvisor needs it — the common "cadvisor needs privileged" guidance is
+about the standalone DaemonSet on older runtimes, not this configuration.
+
+The one collector that genuinely needs more is `process`, and what it needs
+is `controller.hostPid: true` rather than a capability. See
+`pipeline.metrics.agent.cadvisor.disabledCollectors`.
 </td>
     </tr>
     <tr>
@@ -1923,6 +2045,46 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-critical"</code></td>
       <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical: this is a per-node singleton, so an eviction is a log gap on that node with no replica to cover it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.volumes</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "extra": [
+    {
+      "emptyDir": {},
+      "name": "tmp"
+    },
+    {
+      "hostPath": {
+        "path": "/sys"
+      },
+      "name": "sys"
+    },
+    {
+      "hostPath": {
+        "path": "/"
+      },
+      "name": "rootfs"
+    },
+    {
+      "hostPath": {
+        "path": "/run/containerd"
+      },
+      "name": "containerd"
+    },
+    {
+      "hostPath": {
+        "path": "/dev/disk"
+      },
+      "name": "devdisk"
+    }
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">Host paths backing the cAdvisor mounts above. `hostPath` type is left unset deliberately: `/dev/disk` does not exist on every node image, and a `Directory` type would make the pod fail to start there rather than degrade.
 </td>
     </tr>
   </tbody>

@@ -406,6 +406,77 @@ pipeline:
   # -- (h4) Configuration for metrics behavior
   # @notationType -- (sectionstart) Metrics configuration
   metrics:
+    # -- (h5) Node-local metric collection on the Alloy agent DaemonSet.
+    # @raw
+    #
+    # cAdvisor runs in-process in the agent rather than being scraped off the
+    # kubelet, so the metric set is ours rather than whatever the kubelet
+    # chooses, and the API-server proxy leaves the collection path. Metrics exit
+    # the agent over OTLP to the gateway's `otelcol.receiver.otlp`.
+    #
+    # Enabling this requires host mounts on the agent (`/sys`, `/`,
+    # `/run/containerd`, `/dev/disk`); the chart adds them by default. It needs
+    # **no added Linux capabilities** — the agent already runs as uid 0 with
+    # `capabilities.drop: [ALL]`, and that is sufficient for every collector
+    # enabled below. Verified by running the rendered config under
+    # `alloy run` with exactly that security context.
+    agent:
+      cadvisor:
+        # -- Collect per-container metrics on every node.
+        enabled: true
+
+        # -- Scrape interval for the in-process cAdvisor exporter.
+        # The dominant cost lever: cAdvisor's series count scales with
+        # containers-per-node, so this is what you turn down on dense pools.
+        scrapeInterval: 60s
+
+        # -- Collectors to enable. **If non-empty this REPLACES
+        # `disabledCollectors` outright** — cAdvisor's own precedence, not
+        # ours — so it is the exhaustive list, not extras on top. A collector
+        # named here wins over the same name in `disabledCollectors`.
+        # Leave empty to let `disabledCollectors` decide.
+        enabledCollectors: []
+
+        # -- Collectors to disable. cAdvisor's default-disabled set, plus
+        # `percpu` (per-container x per-CPU — ~10k series on a large dense
+        # node), `perf_event` (emits nothing without `perf_events_config`), and
+        # `sched` (investigation-grade detail at steady-state cost).
+        # @raw
+        #
+        # `process` is disabled with the rest, and turning it back on needs one
+        # extra step. It is the only source of `container_file_descriptors`, but
+        # reading another container's descriptor count means reading
+        # `/proc/<pid>/fd`, which needs the host PID namespace. Left at the
+        # default `alloy-agent.controller.hostPid: false`, cAdvisor still emits
+        # the series and reports **0** for every container but the agent's own —
+        # so a descriptor-exhaustion alert silently never fires. Enable
+        # `process` only together with `alloy-agent.controller.hostPid: true`.
+        #
+        # Valid names: advtcp, app, cpu, cpuLoad, cpu_topology, cpuset, disk,
+        # diskIO, hugetlb, memory, memory_numa, network, oom_event, percpu,
+        # perf_event, process, referenced_memory, resctrl, sched, tcp, udp.
+        disabledCollectors:
+          - advtcp
+          - cpu_topology
+          - cpuset
+          - hugetlb
+          - memory_numa
+          - percpu
+          - perf_event
+          - process
+          - referenced_memory
+          - resctrl
+          - sched
+          - tcp
+          - udp
+
+      destination:
+        # -- OTLP endpoint the agent ships metrics to.
+        # Statically the gateway's `otelcol.receiver.otlp` gRPC listener. A
+        # `host:port`, not a URL — the OTLP gRPC exporter takes no scheme.
+        otlp:
+          url: 'alloy-gateway.{{ include "mzmon.alloyGateway.namespace" $ }}.svc:4317'
+
     gateway:
       # -- Denylist of metrics that are excluded from being exported
       # These are |'d in a regex pattern
@@ -1004,15 +1075,55 @@ alloy-agent:
           optional: true
 
     # -- Volume mounts to expose to alloy agent.
+    # The host paths below are what the in-process cAdvisor exporter reads; drop
+    # them (and their `controller.volumes.extra` entries) if you disable
+    # `pipeline.metrics.agent.cadvisor`. All are read-only.
     mounts:
       varlog: true
 
       extra:
         - name: tmp
           mountPath: /tmp
+        # cgroup hierarchy — where every container resource counter comes from.
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+        # Host root. cAdvisor reads machine identity (`/etc/machine-id`) through
+        # it; without the mount it logs "Couldn't collect info" and drops the
+        # machine_id label.
+        - name: rootfs
+          mountPath: /rootfs
+          readOnly: true
+        # The CRI socket, which is where container -> pod identity comes from.
+        # Mounted at its real path because `containerd_host` defaults to
+        # /run/containerd/containerd.sock. Without it cAdvisor logs
+        # "Registration of the containerd container factory failed" and the
+        # io.kubernetes.* labels never appear — which the pipeline's relabeling
+        # then cannot map to pod/namespace/container.
+        - name: containerd
+          mountPath: /run/containerd
+          readOnly: true
+        # Block device names, so disk series are labeled by device.
+        - name: devdisk
+          mountPath: /dev/disk
+          readOnly: true
 
     # -- Security context for the alloy agent containers.
     # The agent MUST run as root in order to be able to read container logs.
+    # @raw
+    #
+    # **No capabilities are added for cAdvisor, and none are needed.** Everything
+    # it reads — the cgroup hierarchy under `/sys/fs/cgroup`, the containerd
+    # socket, `/proc` — is reachable by uid 0 under ordinary DAC, so
+    # `drop: [ALL]` holds. Verified by running the rendered agent config under
+    # `alloy run` with exactly this context: every enabled collector produced
+    # data. Do not add `SYS_ADMIN` or set `privileged` here on the assumption
+    # that cAdvisor needs it — the common "cadvisor needs privileged" guidance is
+    # about the standalone DaemonSet on older runtimes, not this configuration.
+    #
+    # The one collector that genuinely needs more is `process`, and what it needs
+    # is `controller.hostPid: true` rather than a capability. See
+    # `pipeline.metrics.agent.cadvisor.disabledCollectors`.
     securityContext:
       runAsNonRoot: false
       runAsUser: 0
@@ -1066,10 +1177,26 @@ alloy-agent:
     # node with no replica to cover it.
     priorityClassName: monitoring-critical
 
+    # -- Host paths backing the cAdvisor mounts above. `hostPath` type is left
+    # unset deliberately: `/dev/disk` does not exist on every node image, and a
+    # `Directory` type would make the pod fail to start there rather than
+    # degrade.
     volumes:
       extra:
         - name: tmp
           emptyDir: {}
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: rootfs
+          hostPath:
+            path: /
+        - name: containerd
+          hostPath:
+            path: /run/containerd
+        - name: devdisk
+          hostPath:
+            path: /dev/disk
 
   serviceMonitor:
     enabled: true

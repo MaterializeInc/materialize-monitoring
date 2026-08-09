@@ -206,16 +206,17 @@ $defs:
       scrape_interval:
         description: |
           How frequently to scrape the targets.
-          Defaults to `60s`.
-        type: string
-        format: go-duration
+          Defaults to `60s`. Accepts an expression, so it can be wired to an
+          environment variable — the scrape interval is the dominant cost lever
+          for a high-cardinality target such as a per-node cAdvisor.
+        $ref: "#/$defs/expressionOrDuration"
         examples: ["60s", "30s", "15s"]
       scrape_timeout:
         description: |
           Per-scrape timeout.
-          Defaults to `10s`.
-        type: string
-        format: go-duration
+          Defaults to `10s`. Accepts an expression, so it can be wired to an
+          environment variable.
+        $ref: "#/$defs/expressionOrDuration"
       metrics_path:
         description: |
           HTTP path to scrape.

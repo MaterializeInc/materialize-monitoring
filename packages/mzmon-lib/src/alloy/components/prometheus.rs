@@ -140,10 +140,12 @@ pub struct PrometheusScrapeBlock {
     pub targets: Vec<TargetEntry>,
     /// Metrics receivers to forward scraped samples to. Required by the schema.
     pub forward_to: Vec<MetricsReceiver>,
+    /// `Expressable` so the interval can come from the environment; it is the
+    /// dominant cost lever on a high-cardinality target like a per-node cAdvisor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scrape_interval: Option<GoDuration>,
+    pub scrape_interval: Option<Expressable<GoDuration>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scrape_timeout: Option<GoDuration>,
+    pub scrape_timeout: Option<Expressable<GoDuration>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metrics_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -177,10 +179,10 @@ impl ToBlock for PrometheusScrapeBlock {
         attributes.insert("targets".into(), target_list(&self.targets));
         attributes.insert("forward_to".into(), metrics_receiver_list(&self.forward_to));
         if let Some(v) = &self.scrape_interval {
-            attributes.insert("scrape_interval".into(), AttributeValue::String(v.clone()));
+            attributes.insert("scrape_interval".into(), v.to_attribute_value()?);
         }
         if let Some(v) = &self.scrape_timeout {
-            attributes.insert("scrape_timeout".into(), AttributeValue::String(v.clone()));
+            attributes.insert("scrape_timeout".into(), v.to_attribute_value()?);
         }
         if let Some(v) = &self.metrics_path {
             attributes.insert("metrics_path".into(), AttributeValue::String(v.clone()));
