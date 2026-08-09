@@ -8,13 +8,29 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.16.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.10.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.15.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.15.0
 
-_Changes Pending_
+* CLO-180 Support sidechannel logging path (agent doesn't read its own logs)
+    * [materialize-monitoring#202](https://github.com/MaterializeInc/materialize-monitoring/pull/202)
+* DEP-187 Collect cAdvisor metrics with Alloy
+    * [materialize-monitoring#200](https://github.com/MaterializeInc/materialize-monitoring/pull/200)
+* Upgrade all subcharts to latest version (Loki 15->18, etc)
+    * [materialize-monitoring#198](https://github.com/MaterializeInc/materialize-monitoring/pull/198)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.9.0..v0.10.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
 
 ## mzmon-lib (shared library) v0.10.0 (Unreleased)
 
