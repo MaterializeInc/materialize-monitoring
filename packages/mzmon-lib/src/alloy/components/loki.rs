@@ -9,8 +9,8 @@
 
 use crate::alloy::ast;
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
-    string_map,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, RawOnlySubBlock, ToBlock,
+    impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
@@ -173,6 +173,9 @@ pub struct LokiSourceFileBlock {
     /// Character encoding override. Defaults to UTF-8.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
+    /// Nested blocks (`file_match`; `decompression` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<LokiSourceFileSubBlock>,
 }
 
 impl ToBlock for LokiSourceFileBlock {
@@ -190,10 +193,57 @@ impl ToBlock for LokiSourceFileBlock {
             component: "loki.source.file".into(),
             label: self.label.clone(),
             attributes,
-            ..Default::default()
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
         })
     }
 }
+
+/// A `file_match` sub-block on `loki.source.file` — controls how the component
+/// reacts to the target set changing.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.file/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiFileMatchBlock {
+    /// Watch for files appearing and disappearing under the target paths.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// How often to re-evaluate the target globs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_period: Option<GoDuration>,
+}
+
+impl ToBlock for LokiFileMatchBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = self.enabled {
+            attributes.insert("enabled".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = &self.sync_period {
+            attributes.insert("sync_period".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "file_match".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// Sub-block under a `loki.source.file` body. `Raw` covers `decompression`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LokiSourceFileSubBlock {
+    #[serde(rename = "file_match")]
+    FileMatch(LokiFileMatchBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(LokiSourceFileSubBlock { FileMatch, Raw });
 
 // ============================================================
 // loki.process  (+ stage.* sub-blocks)
@@ -856,6 +906,376 @@ impl ToBlock for StageTenantBlock {
 }
 
 // ============================================================
+// loki.source.api  (+ http server sub-block)
+// ============================================================
+
+/// An `http` server sub-block on `loki.source.api`.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiHttpServerBlock {
+    /// Address to bind. Defaults to all interfaces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listen_address: Option<Expressable<String>>,
+    /// Port to listen on. `Expressable` because it is usually wired to an
+    /// environment variable — note `sys.env` returns a string, so a numeric
+    /// port from the environment needs the `encoding.from_json` coercion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listen_port: Option<Expressable<f64>>,
+    /// Maximum simultaneous connections. 0 means unlimited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conn_limit: Option<Expressable<f64>>,
+    /// Nested blocks (`tls` and friends via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<RawOnlySubBlock>,
+}
+
+impl ToBlock for LokiHttpServerBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.listen_address {
+            attributes.insert("listen_address".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.listen_port {
+            attributes.insert("listen_port".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.conn_limit {
+            attributes.insert("conn_limit".into(), v.to_attribute_value()?);
+        }
+        Ok(Block {
+            component: "http".into(),
+            label: None,
+            attributes,
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+/// Sub-block under a `loki.source.api` body. `Raw` covers `grpc`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LokiSourceApiSubBlock {
+    #[serde(rename = "http")]
+    // Boxed: the server block's `Expressable` fields dwarf the `raw` variant
+    // (clippy::large_enum_variant). Transparent to serde and to the dispatch macro.
+    Http(Box<LokiHttpServerBlock>),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(LokiSourceApiSubBlock { Http, Raw });
+
+/// A `loki.source.api` block — runs a Loki push-API server and forwards what it
+/// receives.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiSourceApiBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Receivers to forward received entries to. Required by the schema.
+    pub forward_to: Vec<LogsReceiver>,
+    /// Labels stamped onto every received entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<IndexMap<String, String>>,
+    /// Use the incoming `X-Scope-OrgID` as the tenant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_incoming_tenant: Option<bool>,
+    /// Server blocks (`http`; `grpc` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<LokiSourceApiSubBlock>,
+}
+
+impl ToBlock for LokiSourceApiBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
+        if let Some(labels) = &self.labels {
+            attributes.insert("labels".into(), string_map(labels));
+        }
+        if let Some(v) = self.use_incoming_tenant {
+            attributes.insert("use_incoming_tenant".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "loki.source.api".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+// ============================================================
+// loki.source.kubernetes  (+ clustering sub-block)
+// ============================================================
+
+/// A `clustering` sub-block — distributes targets across a clustered fleet.
+///
+/// Load-bearing wherever the component runs on more than one replica: without
+/// it every replica tails every target and each line is delivered once per
+/// replica.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes/#clustering-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiClusteringBlock {
+    /// Share targets across the cluster rather than tailing all of them here.
+    pub enabled: bool,
+}
+
+impl ToBlock for LokiClusteringBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("enabled".into(), AttributeValue::Bool(self.enabled));
+        Ok(Block {
+            component: "clustering".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// Sub-block under a `loki.source.kubernetes` body. `Raw` covers `client` and
+/// its auth blocks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LokiSourceKubernetesSubBlock {
+    #[serde(rename = "clustering")]
+    Clustering(LokiClusteringBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(LokiSourceKubernetesSubBlock { Clustering, Raw });
+
+/// A `loki.source.kubernetes` block — tails container logs through the
+/// Kubernetes API rather than from files on the node.
+///
+/// Reading logs via the API server is expensive at cluster scale, so scope the
+/// targets tightly (a server-side label selector on the `discovery.kubernetes`
+/// feeding it) rather than pointing this at every pod.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiSourceKubernetesBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Pods to tail. Each target carries the `__meta_kubernetes_*` labels the
+    /// component reads to identify the container. Required by the schema.
+    pub targets: Vec<TargetEntry>,
+    /// Receivers to forward tailed entries to. Required by the schema.
+    pub forward_to: Vec<LogsReceiver>,
+    /// Nested blocks (`clustering`; `client` and auth via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<LokiSourceKubernetesSubBlock>,
+}
+
+impl ToBlock for LokiSourceKubernetesBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("targets".into(), target_list(&self.targets));
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
+        Ok(Block {
+            component: "loki.source.kubernetes".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+// ============================================================
+// loki.source.kubernetes_events
+// ============================================================
+
+/// A `loki.source.kubernetes_events` block — turns Kubernetes Events into log
+/// entries.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes_events/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiSourceKubernetesEventsBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Receivers to forward events to. Required by the schema.
+    pub forward_to: Vec<LogsReceiver>,
+    /// Namespaces to watch. Empty means all of them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub namespaces: Vec<String>,
+    /// Value of the `job` label on emitted entries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_name: Option<String>,
+    /// Format to render events in (`logfmt` or `json`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_format: Option<String>,
+    /// Nested blocks (`client` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<RawOnlySubBlock>,
+}
+
+impl ToBlock for LokiSourceKubernetesEventsBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
+        if !self.namespaces.is_empty() {
+            attributes.insert(
+                "namespaces".into(),
+                AttributeValue::Array(
+                    self.namespaces
+                        .iter()
+                        .map(|n| AttributeValue::String(n.clone()))
+                        .collect(),
+                ),
+            );
+        }
+        if let Some(v) = &self.job_name {
+            attributes.insert("job_name".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.log_format {
+            attributes.insert("log_format".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "loki.source.kubernetes_events".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+// ============================================================
+// loki.write  (+ endpoint sub-block)
+// ============================================================
+
+/// An `endpoint` sub-block on `loki.write` — one destination to push to.
+///
+/// Auth (`basic_auth`, `bearer_token*`, `oauth2`, `sigv4`) and TLS stay on the
+/// `raw:` escape: at deploy time the chart renders the real destination from
+/// Helm values rather than using this component's typed form.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/#endpoint-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiWriteEndpointBlock {
+    /// Full push URL. `Expressable`, so it can be wired to an environment
+    /// variable with an in-cluster default.
+    pub url: Expressable<String>,
+    /// Name for this endpoint in metrics and logs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Tenant to write as (`X-Scope-OrgID`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<Expressable<String>>,
+    /// Maximum accumulated batch size before a push.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_size: Option<String>,
+    /// Maximum time to wait before pushing a partial batch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_wait: Option<GoDuration>,
+    /// Per-request timeout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_timeout: Option<GoDuration>,
+    /// Nested blocks (auth / TLS / queue tuning via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<RawOnlySubBlock>,
+}
+
+impl ToBlock for LokiWriteEndpointBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("url".into(), self.url.to_attribute_value()?);
+        if let Some(v) = &self.name {
+            attributes.insert("name".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.tenant_id {
+            attributes.insert("tenant_id".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.batch_size {
+            attributes.insert("batch_size".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.batch_wait {
+            attributes.insert("batch_wait".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.remote_timeout {
+            attributes.insert("remote_timeout".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "endpoint".into(),
+            label: None,
+            attributes,
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+/// Sub-block under a `loki.write` body. `Raw` covers `wal`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LokiWriteSubBlock {
+    #[serde(rename = "endpoint")]
+    // Boxed for size, like the other Expressable-heavy sub-blocks.
+    Endpoint(Box<LokiWriteEndpointBlock>),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(LokiWriteSubBlock { Endpoint, Raw });
+
+/// A `loki.write` block — the sink that pushes entries to a Loki-compatible
+/// endpoint. Exports a `receiver` other `loki.*` components forward to.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiWriteBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Labels added to every entry on the way out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_labels: Option<IndexMap<String, String>>,
+    /// Endpoints to push to (`endpoint`; `wal` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<LokiWriteSubBlock>,
+}
+
+impl ToBlock for LokiWriteBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(labels) = &self.external_labels {
+            attributes.insert("external_labels".into(), string_map(labels));
+        }
+        Ok(Block {
+            component: "loki.write".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: self
+                .blocks
+                .iter()
+                .map(ToBlock::to_block)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+// ============================================================
 // tests
 // ============================================================
 
@@ -1255,6 +1675,77 @@ mod tests {
                 "\tstage.regex {\n",
                 "\t\texpression         = \"(?P<level>[A-Z]+)\"\n",
                 "\t\tlabels_from_groups = true\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// `loki.write`'s endpoint URL is `Expressable`, which is what lets the
+    /// build-time stub carry an env-coalesced default while the deployed
+    /// destination is rendered by Helm.
+    #[test]
+    fn loki_write_endpoint_url_accepts_an_expression() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.write:
+                  label: gateway
+                  blocks:
+                    - endpoint:
+                        url:
+                          function: coalesce
+                          arguments:
+                            - env: AGENT_LOKI_DEST
+                            - "http://gw.svc:3100/loki/api/v1/push"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.write \"gateway\" {\n",
+                "\tendpoint {\n",
+                "\t\turl = coalesce(sys.env(\"AGENT_LOKI_DEST\"), \"http://gw.svc:3100/loki/api/v1/push\")\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// `targets` is a single ref, so it must render bare rather than
+    /// array-wrapped: `[discovery...]` is `list(list(Target))`, which alloy
+    /// accepts at `validate` time and rejects at load.
+    #[test]
+    fn loki_source_kubernetes_renders_a_bare_targets_ref() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.source.kubernetes:
+                  label: agent_logs
+                  targets: ["discovery.relabel.agent_pods.output"]
+                  forward_to: ["loki.process.inputProcessor.receiver"]
+                  blocks:
+                    - clustering:
+                        enabled: true
+            "#,
+        )
+        .unwrap();
+        // Plain byte assert rather than `assert_renders`: a single-line attribute
+        // beside a multi-line array hits the renderer's known alignment gap
+        // (alloy fmt would pad `targets` to line up with `forward_to`), so the
+        // output is correct but not fmt-canonical.
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "loki.source.kubernetes \"agent_logs\" {\n",
+                "\ttargets = discovery.relabel.agent_pods.output\n",
+                "\tforward_to = [\n",
+                "\t\tloki.process.inputProcessor.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tclustering {\n",
+                "\t\tenabled = true\n",
                 "\t}\n",
                 "}\n",
             ),

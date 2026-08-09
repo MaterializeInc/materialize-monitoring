@@ -19,8 +19,8 @@
 //! (`components/relabel.rs`) for the `rule` blocks shared with the loki side.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
-    string_map,
+    AttributeValue, Block, Expressable, ExpressableList, GoDuration, Identifier, RawOnlySubBlock,
+    ToBlock, impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     MetricsReceiver, TargetEntry, metrics_receiver_list, target_list,
@@ -29,17 +29,6 @@ use crate::alloy::components::relabel::{RelabelRule, RelabelSubBlock};
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-
-/// A nested-block list that only supports the `raw:` escape (no typed
-/// sub-blocks yet). Used by `endpoint` (remote_write) and `selector`
-/// (operator), where the surrounding block's scalars are typed but its nested
-/// blocks are deferred to raw.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RawOnlySubBlock {
-    #[serde(rename = "raw")]
-    Raw(Block),
-}
-impl_to_block_dispatch!(RawOnlySubBlock { Raw });
 
 /// Collect a `Vec` of `ToBlock` sub-blocks into rendered `Block`s.
 fn to_blocks<T: ToBlock>(blocks: &[T]) -> Result<Vec<Block>> {
@@ -403,7 +392,9 @@ impl_to_block_dispatch!(RemoteWriteSubBlock { Endpoint, Raw });
 #[serde(deny_unknown_fields)]
 pub struct RemoteWriteEndpointBlock {
     /// Full URL of the remote-write endpoint. Required by the schema.
-    pub url: String,
+    /// `Expressable`, so it can be wired to an environment variable with an
+    /// in-cluster default.
+    pub url: Expressable<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -427,7 +418,7 @@ pub struct RemoteWriteEndpointBlock {
 impl ToBlock for RemoteWriteEndpointBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("url".into(), AttributeValue::String(self.url.clone()));
+        attributes.insert("url".into(), self.url.to_attribute_value()?);
         if let Some(v) = &self.name {
             attributes.insert("name".into(), AttributeValue::String(v.clone()));
         }
@@ -793,6 +784,141 @@ fn string_array(values: &[String]) -> AttributeValue {
 }
 
 // ============================================================
+// prometheus.exporter.cadvisor
+// ============================================================
+
+/// A `prometheus.exporter.cadvisor` block — runs cAdvisor in-process and
+/// exports per-container resource metrics as scrape targets.
+///
+/// Two things about the collector arguments are easy to get wrong and are worth
+/// knowing before setting them:
+///
+/// * A **non-empty** `enabled_metrics` replaces `disabled_metrics` outright
+///   rather than merging per collector. It is the exhaustive list, not extras on
+///   top. Empty means "unset", which leaves `disabled_metrics` in charge.
+/// * `allowlisted_container_labels` is honored **only** when
+///   `store_container_labels` is false. Leaving the latter at its `true` default
+///   promotes every container label to a metric label, which in Kubernetes is
+///   every pod label on every container series.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cadvisor/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrometheusExporterCadvisorBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Collectors to enable. A non-empty list overrides `disabled_metrics`
+    /// entirely. `ExpressableList`, so it can come from an environment variable
+    /// via `encoding.from_json`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_metrics: Option<ExpressableList>,
+    /// Collectors to disable, overriding cAdvisor's own default-disabled set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_metrics: Option<ExpressableList>,
+    /// Promote every container label and env var to metric labels. Defaults to
+    /// true upstream; false is almost always what you want in Kubernetes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store_container_labels: Option<bool>,
+    /// Container labels to promote. Only honored when `store_container_labels`
+    /// is false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowlisted_container_labels: Option<ExpressableList>,
+    /// Environment-variable prefixes to collect for containers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_metadata_allowlist: Option<ExpressableList>,
+    /// cgroup path prefixes to collect even under `docker_only`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_cgroup_prefix_allowlist: Option<ExpressableList>,
+    /// Report only Docker containers plus root stats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docker_only: Option<bool>,
+    /// Skip the root cgroup's own stats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_root_cgroup_stats: Option<bool>,
+    /// Docker endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docker_host: Option<Expressable<String>>,
+    /// containerd socket path. The default is `/run/containerd/containerd.sock`,
+    /// which must be mounted into the pod or container-to-pod identity is lost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub containerd_host: Option<Expressable<String>>,
+    /// containerd namespace to read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub containerd_namespace: Option<Expressable<String>>,
+    /// How long to retain samples in memory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_duration: Option<GoDuration>,
+    /// Interval for refreshing resctrl monitoring groups.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resctrl_interval: Option<GoDuration>,
+    /// Path to a perf-events configuration file, required by the `perf_event`
+    /// collector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perf_events_config: Option<Expressable<String>>,
+}
+
+impl ToBlock for PrometheusExporterCadvisorBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        // Emitted in declaration order rather than grouped by type, so the
+        // rendered block reads the way the arguments relate: the collector
+        // lists together, then `store_container_labels` immediately before the
+        // allowlist it gates.
+        macro_rules! put_list {
+            ($name:literal, $field:expr) => {
+                if let Some(v) = &$field {
+                    attributes.insert($name.into(), v.to_attribute_value()?);
+                }
+            };
+        }
+        macro_rules! put_bool {
+            ($name:literal, $field:expr) => {
+                if let Some(v) = $field {
+                    attributes.insert($name.into(), AttributeValue::Bool(v));
+                }
+            };
+        }
+        macro_rules! put_str {
+            ($name:literal, $field:expr) => {
+                if let Some(v) = &$field {
+                    attributes.insert($name.into(), v.to_attribute_value()?);
+                }
+            };
+        }
+        put_list!("enabled_metrics", self.enabled_metrics);
+        put_list!("disabled_metrics", self.disabled_metrics);
+        put_bool!("store_container_labels", self.store_container_labels);
+        put_list!(
+            "allowlisted_container_labels",
+            self.allowlisted_container_labels
+        );
+        put_list!("env_metadata_allowlist", self.env_metadata_allowlist);
+        put_list!(
+            "raw_cgroup_prefix_allowlist",
+            self.raw_cgroup_prefix_allowlist
+        );
+        put_bool!("docker_only", self.docker_only);
+        put_bool!("disable_root_cgroup_stats", self.disable_root_cgroup_stats);
+        put_str!("docker_host", self.docker_host);
+        put_str!("containerd_host", self.containerd_host);
+        put_str!("containerd_namespace", self.containerd_namespace);
+        if let Some(v) = &self.storage_duration {
+            attributes.insert("storage_duration".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.resctrl_interval {
+            attributes.insert("resctrl_interval".into(), AttributeValue::String(v.clone()));
+        }
+        put_str!("perf_events_config", self.perf_events_config);
+        Ok(Block {
+            component: "prometheus.exporter.cadvisor".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+// ============================================================
 // tests
 // ============================================================
 
@@ -1150,6 +1276,46 @@ mod tests {
         assert!(
             !paths.is_empty() && paths.iter().any(|p| p.starts_with("/blocks/0")),
             "expected a /blocks/0 schema violation, got {paths:?}"
+        );
+    }
+
+    /// The collector allowlists are list-or-expression: a literal YAML list and
+    /// an `encoding.from_json(sys.env(...))` expression both have to work, and
+    /// the untagged dispatch has to tell them apart.
+    #[test]
+    fn cadvisor_collector_lists_accept_literals_and_expressions() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cadvisor:
+                  label: local
+                  disabled_metrics:
+                    function: encoding.from_json
+                    arguments:
+                      - function: coalesce
+                        arguments:
+                          - env: ALLOY_CADVISOR_DISABLED
+                          - '["percpu"]'
+                  store_container_labels: false
+                  allowlisted_container_labels:
+                    - io.kubernetes.pod.name
+            "#,
+        )
+        .unwrap();
+        // Plain byte assert rather than `assert_renders`: same alignment gap as
+        // the loki.source.kubernetes case — alloy fmt pads the scalar attributes
+        // to line up with the multi-line `allowlisted_container_labels`.
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "prometheus.exporter.cadvisor \"local\" {\n",
+                "\tdisabled_metrics = encoding.from_json(coalesce(sys.env(\"ALLOY_CADVISOR_DISABLED\"), \"[\\\"percpu\\\"]\"))\n",
+                "\tstore_container_labels = false\n",
+                "\tallowlisted_container_labels = [\n",
+                "\t\t\"io.kubernetes.pod.name\",\n",
+                "\t]\n",
+                "}\n",
+            ),
         );
     }
 }

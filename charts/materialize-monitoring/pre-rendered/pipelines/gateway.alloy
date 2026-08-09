@@ -74,11 +74,11 @@ otelcol.receiver.otlp "gateway" {
 	http { }
 
 	output {
-		logs = [
-			otelcol.exporter.loki.bridge.input,
-		]
 		metrics = [
 			otelcol.processor.filter.inputMetricProcessor.input,
+		]
+		logs = [
+			otelcol.exporter.loki.bridge.input,
 		]
 	}
 }

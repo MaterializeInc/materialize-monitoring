@@ -77,6 +77,28 @@ pub enum ComponentBlock {
     OtelcolProcessorGroupByAttrs(otelcol::OtelcolProcessorGroupByAttrsBlock),
     #[serde(rename = "otelcol.processor.filter")]
     OtelcolProcessorFilter(otelcol::OtelcolProcessorFilterBlock),
+    #[serde(rename = "loki.source.api")]
+    LokiSourceApi(loki::LokiSourceApiBlock),
+    #[serde(rename = "loki.source.kubernetes")]
+    LokiSourceKubernetes(loki::LokiSourceKubernetesBlock),
+    #[serde(rename = "loki.source.kubernetes_events")]
+    LokiSourceKubernetesEvents(loki::LokiSourceKubernetesEventsBlock),
+    #[serde(rename = "loki.write")]
+    LokiWrite(loki::LokiWriteBlock),
+    #[serde(rename = "prometheus.exporter.cadvisor")]
+    // Boxed: fifteen mostly-optional cAdvisor knobs, several `ExpressableList`,
+    // make this the widest variant otherwise (clippy::large_enum_variant).
+    PrometheusExporterCadvisor(Box<prometheus::PrometheusExporterCadvisorBlock>),
+    #[serde(rename = "otelcol.receiver.otlp")]
+    OtelcolReceiverOtlp(otelcol::OtelcolReceiverOtlpBlock),
+    #[serde(rename = "otelcol.receiver.prometheus")]
+    OtelcolReceiverPrometheus(otelcol::OtelcolReceiverPrometheusBlock),
+    #[serde(rename = "otelcol.exporter.otlp")]
+    OtelcolExporterOtlp(otelcol::OtelcolExporterOtlpBlock),
+    #[serde(rename = "otelcol.exporter.loki")]
+    OtelcolExporterLoki(otelcol::OtelcolExporterLokiBlock),
+    #[serde(rename = "otelcol.exporter.prometheus")]
+    OtelcolExporterPrometheus(otelcol::OtelcolExporterPrometheusBlock),
     #[serde(rename = "otelcol.processor.transform")]
     OtelcolProcessorTransform(otelcol::OtelcolProcessorTransformBlock),
 }
@@ -102,6 +124,16 @@ impl_to_block_dispatch!(ComponentBlock {
     OtelcolProcessorGroupByAttrs,
     OtelcolProcessorFilter,
     OtelcolProcessorTransform,
+    LokiSourceApi,
+    LokiSourceKubernetes,
+    LokiSourceKubernetesEvents,
+    LokiWrite,
+    PrometheusExporterCadvisor,
+    OtelcolReceiverOtlp,
+    OtelcolReceiverPrometheus,
+    OtelcolExporterOtlp,
+    OtelcolExporterLoki,
+    OtelcolExporterPrometheus
 });
 
 impl Pipeline {
@@ -577,5 +609,120 @@ mod tests {
             paths.iter().any(|p| p.starts_with("/blocks/0")),
             "expected a /blocks/0 violation, got {paths:?}"
         );
+    }
+
+    /// Every block that advertises a `raw:`-only nested list must actually
+    /// accept one.
+    ///
+    /// This is the regression guard for a whole-class bug: the schemas express a
+    /// nested block list as `$ref: common/raw.schema.yaml`, i.e. the
+    /// externally-tagged `{raw: {component, …}}` wrapper, but a field typed
+    /// `Vec<Block>` deserializes the *unwrapped* `{component, …}`. Schema-valid
+    /// YAML then passes validation and dies in serde with
+    /// `missing field 'component'`, so the escape hatch reads as documented and
+    /// is unusable.
+    ///
+    /// Four fields shipped that way — the pipelines never exercise these
+    /// escapes, so nothing else notices. Each case below is one of them.
+    #[test]
+    fn raw_escape_round_trips_in_every_raw_only_list() {
+        // (label, yaml, substring expected in the rendered output)
+        let cases: &[(&str, &str, &str)] = &[
+            (
+                "loki.source.api http server",
+                r#"
+                blocks:
+                  - loki.source.api:
+                      label: gw
+                      forward_to: ["loki.process.p.receiver"]
+                      blocks:
+                        - http:
+                            listen_port: 3100
+                            blocks:
+                              - raw:
+                                  component: tls
+                                  attributes:
+                                    cert_file: /tls/tls.crt
+                "#,
+                "cert_file = \"/tls/tls.crt\"",
+            ),
+            (
+                "loki.source.kubernetes_events client",
+                r#"
+                blocks:
+                  - loki.source.kubernetes_events:
+                      label: ev
+                      forward_to: ["loki.process.p.receiver"]
+                      blocks:
+                        - raw:
+                            component: client
+                            attributes:
+                              api_server: https://kubernetes.default.svc
+                "#,
+                "api_server = \"https://kubernetes.default.svc\"",
+            ),
+            (
+                "loki.write endpoint auth",
+                r#"
+                blocks:
+                  - loki.write:
+                      label: dest
+                      blocks:
+                        - endpoint:
+                            url: "http://loki:3100/loki/api/v1/push"
+                            blocks:
+                              - raw:
+                                  component: basic_auth
+                                  attributes:
+                                    username: mz
+                "#,
+                "username = \"mz\"",
+            ),
+            (
+                "otelcol.receiver.otlp grpc server",
+                r#"
+                blocks:
+                  - otelcol.receiver.otlp:
+                      label: gw
+                      blocks:
+                        - grpc:
+                            blocks:
+                              - raw:
+                                  component: tls
+                                  attributes:
+                                    cert_file: /tls/tls.crt
+                "#,
+                "cert_file = \"/tls/tls.crt\"",
+            ),
+            (
+                "prometheus.remote_write endpoint auth",
+                r#"
+                blocks:
+                  - prometheus.remote_write:
+                      label: dest
+                      blocks:
+                        - endpoint:
+                            url: "http://thanos:9090/api/v1/receive"
+                            blocks:
+                              - raw:
+                                  component: basic_auth
+                                  attributes:
+                                    username: mz
+                "#,
+                "username = \"mz\"",
+            ),
+        ];
+
+        for (name, yaml, expected) in cases {
+            let pipeline = Pipeline::from_yaml_str(yaml)
+                .unwrap_or_else(|err| panic!("{name}: raw escape failed to deserialize: {err}"));
+            let rendered = pipeline
+                .render()
+                .unwrap_or_else(|err| panic!("{name}: render failed: {err}"));
+            assert!(
+                rendered.contains(expected),
+                "{name}: rendered output missing {expected:?}\n{rendered}"
+            );
+        }
     }
 }

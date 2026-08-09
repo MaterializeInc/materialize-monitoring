@@ -77,16 +77,13 @@ blocks:
   # listen_port is configurable via ALLOY_LOKI_PORT (default 3100). The
   # encoding.from_json wrapper coerces the sys.env string to a number (alloy has
   # no to_int); treat that coercion as provisional (see agent.yaml stage.limit).
-  - raw:
-      component: loki.source.api
+  - loki.source.api:
       label: gateway
-      attributes:
-        forward_to:
-          - ref: loki.process.sampleDebug.receiver
-          - ref: loki.process.inputProcessor.receiver
+      forward_to:
+        - loki.process.sampleDebug.receiver
+        - loki.process.inputProcessor.receiver
       blocks:
-        - component: http
-          attributes:
+        - http:
             listen_port:
               function: encoding.from_json
               arguments:
@@ -97,29 +94,26 @@ blocks:
 
   # OTLP receiver for logs/metrics, bridged into the loki/prometheus pipelines via the exporters below.
   # grpc defaults to :4317, http to :4318.
-  - raw:
-      component: otelcol.receiver.otlp
+  - otelcol.receiver.otlp:
       label: gateway
       blocks:
-        - component: grpc
-        - component: http
-        - component: output
-          attributes:
+        # An empty server block is meaningful: its presence is what turns the
+        # listener on, at its default address.
+        - grpc: {}
+        - http: {}
+        - output:
             logs:
-              - ref: otelcol.exporter.loki.bridge.input
+              - otelcol.exporter.loki.bridge.input
             metrics:
               # switches to gateway-metrics.yaml
-              - ref: otelcol.processor.filter.inputMetricProcessor.input
+              - otelcol.processor.filter.inputMetricProcessor.input
 
   # --- collectors ---------------------------------------------------
 
   # Kubernetes events source, feeding the main processor.
-  - raw:
-      component: loki.source.kubernetes_events
+  - loki.source.kubernetes_events:
       label: k8sEvents
-      attributes:
-        forward_to:
-          - ref: loki.process.inputProcessor.receiver
+      forward_to: ["loki.process.inputProcessor.receiver"]
 
   # --- agent log sidechannel ------------------------------------------
   #
@@ -205,32 +199,23 @@ blocks:
             target_label: job
 
   # Tail those pods through the API server.
-  # loki.source.kubernetes is not typed yet, so raw.
-  - raw:
-      component: loki.source.kubernetes
+  - loki.source.kubernetes:
       label: agent_logs
-      attributes:
-        targets:
-          ref: discovery.relabel.agent_pods.output
-        forward_to:
-          - ref: loki.process.inputProcessor.receiver
+      targets: ["discovery.relabel.agent_pods.output"]
+      forward_to: ["loki.process.inputProcessor.receiver"]
       blocks:
         # Without this every gateway replica tails every agent pod and each log
         # line lands in Loki once per replica. The gateway is expected to run
         # 2+, so this is required, not an optimization.
-        - component: clustering
-          attributes:
+        - clustering:
             enabled: true
 
   # --- input bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
-  - raw:
-      component: otelcol.exporter.loki
+  - otelcol.exporter.loki:
       label: bridge
-      attributes:
-        forward_to:
-          - ref: loki.process.inputProcessor.receiver
+      forward_to: ["loki.process.inputProcessor.receiver"]
 
   # --- main processing pipeline -----------
 

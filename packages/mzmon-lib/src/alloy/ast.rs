@@ -64,6 +64,25 @@ macro_rules! impl_to_block_dispatch {
 }
 pub(crate) use impl_to_block_dispatch;
 
+/// A nested-block list carrying only the `raw:` escape — for a block whose own
+/// scalars are typed but whose sub-blocks are not yet.
+///
+/// **Use this rather than a bare `Vec<Block>`.** The schemas express a nested
+/// block list as `$ref: common/raw.schema.yaml`, i.e. the externally-tagged
+/// `{raw: {component, …}}` wrapper. A `Vec<Block>` deserializes the *unwrapped*
+/// `{component, …}` instead, so schema-valid YAML passes validation and then
+/// dies in serde with `missing field 'component'` — the escape hatch looks
+/// documented and is unusable. That mismatch is invisible to the test suite
+/// unless a pipeline actually exercises the escape, which is how four fields
+/// shipped broken; `pipeline.rs::raw_escape_round_trips_in_every_raw_only_list`
+/// is the regression guard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RawOnlySubBlock {
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(RawOnlySubBlock { Raw });
+
 /// Expressions
 ///
 /// `deny_unknown_fields` is load-bearing for `AttributeValue` untagged dispatch:
@@ -163,6 +182,38 @@ impl<T: LiteralScalar> Expressable<T> {
         match self {
             Expressable::Literal(value) => value.to_attribute_value(),
             Expressable::Expr(expr) => Ok(AttributeValue::Expression(expr.clone())),
+        }
+    }
+}
+
+/// A `list(string)` attribute that may instead be sourced from an expression.
+///
+/// The list analog of [`Expressable`], which is deliberately sealed to scalars:
+/// a literal *map* is shape-indistinguishable from the expression object, which
+/// is why `Expressable<map>` is forbidden. A literal *list* has no such problem
+/// — a JSON array and a JSON object are disjoint — so the untagged dispatch is
+/// unambiguous, and `Literal` first means an array can never be mistaken for an
+/// [`Expression`] deserialized positionally.
+///
+/// In use on `prometheus.exporter.cadvisor`'s collector allowlists, which are
+/// wired to environment variables via `encoding.from_json(...)`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ExpressableList {
+    Literal(Vec<String>),
+    Expr(Expression),
+}
+
+impl ExpressableList {
+    pub fn to_attribute_value(&self) -> Result<AttributeValue> {
+        match self {
+            ExpressableList::Literal(values) => Ok(AttributeValue::Array(
+                values
+                    .iter()
+                    .map(|v| AttributeValue::String(v.clone()))
+                    .collect(),
+            )),
+            ExpressableList::Expr(expr) => Ok(AttributeValue::Expression(expr.clone())),
         }
     }
 }

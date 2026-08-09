@@ -23,10 +23,13 @@
 //! do not model OTTL's function library.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, GoDuration, Identifier, Ottl, ToBlock,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, Ottl, RawOnlySubBlock, ToBlock,
     impl_to_block_dispatch,
 };
-use crate::alloy::components::capsule::{OtelcolConsumer, otelcol_consumer_list};
+use crate::alloy::components::capsule::{
+    LogsReceiver, MetricsReceiver, OtelcolConsumer, logs_receiver_list, metrics_receiver_list,
+    otelcol_consumer_list,
+};
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -619,6 +622,368 @@ impl ToBlock for TransformSubBlock {
 }
 
 // ============================================================
+// otelcol.receiver.otlp  (+ grpc / http server sub-blocks)
+// ============================================================
+
+/// A gRPC or HTTP server sub-block on `otelcol.receiver.otlp`.
+///
+/// Both server blocks share this shape. Rendered even when every field is unset
+/// — an empty `grpc { }` is what turns the listener on at its defaults, so the
+/// block's *presence* is the configuration.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.otlp/#grpc-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolServerBlock {
+    /// `host:port` to listen on. Defaults to `0.0.0.0:4317` (gRPC) / `:4318` (HTTP).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<Expressable<String>>,
+    /// Transport to use. Defaults to `tcp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    /// Propagate request metadata to downstream consumers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_metadata: Option<bool>,
+    /// Maximum uncompressed request size the server accepts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_recv_msg_size: Option<String>,
+    /// Nested blocks (`tls`, `keepalive`, `cors`, … via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<RawOnlySubBlock>,
+}
+
+impl OtelcolServerBlock {
+    /// Render under the given block name (`grpc` or `http`) — the struct is
+    /// shared, so the caller supplies which server this is.
+    fn to_named_block(&self, name: &str) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.endpoint {
+            attributes.insert("endpoint".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.transport {
+            attributes.insert("transport".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = self.include_metadata {
+            attributes.insert("include_metadata".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = &self.max_recv_msg_size {
+            attributes.insert(
+                "max_recv_msg_size".into(),
+                AttributeValue::String(v.clone()),
+            );
+        }
+        Ok(Block {
+            component: name.into(),
+            label: None,
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// Sub-block under an `otelcol.receiver.otlp` body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ReceiverOtlpSubBlock {
+    #[serde(rename = "grpc")]
+    Grpc(OtelcolServerBlock),
+    #[serde(rename = "http")]
+    Http(OtelcolServerBlock),
+    #[serde(rename = "output")]
+    Output(OtelcolOutputBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+
+impl ToBlock for ReceiverOtlpSubBlock {
+    fn to_block(&self) -> Result<Block> {
+        match self {
+            // Hand-written rather than the dispatch macro: `grpc` and `http`
+            // share one struct, so the variant is what names the block.
+            Self::Grpc(b) => b.to_named_block("grpc"),
+            Self::Http(b) => b.to_named_block("http"),
+            Self::Output(b) => b.to_block(),
+            Self::Raw(b) => b.to_block(),
+        }
+    }
+}
+
+/// An `otelcol.receiver.otlp` block — accepts OTLP over gRPC and/or HTTP.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.otlp/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolReceiverOtlpBlock {
+    /// Instance label — required: alloy rejects an unlabeled otelcol component.
+    pub label: Identifier,
+    /// Server and `output` blocks. A receiver with no server block listens on
+    /// nothing, so at least one is needed in practice.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<ReceiverOtlpSubBlock>,
+}
+
+impl ToBlock for OtelcolReceiverOtlpBlock {
+    fn to_block(&self) -> Result<Block> {
+        Ok(Block {
+            component: "otelcol.receiver.otlp".into(),
+            label: Some(self.label.clone()),
+            attributes: IndexMap::new(),
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+// ============================================================
+// otelcol.receiver.prometheus
+// ============================================================
+
+/// An `otelcol.receiver.prometheus` block — converts Prometheus metrics into
+/// OTLP. Exports a `receiver` that `prometheus.*` components forward to.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.prometheus/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolReceiverPrometheusBlock {
+    /// Instance label — required.
+    pub label: Identifier,
+    /// Nested blocks (`output`; `debug_metrics` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<ProcessorSubBlock>,
+}
+
+impl ToBlock for OtelcolReceiverPrometheusBlock {
+    fn to_block(&self) -> Result<Block> {
+        Ok(Block {
+            component: "otelcol.receiver.prometheus".into(),
+            label: Some(self.label.clone()),
+            attributes: IndexMap::new(),
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+// ============================================================
+// otelcol.exporter.otlp  (+ client / tls sub-blocks)
+// ============================================================
+
+/// A `tls` sub-block under an exporter's `client`.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/#tls-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolTlsBlock {
+    /// Disable TLS entirely. Appropriate only for an in-cluster hop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insecure: Option<bool>,
+    /// Keep TLS but skip certificate verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insecure_skip_verify: Option<bool>,
+    /// Path to a CA bundle for verifying the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_file: Option<Expressable<String>>,
+    /// Path to the client certificate, for mutual TLS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cert_file: Option<Expressable<String>>,
+    /// Path to the client key, for mutual TLS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_file: Option<Expressable<String>>,
+}
+
+impl ToBlock for OtelcolTlsBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = self.insecure {
+            attributes.insert("insecure".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.insecure_skip_verify {
+            attributes.insert("insecure_skip_verify".into(), AttributeValue::Bool(v));
+        }
+        for (name, value) in [
+            ("ca_file", &self.ca_file),
+            ("cert_file", &self.cert_file),
+            ("key_file", &self.key_file),
+        ] {
+            if let Some(v) = value {
+                attributes.insert(name.into(), v.to_attribute_value()?);
+            }
+        }
+        Ok(Block {
+            component: "tls".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// Sub-block under an exporter `client` body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ClientSubBlock {
+    #[serde(rename = "tls")]
+    // Boxed for size, like the other Expressable-heavy sub-blocks.
+    Tls(Box<OtelcolTlsBlock>),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(ClientSubBlock { Tls, Raw });
+
+/// A `client` sub-block on `otelcol.exporter.otlp` — where the exporter sends.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/#client-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolClientBlock {
+    /// Destination `host:port`. NOT a URL — the OTLP gRPC exporter takes no
+    /// scheme. `Expressable`, so it can be wired to an environment variable.
+    pub endpoint: Expressable<String>,
+    /// Compression to apply. Defaults to `gzip`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compression: Option<String>,
+    /// Per-attempt request timeout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<GoDuration>,
+    /// Nested blocks (`tls`; `keepalive` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<ClientSubBlock>,
+}
+
+impl ToBlock for OtelcolClientBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("endpoint".into(), self.endpoint.to_attribute_value()?);
+        if let Some(v) = &self.compression {
+            attributes.insert("compression".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.timeout {
+            attributes.insert("timeout".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "client".into(),
+            label: None,
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// Sub-block under an `otelcol.exporter.otlp` body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExporterOtlpSubBlock {
+    #[serde(rename = "client")]
+    Client(OtelcolClientBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(ExporterOtlpSubBlock { Client, Raw });
+
+/// An `otelcol.exporter.otlp` block — sends OTLP over gRPC. Exports an `input`
+/// that upstream otelcol components forward to.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolExporterOtlpBlock {
+    /// Instance label — required.
+    pub label: Identifier,
+    /// Nested blocks (`client`; `sending_queue` / `retry_on_failure` via `raw:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<ExporterOtlpSubBlock>,
+}
+
+impl ToBlock for OtelcolExporterOtlpBlock {
+    fn to_block(&self) -> Result<Block> {
+        Ok(Block {
+            component: "otelcol.exporter.otlp".into(),
+            label: Some(self.label.clone()),
+            attributes: IndexMap::new(),
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+// ============================================================
+// otelcol.exporter.loki / otelcol.exporter.prometheus  (bridges out of otelcol)
+// ============================================================
+
+/// An `otelcol.exporter.loki` block — converts OTLP logs into Loki entries and
+/// forwards them to `loki.*` receivers.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.loki/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolExporterLokiBlock {
+    /// Instance label — required.
+    pub label: Identifier,
+    /// Loki receivers to forward converted entries to. Required by the schema.
+    pub forward_to: Vec<LogsReceiver>,
+}
+
+impl ToBlock for OtelcolExporterLokiBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
+        Ok(Block {
+            component: "otelcol.exporter.loki".into(),
+            label: Some(self.label.clone()),
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// An `otelcol.exporter.prometheus` block — converts OTLP metrics back into
+/// Prometheus and forwards them to `prometheus.*` receivers.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.prometheus/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtelcolExporterPrometheusBlock {
+    /// Instance label — required.
+    pub label: Identifier,
+    /// Prometheus receivers to forward converted samples to. Required by the schema.
+    pub forward_to: Vec<MetricsReceiver>,
+    /// Append `_total` / unit suffixes to metric names on the way out.
+    /// Set false to keep names stable across the OTLP round-trip, so dashboards
+    /// and alerts keep matching the original names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add_metric_suffixes: Option<bool>,
+    /// Include OTLP resource attributes as labels on every metric.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_to_telemetry_conversion: Option<bool>,
+    /// Emit a `target_info` metric carrying resource attributes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_target_info: Option<bool>,
+    /// Emit `otel_scope_*` labels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_scope_info: Option<bool>,
+}
+
+impl ToBlock for OtelcolExporterPrometheusBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("forward_to".into(), metrics_receiver_list(&self.forward_to));
+        for (name, value) in [
+            ("add_metric_suffixes", self.add_metric_suffixes),
+            (
+                "resource_to_telemetry_conversion",
+                self.resource_to_telemetry_conversion,
+            ),
+            ("include_target_info", self.include_target_info),
+            ("include_scope_info", self.include_scope_info),
+        ] {
+            if let Some(v) = value {
+                attributes.insert(name.into(), AttributeValue::Bool(v));
+            }
+        }
+        Ok(Block {
+            component: "otelcol.exporter.prometheus".into(),
+            label: Some(self.label.clone()),
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+// ============================================================
 // tests
 // ============================================================
 
@@ -993,6 +1358,101 @@ mod tests {
                   blocks:
                     - output:
                         metrics: ["otelcol.exporter.prometheus.bridge.input"]
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, crate::alloy::error::Error::Multiple(_)),
+            "expected a schema rejection for the missing label, got {err:?}"
+        );
+    }
+
+    /// An empty server block is meaningful configuration: its *presence* is what
+    /// enables the listener. Guarding that it survives the round trip as
+    /// `grpc { }` rather than being elided.
+    #[test]
+    fn receiver_otlp_renders_empty_server_blocks() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.receiver.otlp:
+                  label: gateway
+                  blocks:
+                    - grpc: {}
+                    - http: {}
+                    - output:
+                        metrics: ["otelcol.processor.batch.default.input"]
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "otelcol.receiver.otlp \"gateway\" {\n",
+                "\tgrpc { }\n",
+                "\n",
+                "\thttp { }\n",
+                "\n",
+                "\toutput {\n",
+                "\t\tmetrics = [\n",
+                "\t\t\totelcol.processor.batch.default.input,\n",
+                "\t\t]\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// `endpoint` is `host:port` with no scheme, and is `Expressable` so it can
+    /// come from the environment. The nested `tls` block is what makes an
+    /// in-cluster hop work without certificates.
+    #[test]
+    fn exporter_otlp_client_endpoint_accepts_an_expression() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.exporter.otlp:
+                  label: gateway
+                  blocks:
+                    - client:
+                        endpoint:
+                          function: coalesce
+                          arguments:
+                            - env: AGENT_OTLP_DEST
+                            - "alloy-gateway.alloy.svc:4317"
+                        blocks:
+                          - tls:
+                              insecure: true
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "otelcol.exporter.otlp \"gateway\" {\n",
+                "\tclient {\n",
+                "\t\tendpoint = coalesce(sys.env(\"AGENT_OTLP_DEST\"), \"alloy-gateway.alloy.svc:4317\")\n",
+                "\n",
+                "\t\ttls {\n",
+                "\t\t\tinsecure = true\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// alloy rejects an unlabeled otelcol component at load, so the schema
+    /// requires `label` for these too — same as the processors.
+    #[test]
+    fn receiver_prometheus_requires_a_label() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - otelcol.receiver.prometheus:
+                  blocks:
+                    - output:
+                        metrics: ["otelcol.processor.batch.default.input"]
             "#,
         )
         .unwrap_err();

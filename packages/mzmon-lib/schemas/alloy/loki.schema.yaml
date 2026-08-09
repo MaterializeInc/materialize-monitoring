@@ -61,6 +61,30 @@ oneOf:
         $ref: "#/$defs/loki.source.file"
     required: [loki.source.file]
     additionalProperties: false
+  - type: object
+    properties:
+      loki.source.api:
+        $ref: "#/$defs/loki.source.api"
+    required: [loki.source.api]
+    additionalProperties: false
+  - type: object
+    properties:
+      loki.source.kubernetes:
+        $ref: "#/$defs/loki.source.kubernetes"
+    required: [loki.source.kubernetes]
+    additionalProperties: false
+  - type: object
+    properties:
+      loki.source.kubernetes_events:
+        $ref: "#/$defs/loki.source.kubernetes_events"
+    required: [loki.source.kubernetes_events]
+    additionalProperties: false
+  - type: object
+    properties:
+      loki.write:
+        $ref: "#/$defs/loki.write"
+    required: [loki.write]
+    additionalProperties: false
 
 $defs:
   # Smaller fragments, no need to call out to other files
@@ -236,6 +260,41 @@ $defs:
           Character encoding override.
           Defaults to UTF-8.
         type: string
+      blocks:
+        description: Nested blocks (`file_match`; `decompression` via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/lokiSourceFileSubBlock"
+    additionalProperties: false
+
+  lokiSourceFileSubBlock:
+    description: |
+      One sub-block in a `loki.source.file` body.
+      The final `raw` branch is the escape hatch (e.g. `decompression`).
+    oneOf:
+      - type: object
+        properties:
+          file_match:
+            $ref: "#/$defs/fileMatch"
+        required: [file_match]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  fileMatch:
+    description: |
+      Controls how `loki.source.file` reacts to its target set changing —
+      files appearing and disappearing under the configured paths.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.file/
+    type: object
+    properties:
+      enabled:
+        description: Watch for files appearing and disappearing.
+        type: boolean
+      sync_period:
+        description: How often to re-evaluate the target globs.
+        type: string
+        format: go-duration
     additionalProperties: false
 
   # ============================================================
@@ -804,8 +863,11 @@ $defs:
       replacement:
         description: |
           Replacement value (supports `$1`-style backreferences).
-          Defaults to `$1`.
-        type: string
+          Defaults to `$1`. Accepts an expression, so a rule can stamp a value
+          derived from the environment (e.g. the node name from `HOSTNAME`).
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
       modulus:
         description: |
           Modulus for `action: hashmod`.
@@ -844,3 +906,259 @@ $defs:
         required: [__path__]
         additionalProperties:
           type: string
+
+  loki.source.api:
+    description: |
+      Runs a Loki push-API server and forwards what it receives. This is the
+      gateway's ingress for entries pushed by agents.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Receivers to forward received entries to.
+        type: array
+        items:
+          $ref: "#/$defs/logsReceiver"
+      labels:
+        description: Labels stamped onto every received entry.
+        type: object
+        additionalProperties:
+          type: string
+      use_incoming_tenant:
+        description: Use the incoming `X-Scope-OrgID` as the tenant.
+        type: boolean
+      blocks:
+        description: Server blocks (`http`; `grpc` via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/lokiSourceApiSubBlock"
+    required: [forward_to]
+    additionalProperties: false
+
+  loki.source.kubernetes:
+    description: |
+      Tails container logs through the Kubernetes API rather than from files on
+      the node.
+
+      Reading logs via the API server is expensive at cluster scale, so scope
+      the targets tightly — a server-side label selector on the
+      `discovery.kubernetes` feeding this — rather than pointing it at every
+      pod. Enable `clustering` whenever more than one replica runs this, or each
+      replica tails every target and every line is delivered once per replica.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      targets:
+        description: |
+          Pods to tail. Each target carries the `__meta_kubernetes_*` labels the
+          component reads to identify the container, so a `discovery.relabel`
+          feeding this must not drop them.
+        type: array
+        items:
+          $ref: "./discovery.schema.yaml#/$defs/target"
+      forward_to:
+        description: Receivers to forward tailed entries to.
+        type: array
+        items:
+          $ref: "#/$defs/logsReceiver"
+      blocks:
+        description: Nested blocks (`clustering`; `client` and auth via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/lokiSourceKubernetesSubBlock"
+    required: [targets, forward_to]
+    additionalProperties: false
+
+  loki.source.kubernetes_events:
+    description: |
+      Turns Kubernetes Events into log entries.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes_events/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Receivers to forward events to.
+        type: array
+        items:
+          $ref: "#/$defs/logsReceiver"
+      namespaces:
+        description: Namespaces to watch. Empty means all of them.
+        type: array
+        items:
+          type: string
+      job_name:
+        description: Value of the `job` label on emitted entries.
+        type: string
+      log_format:
+        description: Format to render events in (`logfmt` or `json`).
+        type: string
+      blocks:
+        description: Nested blocks (`client` via `raw`).
+        type: array
+        items:
+          $ref: "./common/raw.schema.yaml"
+    required: [forward_to]
+    additionalProperties: false
+
+  loki.write:
+    description: |
+      The sink that pushes entries to a Loki-compatible endpoint. Exports a
+      `receiver` other `loki.*` components forward to.
+
+      NOTE: in this chart the deployed destination is rendered by Helm rather
+      than by this schema, so auth and TLS are deliberately left on the `raw`
+      escape here — see the gateway destination helper.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      external_labels:
+        description: Labels added to every entry on the way out.
+        type: object
+        additionalProperties:
+          type: string
+      blocks:
+        description: Endpoints to push to (`endpoint`; `wal` via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/lokiWriteSubBlock"
+    additionalProperties: false
+
+  lokiSourceApiSubBlock:
+    description: |
+      One sub-block in a `loki.source.api` body.
+      The final `raw` branch is the escape hatch (e.g. `grpc`).
+    oneOf:
+      - type: object
+        properties:
+          http:
+            $ref: "#/$defs/lokiHttpServer"
+        required: [http]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  lokiSourceKubernetesSubBlock:
+    description: |
+      One sub-block in a `loki.source.kubernetes` body.
+      The final `raw` branch is the escape hatch (e.g. `client` and its auth).
+    oneOf:
+      - type: object
+        properties:
+          clustering:
+            $ref: "#/$defs/clustering"
+        required: [clustering]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  lokiWriteSubBlock:
+    description: |
+      One sub-block in a `loki.write` body.
+      The final `raw` branch is the escape hatch (e.g. `wal`).
+    oneOf:
+      - type: object
+        properties:
+          endpoint:
+            $ref: "#/$defs/lokiWriteEndpoint"
+        required: [endpoint]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  lokiHttpServer:
+    description: |
+      HTTP listener for `loki.source.api`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/
+    type: object
+    properties:
+      listen_address:
+        description: Address to bind. Defaults to all interfaces.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      listen_port:
+        description: |
+          Port to listen on. Accepts an expression so it can be wired to an
+          environment variable — note `sys.env` yields a string, so a numeric
+          port needs the `encoding.from_json` coercion.
+        anyOf:
+          - type: number
+          - $ref: "./common/expression.schema.yaml"
+      conn_limit:
+        description: Maximum simultaneous connections. 0 means unlimited.
+        anyOf:
+          - type: number
+          - $ref: "./common/expression.schema.yaml"
+      blocks:
+        description: Nested blocks (`tls` and friends via `raw`).
+        type: array
+        items:
+          $ref: "./common/raw.schema.yaml"
+    additionalProperties: false
+
+  clustering:
+    description: |
+      Distributes targets across a clustered fleet.
+
+      Load-bearing wherever the component runs on more than one replica:
+      without it every replica handles every target and each entry is delivered
+      once per replica.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes/#clustering-block
+    type: object
+    properties:
+      enabled:
+        description: Share targets across the cluster.
+        type: boolean
+    required: [enabled]
+    additionalProperties: false
+
+  lokiWriteEndpoint:
+    description: |
+      One destination for `loki.write`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/#endpoint-block
+    type: object
+    properties:
+      url:
+        description: |
+          Full push URL. Accepts an expression, so it can be wired to an
+          environment variable with an in-cluster default.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      name:
+        description: Name for this endpoint in metrics and logs.
+        type: string
+      tenant_id:
+        description: Tenant to write as (`X-Scope-OrgID`).
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      batch_size:
+        description: Maximum accumulated batch size before a push.
+        type: string
+      batch_wait:
+        description: Maximum time to wait before pushing a partial batch.
+        type: string
+        format: go-duration
+      remote_timeout:
+        description: Per-request timeout.
+        type: string
+        format: go-duration
+      blocks:
+        description: Nested blocks (auth, TLS, queue tuning via `raw`).
+        type: array
+        items:
+          $ref: "./common/raw.schema.yaml"
+    required: [url]
+    additionalProperties: false

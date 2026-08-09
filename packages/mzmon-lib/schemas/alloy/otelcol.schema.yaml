@@ -74,6 +74,36 @@ oneOf:
         $ref: "#/$defs/otelcol.processor.transform"
     required: [otelcol.processor.transform]
     additionalProperties: false
+  - type: object
+    properties:
+      otelcol.receiver.otlp:
+        $ref: "#/$defs/otelcol.receiver.otlp"
+    required: [otelcol.receiver.otlp]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.receiver.prometheus:
+        $ref: "#/$defs/otelcol.receiver.prometheus"
+    required: [otelcol.receiver.prometheus]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.exporter.otlp:
+        $ref: "#/$defs/otelcol.exporter.otlp"
+    required: [otelcol.exporter.otlp]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.exporter.loki:
+        $ref: "#/$defs/otelcol.exporter.loki"
+    required: [otelcol.exporter.loki]
+    additionalProperties: false
+  - type: object
+    properties:
+      otelcol.exporter.prometheus:
+        $ref: "#/$defs/otelcol.exporter.prometheus"
+    required: [otelcol.exporter.prometheus]
+    additionalProperties: false
 
 $defs:
   label:
@@ -632,4 +662,264 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/expressionOrOttl"
+    additionalProperties: false
+
+  otelcol.receiver.otlp:
+    description: |
+      Accepts OTLP over gRPC and/or HTTP and forwards it into the pipeline.
+
+      A server block's *presence* is what enables that listener, so an empty
+      `grpc: {}` is meaningful configuration rather than a no-op.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.otlp/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      blocks:
+        description: Server (`grpc` / `http`) and `output` blocks.
+        type: array
+        items:
+          $ref: "#/$defs/receiverOtlpSubBlock"
+    required: [label]
+    additionalProperties: false
+
+  otelcol.receiver.prometheus:
+    description: |
+      Converts Prometheus metrics into OTLP. Exports a `receiver` that
+      `prometheus.*` components forward to, which is how the metrics pipeline
+      crosses from the Prometheus side into otelcol.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.prometheus/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      blocks:
+        description: Nested blocks (`output`; `debug_metrics` via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/processorSubBlock"
+    required: [label]
+    additionalProperties: false
+
+  otelcol.exporter.otlp:
+    description: |
+      Sends OTLP over gRPC. Exports an `input` that upstream otelcol components
+      forward to.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      blocks:
+        description: |
+          Nested blocks (`client`; `sending_queue` / `retry_on_failure` via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/exporterOtlpSubBlock"
+    required: [label]
+    additionalProperties: false
+
+  otelcol.exporter.loki:
+    description: |
+      Converts OTLP logs into Loki entries and forwards them to `loki.*`
+      receivers — the bridge out of otelcol on the logs side.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.loki/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Loki receivers to forward converted entries to.
+        type: array
+        items:
+          $ref: "./loki.schema.yaml#/$defs/logsReceiver"
+    required: [label, forward_to]
+    additionalProperties: false
+
+  otelcol.exporter.prometheus:
+    description: |
+      Converts OTLP metrics back into Prometheus and forwards them to
+      `prometheus.*` receivers — the bridge out of otelcol on the metrics side.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.prometheus/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      forward_to:
+        description: Prometheus receivers to forward converted samples to.
+        type: array
+        items:
+          $ref: "./prometheus.schema.yaml#/$defs/metricsReceiver"
+      add_metric_suffixes:
+        description: |
+          Append `_total` / unit suffixes to metric names. Set false to keep
+          names stable across an OTLP round-trip, so existing dashboards and
+          alerts keep matching.
+        type: boolean
+      resource_to_telemetry_conversion:
+        description: Include OTLP resource attributes as labels on every metric.
+        type: boolean
+      include_target_info:
+        description: Emit a `target_info` metric carrying resource attributes.
+        type: boolean
+      include_scope_info:
+        description: Emit `otel_scope_*` labels.
+        type: boolean
+    required: [label, forward_to]
+    additionalProperties: false
+
+  receiverOtlpSubBlock:
+    description: |
+      One sub-block in an `otelcol.receiver.otlp` body.
+      The final `raw` branch is the escape hatch.
+    oneOf:
+      - type: object
+        properties:
+          grpc:
+            $ref: "#/$defs/server"
+        required: [grpc]
+        additionalProperties: false
+      - type: object
+        properties:
+          http:
+            $ref: "#/$defs/server"
+        required: [http]
+        additionalProperties: false
+      - type: object
+        properties:
+          output:
+            $ref: "#/$defs/output"
+        required: [output]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  exporterOtlpSubBlock:
+    description: |
+      One sub-block in an `otelcol.exporter.otlp` body.
+      The final `raw` branch is the escape hatch (`sending_queue`,
+      `retry_on_failure`, `debug_metrics`).
+    oneOf:
+      - type: object
+        properties:
+          client:
+            $ref: "#/$defs/client"
+        required: [client]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  clientSubBlock:
+    description: |
+      One sub-block in an exporter `client` body.
+      The final `raw` branch is the escape hatch (`keepalive`).
+    oneOf:
+      - type: object
+        properties:
+          tls:
+            $ref: "#/$defs/tls"
+        required: [tls]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  server:
+    description: |
+      A gRPC or HTTP listener on `otelcol.receiver.otlp`. Both share this shape;
+      which block name it renders under is decided by the key it appears against.
+
+      An empty block turns the listener on at its defaults.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.receiver.otlp/#grpc-block
+    type: object
+    properties:
+      endpoint:
+        description: |
+          `host:port` to listen on. Defaults to `0.0.0.0:4317` for gRPC and
+          `0.0.0.0:4318` for HTTP.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      transport:
+        description: Transport to listen on. Defaults to `tcp`.
+        type: string
+      include_metadata:
+        description: Propagate request metadata to downstream consumers.
+        type: boolean
+      max_recv_msg_size:
+        description: Maximum uncompressed request size accepted.
+        type: string
+      blocks:
+        description: Nested blocks (`tls`, `keepalive`, `cors` via `raw`).
+        type: array
+        items:
+          $ref: "./common/raw.schema.yaml"
+    additionalProperties: false
+
+  client:
+    description: |
+      Where an `otelcol.exporter.otlp` sends. `endpoint` is a `host:port` — NOT
+      a URL; the OTLP gRPC exporter takes no scheme.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/#client-block
+    type: object
+    properties:
+      endpoint:
+        description: |
+          Destination `host:port`. Accepts an expression, so it can be wired to
+          an environment variable with an in-cluster default.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      compression:
+        description: Compression to apply. Defaults to `gzip`.
+        type: string
+      timeout:
+        description: |
+          Per-attempt request timeout. Literal only — the Rust field is a plain
+          duration, so an expression here would pass validation and then fail
+          typed deserialization. Widen both together if it ever needs one.
+        type: string
+        format: go-duration
+      blocks:
+        description: Nested blocks (`tls`; `keepalive` via `raw`).
+        type: array
+        items:
+          $ref: "#/$defs/clientSubBlock"
+    required: [endpoint]
+    additionalProperties: false
+
+  tls:
+    description: |
+      TLS settings for an exporter `client`.
+
+      `insecure: true` disables TLS entirely and is appropriate only for an
+      in-cluster hop between components you control.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlp/#tls-block
+    type: object
+    properties:
+      insecure:
+        description: Disable TLS entirely.
+        type: boolean
+      insecure_skip_verify:
+        description: Keep TLS but skip certificate verification.
+        type: boolean
+      ca_file:
+        description: Path to a CA bundle for verifying the server.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      cert_file:
+        description: Path to the client certificate, for mutual TLS.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
+      key_file:
+        description: Path to the client key, for mutual TLS.
+        anyOf:
+          - type: string
+          - $ref: "./common/expression.schema.yaml"
     additionalProperties: false
