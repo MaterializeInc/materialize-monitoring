@@ -266,6 +266,104 @@ loki.process "sampleDebug" {
 
 loki.echo "stub" { }
 
+prometheus.exporter.cadvisor "local" {
+	enabled_metrics = encoding.from_json(coalesce(sys.env("ALLOY_CADVISOR_ENABLED"), "[]"))
+	disabled_metrics = encoding.from_json(coalesce(sys.env("ALLOY_CADVISOR_DISABLED"), "[\"advtcp\",\"cpu_topology\",\"cpuset\",\"hugetlb\",\"memory_numa\",\"percpu\",\"perf_event\",\"referenced_memory\",\"resctrl\",\"sched\",\"tcp\",\"udp\"]"))
+	store_container_labels = false
+	allowlisted_container_labels = [
+		"io.kubernetes.pod.namespace",
+		"io.kubernetes.pod.name",
+		"io.kubernetes.pod.uid",
+		"io.kubernetes.container.name",
+	]
+}
+
+prometheus.scrape "cadvisor" {
+	targets = prometheus.exporter.cadvisor.local.targets
+	forward_to = [
+		prometheus.relabel.cadvisor.receiver,
+	]
+	scrape_interval = coalesce(sys.env("AGENT_CADVISOR_SCRAPE_INTERVAL"), "60s")
+	job_name = "cadvisor"
+}
+
+prometheus.relabel "cadvisor" {
+	forward_to = [
+		otelcol.receiver.prometheus.cadvisorBridge.receiver,
+	]
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"container_label_io_kubernetes_pod_namespace",
+		]
+		target_label = "namespace"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"container_label_io_kubernetes_pod_name",
+		]
+		target_label = "pod"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"container_label_io_kubernetes_pod_uid",
+		]
+		target_label = "pod_id"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"container_label_io_kubernetes_container_name",
+		]
+		target_label = "container"
+	}
+
+	rule {
+		action       = "replace"
+		target_label = "node"
+		replacement  = coalesce(sys.env("HOSTNAME"), constants.hostname)
+	}
+
+	rule {
+		action = "labeldrop"
+		regex  = "container_label_.*"
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"pod",
+			"container",
+		]
+		separator = ";"
+		regex = ".+;"
+	}
+}
+
+otelcol.receiver.prometheus "cadvisorBridge" {
+	output {
+		metrics = [
+			otelcol.exporter.otlp.gateway.input,
+		]
+	}
+}
+
+otelcol.exporter.otlp "gateway" {
+	client {
+		endpoint = coalesce(sys.env("AGENT_OTLP_DEST"), "alloy-gateway.alloy.svc:4317")
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
 loki.write "gateway" {
 	endpoint {
 		url = coalesce(sys.env("AGENT_LOKI_DEST"), "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push")

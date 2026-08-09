@@ -50,7 +50,11 @@ pub enum ComponentBlock {
     #[serde(rename = "prometheus.relabel")]
     PrometheusRelabel(prometheus::PrometheusRelabelBlock),
     #[serde(rename = "prometheus.scrape")]
-    PrometheusScrape(prometheus::PrometheusScrapeBlock),
+    // Boxed for the same reason as `memory_limiter` below: it carries the
+    // widest attribute set of any component here, and making
+    // `scrape_interval`/`scrape_timeout` `Expressable` pushed it past every
+    // other variant (clippy::large_enum_variant).
+    PrometheusScrape(Box<prometheus::PrometheusScrapeBlock>),
     #[serde(rename = "prometheus.receive_http")]
     PrometheusReceiveHttp(prometheus::PrometheusReceiveHttpBlock),
     #[serde(rename = "prometheus.remote_write")]
