@@ -23,7 +23,7 @@
 //! do not model OTTL's function library.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, GoDuration, Identifier, Ottl, ToBlock,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, Ottl, RawOnlySubBlock, ToBlock,
     impl_to_block_dispatch,
 };
 use crate::alloy::components::capsule::{
@@ -649,7 +649,7 @@ pub struct OtelcolServerBlock {
     pub max_recv_msg_size: Option<String>,
     /// Nested blocks (`tls`, `keepalive`, `cors`, … via `raw:`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocks: Vec<Block>,
+    pub blocks: Vec<RawOnlySubBlock>,
 }
 
 impl OtelcolServerBlock {

@@ -19,8 +19,8 @@
 //! (`components/relabel.rs`) for the `rule` blocks shared with the loki side.
 
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, ExpressableList, GoDuration, Identifier, ToBlock,
-    impl_to_block_dispatch, string_map,
+    AttributeValue, Block, Expressable, ExpressableList, GoDuration, Identifier, RawOnlySubBlock,
+    ToBlock, impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     MetricsReceiver, TargetEntry, metrics_receiver_list, target_list,
@@ -29,17 +29,6 @@ use crate::alloy::components::relabel::{RelabelRule, RelabelSubBlock};
 use crate::alloy::error::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-
-/// A nested-block list that only supports the `raw:` escape (no typed
-/// sub-blocks yet). Used by `endpoint` (remote_write) and `selector`
-/// (operator), where the surrounding block's scalars are typed but its nested
-/// blocks are deferred to raw.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RawOnlySubBlock {
-    #[serde(rename = "raw")]
-    Raw(Block),
-}
-impl_to_block_dispatch!(RawOnlySubBlock { Raw });
 
 /// Collect a `Vec` of `ToBlock` sub-blocks into rendered `Block`s.
 fn to_blocks<T: ToBlock>(blocks: &[T]) -> Result<Vec<Block>> {

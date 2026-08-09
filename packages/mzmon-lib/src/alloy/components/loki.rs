@@ -9,8 +9,8 @@
 
 use crate::alloy::ast;
 use crate::alloy::ast::{
-    AttributeValue, Block, Expressable, GoDuration, Identifier, ToBlock, impl_to_block_dispatch,
-    string_map,
+    AttributeValue, Block, Expressable, GoDuration, Identifier, RawOnlySubBlock, ToBlock,
+    impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     LogsReceiver, RelabelRules, TargetEntry, logs_receiver_list, target_list,
@@ -923,12 +923,12 @@ pub struct LokiHttpServerBlock {
     /// port from the environment needs the `encoding.from_json` coercion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub listen_port: Option<Expressable<f64>>,
-    /// Server-side read timeout.
+    /// Maximum simultaneous connections. 0 means unlimited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conn_limit: Option<Expressable<f64>>,
     /// Nested blocks (`tls` and friends via `raw:`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocks: Vec<Block>,
+    pub blocks: Vec<RawOnlySubBlock>,
 }
 
 impl ToBlock for LokiHttpServerBlock {
@@ -1122,7 +1122,7 @@ pub struct LokiSourceKubernetesEventsBlock {
     pub log_format: Option<String>,
     /// Nested blocks (`client` via `raw:`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocks: Vec<Block>,
+    pub blocks: Vec<RawOnlySubBlock>,
 }
 
 impl ToBlock for LokiSourceKubernetesEventsBlock {
@@ -1193,7 +1193,7 @@ pub struct LokiWriteEndpointBlock {
     pub remote_timeout: Option<GoDuration>,
     /// Nested blocks (auth / TLS / queue tuning via `raw:`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocks: Vec<Block>,
+    pub blocks: Vec<RawOnlySubBlock>,
 }
 
 impl ToBlock for LokiWriteEndpointBlock {

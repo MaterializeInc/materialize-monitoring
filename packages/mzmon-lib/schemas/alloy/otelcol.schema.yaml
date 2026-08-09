@@ -877,8 +877,12 @@ $defs:
         description: Compression to apply. Defaults to `gzip`.
         type: string
       timeout:
-        description: Per-attempt request timeout.
-        $ref: "#/$defs/expressionOrDuration"
+        description: |
+          Per-attempt request timeout. Literal only — the Rust field is a plain
+          duration, so an expression here would pass validation and then fail
+          typed deserialization. Widen both together if it ever needs one.
+        type: string
+        format: go-duration
       blocks:
         description: Nested blocks (`tls`; `keepalive` via `raw`).
         type: array

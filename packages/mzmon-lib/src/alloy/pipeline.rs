@@ -610,4 +610,119 @@ mod tests {
             "expected a /blocks/0 violation, got {paths:?}"
         );
     }
+
+    /// Every block that advertises a `raw:`-only nested list must actually
+    /// accept one.
+    ///
+    /// This is the regression guard for a whole-class bug: the schemas express a
+    /// nested block list as `$ref: common/raw.schema.yaml`, i.e. the
+    /// externally-tagged `{raw: {component, …}}` wrapper, but a field typed
+    /// `Vec<Block>` deserializes the *unwrapped* `{component, …}`. Schema-valid
+    /// YAML then passes validation and dies in serde with
+    /// `missing field 'component'`, so the escape hatch reads as documented and
+    /// is unusable.
+    ///
+    /// Four fields shipped that way — the pipelines never exercise these
+    /// escapes, so nothing else notices. Each case below is one of them.
+    #[test]
+    fn raw_escape_round_trips_in_every_raw_only_list() {
+        // (label, yaml, substring expected in the rendered output)
+        let cases: &[(&str, &str, &str)] = &[
+            (
+                "loki.source.api http server",
+                r#"
+                blocks:
+                  - loki.source.api:
+                      label: gw
+                      forward_to: ["loki.process.p.receiver"]
+                      blocks:
+                        - http:
+                            listen_port: 3100
+                            blocks:
+                              - raw:
+                                  component: tls
+                                  attributes:
+                                    cert_file: /tls/tls.crt
+                "#,
+                "cert_file = \"/tls/tls.crt\"",
+            ),
+            (
+                "loki.source.kubernetes_events client",
+                r#"
+                blocks:
+                  - loki.source.kubernetes_events:
+                      label: ev
+                      forward_to: ["loki.process.p.receiver"]
+                      blocks:
+                        - raw:
+                            component: client
+                            attributes:
+                              api_server: https://kubernetes.default.svc
+                "#,
+                "api_server = \"https://kubernetes.default.svc\"",
+            ),
+            (
+                "loki.write endpoint auth",
+                r#"
+                blocks:
+                  - loki.write:
+                      label: dest
+                      blocks:
+                        - endpoint:
+                            url: "http://loki:3100/loki/api/v1/push"
+                            blocks:
+                              - raw:
+                                  component: basic_auth
+                                  attributes:
+                                    username: mz
+                "#,
+                "username = \"mz\"",
+            ),
+            (
+                "otelcol.receiver.otlp grpc server",
+                r#"
+                blocks:
+                  - otelcol.receiver.otlp:
+                      label: gw
+                      blocks:
+                        - grpc:
+                            blocks:
+                              - raw:
+                                  component: tls
+                                  attributes:
+                                    cert_file: /tls/tls.crt
+                "#,
+                "cert_file = \"/tls/tls.crt\"",
+            ),
+            (
+                "prometheus.remote_write endpoint auth",
+                r#"
+                blocks:
+                  - prometheus.remote_write:
+                      label: dest
+                      blocks:
+                        - endpoint:
+                            url: "http://thanos:9090/api/v1/receive"
+                            blocks:
+                              - raw:
+                                  component: basic_auth
+                                  attributes:
+                                    username: mz
+                "#,
+                "username = \"mz\"",
+            ),
+        ];
+
+        for (name, yaml, expected) in cases {
+            let pipeline = Pipeline::from_yaml_str(yaml)
+                .unwrap_or_else(|err| panic!("{name}: raw escape failed to deserialize: {err}"));
+            let rendered = pipeline
+                .render()
+                .unwrap_or_else(|err| panic!("{name}: render failed: {err}"));
+            assert!(
+                rendered.contains(expected),
+                "{name}: rendered output missing {expected:?}\n{rendered}"
+            );
+        }
+    }
 }

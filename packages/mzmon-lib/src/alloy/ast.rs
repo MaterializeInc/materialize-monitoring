@@ -64,6 +64,25 @@ macro_rules! impl_to_block_dispatch {
 }
 pub(crate) use impl_to_block_dispatch;
 
+/// A nested-block list carrying only the `raw:` escape — for a block whose own
+/// scalars are typed but whose sub-blocks are not yet.
+///
+/// **Use this rather than a bare `Vec<Block>`.** The schemas express a nested
+/// block list as `$ref: common/raw.schema.yaml`, i.e. the externally-tagged
+/// `{raw: {component, …}}` wrapper. A `Vec<Block>` deserializes the *unwrapped*
+/// `{component, …}` instead, so schema-valid YAML passes validation and then
+/// dies in serde with `missing field 'component'` — the escape hatch looks
+/// documented and is unusable. That mismatch is invisible to the test suite
+/// unless a pipeline actually exercises the escape, which is how four fields
+/// shipped broken; `pipeline.rs::raw_escape_round_trips_in_every_raw_only_list`
+/// is the regression guard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RawOnlySubBlock {
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(RawOnlySubBlock { Raw });
+
 /// Expressions
 ///
 /// `deny_unknown_fields` is load-bearing for `AttributeValue` untagged dispatch:
