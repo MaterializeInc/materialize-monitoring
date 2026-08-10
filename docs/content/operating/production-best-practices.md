@@ -440,8 +440,9 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 For the architecture these items configure, see [Metrics](../../metrics/).
 
-Thanos is **less finished than Loki** in this chart, and the checklist says so honestly: there are no sizing profiles, no resource requests, and no topology spread on any Thanos component today.
-Treat the unchecked `[chart]` items below as the current work list rather than as guidance you are expected to satisfy by hand.
+Thanos is **less finished than Loki** in this chart, and the checklist says so honestly.
+Sizing is specified below and the profiles are landing; topology spread across zones is still outstanding.
+Treat the unchecked `[chart]` items as the current work list rather than as guidance you are expected to satisfy by hand.
 
 ### Receive: replication is the availability lever, not `mode`
 
@@ -479,6 +480,164 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 > [!WARNING]
 >   **Split mode is not recommended yet.** It landed upstream only recently, and `receive.ingester` does not inherit from the top-level `receive.*` defaults — upstream considers the non-merging behavior intentional, so this is unlikely to change. In practice that means restating ~31 keys, of which the values schema hard-requires eight sub-objects (`hashrings`, `service`, `vpa`, `persistence`, `podSecurityContext`, `probes`, `serviceMonitor`, `pdb`) before the chart will render at all. Prefer standalone with an odd replication factor until that changes.
 
+### Sizing the metrics backend
+
+**Size by active series and object count — not by node count, and not by throughput.**
+This is the opposite axis from Loki, where bytes per second drives everything.
+Thanos keys off cardinality, and the derived quantities split across components:
+
+- **Receive memory** → **active series**. Budget ~3 KB per series held.
+- **Receive CPU and local disk** → **ingested samples/sec**, which is active series ÷ scrape interval.
+- **Store Gateway and Compactor** → **block volume under retention**.
+- **Query and Query Frontend** → **query concurrency**, independent of ingest.
+
+Those four move independently, which is why halving the scrape interval doubles Receive's CPU and disk while leaving its memory untouched.
+
+#### Choosing a profile {#choosing-a-thanos-profile}
+
+Nobody knows their series count before they have somewhere to put metrics, so profiles are chosen from **inventory** — what exists, not how busy it is.
+Workload-intensity metrics are the wrong shape for this: they swing on a daily cycle, while cardinality is nearly flat.
+
+| | S (bottom ~20%) | M (middle ~70%, chart defaults) | L (top ~10%) |
+|---|---|---|---|
+| **Collections** (indexes + materialized views) | ≤ 100 | 100–1,000 | 1,000+ |
+| Kubernetes nodes | ≤ 10 | 10–100 | 100+ |
+| Pods, all namespaces | ≤ 250 | 250–2,000 | 2,000+ |
+| Cluster replicas | ≤ 4 | 4–30 | 30+ |
+
+**Take the largest tier any single row lands in.**
+Series is a sum, and one oversized dimension is enough to overrun the ingest path by itself.
+
+Collections is the row that does the work, because Materialize's per-collection metrics carry `collection_id`, `replica_id`, *and* `worker_id` — so they multiply by replication and by replica size, while sources and sinks stay linear in the object count.
+A deployment with a few hundred indexes contributes far more cardinality than one with a few hundred sources.
+
+> [!WARNING]
+>   **These are whole-cluster numbers, not Materialize's share of the cluster.**
+>   node-exporter, cAdvisor, and kube-state-metrics collect from every node and pod in the cluster, including workloads that have nothing to do with Materialize.
+>   Running Materialize on ten nodes of a shared two-hundred-node cluster is an **L**, not an S — and sizing off the Materialize footprint alone is the most common way to pick wrong.
+
+For a number rather than a bracket:
+
+```text
+active series ≈ 8,000 × nodes + 600 × collections
+```
+
+Calibrated against real deployments spanning two orders of magnitude of series count, and accurate to within ~10% across that range.
+It is deliberately two terms with no constant — every other candidate axis measured (per-vCPU, per-replica, per-source) either tracked one of these two or fell out as noise.
+Per-vCPU in particular is actively misleading: vCPU tracks how much work a deployment does, and cardinality tracks how many objects exist, so the two diverge as deployments grow.
+
+#### The envelope each profile is sized for {#thanos-envelope}
+
+| Size | Active series | Samples/s at 30s | Bucket at profile retention |
+|---|---|---|---|
+| **S** | ~150 k | ~5 k | ~25 GB |
+| **M** | ~1.5 M | ~50 k | ~660 GB |
+| **L** | ~4 M | ~133 k | ~3 TB |
+
+In a large deployment **Materialize's own metrics are ~85% of everything collected** — its native endpoints plus the SQL exporters — and the Kubernetes infrastructure terms are a rounding error beside them.
+So a conversation about metrics cost at that scale is a conversation about collections, not about nodes or pods.
+
+#### Measure to validate {#thanos-measure-to-validate}
+
+Size from the estimator, then re-measure off Receive — the same signal the sizing is derived from. `[operator]`
+
+```promql
+# active series actually held (compare against the envelope you picked)
+sum(prometheus_tsdb_head_series{job="thanos-receive"})
+
+# ingested samples/sec
+sum(rate(prometheus_tsdb_head_samples_appended_total{job="thanos-receive"}[5m]))
+
+# series contributed per scrape job — the decomposition, when the total surprises you
+sort_desc(sum by (job) (scrape_samples_scraped))
+```
+
+Reach for the third when measured series disagree with the estimate.
+Its value per target *is* that target's series count, so it decomposes the total without touching every series in the store — unlike `count({__name__=~".+"})`, which does, and is expensive enough for that to matter.
+
+#### Per-size resources {#thanos-per-size-resources}
+
+Starting points — `replicas × (cpu request / memory request)`; tune from real usage. `[chart]` defaults, `[operator]`/`[consumer]` override per profile.
+
+| Component | S | M | L |
+|---|---|---|---|
+| Receive (PVC, RF 3) | 3 × (250m / 1Gi) | 3 × (500m / 4Gi) | 6 × (1500m / 8Gi) |
+| Receive PVC | 10Gi | 20Gi | 40Gi |
+| Store Gateway | 2 × (100m / 1Gi) | 2 × (500m / 3Gi) | 2 × (1500m / 8Gi) |
+| Store Gateway PVC | 10Gi | 10Gi | 20Gi |
+| Compactor (singleton) | 1 × (500m / 1Gi) | 1 × (1 / 2Gi) | 1 × (3 / 8Gi) |
+| Compactor PVC | 10Gi | 20Gi | 100Gi |
+| Query (HPA) | 2–3 × (200m / 512Mi) | 2–5 × (500m / 1Gi) | 3–8 × (1 / 2Gi) |
+| Query Frontend | omit | omit | 2–5 × (250m / 512Mi) |
+
+- **At `replicaCount == replicationFactor` every Receive pod holds every series.** Sharding begins only above RF, which is why **L** runs six pods rather than three — and why a replica count that is a multiple of both the replication factor and the zone count spreads evenly across both.
+- **Do not set a tight memory limit on Receive.** An OOM-kill drops up to `tsdb.retention` (24h) of not-yet-uploaded blocks, and unlike Loki's ingesters that window has nothing protecting it but the replication factor.
+- **Store Gateway has a memory floor the requests must respect.** Thanos defaults `--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart passes neither, so a stock Store Gateway wants ~2.5Gi before it serves anything. The **S** profile shrinks those pools through `extraArgs` rather than only lowering the request — a 1Gi request against 2.25GB of pools is an OOM, not a small install.
+- **The Compactor is vertical-only.** It must stay `replicaCount: 1`, because concurrent compactors against one block set corrupt data. Its PVC is scratch space for the block group under compaction, which is why it grows faster with size than the other two volumes.
+
+#### Protective limits {#thanos-protective-limits}
+
+Thanos's exposure is the mirror image of Loki's.
+There is no per-tenant byte-rate limit to set; the risk is one query fanning out across the bucket and taking the Store Gateway down with it.
+All of these are `extraArgs`. `[operator]` sets per profile.
+
+| Size | `--store.limits.request-series` | `--store.limits.request-samples` | `--query.max-concurrent` | `--query.timeout` |
+|---|---|---|---|---|
+| S | 1,000,000 | 50,000,000 | 10 | 2m |
+| M | 5,000,000 | 200,000,000 | 20 (default) | 2m |
+| L | 30,000,000 | 2,000,000,000 | 40 | 5m |
+
+> [!WARNING]
+>   **`extraArgs` is a list, and Helm overwrites lists rather than merging them.**
+>   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m`, `query.extraArgs` carries `--log.level=info`.
+>   Setting `extraArgs` to add a limit **silently drops whatever was already there**, and on Receive that means falling back to Thanos's default replication factor of 1 — the exact failure the quorum table above exists to prevent.
+>   Restate the base arguments in full every time. The shipped profiles do.
+
+Receive also offers `--receive.limits-config` with a per-tenant `head_series_limit`, which the profiles deliberately leave unset.
+It enforces that cap by querying a meta-monitoring endpoint for `head_series` on an interval, so it is a runtime dependency on Thanos Query rather than a flag, and it fails in a direction that is not obvious when the dependency is unavailable.
+
+#### Retention and downsampling {#retention-and-downsampling}
+
+| Size | raw | 5m | 1h |
+|---|---|---|---|
+| S | 14d | 30d | 90d |
+| M | 30d | 90d | 365d |
+| L | 30d | 180d | 730d |
+
+> [!INFO]
+>   **Downsampled volume does not depend on the scrape interval.**
+>   A 5m block is five aggregates per 300s and a 1h block five per 3600s, however often you scrape — only raw blocks scale with the interval.
+>   So moving from a 60s interval to 30s raises total bucket size by roughly a fifth rather than doubling it, because raw is the smaller share of a retention shape that keeps downsampled data far longer.
+>   The cost of finer granularity lands on Receive's CPU and local disk, not on object storage.
+>
+>   The corollary is that at a 60s scrape interval **5m downsampling saves no storage at all** — five aggregates per 300s is the same sample rate as one per 60s. It buys query speed over long ranges. All the real storage reduction is in the 1h tier.
+
+**Raw retention has a floor set by the downsampling thresholds.**
+Thanos produces 5m downsamples only from blocks spanning 40h or more, and 1h downsamples only from blocks spanning 10d or more.
+Cut raw retention below those and the corresponding tier is never created at all, so long-range queries fall back to reading raw blocks — slower and more expensive, which is the opposite of the intent.
+That is why **S** keeps 14d of raw rather than something smaller.
+
+#### Scaling past large {#scaling-past-large}
+
+Above roughly 4M active series the profiles stop being a menu and become a starting point.
+Three things change, in the order they bite:
+
+1. **Add Receive replicas**, in multiples of the replication factor and the zone count, so streams shard evenly and no pod carries the whole series set.
+2. **Shard the Store Gateway** once the bucket reaches the multi-TB range. Binary index-headers run roughly 1% of block size, so one StatefulSet eventually cannot hold them. `storegateway.sharded.hashPartitioning.shards` renders one StatefulSet per shard, and the headless Service, ServiceMonitor, and Query's DNS-SRV discovery fan out across them with no further configuration. Changing the shard count later renumbers shards and forces recreation, so decide it at install time rather than tuning into it.
+3. **The Compactor runs out of room to grow.** It is a singleton by necessity, so the only levers are a bigger pod and a bigger volume, and compaction falling behind becomes a thing to alert on rather than discover. Thanos itself supports sharding compaction across instances with disjoint `--selector.relabel-config` selections, but the bundled subchart renders exactly one Compactor StatefulSet and exposes no selector — so that path needs an upstream change, or a second Compactor managed outside this chart.
+
+#### Cost control is the metric tiers, not the profile {#cost-control-metric-tiers}
+
+The write path filters by importance — `essential`, `recommended`, `extended`, `diagnostic`, `all` — through `minMetricImportance` on each destination.
+The in-cluster Thanos destination deliberately defaults to **`all`**, unlike the external destinations, which default to `recommended`.
+Raw metrics are worth their cost while Thanos is still an early improvement over what came before; narrowing that is a later and deliberate step, not an oversight to correct.
+
+> [!WARNING]
+>   **Do not downshift the profile to reduce cost.**
+>   The profile sizes the ingest path for the series you actually send, so sending the same series into a smaller path is an OOM rather than a saving.
+>   Tighten `minMetricImportance`, re-measure head series, and downshift only once the series count has genuinely fallen.
+
+
 ### Checklist
 
 #### 1. Ingestion topology & replication
@@ -499,22 +658,26 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 #### 3. Components & read path
 
 - [x] `[chart]` Query, Receive, Store Gateway, and Compactor enabled by default.
-- [ ] `[operator]` Enable **Query Frontend** for production read paths (splitting and result caching) — and repoint `connections.datasources.thanos.url` at it, or the cache is deployed and bypassed. A render-time check warns on exactly that mismatch.
+- [ ] `[operator]` Enable **Query Frontend** for production read paths (splitting and result caching) — and repoint `connections.datasources.thanos.url` at it, or the cache is deployed and bypassed. A render-time check warns on exactly that mismatch. The `thanos-large` profile does both; at S and M the query-frontend is omitted and Query is the datasource target.
 - [ ] `[operator]` Store Gateway is how queries reach historical blocks; disabling it limits reads to what Receive still holds locally.
 - [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
 - [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
 
 #### 4. Retention & compaction
 
-- [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d.
+- [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d — the medium row of [Retention and downsampling](#retention-and-downsampling).
 - [ ] `[operator]` Set those to your storage budget. Retention is enforced by the Compactor — with it disabled nothing expires and bucket cost grows without bound.
+- [ ] `[operator]` Keep raw retention above the downsampling thresholds (40h for the 5m tier, 10d for the 1h tier). Below them the tier is never produced and long-range queries silently fall back to raw blocks. See [Retention and downsampling](#retention-and-downsampling).
 - [x] `[chart]` Receive TSDB WAL retention 24h with compression, so blocks ship to object storage promptly.
 
 #### 5. Sizing
 
-- [ ] `[chart]` **No resource requests or limits are set on any Thanos component.** Sizing profiles (`thanos-small` / `thanos-large`, mirroring the Loki convention where the chart defaults are medium) are outstanding work.
-- [ ] `[operator]` Until they land, set requests explicitly. Thanos sizes off different axes than Loki — active series and samples/sec for Receive, block volume and retention for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [ ] `[operator]` Pick the profile from [Choosing a profile](#choosing-a-thanos-profile) and record the inventory it was based on. `thanos-small` and `thanos-large` are deltas from the chart defaults, which target medium.
+- [ ] `[operator]` Re-measure head series against the envelope after install, and after any change in collection count. See [Measure to validate](#thanos-measure-to-validate).
+- [ ] `[chart]` Resource requests on every component, per [Per-size resources](#thanos-per-size-resources). Thanos sizes off different axes than Loki — active series for Receive memory, samples/sec for its CPU and disk, block volume for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
 - [ ] `[operator]` Autoscaling on Query does not remove the need for requests: without them the HPA has no CPU target to measure against, so it never scales.
+- [ ] `[chart]` **VerticalPodAutoscaler disabled on Receive and Compactor.** The subchart defaults it *on* for exactly those two, in `updateMode: Auto`, so where the VPA CRD is present it rewrites the requests a profile sets and evicts pods to apply them — on a PVC-backed StatefulSet holding up to 24h of un-uploaded blocks. The template is CRD-gated, so leaving it on makes the stack behave differently on clusters that have VPA installed than on those that do not, with no signal either way.
+- [ ] `[operator]` If you re-enable VPA deliberately, use `updateMode: "Off"` for recommendations only, and know that its numbers will disagree with the profile by design.
 
 #### 6. Meta-monitoring
 
@@ -531,6 +694,8 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [Metrics](../../metrics/) — the metrics architecture these items configure.
 - [Storing](../../metrics/storing/) — object storage and retention in depth.
 - [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.
+- [Thanos Compactor documentation](https://thanos.io/tip/components/compact.md/) (official) — compaction levels, downsampling thresholds, and why the singleton constraint exists.
+- [Thanos Store Gateway documentation](https://thanos.io/tip/components/store.md/) (official) — index-header caching, the memory pools, and time/hash partitioning.
 
 ## Grafana
 
