@@ -12,7 +12,7 @@ spec:
       app.kubernetes.io/name: environmentd
   endpoints:
   - port: internal-http
-    interval: 60s
+    interval: 30s
     path: /metrics/mz_compute
     basicAuth:
       username: mz_support

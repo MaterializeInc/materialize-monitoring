@@ -1,0 +1,248 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: thanos size profiles
+release:
+  name: t
+  namespace: test-monitoring
+# Enablement + required inputs shared by every case. Profiles are layered on
+# top per-test via `values:`.
+set:
+  tags.default: false
+  tags.thanos: true
+  thanos.global.objstore.createSecret: false
+# The VPA CRD is declared present for every case here on purpose: the subchart's
+# VPA templates are CRD-gated, so without this a VPA assertion would pass for
+# the wrong reason (the gate, not the value) on any machine lacking the CRD.
+capabilities:
+  apiVersions:
+    - autoscaling.k8s.io/v1/VerticalPodAutoscaler
+tests:
+  # --- The extraArgs footgun -------------------------------------------------
+  # Helm overwrites lists rather than merging them, so a profile that sets
+  # `receive.extraArgs` without restating the replication factor silently drops
+  # to Thanos's default of 1 — write quorum 1, no pod loss tolerated. Every
+  # size must carry it. This is the single most important assertion in the file.
+  - it: medium keeps the replication factor
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+
+  - it: small keeps the replication factor despite overriding extraArgs
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+
+  - it: large keeps the replication factor despite overriding extraArgs
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+
+  # --- VPA must not rewrite the profile's requests --------------------------
+  # `updateMode: Auto` on a PVC-backed StatefulSet holding up to 24h of
+  # un-uploaded blocks. Off at every size; the CRD is declared present above so
+  # these assert the value rather than the gate.
+  - it: medium renders no Receive VPA
+    template: ../charts/thanos/templates/receive/vpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: medium renders no Compactor VPA
+    template: ../charts/thanos/templates/compactor/vpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # Control: proves the two cases above fail for the right reason. If the
+  # CRD gate were what suppressed them, this would render nothing either.
+  - it: re-enabling Receive VPA does render one, so the CRD gate is satisfied
+    set:
+      thanos.receive.vpa.enabled: true
+    template: ../charts/thanos/templates/receive/vpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.updatePolicy.updateMode
+          value: Auto
+
+  # --- Receive sizing -------------------------------------------------------
+  - it: medium sizes Receive at 3 replicas holding every series
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 4Gi
+      # No memory limit: an OOM-kill drops the un-uploaded block window.
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.memory
+
+  - it: large shards Receive past the replication factor
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      # 6 is a multiple of both RF (3) and a three-zone topology.
+      - equal:
+          path: spec.replicas
+          value: 6
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 8Gi
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.memory
+
+  - it: small keeps Receive at the replication-factor floor
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      # 3 is the RF floor, not a sizing choice — it must not drop below it.
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+
+  # --- Store Gateway memory pools ------------------------------------------
+  # Thanos defaults to a 2GB chunk pool and 250MB index cache. The small
+  # profile's 1Gi request is only viable because it shrinks those too;
+  # lowering the request alone would be an OOM rather than a small install.
+  - it: small shrinks the Store Gateway pools alongside its request
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --chunk-pool-size=512MB
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --index-cache-size=100MB
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+
+  - it: large raises the Store Gateway pools and read limits
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --chunk-pool-size=6GB
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --index-cache-size=2GB
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --store.limits.request-series=30000000
+
+  # --- Compactor stays a singleton at every size ---------------------------
+  # Concurrent compactors against one block set corrupt data. A profile must
+  # never scale this horizontally, only vertically.
+  - it: compactor is a singleton at small
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: compactor is a singleton at large, with room to grow vertically
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 8Gi
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 100Gi
+
+  # --- Retention keeps both downsample tiers reachable --------------------
+  # Thanos produces 5m downsamples only from blocks spanning 40h+ and 1h
+  # downsamples only from blocks spanning 10d+. Raw retention below those means
+  # the tier is never created and long queries fall back to raw blocks.
+  - it: small raw retention clears both downsampling thresholds
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --retention.resolution-raw=14d
+
+  - it: large extends downsampled retention but not raw
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --retention.resolution-raw=30d
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --retention.resolution-1h=730d
+
+  # --- Query Frontend and the datasource must move together ---------------
+  # Enabling the frontend without repointing the datasource deploys the cache
+  # and routes nothing through it.
+  - it: medium omits the query frontend
+    template: ../charts/thanos/templates/query-frontend/deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: large enables the query frontend
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/query-frontend/deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 512Mi
+
+  - it: large repoints the Grafana datasource at the query frontend
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: templates/grafana-datasources.yaml
+    asserts:
+      - matchRegex:
+          path: spec.datasource.url
+          pattern: thanos-query-frontend
+
+  # --- HPA floor must match replicaCount ----------------------------------
+  # The subchart templates a static `replicas` even alongside an HPA, so a
+  # mismatch is reset to the static value on every reconcile.
+  - it: large keeps the Query HPA floor equal to replicaCount
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/query/hpa.yaml
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 8

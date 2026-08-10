@@ -114,7 +114,13 @@ impl Monitor {
 
 /// GMP requires a scrape `interval` on every endpoint; prometheus-operator
 /// leaves it optional (inheriting `global`). Fill this when the source omits it.
-const GMP_DEFAULT_INTERVAL: &str = "60s";
+///
+/// 30s matches the stack's default elsewhere — the Alloy gateway's
+/// `default_scrape_interval` and the classic config's `global.scrape_interval`.
+/// Materialize's own signals (peek latency, freshness, hydration progress) are
+/// the reason for the resolution; see Operating > Production Best Practices,
+/// "Sizing the metrics backend", for what the interval does and does not cost.
+const GMP_DEFAULT_INTERVAL: &str = "30s";
 
 const BASIC_AUTH_USERNAME: &str = "mz_support";
 
@@ -947,8 +953,9 @@ mod tests {
         ];
         let doc = ScrapeConfigDocument::from_monitors(GlobalConfig::default(), &monitors).unwrap();
 
-        assert_eq!(doc.global.scrape_interval, "1m");
+        assert_eq!(doc.global.scrape_interval, "30s");
         assert_eq!(doc.global.scrape_timeout, "10s");
+        // Rule evaluation does not follow the scrape interval.
         assert_eq!(doc.global.evaluation_interval, "1m");
         // environmentd → 1 job, cadvisor → 1 job.
         assert_eq!(doc.scrape_configs.len(), 2);
@@ -1028,7 +1035,7 @@ mod tests {
                   app.kubernetes.io/name: environmentd
               endpoints:
                 - port: internal-http
-                  interval: 60s
+                  interval: 30s
                   path: /metrics
               targetLabels:
                 fromPod:

@@ -11,7 +11,7 @@ spec:
       cluster.environmentd.materialize.cloud/type: cluster
   endpoints:
   - port: internal-http
-    interval: 60s
+    interval: 30s
     path: /metrics
   targetLabels:
     fromPod:

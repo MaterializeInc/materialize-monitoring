@@ -943,7 +943,7 @@ Configuration for metrics behavior
   <tbody>    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"60s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
+      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"30s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
       <td class="helm-value-desc">Node-local metric collection on the Alloy agent DaemonSet.
 
 cAdvisor runs in-process in the agent rather than being scraped off the
@@ -969,8 +969,15 @@ enabled below. Verified by running the rendered config under
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.scrapeInterval</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"60s"</code></td>
-      <td class="helm-value-desc">Scrape interval for the in-process cAdvisor exporter. The dominant cost lever: cAdvisor's series count scales with containers-per-node, so this is what you turn down on dense pools.
+      <td class="helm-value-default"><code>"30s"</code></td>
+      <td class="helm-value-desc">Scrape interval for the in-process cAdvisor exporter.
+30s, matching the rest of the stack. Lengthening this is the lever for
+dense pools, where cAdvisor is the largest single contributor of
+*samples* — its series count scales with containers-per-node, and the
+interval divides into that to give samples/sec. Note the interval
+changes samples, not cardinality: doubling it halves the sample rate
+and leaves the series count untouched, so it reduces ingest CPU and
+raw block volume but not Receive's memory.
 </td>
     </tr>
     <tr>
@@ -3168,7 +3175,13 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
     "minReplicas": 2,
     "targetCPUUtilizationPercentage": 80
   },
-  "enabled": true
+  "enabled": true,
+  "resources": {
+    "requests": {
+      "cpu": "500m",
+      "memory": "1Gi"
+    }
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.
@@ -3186,6 +3199,25 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
 }</pre>
 </td>
       <td class="helm-value-desc">Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.query<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "500m",
+    "memory": "1Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Thanos Query. Medium sizing; see the `thanos-small` / `thanos-large` profiles for the other two columns.
+A CPU request is load-bearing here beyond scheduling: `targetCPUUtilization`
+is a percentage *of the request*, so without one the HPA above has no
+denominator and never scales. No memory limit — a fan-out query's peak
+scales with the series it touches, and an OOM-kill mid-query is a worse
+failure than a slow one.
 </td>
     </tr>
     <tr>
@@ -3210,11 +3242,95 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--receive.replication-factor=3"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for Receive.
+**This is a list, and Helm overwrites lists rather than merging them.**
+Anything that sets `receive.extraArgs` replaces this entry wholesale, so
+the replication factor must be restated or it silently falls back to
+Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
+profiles restate it; so must yours. See Production Best Practices >
+Metrics (Thanos) for the quorum table.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.vpa</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">VerticalPodAutoscaler for Receive.
+Off, overriding the subchart's `true`. Three reasons, in order:
+
+1. It rewrites the requests below, so a sizing profile would not survive
+   contact with it.
+2. `updateMode: Auto` evicts pods to apply new requests, and Receive is a
+   PVC-backed StatefulSet holding up to `tsdb.retention` (24h) of blocks
+   that have not reached object storage yet.
+3. The subchart's VPA template is CRD-gated, so leaving it on makes the
+   stack behave differently on clusters with the VPA CRD installed than on
+   those without — silently, in both directions.
+
+If you want its recommendations without its actions, set
+`updateMode: "Off"` rather than re-enabling Auto.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "500m",
+    "memory": "4Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Receive. Medium sizing.
+Memory is the cell to get right: budget ~3 KB per active series held, and
+note that at `replicaCount == replicationFactor` **every pod holds every
+series** — sharding begins only above RF.
+
+No memory limit, deliberately, and for a sharper reason than elsewhere in
+this chart: an OOM-kill drops the un-uploaded block window, and unlike
+Loki's ingesters that window has nothing protecting it but the replication
+factor. Alert on usage instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "size": "20Gi"
+}</pre>
+</td>
+      <td class="helm-value-desc">Local TSDB volume for Receive. Holds `tsdb.retention` (24h) of blocks plus the WAL, so it scales with ingested samples/sec rather than with series count.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.storegateway</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "enabled": true
+  "enabled": true,
+  "extraArgs": [
+    "--store.limits.request-series=5000000",
+    "--store.limits.request-samples=200000000"
+  ],
+  "resources": {
+    "requests": {
+      "cpu": "500m",
+      "memory": "3Gi"
+    }
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Store Gateway configuration. Store Gateway provides historical block querying.
@@ -3225,6 +3341,45 @@ startup, so scale-up is slow to become useful (it serves nothing until the
 index is warm) and CPU-triggered scaling reacts long after the load that
 triggered it. Scale-down also leaves orphaned PVCs behind, since
 StatefulSet volumes are not reclaimed. Size it deliberately instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "500m",
+    "memory": "3Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Store Gateway. Medium sizing.
+There is a floor here that is easy to trip over. Thanos defaults
+`--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart
+passes neither, so a stock Store Gateway wants ~2.5Gi before it serves a
+single query. A request below that is an OOM, not a small install — the
+`thanos-small` profile shrinks the pools through `extraArgs` instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--store.limits.request-series=5000000",
+  "--store.limits.request-samples=200000000"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for Store Gateway.
+Read-path protection. Thanos has no per-tenant write limit to set; the
+realistic failure is one query fanning out across the bucket and taking
+this component down, which takes historical reads with it. These two caps
+make that query fail instead.
+
+The subchart ships this empty, so unlike `receive.extraArgs` there is
+nothing to lose by overriding it — but it is still a list, so restate both
+entries when adding a third.
 </td>
     </tr>
     <tr>
@@ -3245,6 +3400,57 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.
 }</pre>
 </td>
       <td class="helm-value-desc">Retention policies for Thanos Compactor downsampled data
+The medium row of the retention table in Production Best Practices.
+
+Raw retention has a floor set by the downsampling thresholds: Thanos
+produces 5m downsamples only from blocks spanning 40h or more, and 1h
+downsamples only from blocks spanning 10d or more. Below those the tier is
+never created at all and long-range queries silently fall back to reading
+raw blocks — slower and more expensive, which is the opposite of the
+intent. 30d clears both comfortably.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.vpa</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">VerticalPodAutoscaler for the Compactor. Off for the same reasons as `receive.vpa`, minus the block-loss argument — the Compactor's local volume is an idempotent working copy, so an eviction costs a restarted compaction rather than data. It still overwrites the requests below, and still behaves differently depending on whether the VPA CRD happens to be installed.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": 1,
+    "memory": "2Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for the Compactor. Medium sizing.
+The Compactor is a **singleton by necessity** — concurrent compactors
+against one block set corrupt data — so it is the one component here with
+no horizontal escape hatch. Vertical is the only lever, which makes
+compaction falling behind something to alert on rather than discover.
+
+Downsampling is the memory-heavy phase, and `--compact.concurrency`
+multiplies it; leave that at 1 unless compaction is provably behind.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "size": "20Gi"
+}</pre>
+</td>
+      <td class="helm-value-desc">Working volume for the Compactor. Scratch space for the block group under compaction, so it scales with block size rather than with retention. This is the volume most likely to be undersized at scale; `thanos-large` takes it to 100Gi.
 </td>
     </tr>
     <tr>
@@ -3258,7 +3464,13 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.
     "minReplicas": 2,
     "targetCPUUtilizationPercentage": 80
   },
-  "enabled": false
+  "enabled": false,
+  "resources": {
+    "requests": {
+      "cpu": "250m",
+      "memory": "512Mi"
+    }
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.
@@ -3281,6 +3493,20 @@ validator warns when the two disagree.
 }</pre>
 </td>
       <td class="helm-value-desc">Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.queryFrontend<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "250m",
+    "memory": "512Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Query Frontend. Inert until it is enabled, which `thanos-large` does. Sized for splitting and result caching rather than query execution — the work happens in Query behind it.
 </td>
     </tr>
     <tr>

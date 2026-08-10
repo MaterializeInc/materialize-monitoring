@@ -1,0 +1,128 @@
+# Thanos profile: large (L)
+#
+# Overlay on top of the chart defaults (which target a medium install).
+# Compose after the base values, e.g. `-f profiles/thanos-large.values.yaml`.
+#
+# Envelope this profile is sized for (see Operating > Production Best Practices,
+# "Sizing the metrics backend"):
+#   ~4M active series · ~133k samples/s at 30s · ~3 TB bucket
+# Typical fit: 100+ nodes, 2000+ pods, 1000+ collections. Note those are
+# *whole-cluster* numbers, not Materialize's share — Materialize on a hundred
+# nodes of a shared cluster is still an L.
+#
+# This file defines ONLY the deltas from the medium defaults — larger resources
+# and volumes, more receive replicas, higher read limits, longer downsampled
+# retention, and the query-frontend read path.
+#
+# Above roughly 4M series this stops being a menu and becomes a starting point:
+# add receive replicas in multiples of the replication factor and the zone
+# count, and shard the Store Gateway once the bucket reaches the multi-TB range.
+# See "Scaling past large" in the doc above.
+
+tags:
+  thanos: true
+
+thanos:
+  query:
+    autoscaling:
+      # -- Raise the ceiling for a wider fan-out. `minReplicas` must equal
+      # `replicaCount` below — the subchart templates a static `replicas` even
+      # alongside an HPA, so a mismatch is reset on every reconcile.
+      minReplicas: 2
+      maxReplicas: 8
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+    # -- Restates the subchart's `--log.level=info` (lists are overwritten, not
+    # merged). Higher concurrency and a longer timeout, because the queries that
+    # matter at this size legitimately take longer than the 2m default.
+    extraArgs:
+      - --log.level=info
+      - --query.max-concurrent=40
+      - --query.timeout=5m
+
+  receive:
+    # -- Six replicas rather than three, so streams shard across the ring
+    # instead of every pod holding every series — which is what happens at
+    # `replicaCount == replicationFactor`. Six is deliberately a multiple of
+    # both the replication factor (3) and a three-zone topology, so shards and
+    # zones divide evenly.
+    replicaCount: 6
+    # -- Restated in full. Dropping this line silently reverts to Thanos's
+    # default replication factor of 1 — and at six replicas that means five
+    # sixths of the series have exactly one copy.
+    extraArgs:
+      - --receive.replication-factor=3
+    resources:
+      requests:
+        cpu: 1500m
+        memory: 8Gi
+    persistence:
+      # -- ~133k samples/s across six pods at RF 3, held for 24h, plus WAL.
+      size: 40Gi
+
+  storegateway:
+    resources:
+      requests:
+        cpu: 1500m
+        memory: 8Gi
+    # -- Pools raised well above Thanos's 2GB/250MB defaults: at this bucket
+    # size the index cache is what keeps queries off object storage, and a cold
+    # cache turns every dashboard load into a round trip. Read limits raised to
+    # match, but still finite — the point is that a runaway query fails instead
+    # of taking historical reads down with it.
+    extraArgs:
+      - --chunk-pool-size=6GB
+      - --index-cache-size=2GB
+      - --store.limits.request-series=30000000
+      - --store.limits.request-samples=2000000000
+    persistence:
+      # -- Binary index-headers for the blocks under retention, roughly 1% of
+      # block size. Past the multi-TB range this is the signal to shard rather
+      # than to grow the volume; see "Scaling past large".
+      size: 20Gi
+
+  compactor:
+    resources:
+      requests:
+        cpu: 3
+        memory: 8Gi
+    persistence:
+      # -- Scratch space for the block group under compaction. The Compactor is
+      # a singleton by necessity (concurrent compactors corrupt the bucket), so
+      # this volume and the request above are the only levers — there is no
+      # horizontal escape hatch. Alert on compaction falling behind.
+      size: 100Gi
+    retention:
+      # -- Longer downsampled horizons for capacity planning and
+      # year-over-year comparison. Raw stays at 30d: extending it is the most
+      # expensive way to buy history, because raw is the only tier whose volume
+      # scales with the scrape interval.
+      resolutionRaw: 30d
+      resolution5m: 180d
+      resolution1h: 730d
+
+  # -- Query Frontend on, for query splitting and result caching. Required for
+  # a production read path at this size, and paired with the datasource
+  # repoint below — enabling it alone deploys the cache and routes nothing
+  # through it, which a render-time validator warns about.
+  queryFrontend:
+    enabled: true
+    autoscaling:
+      minReplicas: 2
+      maxReplicas: 5
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+connections:
+  datasources:
+    thanos:
+      # -- Point Grafana at the query-frontend rather than at Query directly, so
+      # reads actually traverse the cache enabled above. This is the half people
+      # forget; without it the frontend is deployed and bypassed.
+      url: 'http://thanos-query-frontend.{{ include "mzmon.thanos.namespace" $ }}.svc:9090'

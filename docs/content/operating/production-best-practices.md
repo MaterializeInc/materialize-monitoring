@@ -440,8 +440,8 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 For the architecture these items configure, see [Metrics](../../metrics/).
 
-Thanos is **less finished than Loki** in this chart, and the checklist says so honestly.
-Sizing is specified below and the profiles are landing; topology spread across zones is still outstanding.
+Thanos is **close to Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets and autoscaling are in place.
+**Topology spread across zones is the notable remaining gap** — Receive is PVC-backed and therefore AZ-pinned, so three replicas can still land in one zone, which is exactly where replication factor 3 stops buying what you think it does.
 Treat the unchecked `[chart]` items as the current work list rather than as guidance you are expected to satisfy by hand.
 
 ### Receive: replication is the availability lever, not `mode`
@@ -487,7 +487,7 @@ This is the opposite axis from Loki, where bytes per second drives everything.
 Thanos keys off cardinality, and the derived quantities split across components:
 
 - **Receive memory** → **active series**. Budget ~3 KB per series held.
-- **Receive CPU and local disk** → **ingested samples/sec**, which is active series ÷ scrape interval.
+- **Receive CPU and local disk** → **ingested samples/sec**, which is active series ÷ scrape interval. Every scrape surface this chart generates defaults to **30s**.
 - **Store Gateway and Compactor** → **block volume under retention**.
 - **Query and Query Frontend** → **query concurrency**, independent of ingest.
 
@@ -674,9 +674,11 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 
 - [ ] `[operator]` Pick the profile from [Choosing a profile](#choosing-a-thanos-profile) and record the inventory it was based on. `thanos-small` and `thanos-large` are deltas from the chart defaults, which target medium.
 - [ ] `[operator]` Re-measure head series against the envelope after install, and after any change in collection count. See [Measure to validate](#thanos-measure-to-validate).
-- [ ] `[chart]` Resource requests on every component, per [Per-size resources](#thanos-per-size-resources). Thanos sizes off different axes than Loki — active series for Receive memory, samples/sec for its CPU and disk, block volume for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [x] `[chart]` Resource requests on every enabled component, per [Per-size resources](#thanos-per-size-resources). Thanos sizes off different axes than Loki — active series for Receive memory, samples/sec for its CPU and disk, block volume for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [x] `[chart]` No memory limit on Receive, so an OOM-kill cannot drop the un-uploaded block window. Requests are set for scheduling; alert on usage instead.
 - [ ] `[operator]` Autoscaling on Query does not remove the need for requests: without them the HPA has no CPU target to measure against, so it never scales.
-- [ ] `[chart]` **VerticalPodAutoscaler disabled on Receive and Compactor.** The subchart defaults it *on* for exactly those two, in `updateMode: Auto`, so where the VPA CRD is present it rewrites the requests a profile sets and evicts pods to apply them — on a PVC-backed StatefulSet holding up to 24h of un-uploaded blocks. The template is CRD-gated, so leaving it on makes the stack behave differently on clusters that have VPA installed than on those that do not, with no signal either way.
+- [x] `[chart]` **VerticalPodAutoscaler disabled on Receive and Compactor.** The subchart defaults it *on* for exactly those two, in `updateMode: Auto`, so where the VPA CRD is present it rewrites the requests a profile sets and evicts pods to apply them — on a PVC-backed StatefulSet holding up to 24h of un-uploaded blocks. The template is CRD-gated, so leaving it on would make the stack behave differently on clusters that have VPA installed than on those that do not, with no signal either way. A unit test asserts this with the CRD declared present, so it fails on the value rather than passing on the gate.
+- [x] `[chart]` **Every profile restates `receive.extraArgs` in full**, so the replication factor survives. Helm overwrites lists, and a profile that adds a flag without restating `--receive.replication-factor=3` silently drops to Thanos's default of 1. A unit test pins this at all three sizes.
 - [ ] `[operator]` If you re-enable VPA deliberately, use `updateMode: "Off"` for recommendations only, and know that its numbers will disagree with the profile by design.
 
 #### 6. Meta-monitoring
