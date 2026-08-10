@@ -308,3 +308,98 @@ tests:
       - equal:
           path: spec.maxReplicas
           value: 8
+
+  # --- Topology spread: what makes RF 3 mean what the quorum table says -------
+  # Without zone spread the scheduler may put all three replicas in one zone, and
+  # RF 3 buys nothing against the failure it exists for — a zone loss takes every
+  # copy, and since write quorum is 2 it takes writes with it.
+  - it: spreads Receive hard across zones and soft across hosts
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      # Hard, so an un-spread pod goes Pending — which is the signal an
+      # autoscaler needs to add a node in the deficient zone. A soft rule cannot
+      # summon capacity, it just places the pod wrongly and stays quiet.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: topology.kubernetes.io/zone
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: DoNotSchedule
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].minDomains
+          value: 2
+      # Honor node taints, so a node still carrying a startup taint is not
+      # counted as an available domain.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].nodeTaintsPolicy
+          value: Honor
+      # Host spread stays soft: two pods sharing a node is a smaller problem
+      # than a pod not running.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[1].topologyKey
+          value: kubernetes.io/hostname
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[1].whenUnsatisfiable
+          value: ScheduleAnyway
+
+  # The selector must name the component being spread. A copy-paste that leaves
+  # another component's label here renders fine and silently spreads against the
+  # wrong pods, which is the failure mode worth pinning.
+  - it: selects its own pods, since the subchart cannot template the release name
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
+          value: receive
+      # StatefulSet label. Deployments carry `pod-template-hash` instead, and
+      # using the wrong one matches nothing and disables the same-revision guard.
+      - contains:
+          path: spec.template.spec.topologySpreadConstraints[0].matchLabelKeys
+          content: controller-revision-hash
+
+  # Store Gateway is soft where Receive is hard, and the difference is the point:
+  # no write quorum depends on it, and it is the one Thanos component still
+  # holding a PVC — a hard zone rule against a zonal volume bound with
+  # `Immediate` leaves the pod Pending forever rather than for as long as it takes
+  # to add a node.
+  - it: spreads Store Gateway softly, because a PVC cannot follow a hard rule
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
+          value: storegateway
+
+  - it: spreads Query softly using the Deployment revision label
+    template: ../charts/thanos/templates/query/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+      - contains:
+          path: spec.template.spec.topologySpreadConstraints[0].matchLabelKeys
+          content: pod-template-hash
+
+  # A singleton has nothing to spread against, so a constraint here would be
+  # noise that only complicates the skew math during its own replacement.
+  - it: leaves the Compactor unspread, being a singleton
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  # Six replicas across three zones divides evenly at maxSkew 1; the hard rule
+  # must survive the large profile rather than being replaced by its overrides.
+  - it: keeps the hard zone rule at large, where six replicas span three zones
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 6
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: DoNotSchedule

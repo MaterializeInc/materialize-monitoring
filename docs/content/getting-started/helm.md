@@ -164,6 +164,8 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-postgres.values.yaml` | Grafana state in Postgres rather than SQLite — the production shape |
 | `profiles/grafana-pvc.values.yaml` | Grafana state on a PersistentVolume — durable, but still one replica. For a Helm-only install with no database |
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
+| `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
+| `profiles/storage-class.values.yaml` | one StorageClass, aimed at the three workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
@@ -171,6 +173,27 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 ### Disabling a Component
 
 If you want further control of the managed components, you can selectively disable components in the `materialize-monitoring` Helm chart by setting the `enabled` field for that component to `false` in your `YOUR_VALUES.yaml` file or via `--set` in your `helm install`/`helm upgrade` command.
+
+#### Scheduling: where each subchart wants it {#scheduling-profile}
+
+The subcharts disagree about where scheduling settings go, which is the whole reason this is a profile rather than three `--set` flags.
+`thanos.global` covers everything Thanos runs; `loki.defaults` covers everything Loki runs *except* three components that render from their own templates; Alloy puts it under `controller`; the rest take it at the top level.
+A selector written to the wrong one of those renders perfectly and does nothing.
+
+**Edit the four anchors at the top of the file and nothing else** — every fan-out site aliases them.
+The two class names match the chart's defaults, so they are a no-op until you change them; aliasing both the created classes and all eleven references off one anchor is what makes renaming them a two-line edit that cannot half-apply.
+
+> [!WARNING]
+>   **A nodeSelector and a toleration are not two spellings of the same idea, and per-node collectors need them treated differently.**
+>
+>   A **nodeSelector narrows** where a pod may run. On a DaemonSet whose job is to observe every node, that is a silent blind spot rather than a placement preference — an `alloy-agent` constrained to a workload pool simply stops collecting logs from everywhere else, and no dashboard shows a hole where the nodes should be. **Tolerations widen** placement, which is exactly what a DaemonSet wants so it can reach tainted, spot, and system pools.
+>
+>   So `alloy-agent` receives tolerations and never a selector. `node-exporter` receives neither: its chart default already tolerates *every* `NoSchedule` taint, and a toleration list would **replace** that rather than extend it, because Helm merges maps but overwrites lists.
+
+`metrics-server` takes a selector and tolerations but deliberately no priority class — it stays on the upstream `system-cluster-critical`, because it backs the metrics API that HPAs and the Materialize Console read, which makes it cluster plumbing rather than monitoring.
+
+**Terraform users need neither file.** The module's `node_selector`, `tolerations`, and `storage_class` variables carry the same maps and take the values directly. The two copies are kept honest by `make terraform-render`, which plans each example, renders the chart against the values it composed, and asserts that every pod template carries the selector and every `volumeClaimTemplate` carries the class — so a subchart that renames a key fails in this repository rather than in an apply.
+
 
 ## Initial Installation
 

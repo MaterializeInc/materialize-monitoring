@@ -206,9 +206,13 @@ The rule set ships; the routing that turns a firing rule into a page does not.
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | ✅ |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | ⬜ |
+| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ |
 
 Alertmanager is bundled and the rules exist, but nothing routes them anywhere.
 Until that lands the alerting story is "we ship rules", which is half a feature.
+
+The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and are best worked together.
+Adoption is the higher-value half — until routing exists nobody is paged, which is why hardening is the lower priority of the pair despite Alertmanager being a single replica holding the only copy of its silences.
 
 ### Profiles
 

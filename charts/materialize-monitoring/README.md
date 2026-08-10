@@ -3102,8 +3102,22 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section.
+Set explicitly because the canary reaches neither of the two keys that
+cover the rest of Loki: it renders from its own template rather than
+`_pod.tpl`, so `loki.global.priorityClassName` does not reach it, and
+`loki.defaults` does not either. Left unset it runs at priority 0 —
+*below* ordinary workloads — so the first node under pressure evicts the
+end-to-end write→read check, which is exactly the signal you want during
+the incident that caused the pressure.
 </td>
     </tr>
   </tbody>
@@ -3188,7 +3202,35 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
       "cpu": "500m",
       "memory": "1Gi"
     }
-  }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.
@@ -3206,6 +3248,49 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
 }</pre>
 </td>
       <td class="helm-value-desc">Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.query<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Query: soft on both axes.
+Stateless and autoscaled, so an unbalanced placement costs query capacity
+rather than correctness — soft is sufficient, and it keeps an HPA scale-up
+from stalling on a hard rule when the newest zone has no room yet.
+
+`pod-template-hash`, not `controller-revision-hash`: Query is a Deployment,
+and that is the label its ReplicaSets carry. Using the StatefulSet label
+here would match nothing and quietly disable the same-revision guard.
 </td>
     </tr>
     <tr>
@@ -3323,6 +3408,75 @@ destroys exactly the un-uploaded window this sizing exists to protect.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "receive"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "minDomains": 2,
+    "nodeTaintsPolicy": "Honor",
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "DoNotSchedule"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "receive"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Receive: hard across zones, soft across hosts.
+This is the constraint that makes `--receive.replication-factor=3` mean
+what the quorum table says. Without it the scheduler is free to place all
+three replicas in one zone, and RF 3 buys nothing against the failure it
+exists for — losing a zone takes every copy and, since write quorum is 2,
+takes writes with it.
+
+**Hard** (`DoNotSchedule`) on zones, deliberately. A pod that cannot
+satisfy it goes Pending, which is the signal Karpenter or the
+cluster-autoscaler uses to add a node in the deficient zone — a soft rule
+cannot summon capacity that way, it just quietly places the pod wrongly.
+Host spread stays soft so pods still schedule when nodes are momentarily
+scarce; two pods sharing a node is a smaller problem than a pod not
+running.
+
+**This became viable when Receive stopped using a PVC** (see
+`persistence` below). A zonal volume cannot be attached from another zone,
+so a hard zone rule and an AZ-pinned pod pull in opposite directions: the
+rule says "go to the empty zone", the volume says "you may only run in
+zone A", and the pod goes Pending forever rather than for as long as it
+takes to add a node. On `emptyDir` there is nothing holding it back.
+
+Matched on `app.kubernetes.io/component` alone rather than the full
+selector, because the subchart renders this through `toYaml` rather than
+`tpl` — a `{{ include ... }}` here would land in the manifest literally, so
+the release name is unavailable. Spread is namespace-scoped and this chart
+assumes one instance of each backend per namespace, so the component label
+is unambiguous. See the Namespace layout section.
+
+Note this cannot move to `thanos.global.topologySpreadConstraints`: each
+constraint carries its own `labelSelector`, and a global one would make
+every Thanos component count Receive's pods when computing its own skew.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.receive<wbr>.persistence</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -3372,7 +3526,35 @@ window stays at two copies instead of three until the next block ships.
       "cpu": "500m",
       "memory": "3Gi"
     }
-  }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "storegateway"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "storegateway"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Store Gateway configuration. Store Gateway provides historical block querying.
@@ -3431,6 +3613,57 @@ There is a floor here that is easy to trip over. Thanos defaults
 passes neither, so a stock Store Gateway wants ~2.5Gi before it serves a
 single query. A request below that is an OOM, not a small install — the
 `thanos-small` profile shrinks the pools through `extraArgs` instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "storegateway"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "storegateway"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Store Gateway: soft on both axes.
+**Soft** (`ScheduleAnyway`) where Receive is hard, and the difference is
+the point rather than an inconsistency. Two things make it the right trade
+here:
+
+1. **Nothing depends on quorum.** Store Gateway is a read-only replica set
+   over object storage, so an unbalanced placement costs read capacity
+   during a zone loss rather than correctness. Receive's hard rule protects
+   write quorum; there is no equivalent to protect here.
+2. **It is the one Thanos component that still keeps a PVC**, and a hard
+   zone rule against a zonal volume can deadlock rather than merely wait.
+   With `volumeBindingMode: WaitForFirstConsumer` — the default for the
+   zonal CSI classes and what you want — the volume follows the pod and the
+   two agree. With `Immediate`, the PVC's zone is chosen *before* scheduling
+   and a hard rule pointing elsewhere leaves the pod Pending forever. Soft
+   degrades instead of deadlocking on a StorageClass we do not control.
 </td>
     </tr>
     <tr>
@@ -3567,7 +3800,35 @@ scheduler rather than a surprise to the kubelet.
       "cpu": "250m",
       "memory": "512Mi"
     }
-  }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query-frontend"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query-frontend"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.
@@ -3590,6 +3851,42 @@ validator warns when the two disagree.
 }</pre>
 </td>
       <td class="helm-value-desc">Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.queryFrontend<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query-frontend"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query-frontend"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Query Frontend: soft on both axes, same reasoning as Query. Inert until `enabled` is true.
 </td>
     </tr>
     <tr>

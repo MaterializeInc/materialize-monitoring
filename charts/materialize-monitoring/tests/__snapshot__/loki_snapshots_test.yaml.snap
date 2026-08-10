@@ -1584,6 +1584,7 @@ medium (base) workloads:
                 readOnlyRootFilesystem: true
                 seccompProfile:
                   type: RuntimeDefault
+          priorityClassName: monitoring-scalable
           securityContext:
             fsGroup: 10001
             fsGroupChangePolicy: OnRootMismatch

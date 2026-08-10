@@ -23,6 +23,9 @@ EXAMPLES_DIR="${REPO_ROOT}/terraform/modules/materialize-monitoring/examples"
 
 TERRAFORM="${TERRAFORM:-terraform}"
 HELM="${HELM:-helm}"
+# Matches the Makefile's PY_RUN. Used only by the scheduling assertion, which
+# needs a YAML parser that jq cannot provide.
+PY_RUN="${PY_RUN:-uv run}"
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -106,6 +109,23 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
             continue
         fi
         echo "    storageClass reached all ${got} volumeClaimTemplates"
+    fi
+
+    # Scheduling has the same failure mode as the storage class — a selector
+    # written to a path no subchart reads renders fine and does nothing — plus a
+    # wrinkle that makes counting insufficient: two DaemonSets are *supposed* to
+    # lack the node selector, because narrowing a per-node collector to a
+    # workload pool is a silent blind spot rather than a placement choice. So
+    # assert the exact set rather than a total, which catches a workload that
+    # missed the fan-out *and* a DaemonSet that wrongly picked it up.
+    #
+    # Needs YAML, which jq cannot read; `uv run` matches the Makefile's PY_RUN.
+    if ! ${PY_RUN} python "${REPO_ROOT}/bin/check_scheduling_fanout.py" \
+        "${rendered}" "${WORK_DIR}/${example}"-[0-9]*.yaml; then
+        echo "  !! ${example}: scheduling fan-out is incomplete." >&2
+        echo "     See scheduling.tf and profiles/scheduling.values.yaml." >&2
+        status=1
+        continue
     fi
 
     # node-exporter's toggle writes the chart's circuit breaker rather than a

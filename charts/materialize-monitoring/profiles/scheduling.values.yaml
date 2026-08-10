@@ -1,0 +1,179 @@
+# Scheduling profile: node selector, tolerations, and priority-class names.
+#
+# The chart surfaces scheduling per subchart, and the subcharts disagree about
+# where it goes — `thanos.global` covers everything Thanos runs, `loki.defaults`
+# covers everything Loki runs *except* its two memcached StatefulSets, Alloy puts
+# it under `controller`, and the rest take it at the top level. This profile is
+# that map, written out once as data.
+#
+# **Edit the four anchors below and nothing else.** Every fan-out site aliases
+# them, so a change lands everywhere it belongs and nowhere it does not. The
+# values shipped here are placeholders except for the two class names, which
+# match the chart's own defaults and so are a no-op until you change them.
+#
+# Compose after the base values:
+#   -f profiles/scheduling.values.yaml
+#
+# Terraform users do not need this file — the module's `node_selector` and
+# `tolerations` variables carry the same map (`terraform/modules/
+# materialize-monitoring/scheduling.tf`) and take the values directly. The two
+# maps are kept honest against each other by `make terraform-render`, which
+# asserts that every pod template a real plan produces actually carries the
+# selector.
+#
+# ---------------------------------------------------------------------------
+# The DaemonSet asymmetry is the part worth being deliberate about
+# ---------------------------------------------------------------------------
+# `nodeSelector` and `tolerations` are not two spellings of the same idea, and
+# per-node collectors need them treated differently:
+#
+#   * A **nodeSelector narrows** where a pod may run. On a DaemonSet whose job is
+#     to observe every node, that is a silent blind spot rather than a placement
+#     preference — `alloy-agent` constrained to a workload pool simply stops
+#     collecting logs from everywhere else, and no dashboard shows a hole.
+#   * **Tolerations widen** where a pod may run. A DaemonSet wants them, so it
+#     can reach tainted, spot, and system pools.
+#
+# So `alloy-agent` receives tolerations and never a nodeSelector.
+#
+# `node-exporter` receives neither, which is the same reasoning one step further.
+# Its chart default already tolerates *every* `NoSchedule` taint
+# (`{effect: NoSchedule, operator: Exists}`), so it reaches everywhere a
+# node-metrics DaemonSet should. Writing a toleration list into it would
+# **replace** that default rather than extend it — Helm merges maps but
+# overwrites lists — silently narrowing collection to whichever tainted nodes you
+# happened to name. If you genuinely need to change it, set
+# `node-exporter.tolerations` yourself and know you are replacing the default.
+#
+# `metrics-server` gets a selector and tolerations but deliberately **no**
+# priority class: it stays on the upstream `system-cluster-critical`, because it
+# backs the metrics API that HPAs and the Materialize Console read. That makes it
+# cluster plumbing rather than monitoring.
+
+# Inert holder for the anchors. The umbrella chart ships no `values.schema.json`,
+# so an unrecognised top-level key is ignored rather than rejected — this exists
+# only to give the anchors a home that reads top-to-bottom.
+_scheduling:
+  # -- Where the centralized monitoring workloads run.
+  nodeSelector: &nodeSelector
+    workload: monitoring
+
+  # -- Taints the monitoring workloads may tolerate.
+  tolerations: &tolerations
+    - key: workload
+      operator: Equal
+      value: monitoring
+      effect: NoSchedule
+
+  # -- Priority class names. These match the chart defaults, so they change
+  # nothing until you rename them — and renaming them here is the point. The
+  # classes are cluster-scoped, so two releases of this chart in one cluster will
+  # fight over the objects unless one of them renames both. Doing that by hand
+  # means finding eleven `priorityClassName` keys across nine subcharts and
+  # matching them to the two `priorityClasses.*.name` values; aliasing both sides
+  # off one anchor makes it a two-line edit that cannot half-apply.
+  criticalClass: &criticalClass monitoring-critical
+  scalableClass: &scalableClass monitoring-scalable
+
+# The classes the chart creates. Aliased from the same anchors as every reference
+# below, so a rename cannot leave a `priorityClassName` pointing at a class that
+# does not exist — which the API server *rejects* rather than degrades, with the
+# only evidence an admission error on a ReplicaSet nobody is watching.
+priorityClasses:
+  critical:
+    name: *criticalClass
+  scalable:
+    name: *scalableClass
+
+# ---------------------------------------------------------------------------
+# Collection tier
+# ---------------------------------------------------------------------------
+alloy-agent:
+  controller:
+    # No nodeSelector: per-node DaemonSet. See the header.
+    tolerations: *tolerations
+    priorityClassName: *criticalClass
+
+alloy-gateway:
+  controller:
+    nodeSelector: *nodeSelector
+    tolerations: *tolerations
+    priorityClassName: *criticalClass
+
+node-exporter:
+  # Neither a selector nor tolerations — see the header. The priority class is
+  # still worth carrying so a rename reaches it.
+  priorityClassName: *criticalClass
+
+# ---------------------------------------------------------------------------
+# Backends
+# ---------------------------------------------------------------------------
+loki:
+  # `defaults` is resolved by Loki's `_pod.tpl` through
+  # `coalesce $component.nodeSelector .Values.defaults.nodeSelector ...`, so this
+  # one key reaches all 23 of its workloads. A per-component value still wins,
+  # which is what makes it a default rather than an override.
+  defaults:
+    nodeSelector: *nodeSelector
+    tolerations: *tolerations
+
+  # `global` for the priority class, because that is the key Loki reads for it —
+  # a different key from the scheduling pair above, not a typo.
+  global:
+    priorityClassName: *scalableClass
+
+  # Three components render from their own templates rather than `_pod.tpl`, so
+  # `defaults` does not reach them and each needs naming. These are the
+  # exceptions most likely to be missed when a component is added — the canary
+  # was in fact missing a priority class entirely until this profile was written.
+  lokiCanary:
+    # A Deployment here, not the upstream default DaemonSet (`lokiCanary.kind`
+    # in the base values), so it takes a nodeSelector like any other central
+    # workload rather than falling under the DaemonSet rule in the header.
+    nodeSelector: *nodeSelector
+    tolerations: *tolerations
+    priorityClassName: *scalableClass
+  chunksCache:
+    nodeSelector: *nodeSelector
+    tolerations: *tolerations
+    priorityClassName: *scalableClass
+  resultsCache:
+    nodeSelector: *nodeSelector
+    tolerations: *tolerations
+    priorityClassName: *scalableClass
+
+thanos:
+  # A real `global`: one block covers Query, Receive, Store Gateway, Compactor,
+  # Query Frontend, and Ruler.
+  global:
+    nodeSelector: *nodeSelector
+    tolerations: *tolerations
+    priorityClassName: *scalableClass
+
+alertmanager:
+  nodeSelector: *nodeSelector
+  tolerations: *tolerations
+  priorityClassName: *scalableClass
+
+# ---------------------------------------------------------------------------
+# Dashboards and cluster metrics
+# ---------------------------------------------------------------------------
+grafana:
+  nodeSelector: *nodeSelector
+  tolerations: *tolerations
+  priorityClassName: *scalableClass
+
+grafana-operator:
+  nodeSelector: *nodeSelector
+  tolerations: *tolerations
+  priorityClassName: *scalableClass
+
+kube-state-metrics:
+  nodeSelector: *nodeSelector
+  tolerations: *tolerations
+  priorityClassName: *scalableClass
+
+metrics-server:
+  nodeSelector: *nodeSelector
+  tolerations: *tolerations
+  # No priorityClassName — stays on `system-cluster-critical`. See the header.

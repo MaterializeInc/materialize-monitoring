@@ -165,3 +165,35 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.limits.memory
           value: 384Mi
+
+  # --- kind has no zones, so the hard spread has to go ----------------------
+  # `minDomains: 2` cannot be met on a cluster that labels no node with
+  # `topology.kubernetes.io/zone`, and a DoNotSchedule constraint whose
+  # topologyKey no node carries leaves the pods unschedulable rather than merely
+  # unbalanced. Without these two overrides the E2E comes up with its ring
+  # members Pending forever, and the failure reads as a chart bug.
+  - it: drops the hard zone spread from Thanos Receive
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: drops the hard zone spread from Loki's ingesters too
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  # Control: the hard rule really is there without this profile, so the two
+  # assertions above are removing something rather than asserting an absence
+  # that was always true.
+  - it: confirms the hard rule exists without the kind profile
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: DoNotSchedule

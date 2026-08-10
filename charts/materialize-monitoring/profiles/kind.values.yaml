@@ -12,9 +12,33 @@
 # `kind-tier1`, or after `thanos-small`, and it never becomes a second place
 # where features get turned on and off.
 #
-# There is exactly **one** structural exception, called out at the line itself:
-# `thanos.storegateway.persistence.enabled: false`, because CI would rather not
-# provision a volume for a cache it can rebuild instantly from a tiny bucket.
+# It carries a small number of **structural exceptions**, each called out at the
+# line itself, and each present because a single-node cluster cannot satisfy
+# something the production defaults require:
+#
+#   * `thanos.storegateway.persistence.enabled: false` — CI would rather not
+#     provision a volume for a cache it rebuilds instantly from a tiny bucket.
+#   * `topologySpreadConstraints: []` on Thanos Receive and Loki's ingesters —
+#     see below. Without this the E2E does not start at all.
+#
+# They are exceptions, not a precedent: no `tags`, no `enabled` flags, and no
+# feature toggles belong here.
+#
+# ---------------------------------------------------------------------------
+# Why the zone spread has to go
+# ---------------------------------------------------------------------------
+# Receive and Loki's ingesters both carry a **hard** (`DoNotSchedule`) zone
+# spread with `minDomains: 2`, which is what makes their replication factors mean
+# something in a real cluster. A `kind` cluster labels no node with
+# `topology.kubernetes.io/zone`, so there are zero domains to spread across:
+# `minDomains: 2` cannot be met, and a `DoNotSchedule` constraint whose
+# topologyKey no node carries leaves the pods unschedulable rather than merely
+# unbalanced. The stack would come up with its two ring members Pending forever
+# and the failure would read as a chart bug rather than a missing node label.
+#
+# Emptied rather than softened, deliberately. A soft rule on zero domains is
+# inert anyway, and an empty list says "this cluster has no zones" rather than
+# implying a preference that cannot be expressed.
 #
 # Compose it last, so its sizes win:
 #   -f profiles/loki-test.values.yaml \
@@ -76,6 +100,10 @@ thanos:
         ephemeral-storage: 1Gi
       limits:
         ephemeral-storage: 2Gi
+    # -- Structural override: no zones exist on a kind node, and a hard rule
+    # against a topologyKey no node carries leaves these Pending. See the header.
+    topologySpreadConstraints: []
+
     # NOTE: `extraArgs` is deliberately NOT set here. The base values carry
     # `--receive.replication-factor=3` in that list, and Helm overwrites lists
     # rather than merging them — setting it here would silently drop the factor
@@ -150,6 +178,12 @@ loki:
         memory: 64Mi
 
   ingester:
+    # -- Structural override, for the same reason as Thanos Receive above: the
+    # ingesters carry a hard zone spread with `minDomains: 2` and a kind cluster
+    # has no zones. This one predates the Thanos spread — it would bite any
+    # composition running distributed Loki on kind.
+    topologySpreadConstraints: []
+
     # Ephemeral (node-local emptyDir), so there is no volume to shrink.
     resources:
       requests:

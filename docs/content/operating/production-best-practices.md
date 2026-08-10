@@ -101,6 +101,7 @@ Both sit well below `system-cluster-critical` (2000000000) and `system-node-crit
 - [x] `[chart]` Both classes created, and referenced by name from every subchart that accepts a `priorityClassName`.
 - [ ] `[operator]` **PriorityClasses are cluster-scoped.** Two releases of this chart in one cluster will fight over these objects. Set `priorityClasses.create: false` on all but one, or rename them per release with `priorityClasses.critical.name` / `priorityClasses.scalable.name`.
 - [ ] `[operator]` **If you rename or disable them, update the `priorityClassName` values in the subchart blocks to match.** A `priorityClassName` naming a class that does not exist does not degrade — the API server *rejects* the pod, and the only evidence is an admission error on a ReplicaSet nobody is watching. A render-time check warns when it can tell that has happened.
+- [x] `[chart]` The `scheduling` profile carries the whole fan-out — node selector, tolerations, and both class names — with every site aliased off four anchors, so a rename is a two-line edit rather than eleven `priorityClassName` keys across nine subcharts that can half-apply. See [Getting Started > Helm](../../getting-started/helm/#scheduling-profile).
 - [ ] `[operator]` If your platform already defines a priority scheme, point the subchart values at your own classes instead. `metrics-server` is left on the upstream `system-cluster-critical` deliberately: it backs the metrics API that HPAs and the Materialize Console read, so it is cluster plumbing rather than monitoring.
 
 ## Collection (Alloy)
@@ -348,7 +349,7 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 - [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3; set `minDomains` to the zone count your node pool can launch in. With 2 zones, know an AZ loss can break write quorum until the ring recovers.
 - [ ] `[operator]` If you bring nodes up **tainted** until DaemonSets are healthy, the spread already sets `nodeTaintsPolicy: Honor` (tainted nodes stay out of the skew math) — model the taint as a Karpenter `startupTaint` so it doesn't over-provision. Taints only gate placement.
 - [x] `[chart]` PodDisruptionBudget on ingesters (`maxUnavailable: 1`), with a render-time warning if it or the rollout `maxUnavailable` is set > 1.
-- [x] `[chart]` `priorityClassName` on every Loki pod (`monitoring-scalable`), so ingesters and the compactor outrank ordinary workloads under node pressure. `loki.global.priorityClassName` covers everything that renders through the chart's `_pod.tpl`; the two memcached StatefulSets read only their own component key and are set separately. See [Scheduling priority](#scheduling-priority).
+- [x] `[chart]` `priorityClassName` on every Loki pod (`monitoring-scalable`), so ingesters and the compactor outrank ordinary workloads under node pressure. `loki.global.priorityClassName` covers everything that renders through the chart's `_pod.tpl`; **three components read only their own key and are set separately** — the two memcached StatefulSets and the canary. The canary is the one that bites: left unset it runs at priority 0, *below* ordinary workloads, so the first node under pressure evicts the end-to-end write→read check, which is exactly the signal you want during the incident that caused the pressure. See [Scheduling priority](#scheduling-priority).
 
 #### 4. Ingester durability & rollouts
 
@@ -440,9 +441,9 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 For the architecture these items configure, see [Metrics](../../metrics/).
 
-Thanos is **close to Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets and autoscaling are in place.
-**Topology spread across zones is the notable remaining gap** — three Receive replicas can still land in one zone, which is exactly where replication factor 3 stops buying what you think it does.
-Treat the unchecked `[chart]` items as the current work list rather than as guidance you are expected to satisfy by hand.
+Thanos is **on par with Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets, autoscaling, and zone-aware topology spread are all in place.
+What remains unchecked below is mostly `[operator]` and `[consumer]` work — decisions and cloud resources the chart cannot make for you.
+Treat any unchecked `[chart]` item as the current work list rather than as guidance you are expected to satisfy by hand.
 
 ### Receive: replication is the availability lever, not `mode`
 
@@ -575,6 +576,37 @@ Starting points — `replicas × (cpu request / memory request)`; tune from real
 - **Store Gateway has a memory floor the requests must respect.** Thanos defaults `--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart passes neither, so a stock Store Gateway wants ~2.5Gi before it serves anything. The **S** profile shrinks those pools through `extraArgs` rather than only lowering the request — a 1Gi request against 2.25GB of pools is an OOM, not a small install.
 - **The Compactor is vertical-only.** It must stay `replicaCount: 1`, because concurrent compactors against one block set corrupt data. Its PVC is scratch space for the block group under compaction, which is why it grows faster with size than the other two volumes.
 
+#### Spreading across zones {#thanos-topology-spread}
+
+Replication factor 3 is a claim about surviving a lost availability zone, and it is only true if the three replicas are *in* three zones.
+Nothing makes that happen by default: a scheduler with no constraint is free to pack all three onto whatever nodes are cheapest, at which point RF 3 costs three times the memory and protects against nothing but a single pod restart.
+
+| Component | Zones | Hosts | Why |
+|---|---|---|---|
+| Receive | **hard** (`DoNotSchedule`) | soft | Write quorum (2 of 3) depends on it |
+| Store Gateway | soft | soft | Read capacity only, and PVC-backed |
+| Query, Query Frontend | soft | soft | Stateless and autoscaled |
+| Compactor | none | none | Singleton — nothing to spread against |
+
+**Hard on Receive is the load-bearing choice**, and it is hard for a reason that is easy to miss: a pod that cannot satisfy the constraint goes `Pending`, and *that* is the signal Karpenter or the cluster-autoscaler uses to provision a node in the deficient zone.
+A soft rule cannot summon capacity — it places the pod in the wrong zone and stays quiet about it, which is the failure this exists to prevent.
+
+Two settings on that constraint matter as much as the constraint itself.
+`nodeTaintsPolicy: Honor` keeps a node still carrying a startup taint from counting as an available domain, so the autoscaler is not told a zone is covered when nothing can run there yet.
+`matchLabelKeys: [controller-revision-hash]` counts only same-revision pods, so a rolling update does not deadlock its own skew math against the pods it is replacing — and note the label differs by workload kind: StatefulSets carry `controller-revision-hash`, Deployments carry `pod-template-hash`, and using the wrong one matches nothing and silently disables the guard.
+
+> [!INFO]
+>   **This became possible when Receive stopped using a PersistentVolume.**
+>   A zonal volume cannot be attached from another zone, so a hard zone rule and an AZ-pinned pod pull against each other: the rule says "go to the empty zone", the volume says "you may only run where I am", and the pod stays `Pending` permanently rather than for as long as it takes to add a node. On `emptyDir` there is nothing holding it back, which is why [the storage decision](#thanos-ephemeral-storage) and this one are the same decision viewed twice.
+>
+>   It is also why the **Store Gateway** — the one Thanos component that still keeps a volume — is soft rather than hard. With `volumeBindingMode: WaitForFirstConsumer` (the default for zonal CSI classes, and what you want) the volume follows the pod and the two agree; with `Immediate` the PVC's zone is chosen *before* scheduling and a hard rule pointing elsewhere deadlocks. Soft degrades on a StorageClass this chart does not control.
+
+Unlike Loki, nothing had to be undone to make room for this: the Thanos subchart ships no default pod anti-affinity, so there was no hard per-host rule to null out first.
+
+**These constraints cannot move to `thanos.global.topologySpreadConstraints`**, which is where a reader would look for them.
+Each one carries its own `labelSelector`, and a global constraint would make every Thanos component count Receive's pods when computing its own skew.
+The selector matches on `app.kubernetes.io/component` alone rather than the full label set, because the subchart renders these through `toYaml` rather than `tpl` — a `{{ include ... }}` would land in the manifest literally, so the release name is unavailable. Spread is namespace-scoped and this chart assumes [one instance of each backend per namespace](#namespace-layout), so the component label is unambiguous.
+
 #### Storage: ephemeral by default {#thanos-ephemeral-storage}
 
 Of the three Thanos components with local disk, **only the Store Gateway keeps a PersistentVolume.**
@@ -689,7 +721,9 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 - [ ] `[operator]` Set an **odd** `--receive.replication-factor` (3) via `receive.extraArgs`; the chart cannot set it in standalone mode. A render-time check warns at factor 1, warns harder at 2, and errors when the factor exceeds `replicaCount`.
 - [ ] `[operator]` Keep `replicaCount >= replicationFactor`. At `replicaCount == replicationFactor` every pod holds every series — good availability, no horizontal capacity.
 - [x] `[chart]` PodDisruptionBudgets on **every** component (`thanos.global.pdb`, `maxUnavailable: 1`) — matching the Loki ingester convention. `maxUnavailable` rather than `minAvailable` deliberately: it scales with the replica count, and on the single-replica Compactor `minAvailable: 1` would permit no eviction at all and hang node drains. A validator errors when the Receive budget exceeds what write quorum tolerates, and warns on `minAvailable` for the singleton.
-- [ ] `[chart]` `topologySpreadConstraints` across zones for Receive, so RF 3 actually survives an AZ loss rather than landing three copies in one zone. Now that Receive is `emptyDir`-backed a spread-aware scheduler can actually act on this — an un-spread pod can be placed in a surviving zone rather than waiting on a volume that cannot follow it.
+- [x] `[chart]` `topologySpreadConstraints` across zones for Receive — **hard** (`DoNotSchedule`, `minDomains: 2`, `nodeTaintsPolicy: Honor`) so RF 3 actually survives an AZ loss rather than landing three copies in one zone; **soft across hosts** so pods still schedule when nodes are momentarily scarce. Matching the Loki ingester convention. Store Gateway, Query, and Query Frontend get **soft** spread on both axes; the Compactor gets none, being a singleton. See [Spreading across zones](#thanos-topology-spread).
+- [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3, and raise `minDomains` to the zone count your node pool can actually launch in. Setting it above that leaves pods Pending forever. With 2 zones, know that an AZ loss can break write quorum (2 of 3) until the ring recovers.
+- [ ] `[operator]` On a cluster with **no zone labels at all** — `kind`, most bare-metal — the hard rule leaves Receive unschedulable rather than unbalanced, because a `DoNotSchedule` constraint whose `topologyKey` no node carries has no domain to place into. The `kind` profile empties it for exactly this reason; do the same on any single-zone cluster.
 - [x] `[chart]` `priorityClassName` on every Thanos pod (`monitoring-scalable`, via `thanos.global`), so Receive and the Compactor outrank ordinary workloads under node pressure. See [Scheduling priority](#scheduling-priority).
 
 #### 2. Object storage & credentials
