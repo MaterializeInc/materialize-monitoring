@@ -3415,7 +3415,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.1.1"
+  "tag": "13.1.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
