@@ -1,0 +1,217 @@
+# Sizing profile: kind / CI
+#
+# Shrinks every workload to fit one `kind` node on a CI runner. The chart
+# defaults target a medium production install and request ~33Gi of memory and
+# ~9 CPU in total, which no standard runner will schedule — pods sit Pending and
+# the failure reads like a chart bug rather than a capacity one.
+#
+# **This profile sets resource sizes ONLY**: container requests/limits, volume
+# sizes, and cache allocations. It toggles no features, enables and disables
+# nothing, and — see below — sets no replica counts. That is what makes it
+# composable: it layers cleanly over the bare defaults, over `loki-test`, over
+# `kind-tier1`, or after `thanos-small`, and it never becomes a second place
+# where features get turned on and off.
+#
+# Compose it last, so its sizes win:
+#   -f profiles/loki-test.values.yaml \
+#   -f profiles/kind-tier1.values.yaml \
+#   -f profiles/kind.values.yaml
+#
+# Values for components a given composition does not render are simply inert.
+# Both the Loki SingleBinary size and the Loki microservice sizes are present so
+# that either shape fits; only one renders at a time.
+#
+# NOT FOR PRODUCTION. These requests are far below what any real series or log
+# volume needs. They are sized for a cluster that lives for one CI job.
+#
+# ---------------------------------------------------------------------------
+# Why there are no replica counts in here
+# ---------------------------------------------------------------------------
+# Reducing replicas looks like sizing and is not. Two reasons, both load-bearing:
+#
+#  1. `loki-test` **disables** Loki's distributed components by setting
+#     `replicas: 0` on them. Any replica count set here would silently switch
+#     them back on, and Loki then refuses to render at all — "more than zero
+#     replicas configured for both the monolithic and distributed targets".
+#     A sizing overlay that breaks the test profile it is meant to compose with
+#     is not composable.
+#  2. Some replica counts are correctness floors rather than capacity choices.
+#     Loki's ingesters and Thanos Receive both sit at the replication-factor
+#     floor of 3, and the ring and write-quorum behaviour they provide is a
+#     large part of what an E2E run exists to prove. Three tiny pods, not one
+#     big one.
+#
+# So this profile shrinks each pod and leaves the count of them to whoever owns
+# the topology. If you want fewer Thanos replicas in CI, compose `thanos-small`
+# before this.
+#
+# NOTE: no `tags:` block, deliberately. Every other profile here declares the
+# component it sizes, because each is about a single backend. This one spans all
+# of them, so declaring tags would force-enable workloads the composition did
+# not ask for — the same feature management it is supposed to stay out of.
+
+# ---------------------------------------------------------------------------
+# Thanos — the largest reduction by far (~22Gi of the default ~33Gi).
+# ---------------------------------------------------------------------------
+thanos:
+  query:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+
+  receive:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 256Mi
+    persistence:
+      size: 1Gi
+    # NOTE: `extraArgs` is deliberately NOT set here. The base values carry
+    # `--receive.replication-factor=3` in that list, and Helm overwrites lists
+    # rather than merging them — setting it here would silently drop the factor
+    # to Thanos's default of 1. Sizing needs nothing from that list, so it is
+    # left alone and the factor is inherited from whatever composed before this.
+
+  storegateway:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 192Mi
+    # -- The memory pools have to come down with the request, and this is the
+    # one place where forgetting that is fatal rather than merely wasteful.
+    # Thanos defaults to a 2GB chunk pool and a 250MB index cache, so a 192Mi
+    # request against stock pools is an OOM-kill loop, not a small install.
+    # Read limits restated (lists are overwritten) and scaled to match.
+    extraArgs:
+      - --chunk-pool-size=32MB
+      - --index-cache-size=16MB
+      - --store.limits.request-series=100000
+      - --store.limits.request-samples=1000000
+    persistence:
+      size: 1Gi
+
+  compactor:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 256Mi
+    persistence:
+      size: 1Gi
+
+  queryFrontend:
+    # -- Inert unless something upstream enabled it (`thanos-large` does).
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Loki — sized for both deployment shapes, since only one renders at a time.
+# ---------------------------------------------------------------------------
+loki:
+  # -- The `loki-test` / SingleBinary path. Inert over the distributed defaults.
+  singleBinary:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+
+  # Everything below is the Distributed path. Inert under `loki-test`, which
+  # zeroes these components in favour of the single binary.
+  distributor:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+  ingester:
+    # Ephemeral (node-local emptyDir), so there is no volume to shrink.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 256Mi
+
+  querier:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+
+  queryFrontend:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+  queryScheduler:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+  indexGateway:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+    persistence:
+      size: 1Gi
+
+  compactor:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+    persistence:
+      size: 1Gi
+
+  ruler:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+    persistence:
+      # -- The one PVC-backed Loki component (its remote-write WAL). Sizing
+      # only; this does not create the PVC, `persistence.enabled` does.
+      size: 1Gi
+
+  # -- memcached sizing is `allocatedMemory` (MB), and the pod request is
+  # derived from it with overhead — so lowering a request alone would not help.
+  # Same shape of trap as the Store Gateway pools above.
+  chunksCache:
+    allocatedMemory: 64
+  resultsCache:
+    allocatedMemory: 32
+
+# ---------------------------------------------------------------------------
+# Collection and UI.
+# ---------------------------------------------------------------------------
+# node-exporter is deliberately left alone. Its 64Mi request == limit is a
+# considered choice (a flat, bounded working set the autoscaler can plan with),
+# it is already the smallest workload in the stack, and on a one-node kind
+# cluster it is 64Mi in total.
+
+alloy-agent:
+  alloy:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+
+alloy-gateway:
+  alloy:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 192Mi
+
+grafana:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      # -- Base sets a 1Gi memory limit; bring it down with the request so a
+      # runaway render cannot claim a quarter of the runner.
+      memory: 384Mi

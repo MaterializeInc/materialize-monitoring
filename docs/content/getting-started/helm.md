@@ -124,14 +124,37 @@ Each subchart also has an `enabled` circuit breaker that takes **precedence over
 
 The chart's defaults target a **medium** deployment, so the sizing profiles are deltas in either direction rather than a full configuration:
 
+Each backend has its own pair, because they size off different axes — Loki off log throughput, Thanos off active series and object count.
+Pick one from each row you deploy; they compose.
+
 | Profile | Use |
 |---|---|
 | `profiles/loki-small.values.yaml` | dev, or a constrained node pool |
-| *(none)* | medium — the chart defaults |
-| `profiles/loki-large.values.yaml` | high-volume |
+| `profiles/loki-large.values.yaml` | high-volume logging |
+| `profiles/thanos-small.values.yaml` | dev, or a constrained node pool |
+| `profiles/thanos-large.values.yaml` | high-cardinality metrics; also enables the Thanos query-frontend and repoints the datasource at it |
+| *(none)* | medium — the chart defaults, for either backend |
 | `profiles/loki-test.values.yaml` | CI only: SingleBinary Loki on local filesystem, no object storage |
+| `profiles/kind.values.yaml` | CI only: shrinks **every** workload to fit one `kind` node. Sizing only — see below |
 
-Thanos sizing profiles are not written yet, so `small` and `large` currently size Loki only. See [Production Best Practices](../../operating/production-best-practices/#sizing-the-logging-backend) for the throughput envelope each tier assumes.
+See Production Best Practices for the envelope each tier assumes: [logging throughput](../../operating/production-best-practices/#sizing-the-logging-backend) for Loki, [active series and collections](../../operating/production-best-practices/#sizing-the-metrics-backend) for Thanos, including how to pick a tier from cluster inventory before you have any metrics to measure.
+
+#### The `kind` profile is sizing only, and composes last {#kind-profile}
+
+The chart defaults request roughly 33Gi of memory and 9 CPU in total, which no standard CI runner will schedule — pods sit Pending and it reads like a chart bug rather than a capacity one.
+`profiles/kind.values.yaml` cuts that to under 4Gi and about 1.6 CPU.
+
+It sets **container requests and limits, volume sizes, and cache allocations, and nothing else**: no feature toggles, no `tags`, and deliberately **no replica counts**.
+Compose it last so its sizes win:
+
+```bash
+helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.values.yaml -f profiles/kind.values.yaml
+```
+
+> [!INFO]
+>   **Why no replica counts.** `loki-test` *disables* Loki's distributed components by setting `replicas: 0` on them, so a replica count in a sizing overlay would switch them back on — and Loki then refuses to render at all, with `more than zero replicas configured for both the monolithic and distributed targets`. Separately, Loki's ingesters and Thanos Receive both sit at the replication-factor floor of 3, and the ring behaviour they provide is much of what an E2E run exists to prove. So this profile shrinks each pod and leaves the number of them to whoever owns the topology: three tiny pods, not one big one.
+>
+>   Two sizing traps it has to work around, both of which fail as an OOM rather than as a small install if you only lower the request: Thanos Store Gateway holds a 2GB chunk pool and a 250MB index cache by default, and memcached derives its pod request from `allocatedMemory`. Both are shrunk explicitly.
 
 ### Other shape overlays
 
