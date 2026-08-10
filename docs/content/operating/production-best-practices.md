@@ -607,6 +607,31 @@ Unlike Loki, nothing had to be undone to make room for this: the Thanos subchart
 Each one carries its own `labelSelector`, and a global constraint would make every Thanos component count Receive's pods when computing its own skew.
 The selector matches on `app.kubernetes.io/component` alone rather than the full label set, because the subchart renders these through `toYaml` rather than `tpl` — a `{{ include ... }}` would land in the manifest literally, so the release name is unavailable. Spread is namespace-scoped and this chart assumes [one instance of each backend per namespace](#namespace-layout), so the component label is unambiguous.
 
+#### Fewer than two zones {#thanos-few-zones}
+
+The hard zone constraint assumes at least two availability zones, which is every managed cloud default and not much else.
+Below that it **fails closed**: the stack does not come up, and the cause reads like a chart bug rather than a property of the cluster.
+
+| Zones | What happens by default | Fix |
+|---|---|---|
+| 0 (no labels) | Receive and Loki's ingesters are **unschedulable** — a `DoNotSchedule` constraint whose `topologyKey` no node carries has no domain to place into | `min_zones = 0`, or the `no-zone-spread` profile |
+| 1 | **Also Pending**, and much less obvious — see below | `min_zones = 1`, or the same profile |
+| 2 | Works. The chart's floor | nothing |
+| 3+ | Works, but under-protects: `minDomains: 2` is satisfied by a two-zone placement | `min_zones = 3` (or your real count) |
+
+**One zone is exactly as broken as none, and that surprises people.**
+When the number of eligible domains is below `minDomains`, Kubernetes treats the global minimum as 0 rather than skipping the check — so a single zone holding all three replicas computes a skew of 3 against a `maxSkew` of 1, and every pod stays `Pending`.
+Nothing about the symptom points at a zone count.
+
+Zero-zone clusters are not an edge case worth dismissing: `kind` labels no node this way, and neither do many on-premises distributions.
+Hand-labelling nodes to satisfy a monitoring chart is the wrong answer, which is why `min_zones` exists.
+
+Both fixes drop the hard zone rule and **keep the soft host rule**, which matters most on exactly these clusters — with no zones to lose, the node is the only failure domain there is.
+On the Terraform path that falls out for free, because `min_zones` filters the one constraint rather than replacing the list; on the Helm path the profile has to restate the host rule, since Helm overwrites lists rather than merging them.
+
+> [!WARNING]
+>   **Nothing reminds you when you gain a zone.** The pods keep scheduling happily, spread across nothing, and RF 3 goes on reading like AZ resilience on every dashboard. `min_zones` is the better habit than the profile for this reason alone: it is a number you update when the cluster changes, not a file you have to remember to stop passing.
+
 #### Storage: ephemeral by default {#thanos-ephemeral-storage}
 
 Of the three Thanos components with local disk, **only the Store Gateway keeps a PersistentVolume.**
@@ -722,8 +747,8 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 - [ ] `[operator]` Keep `replicaCount >= replicationFactor`. At `replicaCount == replicationFactor` every pod holds every series — good availability, no horizontal capacity.
 - [x] `[chart]` PodDisruptionBudgets on **every** component (`thanos.global.pdb`, `maxUnavailable: 1`) — matching the Loki ingester convention. `maxUnavailable` rather than `minAvailable` deliberately: it scales with the replica count, and on the single-replica Compactor `minAvailable: 1` would permit no eviction at all and hang node drains. A validator errors when the Receive budget exceeds what write quorum tolerates, and warns on `minAvailable` for the singleton.
 - [x] `[chart]` `topologySpreadConstraints` across zones for Receive — **hard** (`DoNotSchedule`, `minDomains: 2`, `nodeTaintsPolicy: Honor`) so RF 3 actually survives an AZ loss rather than landing three copies in one zone; **soft across hosts** so pods still schedule when nodes are momentarily scarce. Matching the Loki ingester convention. Store Gateway, Query, and Query Frontend get **soft** spread on both axes; the Compactor gets none, being a singleton. See [Spreading across zones](#thanos-topology-spread).
-- [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3, and raise `minDomains` to the zone count your node pool can actually launch in. Setting it above that leaves pods Pending forever. With 2 zones, know that an AZ loss can break write quorum (2 of 3) until the ring recovers.
-- [ ] `[operator]` On a cluster with **no zone labels at all** — `kind`, most bare-metal — the hard rule leaves Receive unschedulable rather than unbalanced, because a `DoNotSchedule` constraint whose `topologyKey` no node carries has no domain to place into. The `kind` profile empties it for exactly this reason; do the same on any single-zone cluster.
+- [ ] `[operator]` **Tell the chart how many zones you actually have.** The default assumes two or more, and below that it fails closed rather than degrading — see [Fewer than two zones](#thanos-few-zones). Terraform: `min_zones`. Helm: the `no-zone-spread` profile.
+- [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3, and raise `minDomains` to the count your node pool can actually launch in — the chart ships a floor of 2, so with three zones a two-zone placement still satisfies it. Setting it *above* your real count leaves pods Pending forever. With 2 zones, know that an AZ loss can break write quorum (2 of 3) until the ring recovers.
 - [x] `[chart]` `priorityClassName` on every Thanos pod (`monitoring-scalable`, via `thanos.global`), so Receive and the Compactor outrank ordinary workloads under node pressure. See [Scheduling priority](#scheduling-priority).
 
 #### 2. Object storage & credentials

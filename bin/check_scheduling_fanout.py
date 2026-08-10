@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Assert the scheduling fan-out reached every workload it should, and no others.
 
+Also checks one topology-spread invariant, since it parses the same manifests:
+`minDomains` is only valid alongside `whenUnsatisfiable: DoNotSchedule`, and the
+API server rejects the pod outright otherwise. That is worth catching at render
+time because the rejection surfaces as an admission error on a controller nobody
+is watching, not as a failed `helm upgrade`.
+
 Called from `bin/terraform-render-check.sh` with a rendered chart and the values
 documents a Terraform plan composed. Silent and successful when the example sets
 no scheduling.
@@ -93,6 +99,21 @@ def audit(
     return missing, unexpected
 
 
+def bad_min_domains(workloads: list[tuple[str, dict[str, Any]]]) -> list[str]:
+    """Workloads carrying `minDomains` on a constraint that is not DoNotSchedule.
+
+    `min_zones` in the Terraform module patches `minDomains` onto the hard zone
+    rule only, for exactly this reason; sweeping up the soft host rule alongside
+    it would render valid YAML that the API server refuses.
+    """
+    offenders = []
+    for name, spec in workloads:
+        for c in spec.get("topologySpreadConstraints") or []:
+            if "minDomains" in c and c.get("whenUnsatisfiable") != "DoNotSchedule":
+                offenders.append(f"{name} ({c.get('topologyKey')})")
+    return offenders
+
+
 def load_docs(paths: list[str]) -> list[Any]:
     """Parse every YAML document from the paths that exist."""
     docs: list[Any] = []
@@ -111,8 +132,6 @@ def main(argv: list[str]) -> int:
 
     expected_selector = find_value(values, "nodeSelector")
     expected_tolerations = find_value(values, "tolerations")
-    if not expected_selector and not expected_tolerations:
-        return 0
 
     workloads = [
         (doc["metadata"]["name"], doc["spec"]["template"]["spec"])
@@ -120,7 +139,12 @@ def main(argv: list[str]) -> int:
         if doc and doc.get("kind") in WORKLOAD_KINDS
     ]
 
-    problems: list[tuple[str, list[str]]] = []
+    problems: list[tuple[str, list[str]]] = [
+        (
+            "carry minDomains on a non-DoNotSchedule constraint",
+            bad_min_domains(workloads),
+        ),
+    ]
     if expected_selector:
         missing, unexpected = audit(
             workloads, expected_selector, has_selector, NO_NODE_SELECTOR
@@ -149,9 +173,10 @@ def main(argv: list[str]) -> int:
     if failed:
         return 1
 
-    print(
-        "    scheduling reached every workload it should, and no DaemonSet it should not"
-    )
+    if expected_selector or expected_tolerations:
+        print(
+            "    scheduling reached every workload it should, and no DaemonSet it should not"
+        )
     return 0
 
 

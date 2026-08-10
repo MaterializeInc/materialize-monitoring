@@ -213,3 +213,55 @@ tests:
       - equal:
           path: spec.template.spec.nodeSelector.workload
           value: monitoring
+
+  # --- Clusters with no zones, or one -----------------------------------------
+  # The chart's hard rule assumes two or more zones and fails closed below that:
+  # with zero zone labels a DoNotSchedule constraint has no domain to place into,
+  # and with one zone `minDomains: 2` makes Kubernetes treat the global minimum as
+  # 0, so the single zone computes a skew equal to the replica count. Both leave
+  # the pods Pending forever rather than unbalanced.
+  - it: drops the hard zone rule for Thanos Receive on a zoneless cluster
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.topologySpreadConstraints
+          count: 1
+      # What survives is the host rule, not nothing. On a bare-metal cluster with
+      # no zones the node is the only failure domain there is, so dropping host
+      # spread as well would remove the last protection against all three ring
+      # members landing together.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+
+  - it: drops it for Loki's ingesters too, keeping their fuller selector
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.topologySpreadConstraints
+          count: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+      # Loki renders these through `tpl`, so the restatement must carry the
+      # templated name and instance or it selects a different pod set.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/name"]
+          value: loki
+
+  # `minDomains` is only valid alongside DoNotSchedule; the API server rejects the
+  # pod otherwise. Neither restated host rule may carry it.
+  - it: never puts minDomains on a soft constraint
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints[0].minDomains

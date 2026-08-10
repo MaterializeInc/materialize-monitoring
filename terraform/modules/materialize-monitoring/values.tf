@@ -294,6 +294,7 @@ locals {
     local.storage_class_document,
     local.google_cloud_metrics_document,
     local.scheduling_document,
+    local.zone_spread_document,
   )
 
   # The caller stays last, so `additional_values` still overrides everything —

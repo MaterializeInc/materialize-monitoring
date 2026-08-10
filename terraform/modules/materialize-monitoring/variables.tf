@@ -421,6 +421,36 @@ variable "storage_class" {
   default     = null
 }
 
+variable "min_zones" {
+  description = <<-EOT
+    Number of availability zones the node pool can actually launch in, used to adjust the hard zone
+    spread on Thanos Receive and Loki's ingesters. Null leaves the chart's defaults alone, which
+    assume two or more zones and is correct for every managed cloud default.
+
+    Set this when that assumption does not hold, because the chart's constraints fail closed rather
+    than degrading:
+
+      * `0` — no node carries a `topology.kubernetes.io/zone` label. Common on `kind` and on many
+        on-premises distributions. The hard constraints are dropped; the soft host spread stays.
+      * `1` — a single zone. `minDomains` becomes 1, which is satisfiable now and turns into real
+        protection the day a second zone appears.
+      * `2` or more — `minDomains` is set to the real count, which is stricter than the chart's
+        floor of 2 whenever you have more zones than that.
+
+    Leaving this null on a cluster with fewer than two zones leaves those pods **Pending forever**
+    rather than unbalanced: below `minDomains` Kubernetes treats the global minimum as 0, so one
+    zone holding every replica computes a skew equal to the replica count. One zone is exactly as
+    broken as none.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.min_zones == null || var.min_zones >= 0
+    error_message = "min_zones must be null or a non-negative number."
+  }
+}
+
 variable "tolerations" {
   description = "Tolerations for the monitoring workloads, including the Alloy agent DaemonSet — tolerations widen where a pod may run, which is what a DaemonSet wants."
   type = list(object({
