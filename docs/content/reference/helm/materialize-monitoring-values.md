@@ -3287,8 +3287,12 @@ If you want its recommendations without its actions, set
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "limits": {
+    "ephemeral-storage": "30Gi"
+  },
   "requests": {
     "cpu": "500m",
+    "ephemeral-storage": "20Gi",
     "memory": "4Gi"
   }
 }</pre>
@@ -3302,6 +3306,13 @@ No memory limit, deliberately, and for a sharper reason than elsewhere in
 this chart: an OOM-kill drops the un-uploaded block window, and unlike
 Loki's ingesters that window has nothing protecting it but the replication
 factor. Alert on usage instead.
+
+`ephemeral-storage` is declared because the TSDB now lives on an
+`emptyDir` (see `persistence`). The request is what the scheduler places
+against, so a node without room refuses the pod instead of filling up
+silently. The limit carries deliberate headroom over the request: the
+kubelet's response to exceeding it is **eviction**, and evicting Receive
+destroys exactly the un-uploaded window this sizing exists to protect.
 </td>
     </tr>
     <tr>
@@ -3309,10 +3320,30 @@ factor. Alert on usage instead.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "size": "20Gi"
+  "enabled": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Local TSDB volume for Receive. Holds `tsdb.retention` (24h) of blocks plus the WAL, so it scales with ingested samples/sec rather than with series count.
+      <td class="helm-value-desc">Local TSDB storage for Receive: **ephemeral, not a PVC.**
+This is the same call the chart makes for Loki's ingesters, for the same
+reason, and it is worth spelling out because Receive looks stateful.
+
+Durability comes from `--receive.replication-factor=3`, not from disk.
+Blocks ship to object storage every 2h, so the window that exists only
+locally is at most 2h — and every replica uploads its own copy under a
+distinct `replica` external label, which the Compactor deduplicates. A pod
+that comes back with an empty volume has lost its copy of that window, and
+the query path still answers from the surviving replicas.
+
+A PVC makes an AZ failure **worse**, not merely less flexible: an EBS
+volume cannot be attached from another zone, so a pod whose zone is gone
+stays Pending until the zone returns rather than rescheduling into a
+healthy one. On the write path that turns a recoverable event into an
+outage that waits on the cloud provider — with RF 3 write quorum is 2, so
+two pods stuck Pending block writes outright.
+
+The trade accepted in exchange: Thanos Receive has no peer hand-off, so
+unlike Loki it will not backfill an emptied pod from its neighbours. That
+window stays at two copies instead of three until the next block ships.
 </td>
     </tr>
     <tr>
@@ -3325,6 +3356,10 @@ factor. Alert on usage instead.
     "--store.limits.request-series=5000000",
     "--store.limits.request-samples=200000000"
   ],
+  "persistence": {
+    "enabled": true,
+    "size": "10Gi"
+  },
   "resources": {
     "requests": {
       "cpu": "500m",
@@ -3341,6 +3376,35 @@ startup, so scale-up is slow to become useful (it serves nothing until the
 index is warm) and CPU-triggered scaling reacts long after the load that
 triggered it. Scale-down also leaves orphaned PVCs behind, since
 StatefulSet volumes are not reclaimed. Size it deliberately instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "size": "10Gi"
+}</pre>
+</td>
+      <td class="helm-value-desc">Index-header cache for Store Gateway: **the one Thanos component that keeps a PVC.**
+Receive and the Compactor are both ephemeral (see their `persistence`
+keys). Store Gateway is the exception, and the reason is startup cost
+rather than durability: the on-disk binary index-headers are a
+read-through cache of the bucket and lose nothing when discarded, but
+rebuilding them means re-downloading from object storage, and the
+component serves no historical query until that finishes. On a large
+bucket that is minutes of degraded long-range dashboards on every restart.
+
+Kept on at **every** size deliberately, rather than flipping to ephemeral
+for small installs. A volume that appears and disappears with the profile
+is a surprise during an incident, and the AZ-pinning argument that drives
+Receive to `emptyDir` is much weaker here: Store Gateway is a read-only
+replica set with no quorum, so a pod stuck Pending in a dead zone costs
+read capacity rather than blocking writes.
+
+The `kind` profile is the one exception, where CI would rather not wait on
+volume provisioning for a cache.
 </td>
     </tr>
     <tr>
@@ -3426,8 +3490,12 @@ intent. 30d clears both comfortably.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "limits": {
+    "ephemeral-storage": "30Gi"
+  },
   "requests": {
     "cpu": 1,
+    "ephemeral-storage": "20Gi",
     "memory": "2Gi"
   }
 }</pre>
@@ -3440,6 +3508,12 @@ compaction falling behind something to alert on rather than discover.
 
 Downsampling is the memory-heavy phase, and `--compact.concurrency`
 multiplies it; leave that at 1 unless compaction is provably behind.
+
+`ephemeral-storage` is the scratch budget, now that the working directory
+is an `emptyDir` (see `persistence`). This is the largest ephemeral request
+in the stack and the one most likely to make a pod unschedulable — which is
+the intended behaviour: a Compactor that cannot fit belongs on a bigger
+node, not silently filling the one it landed on.
 </td>
     </tr>
     <tr>
@@ -3447,10 +3521,26 @@ multiplies it; leave that at 1 unless compaction is provably behind.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "size": "20Gi"
+  "enabled": false
 }</pre>
 </td>
-      <td class="helm-value-desc">Working volume for the Compactor. Scratch space for the block group under compaction, so it scales with block size rather than with retention. This is the volume most likely to be undersized at scale; `thanos-large` takes it to 100Gi.
+      <td class="helm-value-desc">Working directory for the Compactor: **ephemeral, not a PVC.**
+Scratch space for the block group under compaction. Nothing here is
+authoritative — the bucket is — and a Compactor killed mid-compaction
+simply redoes the work, so there is no durability argument for a volume.
+
+The availability argument runs the other way, and it is stronger here than
+anywhere else in the chart: this is a **hard** singleton, so unlike Receive
+there is not even a second replica to serve while one is stuck. Pinning it
+to a zone means a zone outage stops compaction entirely, and while
+compaction is stopped retention is not enforced and the bucket grows
+without bound. This mirrors the call already made for Loki's compactor.
+
+The cost: `emptyDir` draws on node ephemeral storage rather than a
+provisioned volume, so the node must actually have this much free. At
+`thanos-large`'s 100Gi that is a real node-shape requirement — see
+`resources.requests.ephemeral-storage`, which makes it explicit to the
+scheduler rather than a surprise to the kubelet.
 </td>
     </tr>
     <tr>

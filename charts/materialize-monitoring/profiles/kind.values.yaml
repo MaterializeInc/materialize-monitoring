@@ -5,12 +5,16 @@
 # ~9 CPU in total, which no standard runner will schedule — pods sit Pending and
 # the failure reads like a chart bug rather than a capacity one.
 #
-# **This profile sets resource sizes ONLY**: container requests/limits, volume
-# sizes, and cache allocations. It toggles no features, enables and disables
-# nothing, and — see below — sets no replica counts. That is what makes it
+# **This profile sets resource sizes**: container requests/limits (including
+# ephemeral-storage budgets), volume sizes, and cache allocations. It toggles no
+# features and — see below — sets no replica counts. That is what makes it
 # composable: it layers cleanly over the bare defaults, over `loki-test`, over
 # `kind-tier1`, or after `thanos-small`, and it never becomes a second place
 # where features get turned on and off.
+#
+# There is exactly **one** structural exception, called out at the line itself:
+# `thanos.storegateway.persistence.enabled: false`, because CI would rather not
+# provision a volume for a cache it can rebuild instantly from a tiny bucket.
 #
 # Compose it last, so its sizes win:
 #   -f profiles/loki-test.values.yaml \
@@ -65,8 +69,13 @@ thanos:
       requests:
         cpu: 25m
         memory: 256Mi
-    persistence:
-      size: 1Gi
+        # -- The TSDB is an `emptyDir` (base values), so this is the node-disk
+        # budget. Tiny, but declared: a CI runner's ephemeral storage is the
+        # scarcest thing on it, and an undeclared emptyDir is invisible to the
+        # scheduler right up until the kubelet evicts something.
+        ephemeral-storage: 1Gi
+      limits:
+        ephemeral-storage: 2Gi
     # NOTE: `extraArgs` is deliberately NOT set here. The base values carry
     # `--receive.replication-factor=3` in that list, and Helm overwrites lists
     # rather than merging them — setting it here would silently drop the factor
@@ -78,6 +87,11 @@ thanos:
       requests:
         cpu: 25m
         memory: 192Mi
+        # -- Declared because `persistence` is off below, so the index-header
+        # cache lands on an `emptyDir` here rather than a volume.
+        ephemeral-storage: 1Gi
+      limits:
+        ephemeral-storage: 2Gi
     # -- The memory pools have to come down with the request, and this is the
     # one place where forgetting that is fatal rather than merely wasteful.
     # Thanos defaults to a 2GB chunk pool and a 250MB index cache, so a 192Mi
@@ -88,16 +102,26 @@ thanos:
       - --index-cache-size=16MB
       - --store.limits.request-series=100000
       - --store.limits.request-samples=1000000
+    # -- The one structural override in this profile, and the one deliberate
+    # exception to the sizing-only rule above. Store Gateway keeps its PVC at
+    # every real size, because rebuilding the index-header cache from the bucket
+    # is slow. In CI the bucket is tiny, so the rebuild is free and a volume is
+    # pure setup cost and teardown risk. Called out rather than buried because it
+    # is the one line here that changes a shape rather than a size.
     persistence:
-      size: 1Gi
+      enabled: false
 
   compactor:
     resources:
       requests:
         cpu: 25m
         memory: 256Mi
-    persistence:
-      size: 1Gi
+        # -- Scratch space on an `emptyDir` (base values). At real sizes this is
+        # the largest ephemeral request in the stack; in CI there is nothing to
+        # compact.
+        ephemeral-storage: 1Gi
+      limits:
+        ephemeral-storage: 2Gi
 
   queryFrontend:
     # -- Inert unless something upstream enabled it (`thanos-large` does).

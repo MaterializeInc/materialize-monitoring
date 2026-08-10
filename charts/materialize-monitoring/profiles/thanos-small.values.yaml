@@ -52,9 +52,12 @@ thanos:
       requests:
         cpu: 250m
         memory: 1Gi
-    persistence:
-      # -- ~5k samples/s for 24h plus WAL fits inside this with room to spare.
-      size: 10Gi
+        # -- ~5k samples/s for 24h plus WAL fits well inside this. The limit
+        # carries headroom because exceeding it evicts the pod, which destroys
+        # the un-uploaded window the replication factor exists to protect.
+        ephemeral-storage: 10Gi
+      limits:
+        ephemeral-storage: 15Gi
 
   storegateway:
     resources:
@@ -71,6 +74,10 @@ thanos:
       - --store.limits.request-series=1000000
       - --store.limits.request-samples=50000000
     persistence:
+      # -- Store Gateway keeps its PVC at every size (see the base values): the
+      # index-header cache is cheap to lose but expensive to rebuild, and a
+      # volume that appears only above a certain size is a surprise mid-incident.
+      enabled: true
       size: 10Gi
 
   compactor:
@@ -78,10 +85,11 @@ thanos:
       requests:
         cpu: 500m
         memory: 1Gi
-    persistence:
-      # -- Scratch space for the block group under compaction. Small blocks, so
-      # the subchart default is enough.
-      size: 10Gi
+        # -- Scratch space for the block group under compaction, on an
+        # `emptyDir` (see the base values). Small blocks at this size.
+        ephemeral-storage: 10Gi
+      limits:
+        ephemeral-storage: 15Gi
     retention:
       # -- Shorter horizons for a small storage budget.
       #

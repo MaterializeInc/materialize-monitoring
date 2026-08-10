@@ -11,8 +11,10 @@
 # nodes of a shared cluster is still an L.
 #
 # This file defines ONLY the deltas from the medium defaults — larger resources
-# and volumes, more receive replicas, higher read limits, longer downsampled
-# retention, and the query-frontend read path.
+# (including the ephemeral-storage budgets that back Receive's and the
+# Compactor's `emptyDir`), a larger Store Gateway volume, more receive replicas,
+# higher read limits, longer downsampled retention, and the query-frontend read
+# path.
 #
 # Above roughly 4M series this stops being a menu and becomes a starting point:
 # add receive replicas in multiples of the replication factor and the zone
@@ -59,9 +61,12 @@ thanos:
       requests:
         cpu: 1500m
         memory: 8Gi
-    persistence:
-      # -- ~133k samples/s across six pods at RF 3, held for 24h, plus WAL.
-      size: 40Gi
+        # -- ~133k samples/s across six pods at RF 3, held for 24h, plus WAL.
+        # On an `emptyDir` (see the base values), so this is the node-disk
+        # requirement per Receive pod, made explicit to the scheduler.
+        ephemeral-storage: 40Gi
+      limits:
+        ephemeral-storage: 60Gi
 
   storegateway:
     resources:
@@ -81,7 +86,9 @@ thanos:
     persistence:
       # -- Binary index-headers for the blocks under retention, roughly 1% of
       # block size. Past the multi-TB range this is the signal to shard rather
-      # than to grow the volume; see "Scaling past large".
+      # than to grow the volume; see "Scaling past large". Store Gateway is the
+      # one Thanos component that keeps a PVC, at every size.
+      enabled: true
       size: 20Gi
 
   compactor:
@@ -89,12 +96,19 @@ thanos:
       requests:
         cpu: 3
         memory: 8Gi
-    persistence:
-      # -- Scratch space for the block group under compaction. The Compactor is
-      # a singleton by necessity (concurrent compactors corrupt the bucket), so
-      # this volume and the request above are the only levers — there is no
-      # horizontal escape hatch. Alert on compaction falling behind.
-      size: 100Gi
+        # -- Scratch space for the block group under compaction, on an
+        # `emptyDir`. The Compactor is a singleton by necessity (concurrent
+        # compactors corrupt the bucket), so vertical growth is the only lever
+        # and compaction falling behind is a thing to alert on.
+        #
+        # **This is a node-shape requirement.** 100Gi of `emptyDir` needs a node
+        # with that much free ephemeral storage; the request makes the Compactor
+        # go Pending with a clear reason rather than filling a node that cannot
+        # hold it. If your node pool cannot offer it, that is the case for
+        # turning `persistence.enabled` back on here and accepting the AZ pin.
+        ephemeral-storage: 100Gi
+      limits:
+        ephemeral-storage: 150Gi
     retention:
       # -- Longer downsampled horizons for capacity planning and
       # year-over-year comparison. Raw stays at 30d: extending it is the most

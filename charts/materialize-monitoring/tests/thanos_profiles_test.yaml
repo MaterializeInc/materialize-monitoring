@@ -47,9 +47,10 @@ tests:
           content: --receive.replication-factor=3
 
   # --- VPA must not rewrite the profile's requests --------------------------
-  # `updateMode: Auto` on a PVC-backed StatefulSet holding up to 24h of
-  # un-uploaded blocks. Off at every size; the CRD is declared present above so
-  # these assert the value rather than the gate.
+  # `updateMode: Auto` evicts pods to apply new requests, and Receive holds up to
+  # 24h of blocks whose only redundancy is the replication factor. Off at every
+  # size; the CRD is declared present above so these assert the value rather than
+  # the gate.
   - it: medium renders no Receive VPA
     template: ../charts/thanos/templates/receive/vpa.yaml
     asserts:
@@ -174,9 +175,70 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 8Gi
+      # Scratch is an emptyDir, budgeted through ephemeral-storage rather than a
+      # volume — the Compactor is a hard singleton, so a PVC would pin the only
+      # copy of it to one AZ and a zone outage would stop compaction (and
+      # therefore retention) entirely.
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
+          value: 100Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.ephemeral-storage
+          value: 150Gi
+
+  # --- Ephemeral by default, and explicitly budgeted -----------------------
+  # Receive and the Compactor are emptyDir-backed at every size: durability is
+  # the replication factor, and a PVC makes an AZ failure worse rather than
+  # better (an EBS volume cannot attach cross-zone, so the pod stays Pending
+  # instead of rescheduling). Both declare ephemeral-storage so the scheduler
+  # refuses a node that cannot hold them.
+  - it: Receive is ephemeral at every size with a declared storage budget
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
+          value: 10Gi
+      # The limit must exceed the request: the kubelet's response to overrunning
+      # it is eviction, which destroys the un-uploaded block window.
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.ephemeral-storage
+          value: 15Gi
+
+  - it: Receive is ephemeral at medium too
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
+          value: 20Gi
+
+  # Store Gateway is the deliberate exception: it keeps a PVC at every real
+  # size, because the index-header cache is cheap to lose and slow to rebuild,
+  # and it has no write quorum to block. Only `kind` opts out.
+  - it: Store Gateway keeps its volume at small
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
       - equal:
           path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
-          value: 100Gi
+          value: 10Gi
+
+  - it: Store Gateway keeps its volume at medium and large
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 20Gi
 
   # --- Retention keeps both downsample tiers reachable --------------------
   # Thanos produces 5m downsamples only from blocks spanning 40h+ and 1h
