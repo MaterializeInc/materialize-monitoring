@@ -5,7 +5,7 @@ Storage Requirements# Using Thanos or Loki (both enabled by default) requires ob
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
 Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta property="og:locale" content="en_us"><meta property="og:type" content="article"><meta property="article:section" content="reference"><meta itemprop=name content="materialize-monitoring values"><meta itemprop=description content="materialize-monitoring Helm Reference# Unified observability stack for Materialize: Alloy-based pipeline, optional bundled backends (Loki / Thanos / Grafana / Alertmanager), and the dashboards / alerts / rules that consume the Materialize metrics surface.
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
-Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="11332"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/favicon.png><link rel=manifest href=/materialize-monitoring/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/book.min.52c763e96cb83106cc1cb0e2a0933c7298d0e5eaeceeed149cfac25ffaf804ac.css integrity="sha256-Usdj6Wy4MQbMHLDioJM8cpjQ5ers7u0UnPrCX/r4BKw=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/en.search.min.9f13a99c5759b5eaeea27d162a157ec4e46e01cb9898eb1f6c3d5fda2c503a0c.js integrity="sha256-nxOpnFdZteruon0WKhV+xORuAcuYmOsfbD1f2ixQOgw=" crossorigin=anonymous></script></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
+Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="13855"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/favicon.png><link rel=manifest href=/materialize-monitoring/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/book.min.52c763e96cb83106cc1cb0e2a0933c7298d0e5eaeceeed149cfac25ffaf804ac.css integrity="sha256-Usdj6Wy4MQbMHLDioJM8cpjQ5ers7u0UnPrCX/r4BKw=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/en.search.min.491f2253179f26c9a67f8dd1768bf36133e0cca9e74174dea62c91547e60497c.js integrity="sha256-SR8iUxefJsmmf43RdovzYTPgzKnnQXTepiyRVH5gSXw=" crossorigin=anonymous></script></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><header class=site-header role=banner><div class=site-header-inner><a class=site-header-logo href=https://materialize.com/ aria-label=Materialize><svg class="logo-link svelte-ju9vo9" width="161" height="29" viewBox="0 0 161 29" fill="none"><g><path d="M54.0797 6.44507V21.2633h2.5758V11.0613H56.793l4.0953 10.1585h1.9246L66.9081 11.083H67.0456V21.2633h2.5758V6.44507H66.3365L61.9374 17.1825H61.7637L57.3646 6.44507H54.0797z" fill="var(--important)"/><path d="M75.6269 21.4875C77.3706 21.4875 78.4125 20.6699 78.89 19.7366h.0869v1.5267h2.5179V13.8252c0-2.9376-2.39489999999999-3.8203-4.5149-3.8203-2.33710000000001.0-4.1315 1.0419-4.7103 3.0678L74.7152 13.42C74.9757 12.6603 75.7137 12.0091 76.9944 12.0091 78.2099 12.0091 78.8756 12.6314 78.8756 13.7239V13.7673C78.8756 14.5198 78.0869 14.556 76.1261 14.7658 73.9699 14.9974 71.9078 15.6413 71.9078 18.1448 71.9078 20.3299 73.5069 21.4875 75.6269 21.4875zM76.307 19.5629C75.2144 19.5629 74.433 19.0637 74.433 18.1014 74.433 17.0956 75.3085 16.676 76.4806 16.5096 77.168 16.4155 78.5427 16.2419 78.8828 15.9669v1.3096C78.8828 18.5138 77.8843 19.5629 76.307 19.5629z" fill="var(--important)"/><path d="M89.6781 10.1496H87.4857V7.48697H84.8665V10.1496H83.2892v2.0259H84.8665v6.1791C84.852 20.4456 86.3715 21.4731 88.3395 21.4152 89.0848 21.3935 89.5985 21.2488 89.8807 21.1547L89.4393 19.1071C89.2946 19.1433 88.9979 19.2084 88.6724 19.2084c-.658499999999989.0-1.1867-.2315-1.1867-1.2879v-5.745H89.6781V10.1496z" fill="var(--important)"/><path d="M96.6693 21.4803C99.2596 21.4803 101.04 20.2141 101.503 18.2822L99.057 18.0073C98.7025 18.9479 97.8342 19.4399 96.7055 19.4399 95.0124 19.4399 93.8909 18.3257 93.8692 16.4227h7.7418V15.6196c0-3.8999-2.3442-5.6147-5.0792-5.6147C93.3483 10.0049 91.2717 12.342 91.2717 15.7716 91.2717 19.259 93.3193 21.4803 96.6693 21.4803zm-2.7929-6.823C93.956 13.2391 95.0052 12.0453 96.568 12.0453c1.505.0 2.518 1.0998 2.5324 2.612H93.8764z" fill="var(--important)"/><path d="M103.827 21.2633h2.619V14.7296C106.446 13.3187 107.51 12.3202 108.95 12.3202 109.391 12.3202 109.941 12.3998 110.165 12.4722V10.0628C109.926 10.0194 109.514 9.99043 109.225 9.99043 107.951 9.99043 106.888 10.714 106.482 12.0019H106.367V10.1496H103.827V21.2633z" fill="var(--important)"/><path d="M111.905 21.2633h2.62V10.1496h-2.62V21.2633zM113.222 8.57229c.832000000000008.0 1.512-.63672 1.512-1.41815C114.734 6.36548 114.054 5.72876 113.222 5.72876 112.383 5.72876 111.703 6.36548 111.703 7.15414 111.703 7.93557 112.383 8.57229 113.222 8.57229z" fill="var(--important)"/><path d="M120.416 21.4875C122.16 21.4875 123.202 20.6699 123.679 19.7366H123.766v1.5267h2.518V13.8252c0-2.9376-2.39500000000001-3.8203-4.515-3.8203-2.337.0-4.131 1.0419-4.71000000000001 3.0678L119.504 13.42C119.765 12.6603 120.503 12.0091 121.784 12.0091 122.999 12.0091 123.665 12.6314 123.665 13.7239V13.7673C123.665 14.5198 122.876 14.556 120.915 14.7658 118.759 14.9974 116.697 15.6413 116.697 18.1448c0 2.1851 1.599 3.3427 3.71899999999999 3.3427zM121.096 19.5629C120.004 19.5629 119.222 19.0637 119.222 18.1014c0-1.0058.876000000000005-1.4254 2.048-1.5918C121.957 16.4155 123.332 16.2419 123.672 15.9669v1.3096C123.672 18.5138 122.674 19.5629 121.096 19.5629z" fill="var(--important)"/><path d="M131.537 6.44507h-2.619V21.2633h2.619V6.44507z" fill="var(--important)"/><path d="M134.23 21.2633h2.62V10.1496h-2.62V21.2633zM135.547 8.57229c.831999999999994.0 1.512-.63672 1.512-1.41815C137.059 6.36548 136.379 5.72876 135.547 5.72876 134.708 5.72876 134.028 6.36548 134.028 7.15414 134.028 7.93557 134.708 8.57229 135.547 8.57229z" fill="var(--important)"/><path d="M139.398 21.2633h9.124V19.0926H142.878V18.9986L148.334 11.9368V10.1496H139.586v2.1706H145.129V12.4143L139.398 19.5991v1.6642z" fill="var(--important)"/><path d="M155.586 21.4803C158.176 21.4803 159.956 20.2141 160.419 18.2822L157.973 18.0073C157.619 18.9479 156.751 19.4399 155.622 19.4399 153.929 19.4399 152.807 18.3257 152.786 16.4227H160.528V15.6196c0-3.8999-2.345-5.6147-5.07999999999998-5.6147C152.265 10.0049 150.188 12.342 150.188 15.7716c0 3.4874 2.048 5.7087 5.39800000000003 5.7087zM152.793 14.6573C152.872 13.2391 153.922 12.0453 155.484 12.0453c1.505.0 2.518 1.0998 2.53299999999999 2.612H152.793z" fill="var(--important)"/></g><path class="bar1 svelte-ju9vo9" d="M8.52478 28.5217c-2.74376.0-5.48752.0-8.231282.0C.0489163 28.5217.0 28.4728.0 28.2327c0-2.7304.0-5.4653.0-8.2046C.182324 20.0281.257922 20.2015.369096 20.3082 2.99872 22.9201 5.62389 25.5393 8.24462 28.166 8.35135 28.2594 8.51589 28.335 8.52478 28.5217z" fill="var(--important)"/><path class="bar3 svelte-ju9vo9" d="M25.0894 20.4296C25.7698 21.1766 26.4857 21.8837 27.2284 22.5641 27.3218 22.6708 27.4107 22.7864 27.513 22.8887c1.2674 1.2674 2.5436 2.5214 3.8066 3.7933C31.9199 27.2912 32.5691 27.8559 33.0983 28.523H23.8932C23.7998 28.4118 23.7108 28.2962 23.6086 28.1939c-1.509-1.5001-3.0195-3.0046-4.5315-4.5136C13.9276 18.5455 8.77655 13.4108 3.62403 8.27608 2.42335 7.07985 1.25826 5.8525.00866699 4.71853V.685153c1.60534301.0 3.21513301.0 4.82492301.0C4.9615.680522 5.0889.703552 5.20709.75267 5.32528.801787 5.43147.875836 5.51842.969757 9.76673 5.20324 14.018 9.43673 18.2722 13.6702 18.3555 13.7519 18.4431 13.8291 18.5346 13.9015c1.2496 1.2584 2.4947 2.5258 3.7532 3.7799C23.2128 18.6063 24.1555 19.5135 25.0894 20.4296z" fill="var(--important)"/><path class="bar5 svelte-ju9vo9" d="M33.1117 28.5223C32.5691 27.8552 31.9199 27.2904 31.3329 26.6812c-1.2629-1.2718-2.5392-2.5258-3.8066-3.7932C27.424 22.7857 27.3351 22.6701 27.2417 22.5634c0-.191300000000002.0-.378.0-.569300000000002.0-6.4866.0-12.97612.0-19.46866C27.236 2.18135 27.3634 1.84836 27.5975 1.59603 27.8461 1.25748 28.1812.99211 28.5678.82779 28.9543.66347 29.378.606263 29.7942.662177 30.9727.751116 32.1645.697753 33.3518.662177 33.7164.662177 33.7965.76001 33.7965 1.10687c0 6.51032.0 13.01023.0 19.49983.0 2.4636.0 4.9287.0 7.3953C33.7965 28.1754 33.7965 28.3488 33.8232 28.5223H33.1117z" fill="var(--important)" fill-opacity=".7"/><path class="bar2 svelte-ju9vo9" d="M0 16.9643V7.77246C.137855 7.80359.209006 7.92366.297945 8.01704L3.13954 10.8231C8.37507 16.0438 13.6106 21.2645 18.8461 26.4852 19.5132 27.1522 20.2202 27.7881 20.8206 28.5219h-9.223C11.5976 28.3885 11.4687 28.3307 11.3886 28.2506c-3.22254-3.2196-6.45102-6.4362-9.68542-9.6498C1.16656 18.0238.597942 17.4774.0 16.9643H0z" fill="var(--important)"/><path class="bar4 svelte-ju9vo9" d="M25.089 20.4288C24.1551 19.5127 23.2124 18.6055 22.2874 17.6806c-1.2585-1.2541-2.5036-2.5214-3.7532-3.7799.0-.978300000000001.0-1.9522.0-2.9306C18.5244 10.8702 18.5369 10.7693 18.5707 10.6747 18.6045 10.5802 18.6589 10.4942 18.7298 10.4232l6.1235-6.09233C24.9022 4.28195 24.9645 4.24193 25.0089 4.2019 25.1468 4.25082 25.1068 4.3531 25.1068 4.4287c0 5.26221.0 10.5229.0 15.7822C25.1054 20.2838 25.0995 20.3566 25.089 20.4288v0z" fill="var(--important)" fill-opacity=".7"/></svg></a><nav class=site-header-nav aria-label=Primary><a href=https://materialize.com/docs/>Main Docs</a>
 <a class=active href=https://materializeinc.github.io/materialize-monitoring/ aria-current=page>o11y</a></nav></div></header><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/materialize-monitoring/><span>materialize-monitoring Documentation</span></a></h2><div class="book-search hidden"><input id=book-search-input type=text placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><script>document.querySelector(".book-search").classList.remove("hidden")</script><ul><li><input type=checkbox id=section-d8603fc439af14929dcab7034cbdf060 class=toggle>
 <label for=section-d8603fc439af14929dcab7034cbdf060 class=flex><a role=button>Getting Started</a>
@@ -204,7 +204,7 @@ release instances.</p><table class=helm-values><thead><th>Key</th><th>Type</th><
   "default": "static",
   "environment": "static",
   "infra": "static"
-}</pre></td><td class=helm-value-desc>Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).</td></tr></tbody></table><h4 id=metrics-configuration>Metrics configuration<a class=anchor href=#metrics-configuration>#</a></h4><p>Configuration for metrics behavior</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"60s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td><td class=helm-value-desc>Node-local metric collection on the Alloy agent DaemonSet.<p>cAdvisor runs in-process in the agent rather than being scraped off the
+}</pre></td><td class=helm-value-desc>Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).</td></tr></tbody></table><h4 id=metrics-configuration>Metrics configuration<a class=anchor href=#metrics-configuration>#</a></h4><p>Configuration for metrics behavior</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"30s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td><td class=helm-value-desc>Node-local metric collection on the Alloy agent DaemonSet.<p>cAdvisor runs in-process in the agent rather than being scraped off the
 kubelet, so the metric set is ours rather than whatever the kubelet
 chooses, and the API-server proxy leaves the collection path. Metrics exit
 the agent over OTLP to the gateway&rsquo;s <code>otelcol.receiver.otlp</code>.</p><p>Enabling this requires host mounts on the agent (<code>/sys</code>, <code>/</code>,
@@ -212,7 +212,14 @@ the agent over OTLP to the gateway&rsquo;s <code>otelcol.receiver.otlp</code>.</
 <strong>no added Linux capabilities</strong> — the agent already runs as uid 0 with
 <code>capabilities.drop: [ALL]</code>, and that is sufficient for every collector
 enabled below. Verified by running the rendered config under
-<code>alloy run</code> with exactly that security context.</p></td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Collect per-container metrics on every node.</td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.scrapeInterval</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"60s"</code></td><td class=helm-value-desc>Scrape interval for the in-process cAdvisor exporter. The dominant cost lever: cAdvisor's series count scales with containers-per-node, so this is what you turn down on dense pools.</td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.enabledCollectors</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+<code>alloy run</code> with exactly that security context.</p></td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Collect per-container metrics on every node.</td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.scrapeInterval</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"30s"</code></td><td class=helm-value-desc>Scrape interval for the in-process cAdvisor exporter.
+30s, matching the rest of the stack. Lengthening this is the lever for
+dense pools, where cAdvisor is the largest single contributor of
+*samples* — its series count scales with containers-per-node, and the
+interval divides into that to give samples/sec. Note the interval
+changes samples, not cardinality: doubling it halves the sample rate
+and leaves the series count untouched, so it reduces ingest CPU and
+raw block volume but not Receive's memory.</td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.enabledCollectors</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Collectors to enable. **If non-empty this REPLACES `disabledCollectors` outright** — cAdvisor's own precedence, not ours — so it is the exhaustive list, not extras on top. A collector named here wins over the same name in `disabledCollectors`. Leave empty to let `disabledCollectors` decide.</td></tr><tr><td class=helm-value-key>pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.disabledCollectors</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 [
   "advtcp",
@@ -764,7 +771,14 @@ hostPath mounts — but it widens what an exemption covers.</p></td></tr><tr><td
     "cpu": "100m",
     "memory": "256Mi"
   }
-}</pre></td><td class=helm-value-desc>Resources for the ruler.</td></tr><tr><td class=helm-value-key>loki<wbr>.chunksCache</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable"}</code></td><td class=helm-value-desc>Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.</td></tr><tr><td class=helm-value-key>loki<wbr>.resultsCache</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"priorityClassName":"monitoring-scalable"}</code></td><td class=helm-value-desc>Query results cache (memcached).</td></tr><tr><td class=helm-value-key>loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable a ServiceMonitor for the loki microservices.</td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td><td class=helm-value-desc>End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td></tr></tbody></table><h4 id=thanos>Thanos<a class=anchor href=#thanos>#</a></h4><p>Bundled Thanos backend for long-term metrics.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/thanos-community/helm-charts/tree/master/charts/thanos rel=external class=external-link>https://github.com/thanos-community/helm-charts/tree/master/charts/thanos</a></li><li><a href=https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml rel=external class=external-link>https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>thanos<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"thanos"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>thanos<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority for every Thanos pod. See the Priority classes section.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.pdb</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Resources for the ruler.</td></tr><tr><td class=helm-value-key>loki<wbr>.chunksCache</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable"}</code></td><td class=helm-value-desc>Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.</td></tr><tr><td class=helm-value-key>loki<wbr>.resultsCache</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"priorityClassName":"monitoring-scalable"}</code></td><td class=helm-value-desc>Query results cache (memcached).</td></tr><tr><td class=helm-value-key>loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable a ServiceMonitor for the loki microservices.</td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false}</code></td><td class=helm-value-desc>End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.
+Set explicitly because the canary reaches neither of the two keys that
+cover the rest of Loki: it renders from its own template rather than
+`_pod.tpl`, so `loki.global.priorityClassName` does not reach it, and
+`loki.defaults` does not either. Left unset it runs at priority 0 —
+*below* ordinary workloads — so the first node under pressure evicts the
+end-to-end write→read check, which is exactly the signal you want during
+the incident that caused the pressure.</td></tr></tbody></table><h4 id=thanos>Thanos<a class=anchor href=#thanos>#</a></h4><p>Bundled Thanos backend for long-term metrics.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/thanos-community/helm-charts/tree/master/charts/thanos rel=external class=external-link>https://github.com/thanos-community/helm-charts/tree/master/charts/thanos</a></li><li><a href=https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml rel=external class=external-link>https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>thanos<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"thanos"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>thanos<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority for every Thanos pod. See the Priority classes section.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.pdb</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
   "maxUnavailable": 1
@@ -783,27 +797,378 @@ the replication factor of 3 set below. A validator enforces this.</li></ul><p>Th
     "minReplicas": 2,
     "targetCPUUtilizationPercentage": 80
   },
-  "enabled": true
+  "enabled": true,
+  "resources": {
+    "requests": {
+      "cpu": "500m",
+      "memory": "1Gi"
+    }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre></td><td class=helm-value-desc>Thanos Query configuration. Query provides a PromQL query endpoint.</td></tr><tr><td class=helm-value-key>thanos<wbr>.query<wbr>.autoscaling</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
   "maxReplicas": 5,
   "minReplicas": 2,
   "targetCPUUtilizationPercentage": 80
-}</pre></td><td class=helm-value-desc>Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.mode</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"standalone"</code></td><td class=helm-value-desc>Whether to split receive distributors from ingesters. mode=split is not very stable in the helm chart</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.replicaCount</td><td class=helm-value-type>int</td><td class=helm-value-default><code>3</code></td><td class=helm-value-desc>Number of receive replicas.</td></tr><tr><td class=helm-value-key>thanos<wbr>.storegateway</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.</td></tr><tr><td class=helm-value-key>thanos<wbr>.query<wbr>.topologySpreadConstraints</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre></td><td class=helm-value-desc>Topology spread for Query: soft on both axes.
+Stateless and autoscaled, so an unbalanced placement costs query capacity
+rather than correctness — soft is sufficient, and it keeps an HPA scale-up
+from stalling on a hard rule when the newest zone has no room yet.<p><code>pod-template-hash</code>, not <code>controller-revision-hash</code>: Query is a Deployment,
+and that is the label its ReplicaSets carry. Using the StatefulSet label
+here would match nothing and quietly disable the same-revision guard.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.query<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
-  "enabled": true
+  "requests": {
+    "cpu": "500m",
+    "memory": "1Gi"
+  }
+}</pre></td><td class=helm-value-desc>Resource requests for Thanos Query. Medium sizing; see the `thanos-small` / `thanos-large` profiles for the other two columns.
+A CPU request is load-bearing here beyond scheduling: `targetCPUUtilization`
+is a percentage *of the request*, so without one the HPA above has no
+denominator and never scales. No memory limit — a fan-out query's peak
+scales with the series it touches, and an OOM-kill mid-query is a worse
+failure than a slow one.</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable Thanos receiver. Receive provides a Prometheus remote_write-compatible endpoint.</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.mode</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"standalone"</code></td><td class=helm-value-desc>Whether to split receive distributors from ingesters. mode=split is not very stable in the helm chart</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.replicaCount</td><td class=helm-value-type>int</td><td class=helm-value-default><code>3</code></td><td class=helm-value-desc>Number of receive replicas.</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.extraArgs</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  "--receive.replication-factor=3"
+]</pre></td><td class=helm-value-desc>Extra CLI arguments for Receive.
+**This is a list, and Helm overwrites lists rather than merging them.**
+Anything that sets `receive.extraArgs` replaces this entry wholesale, so
+the replication factor must be restated or it silently falls back to
+Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
+profiles restate it; so must yours. See Production Best Practices >
+Metrics (Thanos) for the quorum table.</td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.vpa</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": false
+}</pre></td><td class=helm-value-desc>VerticalPodAutoscaler for Receive.
+Off, overriding the subchart's `true`. Three reasons, in order:<ol><li>It rewrites the requests below, so a sizing profile would not survive
+contact with it.</li><li><code>updateMode: Auto</code> evicts pods to apply new requests, and Receive is a
+PVC-backed StatefulSet holding up to <code>tsdb.retention</code> (24h) of blocks
+that have not reached object storage yet.</li><li>The subchart&rsquo;s VPA template is CRD-gated, so leaving it on makes the
+stack behave differently on clusters with the VPA CRD installed than on
+those without — silently, in both directions.</li></ol><p>If you want its recommendations without its actions, set
+<code>updateMode: "Off"</code> rather than re-enabling Auto.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "limits": {
+    "ephemeral-storage": "30Gi"
+  },
+  "requests": {
+    "cpu": "500m",
+    "ephemeral-storage": "20Gi",
+    "memory": "4Gi"
+  }
+}</pre></td><td class=helm-value-desc>Resource requests for Receive. Medium sizing.
+Memory is the cell to get right: budget ~3 KB per active series held, and
+note that at `replicaCount == replicationFactor` **every pod holds every
+series** — sharding begins only above RF.<p>No memory limit, deliberately, and for a sharper reason than elsewhere in
+this chart: an OOM-kill drops the un-uploaded block window, and unlike
+Loki&rsquo;s ingesters that window has nothing protecting it but the replication
+factor. Alert on usage instead.</p><p><code>ephemeral-storage</code> is declared because the TSDB now lives on an
+<code>emptyDir</code> (see <code>persistence</code>). The request is what the scheduler places
+against, so a node without room refuses the pod instead of filling up
+silently. The limit carries deliberate headroom over the request: the
+kubelet&rsquo;s response to exceeding it is <strong>eviction</strong>, and evicting Receive
+destroys exactly the un-uploaded window this sizing exists to protect.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.topologySpreadConstraints</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "receive"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "minDomains": 2,
+    "nodeTaintsPolicy": "Honor",
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "DoNotSchedule"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "receive"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre></td><td class=helm-value-desc>Topology spread for Receive: hard across zones, soft across hosts.
+This is the constraint that makes `--receive.replication-factor=3` mean
+what the quorum table says. Without it the scheduler is free to place all
+three replicas in one zone, and RF 3 buys nothing against the failure it
+exists for — losing a zone takes every copy and, since write quorum is 2,
+takes writes with it.<p><strong>Hard</strong> (<code>DoNotSchedule</code>) on zones, deliberately. A pod that cannot
+satisfy it goes Pending, which is the signal Karpenter or the
+cluster-autoscaler uses to add a node in the deficient zone — a soft rule
+cannot summon capacity that way, it just quietly places the pod wrongly.
+Host spread stays soft so pods still schedule when nodes are momentarily
+scarce; two pods sharing a node is a smaller problem than a pod not
+running.</p><p><strong>This became viable when Receive stopped using a PVC</strong> (see
+<code>persistence</code> below). A zonal volume cannot be attached from another zone,
+so a hard zone rule and an AZ-pinned pod pull in opposite directions: the
+rule says &ldquo;go to the empty zone&rdquo;, the volume says &ldquo;you may only run in
+zone A&rdquo;, and the pod goes Pending forever rather than for as long as it
+takes to add a node. On <code>emptyDir</code> there is nothing holding it back.</p><p>Matched on <code>app.kubernetes.io/component</code> alone rather than the full
+selector, because the subchart renders this through <code>toYaml</code> rather than
+<code>tpl</code> — a <code>{{ include ... }}</code> here would land in the manifest literally, so
+the release name is unavailable. Spread is namespace-scoped and this chart
+assumes one instance of each backend per namespace, so the component label
+is unambiguous. See the Namespace layout section.</p><p>Note this cannot move to <code>thanos.global.topologySpreadConstraints</code>: each
+constraint carries its own <code>labelSelector</code>, and a global one would make
+every Thanos component count Receive&rsquo;s pods when computing its own skew.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.receive<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": false
+}</pre></td><td class=helm-value-desc>Local TSDB storage for Receive: **ephemeral, not a PVC.**
+This is the same call the chart makes for Loki's ingesters, for the same
+reason, and it is worth spelling out because Receive looks stateful.<p>Durability comes from <code>--receive.replication-factor=3</code>, not from disk.
+Blocks ship to object storage every 2h, so the window that exists only
+locally is at most 2h — and every replica uploads its own copy under a
+distinct <code>replica</code> external label, which the Compactor deduplicates. A pod
+that comes back with an empty volume has lost its copy of that window, and
+the query path still answers from the surviving replicas.</p><p>A PVC makes an AZ failure <strong>worse</strong>, not merely less flexible: an EBS
+volume cannot be attached from another zone, so a pod whose zone is gone
+stays Pending until the zone returns rather than rescheduling into a
+healthy one. On the write path that turns a recoverable event into an
+outage that waits on the cloud provider — with RF 3 write quorum is 2, so
+two pods stuck Pending block writes outright.</p><p>The trade accepted in exchange: Thanos Receive has no peer hand-off, so
+unlike Loki it will not backfill an emptied pod from its neighbours. That
+window stays at two copies instead of three until the next block ships.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.storegateway</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": true,
+  "extraArgs": [
+    "--store.limits.request-series=5000000",
+    "--store.limits.request-samples=200000000"
+  ],
+  "persistence": {
+    "enabled": true,
+    "size": "10Gi"
+  },
+  "resources": {
+    "requests": {
+      "cpu": "500m",
+      "memory": "3Gi"
+    }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "storegateway"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "storegateway"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre></td><td class=helm-value-desc>Thanos Store Gateway configuration. Store Gateway provides historical block querying.<p>Autoscaling is available upstream but left <strong>off</strong> deliberately. Store
 Gateway is a PVC-backed StatefulSet that syncs the bucket&rsquo;s block index on
 startup, so scale-up is slow to become useful (it serves nothing until the
 index is warm) and CPU-triggered scaling reacts long after the load that
 triggered it. Scale-down also leaves orphaned PVCs behind, since
-StatefulSet volumes are not reclaimed. Size it deliberately instead.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor</td><td class=helm-value-type>object</td><td class=helm-value-default><em>enabled with default retention policies</em></td><td class=helm-value-desc>Thanos Compactor configuration. Compactor provides block compaction and downsampling.</td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor<wbr>.retention</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+StatefulSet volumes are not reclaimed. Size it deliberately instead.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.storegateway<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": true,
+  "size": "10Gi"
+}</pre></td><td class=helm-value-desc>Index-header cache for Store Gateway: **the one Thanos component that keeps a PVC.**
+Receive and the Compactor are both ephemeral (see their `persistence`
+keys). Store Gateway is the exception, and the reason is startup cost
+rather than durability: the on-disk binary index-headers are a
+read-through cache of the bucket and lose nothing when discarded, but
+rebuilding them means re-downloading from object storage, and the
+component serves no historical query until that finishes. On a large
+bucket that is minutes of degraded long-range dashboards on every restart.<p>Kept on at <strong>every</strong> size deliberately, rather than flipping to ephemeral
+for small installs. A volume that appears and disappears with the profile
+is a surprise during an incident, and the AZ-pinning argument that drives
+Receive to <code>emptyDir</code> is much weaker here: Store Gateway is a read-only
+replica set with no quorum, so a pod stuck Pending in a dead zone costs
+read capacity rather than blocking writes.</p><p>The <code>kind</code> profile is the one exception, where CI would rather not wait on
+volume provisioning for a cache.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.storegateway<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "requests": {
+    "cpu": "500m",
+    "memory": "3Gi"
+  }
+}</pre></td><td class=helm-value-desc>Resource requests for Store Gateway. Medium sizing.
+There is a floor here that is easy to trip over. Thanos defaults
+`--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart
+passes neither, so a stock Store Gateway wants ~2.5Gi before it serves a
+single query. A request below that is an OOM, not a small install — the
+`thanos-small` profile shrinks the pools through `extraArgs` instead.</td></tr><tr><td class=helm-value-key>thanos<wbr>.storegateway<wbr>.topologySpreadConstraints</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "storegateway"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "storegateway"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre></td><td class=helm-value-desc>Topology spread for Store Gateway: soft on both axes.
+**Soft** (`ScheduleAnyway`) where Receive is hard, and the difference is
+the point rather than an inconsistency. Two things make it the right trade
+here:<ol><li><strong>Nothing depends on quorum.</strong> Store Gateway is a read-only replica set
+over object storage, so an unbalanced placement costs read capacity
+during a zone loss rather than correctness. Receive&rsquo;s hard rule protects
+write quorum; there is no equivalent to protect here.</li><li><strong>It is the one Thanos component that still keeps a PVC</strong>, and a hard
+zone rule against a zonal volume can deadlock rather than merely wait.
+With <code>volumeBindingMode: WaitForFirstConsumer</code> — the default for the
+zonal CSI classes and what you want — the volume follows the pod and the
+two agree. With <code>Immediate</code>, the PVC&rsquo;s zone is chosen <em>before</em> scheduling
+and a hard rule pointing elsewhere leaves the pod Pending forever. Soft
+degrades instead of deadlocking on a StorageClass we do not control.</li></ol></td></tr><tr><td class=helm-value-key>thanos<wbr>.storegateway<wbr>.extraArgs</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  "--store.limits.request-series=5000000",
+  "--store.limits.request-samples=200000000"
+]</pre></td><td class=helm-value-desc>Extra CLI arguments for Store Gateway.
+Read-path protection. Thanos has no per-tenant write limit to set; the
+realistic failure is one query fanning out across the bucket and taking
+this component down, which takes historical reads with it. These two caps
+make that query fail instead.<p>The subchart ships this empty, so unlike <code>receive.extraArgs</code> there is
+nothing to lose by overriding it — but it is still a list, so restate both
+entries when adding a third.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor</td><td class=helm-value-type>object</td><td class=helm-value-default><em>enabled with default retention policies</em></td><td class=helm-value-desc>Thanos Compactor configuration. Compactor provides block compaction and downsampling.</td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor<wbr>.retention</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "resolution1h": "365d",
   "resolution5m": "90d",
   "resolutionRaw": "30d"
-}</pre></td><td class=helm-value-desc>Retention policies for Thanos Compactor downsampled data</td></tr><tr><td class=helm-value-key>thanos<wbr>.queryFrontend</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Retention policies for Thanos Compactor downsampled data
+The medium row of the retention table in Production Best Practices.<p>Raw retention has a floor set by the downsampling thresholds: Thanos
+produces 5m downsamples only from blocks spanning 40h or more, and 1h
+downsamples only from blocks spanning 10d or more. Below those the tier is
+never created at all and long-range queries silently fall back to reading
+raw blocks — slower and more expensive, which is the opposite of the
+intent. 30d clears both comfortably.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor<wbr>.vpa</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": false
+}</pre></td><td class=helm-value-desc>VerticalPodAutoscaler for the Compactor. Off for the same reasons as `receive.vpa`, minus the block-loss argument — the Compactor's local volume is an idempotent working copy, so an eviction costs a restarted compaction rather than data. It still overwrites the requests below, and still behaves differently depending on whether the VPA CRD happens to be installed.</td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "limits": {
+    "ephemeral-storage": "30Gi"
+  },
+  "requests": {
+    "cpu": 1,
+    "ephemeral-storage": "20Gi",
+    "memory": "2Gi"
+  }
+}</pre></td><td class=helm-value-desc>Resource requests for the Compactor. Medium sizing.
+The Compactor is a **singleton by necessity** — concurrent compactors
+against one block set corrupt data — so it is the one component here with
+no horizontal escape hatch. Vertical is the only lever, which makes
+compaction falling behind something to alert on rather than discover.<p>Downsampling is the memory-heavy phase, and <code>--compact.concurrency</code>
+multiplies it; leave that at 1 unless compaction is provably behind.</p><p><code>ephemeral-storage</code> is the scratch budget, now that the working directory
+is an <code>emptyDir</code> (see <code>persistence</code>). This is the largest ephemeral request
+in the stack and the one most likely to make a pod unschedulable — which is
+the intended behaviour: a Compactor that cannot fit belongs on a bigger
+node, not silently filling the one it landed on.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.compactor<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": false
+}</pre></td><td class=helm-value-desc>Working directory for the Compactor: **ephemeral, not a PVC.**
+Scratch space for the block group under compaction. Nothing here is
+authoritative — the bucket is — and a Compactor killed mid-compaction
+simply redoes the work, so there is no durability argument for a volume.<p>The availability argument runs the other way, and it is stronger here than
+anywhere else in the chart: this is a <strong>hard</strong> singleton, so unlike Receive
+there is not even a second replica to serve while one is stuck. Pinning it
+to a zone means a zone outage stops compaction entirely, and while
+compaction is stopped retention is not enforced and the bucket grows
+without bound. This mirrors the call already made for Loki&rsquo;s compactor.</p><p>The cost: <code>emptyDir</code> draws on node ephemeral storage rather than a
+provisioned volume, so the node must actually have this much free. At
+<code>thanos-large</code>&rsquo;s 100Gi that is a real node-shape requirement — see
+<code>resources.requests.ephemeral-storage</code>, which makes it explicit to the
+scheduler rather than a surprise to the kubelet.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.queryFrontend</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "autoscaling": {
     "enabled": true,
@@ -811,7 +1176,41 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.</p></td></t
     "minReplicas": 2,
     "targetCPUUtilizationPercentage": 80
   },
-  "enabled": false
+  "enabled": false,
+  "resources": {
+    "requests": {
+      "cpu": "250m",
+      "memory": "512Mi"
+    }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query-frontend"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query-frontend"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre></td><td class=helm-value-desc>Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.<p>Note that enabling this is not sufficient on its own: point
 <code>connections.datasources.thanos.url</code> at the query-frontend Service too, or
 reads keep going straight to Query and the cache is never consulted. A
@@ -821,7 +1220,41 @@ validator warns when the two disagree.</p></td></tr><tr><td class=helm-value-key
   "maxReplicas": 5,
   "minReplicas": 2,
   "targetCPUUtilizationPercentage": 80
-}</pre></td><td class=helm-value-desc>Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.</td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.</td></tr><tr><td class=helm-value-key>thanos<wbr>.queryFrontend<wbr>.topologySpreadConstraints</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query-frontend"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query-frontend"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre></td><td class=helm-value-desc>Topology spread for Query Frontend: soft on both axes, same reasoning as Query. Inert until `enabled` is true.</td></tr><tr><td class=helm-value-key>thanos<wbr>.queryFrontend<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "requests": {
+    "cpu": "250m",
+    "memory": "512Mi"
+  }
+}</pre></td><td class=helm-value-desc>Resource requests for Query Frontend. Inert until it is enabled, which `thanos-large` does. Sized for splitting and result caching rather than query execution — the work happens in Query behind it.</td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": false
 }</pre></td><td class=helm-value-desc>Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.</td></tr></tbody></table><h4 id=grafana-operator>Grafana Operator<a class=anchor href=#grafana-operator>#</a></h4><p>Bundled Grafana-operator for managing Grafana instances.</p><p>Upstream references:</p><ul><li><a href=https://grafana.github.io/grafana-operator/docs/installation/helm/#values rel=external class=external-link>https://grafana.github.io/grafana-operator/docs/installation/helm/#values</a></li><li><a href=https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml rel=external class=external-link>https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>grafana-operator<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Scalable tier: while the operator is down, dashboard and datasource reconciliation stops, but Grafana keeps serving what it already has.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"grafana-operator"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.crds</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
