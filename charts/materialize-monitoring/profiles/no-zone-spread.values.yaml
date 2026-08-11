@@ -1,0 +1,90 @@
+# Topology profile: for clusters with no zones, or one.
+#
+# Compose after the base values:
+#   -f profiles/no-zone-spread.values.yaml
+#
+# Terraform users want `min_zones` instead, which does this and more — it can also
+# *raise* `minDomains` above the chart's floor when you have three or more zones.
+# This file is the Helm-only equivalent of `min_zones = 0`.
+#
+# ---------------------------------------------------------------------------
+# Why this is needed rather than nice to have
+# ---------------------------------------------------------------------------
+# The chart gives Thanos Receive and Loki's ingesters a **hard** zone spread
+# (`DoNotSchedule`, `minDomains: 2`). That is deliberate: both are
+# replication-factor-3 ring members, and a hard rule is what makes RF 3 a real
+# claim about surviving a lost availability zone rather than three copies that
+# might all sit in the same one. A pod that cannot satisfy it goes `Pending`,
+# which is the signal Karpenter uses to add a node in the deficient zone.
+#
+# The assumption is two or more zones, and where it fails it **fails closed**:
+#
+#   * **No zone labels at all.** A `DoNotSchedule` constraint whose `topologyKey`
+#     no node carries has no domain to place into, so the pods are unschedulable
+#     rather than merely unbalanced. `kind` labels no node this way, and neither
+#     do many on-premises distributions — nobody should have to hand-label their
+#     nodes to install a monitoring stack.
+#   * **Exactly one zone.** Just as broken, and much less obvious. When the number
+#     of eligible domains is below `minDomains`, Kubernetes treats the global
+#     minimum as 0 — so one zone holding all three replicas computes a skew of 3
+#     against a `maxSkew` of 1, and every pod stays `Pending`.
+#
+# Either way the symptom is a stack that never comes up, and the cause reads like
+# a chart bug rather than a missing node label.
+#
+# ---------------------------------------------------------------------------
+# What you give up
+# ---------------------------------------------------------------------------
+# The soft host spread is preserved — restated below, since Helm overwrites lists —
+# so pods still prefer separate nodes and one node failure does not take the ring with it.
+# What is gone is zone protection, which a cluster with fewer than two zones did not have to begin with.
+# This profile makes that explicit rather than aspirational.
+#
+# **If you later gain a second zone, stop using this file.** Nothing will remind
+# you: the pods will schedule happily, spread across nothing, and RF 3 will go on
+# reading like AZ resilience in the dashboards. On Terraform, `min_zones` is the
+# better habit for exactly this reason — it is a number you update rather than a
+# file you remember to remove.
+
+thanos:
+  receive:
+    # -- The hard zone rule is gone; the soft host rule is restated.
+    # @raw
+    # Restated rather than emptied, because `topologySpreadConstraints` is a list
+    # and Helm overwrites lists — an empty list would take the host spread with
+    # it. That matters most on exactly the clusters this profile is for: a
+    # bare-metal or on-premises cluster has no zones to lose, so the node is the
+    # only failure domain there is, and all three ring members landing on one of
+    # them is the failure that remains.
+    #
+    # This mirrors what Terraform's `min_zones = 0` does, which filters out the
+    # hard zone rule and leaves everything else untouched. The two paths agree.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        matchLabelKeys:
+          - controller-revision-hash
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: receive
+
+loki:
+  ingester:
+    # Same reasoning. Loki's ingesters carry the identical hard zone rule, for the
+    # identical reason (replication_factor 3), so they break identically.
+    #
+    # Note the fuller selector: unlike Thanos, the Loki subchart renders these
+    # through `tpl`, so its own values template the name and instance in — and a
+    # restatement has to carry that or it silently selects a different pod set.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        matchLabelKeys:
+          - controller-revision-hash
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: ingester
+            app.kubernetes.io/name: '{{ include "loki.name" . }}'
+            app.kubernetes.io/instance: '{{ .Release.Name }}'

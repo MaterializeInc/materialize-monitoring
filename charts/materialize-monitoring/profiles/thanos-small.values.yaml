@@ -1,0 +1,108 @@
+# Thanos profile: small (S)
+#
+# Overlay on top of the chart defaults (which target a medium install).
+# Compose after the base values, e.g. `-f profiles/thanos-small.values.yaml`.
+#
+# Envelope this profile is sized for (see Operating > Production Best Practices,
+# "Sizing the metrics backend"):
+#   ~150k active series · ~5k samples/s at 30s · ~25 GB bucket
+# Typical fit: <=10 nodes, <=250 pods, <=100 collections. Dev, or one small
+# cluster. Note those are *whole-cluster* numbers, not Materialize's share.
+#
+# This file defines ONLY the deltas from the medium defaults — smaller
+# resources, volumes, caches, read limits, and retention. The topology stays
+# production-shaped (replication factor 3, 3 receive replicas, PDBs on every
+# component) so HA behavior stays valid; small just runs leaner.
+
+tags:
+  thanos: true
+
+thanos:
+  query:
+    autoscaling:
+      # -- Lower the ceiling; the floor stays at 2 for availability.
+      # Must match `replicaCount` below: the subchart templates a static
+      # `replicas` even alongside an HPA, so a mismatch means every reconcile
+      # resets the count.
+      minReplicas: 2
+      maxReplicas: 3
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+    # -- Restates the subchart's `--log.level=info` (lists are overwritten, not
+    # merged) and tightens read concurrency to match the smaller Store Gateway.
+    extraArgs:
+      - --log.level=info
+      - --query.max-concurrent=10
+      - --query.timeout=2m
+
+  receive:
+    # Stays at 3 replicas: that is the replication-factor floor, not a sizing
+    # choice. At `replicaCount == replicationFactor` every pod holds every
+    # series, which is correct here — 150k series is small enough that sharding
+    # buys nothing and the extra pods would cost more than they save.
+    replicaCount: 3
+    # -- Restated in full. Dropping this line silently reverts to Thanos's
+    # default replication factor of 1, which tolerates no pod loss at all.
+    extraArgs:
+      - --receive.replication-factor=3
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+        # -- ~5k samples/s for 24h plus WAL fits well inside this. The limit
+        # carries headroom because exceeding it evicts the pod, which destroys
+        # the un-uploaded window the replication factor exists to protect.
+        ephemeral-storage: 10Gi
+      limits:
+        ephemeral-storage: 15Gi
+
+  storegateway:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+    # -- The memory pools have to come down with the request, not just the
+    # request. Thanos defaults to a 2GB chunk pool and a 250MB index cache, so a
+    # 1Gi request against stock pools is an OOM rather than a small install.
+    # Read limits scale down with the smaller bucket.
+    extraArgs:
+      - --chunk-pool-size=512MB
+      - --index-cache-size=100MB
+      - --store.limits.request-series=1000000
+      - --store.limits.request-samples=50000000
+    persistence:
+      # -- Store Gateway keeps its PVC at every size (see the base values): the
+      # index-header cache is cheap to lose but expensive to rebuild, and a
+      # volume that appears only above a certain size is a surprise mid-incident.
+      enabled: true
+      size: 10Gi
+
+  compactor:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+        # -- Scratch space for the block group under compaction, on an
+        # `emptyDir` (see the base values). Small blocks at this size.
+        ephemeral-storage: 10Gi
+      limits:
+        ephemeral-storage: 15Gi
+    retention:
+      # -- Shorter horizons for a small storage budget.
+      #
+      # Raw stays at 14d rather than something smaller on purpose: Thanos only
+      # produces 5m downsamples from blocks spanning 40h+ and 1h downsamples
+      # from blocks spanning 10d+. Cut raw below those and the tier is never
+      # created, so long-range queries fall back to reading raw blocks — slower
+      # and more expensive than the retention saving.
+      resolutionRaw: 14d
+      resolution5m: 30d
+      resolution1h: 90d
+
+  # Query Frontend stays off (the chart default). At this size the read path is
+  # a handful of dashboards and Query's own queue is sufficient; enabling it
+  # would also require repointing `connections.datasources.thanos.url`, or the
+  # cache is deployed and bypassed.

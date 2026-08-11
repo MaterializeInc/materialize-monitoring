@@ -1,0 +1,81 @@
+# Storage-class profile: one class, aimed at every workload that claims a volume.
+#
+# **Edit the single anchor below and nothing else.**
+#
+# Compose after the base values:
+#   -f profiles/storage-class.values.yaml
+#
+# Terraform users do not need this file — the module's `storage_class` variable
+# carries the same map (`terraform/modules/materialize-monitoring/
+# storage_class.tf`). `make terraform-render` asserts that every rendered
+# `volumeClaimTemplate` carries the class, so a workload missing from either map
+# fails in this repository's CI rather than in an apply.
+#
+# ---------------------------------------------------------------------------
+# Three live targets, and two that are deliberately inert
+# ---------------------------------------------------------------------------
+# Most of this stack is volumeless on purpose. Loki's ingesters, index-gateway and
+# compactor, and Thanos's Receive and Compactor, all run on node-local
+# `emptyDir`: durability comes from the replication factor or from object storage,
+# and a volume that cannot cross availability zones makes a zone failure worse
+# rather than safer — a pod whose zone is gone stays `Pending` instead of
+# rescheduling. See [Storage: ephemeral by default](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#thanos-ephemeral-storage).
+#
+# What is left:
+#
+#   * **Alertmanager** — silences and the notification log. The only volume in the
+#     stack holding state that is genuinely not reconstructible, since silences
+#     are human-created and nothing replicates them today (DEP-226).
+#   * **The Loki ruler** — its remote-write WAL, which buffers recording-rule
+#     samples while the metric store is unreachable. Useful durability in the
+#     run-up to an incident, exactly when you do not want to drop derived signals.
+#   * **The Thanos Store Gateway** — the on-disk index-header cache. Cheap to lose
+#     and slow to rebuild, and it has no write quorum to block, so it is the one
+#     Thanos component where a volume is the better trade.
+#
+# `thanos.receive` and `thanos.compactor` are still named below even though both
+# default to `persistence.enabled: false`. Re-enabling their persistence is a
+# documented escape hatch — the Compactor's 100Gi scratch at `thanos-large` may
+# not fit a node pool's ephemeral storage — and a re-enabled volume that silently
+# missed the class would be a worse trap than two no-op keys. The `kind` profile
+# turns the Store Gateway's volume off too, so under it nothing here applies.
+#
+# > A class that cannot serve the nodes is not the same as a missing class.
+# > On GCP's C4 and N4 machine families, which accept only Hyperdisk, *every*
+# > StorageClass GKE creates by default is Persistent Disk and none of them will
+# > attach — the PVC binds and the pod never starts.
+#
+# Changing this on an existing install does not move the volumes:
+# `volumeClaimTemplates` are immutable, so the old PVCs must be deleted first,
+# discarding their contents.
+
+# Inert holder for the anchor. The umbrella chart ships no `values.schema.json`,
+# so an unrecognised top-level key is ignored rather than rejected.
+_storage:
+  # -- The StorageClass name. Must exist *and* be attachable by the nodes these
+  # workloads land on.
+  storageClass: &storageClass standard
+
+alertmanager:
+  persistence:
+    storageClass: *storageClass
+
+loki:
+  ruler:
+    persistence:
+      storageClass: *storageClass
+
+thanos:
+  # Live.
+  storegateway:
+    persistence:
+      storageClass: *storageClass
+
+  # Inert while `persistence.enabled` is false, which is the default for both.
+  # Retained so re-enabling either picks the class up. See the header.
+  receive:
+    persistence:
+      storageClass: *storageClass
+  compactor:
+    persistence:
+      storageClass: *storageClass

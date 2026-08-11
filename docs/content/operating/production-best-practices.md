@@ -50,7 +50,7 @@ Satisfied by the modules today:
 
 Still yours, on any install path:
 
-- A usable **StorageClass** must exist — five workloads are PVC-backed and the modules do not create one. "Usable" is not the same as "present": on GCP's C4 and N4 machine families, which accept only Hyperdisk, *every* StorageClass GKE creates by default is Persistent Disk and none of them will attach. The Terraform modules take `storage_class`; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
+- A usable **StorageClass** must exist — three workloads are PVC-backed (Alertmanager, the Loki ruler, the Thanos Store Gateway) and the modules do not create one. "Usable" is not the same as "present": on GCP's C4 and N4 machine families, which accept only Hyperdisk, *every* StorageClass GKE creates by default is Persistent Disk and none of them will attach. The Terraform modules take `storage_class`; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
 - **Sizing and retention budgets**, node-pool capacity, and the profile choice.
 - **Basic-auth or mTLS secrets** between components, which are not yet wired on any path.
 - Everything tagged `[operator]`.
@@ -101,6 +101,7 @@ Both sit well below `system-cluster-critical` (2000000000) and `system-node-crit
 - [x] `[chart]` Both classes created, and referenced by name from every subchart that accepts a `priorityClassName`.
 - [ ] `[operator]` **PriorityClasses are cluster-scoped.** Two releases of this chart in one cluster will fight over these objects. Set `priorityClasses.create: false` on all but one, or rename them per release with `priorityClasses.critical.name` / `priorityClasses.scalable.name`.
 - [ ] `[operator]` **If you rename or disable them, update the `priorityClassName` values in the subchart blocks to match.** A `priorityClassName` naming a class that does not exist does not degrade — the API server *rejects* the pod, and the only evidence is an admission error on a ReplicaSet nobody is watching. A render-time check warns when it can tell that has happened.
+- [x] `[chart]` The `scheduling` profile carries the whole fan-out — node selector, tolerations, and both class names — with every site aliased off four anchors, so a rename is a two-line edit rather than eleven `priorityClassName` keys across nine subcharts that can half-apply. See [Getting Started > Helm](../../getting-started/helm/#scheduling-profile).
 - [ ] `[operator]` If your platform already defines a priority scheme, point the subchart values at your own classes instead. `metrics-server` is left on the upstream `system-cluster-critical` deliberately: it backs the metrics API that HPAs and the Materialize Console read, so it is cluster plumbing rather than monitoring.
 
 ## Collection (Alloy)
@@ -348,7 +349,7 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 - [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3; set `minDomains` to the zone count your node pool can launch in. With 2 zones, know an AZ loss can break write quorum until the ring recovers.
 - [ ] `[operator]` If you bring nodes up **tainted** until DaemonSets are healthy, the spread already sets `nodeTaintsPolicy: Honor` (tainted nodes stay out of the skew math) — model the taint as a Karpenter `startupTaint` so it doesn't over-provision. Taints only gate placement.
 - [x] `[chart]` PodDisruptionBudget on ingesters (`maxUnavailable: 1`), with a render-time warning if it or the rollout `maxUnavailable` is set > 1.
-- [x] `[chart]` `priorityClassName` on every Loki pod (`monitoring-scalable`), so ingesters and the compactor outrank ordinary workloads under node pressure. `loki.global.priorityClassName` covers everything that renders through the chart's `_pod.tpl`; the two memcached StatefulSets read only their own component key and are set separately. See [Scheduling priority](#scheduling-priority).
+- [x] `[chart]` `priorityClassName` on every Loki pod (`monitoring-scalable`), so ingesters and the compactor outrank ordinary workloads under node pressure. `loki.global.priorityClassName` covers everything that renders through the chart's `_pod.tpl`; **three components read only their own key and are set separately** — the two memcached StatefulSets and the canary. The canary is the one that bites: left unset it runs at priority 0, *below* ordinary workloads, so the first node under pressure evicts the end-to-end write→read check, which is exactly the signal you want during the incident that caused the pressure. See [Scheduling priority](#scheduling-priority).
 
 #### 4. Ingester durability & rollouts
 
@@ -440,8 +441,9 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 For the architecture these items configure, see [Metrics](../../metrics/).
 
-Thanos is **less finished than Loki** in this chart, and the checklist says so honestly: there are no sizing profiles, no resource requests, and no topology spread on any Thanos component today.
-Treat the unchecked `[chart]` items below as the current work list rather than as guidance you are expected to satisfy by hand.
+Thanos is **on par with Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets, autoscaling, and zone-aware topology spread are all in place.
+What remains unchecked below is mostly `[operator]` and `[consumer]` work — decisions and cloud resources the chart cannot make for you.
+Treat any unchecked `[chart]` item as the current work list rather than as guidance you are expected to satisfy by hand.
 
 ### Receive: replication is the availability lever, not `mode`
 
@@ -474,10 +476,267 @@ thanos:
       - --receive.replication-factor=3
 ```
 
-Note this differs from Loki, where ingesters are deliberately ephemeral and durability comes from RF 3 alone. **Thanos Receive is PVC-backed** (10Gi RWO per pod by default) and therefore AZ-pinned, and it holds up to `receive.tsdb.retention` (24h) of not-yet-uploaded blocks. With RF 1 that window exists in exactly one copy, on one volume, in one zone.
+This is the same shape as Loki, where ingesters are deliberately ephemeral and durability comes from RF 3 alone — **Thanos Receive is `emptyDir`-backed for the same reason**, and the replication factor is therefore the only thing standing between you and data loss. It holds up to `receive.tsdb.retention` (24h) of blocks locally, of which at most 2h has not yet reached object storage. With RF 1 that window exists in exactly one copy, on one node. See [Storage: ephemeral by default](#thanos-ephemeral-storage) for why no volume is involved.
 
 > [!WARNING]
 >   **Split mode is not recommended yet.** It landed upstream only recently, and `receive.ingester` does not inherit from the top-level `receive.*` defaults — upstream considers the non-merging behavior intentional, so this is unlikely to change. In practice that means restating ~31 keys, of which the values schema hard-requires eight sub-objects (`hashrings`, `service`, `vpa`, `persistence`, `podSecurityContext`, `probes`, `serviceMonitor`, `pdb`) before the chart will render at all. Prefer standalone with an odd replication factor until that changes.
+
+### Sizing the metrics backend
+
+**Size by active series and object count — not by node count, and not by throughput.**
+This is the opposite axis from Loki, where bytes per second drives everything.
+Thanos keys off cardinality, and the derived quantities split across components:
+
+- **Receive memory** → **active series**. Budget ~3 KB per series held.
+- **Receive CPU and local disk** → **ingested samples/sec**, which is active series ÷ scrape interval. Every scrape surface this chart generates defaults to **30s**.
+- **Store Gateway and Compactor** → **block volume under retention**.
+- **Query and Query Frontend** → **query concurrency**, independent of ingest.
+
+Those four move independently, which is why halving the scrape interval doubles Receive's CPU and disk while leaving its memory untouched.
+
+#### Choosing a profile {#choosing-a-thanos-profile}
+
+Nobody knows their series count before they have somewhere to put metrics, so profiles are chosen from **inventory** — what exists, not how busy it is.
+Workload-intensity metrics are the wrong shape for this: they swing on a daily cycle, while cardinality is nearly flat.
+
+| | S (bottom ~20%) | M (middle ~70%, chart defaults) | L (top ~10%) |
+|---|---|---|---|
+| **Collections** (indexes + materialized views) | ≤ 100 | 100–1,000 | 1,000+ |
+| Kubernetes nodes | ≤ 10 | 10–100 | 100+ |
+| Pods, all namespaces | ≤ 250 | 250–2,000 | 2,000+ |
+| Cluster replicas | ≤ 4 | 4–30 | 30+ |
+
+**Take the largest tier any single row lands in.**
+Series is a sum, and one oversized dimension is enough to overrun the ingest path by itself.
+
+Collections is the row that does the work, because Materialize's per-collection metrics carry `collection_id`, `replica_id`, *and* `worker_id` — so they multiply by replication and by replica size, while sources and sinks stay linear in the object count.
+A deployment with a few hundred indexes contributes far more cardinality than one with a few hundred sources.
+
+> [!WARNING]
+>   **These are whole-cluster numbers, not Materialize's share of the cluster.**
+>   node-exporter, cAdvisor, and kube-state-metrics collect from every node and pod in the cluster, including workloads that have nothing to do with Materialize.
+>   Running Materialize on ten nodes of a shared two-hundred-node cluster is an **L**, not an S — and sizing off the Materialize footprint alone is the most common way to pick wrong.
+
+For a number rather than a bracket:
+
+```text
+active series ≈ 8,000 × nodes + 600 × collections
+```
+
+Calibrated against real deployments spanning two orders of magnitude of series count, and accurate to within ~10% across that range.
+It is deliberately two terms with no constant — every other candidate axis measured (per-vCPU, per-replica, per-source) either tracked one of these two or fell out as noise.
+Per-vCPU in particular is actively misleading: vCPU tracks how much work a deployment does, and cardinality tracks how many objects exist, so the two diverge as deployments grow.
+
+#### The envelope each profile is sized for {#thanos-envelope}
+
+| Size | Active series | Samples/s at 30s | Bucket at profile retention |
+|---|---|---|---|
+| **S** | ~150 k | ~5 k | ~25 GB |
+| **M** | ~1.5 M | ~50 k | ~660 GB |
+| **L** | ~4 M | ~133 k | ~3 TB |
+
+In a large deployment **Materialize's own metrics are ~85% of everything collected** — its native endpoints plus the SQL exporters — and the Kubernetes infrastructure terms are a rounding error beside them.
+So a conversation about metrics cost at that scale is a conversation about collections, not about nodes or pods.
+
+#### Measure to validate {#thanos-measure-to-validate}
+
+Size from the estimator, then re-measure off Receive — the same signal the sizing is derived from. `[operator]`
+
+```promql
+# active series actually held (compare against the envelope you picked)
+sum(prometheus_tsdb_head_series{job="thanos-receive"})
+
+# ingested samples/sec
+sum(rate(prometheus_tsdb_head_samples_appended_total{job="thanos-receive"}[5m]))
+
+# series contributed per scrape job — the decomposition, when the total surprises you
+sort_desc(sum by (job) (scrape_samples_scraped))
+```
+
+Reach for the third when measured series disagree with the estimate.
+Its value per target *is* that target's series count, so it decomposes the total without touching every series in the store — unlike `count({__name__=~".+"})`, which does, and is expensive enough for that to matter.
+
+#### Per-size resources {#thanos-per-size-resources}
+
+Starting points — `replicas × (cpu request / memory request)`; tune from real usage. `[chart]` defaults, `[operator]`/`[consumer]` override per profile.
+
+| Component | S | M | L |
+|---|---|---|---|
+| Receive (RF 3, `emptyDir`) | 3 × (250m / 1Gi) | 3 × (500m / 4Gi) | 6 × (1500m / 8Gi) |
+| Receive `ephemeral-storage` req / limit | 10Gi / 15Gi | 20Gi / 30Gi | 40Gi / 60Gi |
+| Store Gateway | 2 × (100m / 1Gi) | 2 × (500m / 3Gi) | 2 × (1500m / 8Gi) |
+| Store Gateway **PVC** | 10Gi | 10Gi | 20Gi |
+| Compactor (singleton, `emptyDir`) | 1 × (500m / 1Gi) | 1 × (1 / 2Gi) | 1 × (3 / 8Gi) |
+| Compactor `ephemeral-storage` req / limit | 10Gi / 15Gi | 20Gi / 30Gi | 100Gi / 150Gi |
+| Query (HPA) | 2–3 × (200m / 512Mi) | 2–5 × (500m / 1Gi) | 3–8 × (1 / 2Gi) |
+| Query Frontend | omit | omit | 2–5 × (250m / 512Mi) |
+
+- **At `replicaCount == replicationFactor` every Receive pod holds every series.** Sharding begins only above RF, which is why **L** runs six pods rather than three — and why a replica count that is a multiple of both the replication factor and the zone count spreads evenly across both.
+- **Do not set a tight memory limit on Receive.** An OOM-kill drops up to `tsdb.retention` (24h) of not-yet-uploaded blocks, and unlike Loki's ingesters that window has nothing protecting it but the replication factor.
+- **Store Gateway has a memory floor the requests must respect.** Thanos defaults `--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart passes neither, so a stock Store Gateway wants ~2.5Gi before it serves anything. The **S** profile shrinks those pools through `extraArgs` rather than only lowering the request — a 1Gi request against 2.25GB of pools is an OOM, not a small install.
+- **The Compactor is vertical-only.** It must stay `replicaCount: 1`, because concurrent compactors against one block set corrupt data. Its PVC is scratch space for the block group under compaction, which is why it grows faster with size than the other two volumes.
+
+#### Spreading across zones {#thanos-topology-spread}
+
+Replication factor 3 is a claim about surviving a lost availability zone, and it is only true if the three replicas are *in* three zones.
+Nothing makes that happen by default: a scheduler with no constraint is free to pack all three onto whatever nodes are cheapest, at which point RF 3 costs three times the memory and protects against nothing but a single pod restart.
+
+| Component | Zones | Hosts | Why |
+|---|---|---|---|
+| Receive | **hard** (`DoNotSchedule`) | soft | Write quorum (2 of 3) depends on it |
+| Store Gateway | soft | soft | Read capacity only, and PVC-backed |
+| Query, Query Frontend | soft | soft | Stateless and autoscaled |
+| Compactor | none | none | Singleton — nothing to spread against |
+
+**Hard on Receive is the load-bearing choice**, and it is hard for a reason that is easy to miss: a pod that cannot satisfy the constraint goes `Pending`, and *that* is the signal Karpenter or the cluster-autoscaler uses to provision a node in the deficient zone.
+A soft rule cannot summon capacity — it places the pod in the wrong zone and stays quiet about it, which is the failure this exists to prevent.
+
+Two settings on that constraint matter as much as the constraint itself.
+`nodeTaintsPolicy: Honor` keeps a node still carrying a startup taint from counting as an available domain, so the autoscaler is not told a zone is covered when nothing can run there yet.
+`matchLabelKeys: [controller-revision-hash]` counts only same-revision pods, so a rolling update does not deadlock its own skew math against the pods it is replacing — and note the label differs by workload kind: StatefulSets carry `controller-revision-hash`, Deployments carry `pod-template-hash`, and using the wrong one matches nothing and silently disables the guard.
+
+> [!INFO]
+>   **This became possible when Receive stopped using a PersistentVolume.**
+>   A zonal volume cannot be attached from another zone, so a hard zone rule and an AZ-pinned pod pull against each other: the rule says "go to the empty zone", the volume says "you may only run where I am", and the pod stays `Pending` permanently rather than for as long as it takes to add a node. On `emptyDir` there is nothing holding it back, which is why [the storage decision](#thanos-ephemeral-storage) and this one are the same decision viewed twice.
+>
+>   It is also why the **Store Gateway** — the one Thanos component that still keeps a volume — is soft rather than hard. With `volumeBindingMode: WaitForFirstConsumer` (the default for zonal CSI classes, and what you want) the volume follows the pod and the two agree; with `Immediate` the PVC's zone is chosen *before* scheduling and a hard rule pointing elsewhere deadlocks. Soft degrades on a StorageClass this chart does not control.
+
+Unlike Loki, nothing had to be undone to make room for this: the Thanos subchart ships no default pod anti-affinity, so there was no hard per-host rule to null out first.
+
+**These constraints cannot move to `thanos.global.topologySpreadConstraints`**, which is where a reader would look for them.
+Each one carries its own `labelSelector`, and a global constraint would make every Thanos component count Receive's pods when computing its own skew.
+The selector matches on `app.kubernetes.io/component` alone rather than the full label set, because the subchart renders these through `toYaml` rather than `tpl` — a `{{ include ... }}` would land in the manifest literally, so the release name is unavailable. Spread is namespace-scoped and this chart assumes [one instance of each backend per namespace](#namespace-layout), so the component label is unambiguous.
+
+#### Fewer than two zones {#thanos-few-zones}
+
+The hard zone constraint assumes at least two availability zones, which is every managed cloud default and not much else.
+Below that it **fails closed**: the stack does not come up, and the cause reads like a chart bug rather than a property of the cluster.
+
+| Zones | What happens by default | Fix |
+|---|---|---|
+| 0 (no labels) | Receive and Loki's ingesters are **unschedulable** — a `DoNotSchedule` constraint whose `topologyKey` no node carries has no domain to place into | `min_zones = 0`, or the `no-zone-spread` profile |
+| 1 | **Also Pending**, and much less obvious — see below | `min_zones = 1`, or the same profile |
+| 2 | Works. The chart's floor | nothing |
+| 3+ | Works, but under-protects: `minDomains: 2` is satisfied by a two-zone placement | `min_zones = 3` (or your real count) |
+
+**One zone is exactly as broken as none, and that surprises people.**
+When the number of eligible domains is below `minDomains`, Kubernetes treats the global minimum as 0 rather than skipping the check — so a single zone holding all three replicas computes a skew of 3 against a `maxSkew` of 1, and every pod stays `Pending`.
+Nothing about the symptom points at a zone count.
+
+Zero-zone clusters are not an edge case worth dismissing: `kind` labels no node this way, and neither do many on-premises distributions.
+Hand-labelling nodes to satisfy a monitoring chart is the wrong answer, which is why `min_zones` exists.
+
+Both fixes drop the hard zone rule and **keep the soft host rule**, which matters most on exactly these clusters — with no zones to lose, the node is the only failure domain there is.
+On the Terraform path that falls out for free, because `min_zones` filters the one constraint rather than replacing the list; on the Helm path the profile has to restate the host rule, since Helm overwrites lists rather than merging them.
+
+> [!WARNING]
+>   **Nothing reminds you when you gain a zone.** The pods keep scheduling happily, spread across nothing, and RF 3 goes on reading like AZ resilience on every dashboard. `min_zones` is the better habit than the profile for this reason alone: it is a number you update when the cluster changes, not a file you have to remember to stop passing.
+
+#### Storage: ephemeral by default {#thanos-ephemeral-storage}
+
+Of the three Thanos components with local disk, **only the Store Gateway keeps a PersistentVolume.**
+Receive and the Compactor use node-local `emptyDir` with an explicit `ephemeral-storage` budget.
+
+| Component | Storage | Why |
+|---|---|---|
+| Receive | `emptyDir` | Durability is the replication factor, not the disk |
+| Compactor | `emptyDir` | Scratch space; the bucket is authoritative and compaction is idempotent |
+| Store Gateway | **PVC** | Index-headers are cheap to lose but slow to rebuild, and there is no write quorum to block |
+
+**A PVC makes an availability-zone failure worse, not merely less flexible.**
+That is the reasoning behind all three rows, and it is the opposite of the intuition a volume usually carries.
+An EBS volume cannot be attached from another zone, so a pod whose zone is gone stays `Pending` until the zone comes back rather than rescheduling into a healthy one.
+On the write path that converts a recoverable event into an outage that waits on the cloud provider: with RF 3 write quorum is 2, so two Receive pods stuck `Pending` on dead volumes block writes outright, where two `emptyDir` pods would have been rescheduled and rejoined the hashring.
+
+This is the same call the chart already makes for [Loki's ingesters](#4-ingester-durability--rollouts), for the same reason.
+Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `replica` external label, which the Compactor deduplicates.
+A pod that returns with an empty volume has lost its copy of that window; the query path still answers from the surviving replicas.
+
+> [!WARNING]
+>   **The trade accepted in exchange:** Thanos Receive has **no peer hand-off**, so unlike Loki it will not backfill an emptied pod from its neighbours.
+>   That window stays at two copies instead of three until the next block ships. Loki's ingesters recover from peers; Thanos's do not.
+>
+>   This is why the replication factor is load-bearing rather than merely advisable, and why RF 1 with ephemeral storage is a genuinely unsafe combination rather than just an unwise one.
+
+The Compactor's case is the strongest of the three and the least obvious.
+It is a **hard** singleton — concurrent compactors against one block set corrupt data, so unlike Receive there is not even a second replica to serve while one is stuck.
+Pinning it to a zone means a zone outage stops compaction entirely, and while compaction is stopped **retention is not enforced and the bucket grows without bound.**
+
+#### Declaring the ephemeral budget {#thanos-ephemeral-budget}
+
+`emptyDir` volumes are invisible to the scheduler unless you say how large they will get, so every ephemeral component declares `requests.ephemeral-storage` and `limits.ephemeral-storage`.
+The two behave differently and the difference matters:
+
+- **`requests.ephemeral-storage`** is what the scheduler places against. A node without room refuses the pod, which surfaces as a `Pending` pod with a clear reason instead of a node quietly filling up.
+- **`limits.ephemeral-storage`** is enforced by the **kubelet evicting the pod**, not by throttling it. Accounting is periodic (`du` every ~10s unless filesystem project quotas are enabled), so a pod can overshoot briefly before eviction.
+
+That second point is why the limits in [Per-size resources](#thanos-per-size-resources) carry deliberate headroom over the requests rather than matching them: **evicting Receive destroys exactly the un-uploaded window the replication factor exists to protect**, so a limit set tight enough to bite regularly would manufacture the failure this design avoids.
+
+- [ ] `[operator]` Check the Compactor's ephemeral request against your node shape before selecting `thanos-large` — 100Gi of `emptyDir` needs a node with 100Gi of free ephemeral storage, which many node pools do not have. If yours cannot, re-enable `thanos.compactor.persistence` and accept the AZ pin; that is a considered trade, not a failure.
+- [ ] `[operator]` Ephemeral storage is shared with container logs and image layers on the same filesystem, so the budget is not Thanos's alone. A log-verbose neighbour can evict a Compactor that was sized correctly in isolation.
+
+#### Protective limits {#thanos-protective-limits}
+
+Thanos's exposure is the mirror image of Loki's.
+There is no per-tenant byte-rate limit to set; the risk is one query fanning out across the bucket and taking the Store Gateway down with it.
+All of these are `extraArgs`. `[operator]` sets per profile.
+
+| Size | `--store.limits.request-series` | `--store.limits.request-samples` | `--query.max-concurrent` | `--query.timeout` |
+|---|---|---|---|---|
+| S | 1,000,000 | 50,000,000 | 10 | 2m |
+| M | 5,000,000 | 200,000,000 | 20 (default) | 2m |
+| L | 30,000,000 | 2,000,000,000 | 40 | 5m |
+
+> [!WARNING]
+>   **`extraArgs` is a list, and Helm overwrites lists rather than merging them.**
+>   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m`, `query.extraArgs` carries `--log.level=info`.
+>   Setting `extraArgs` to add a limit **silently drops whatever was already there**, and on Receive that means falling back to Thanos's default replication factor of 1 — the exact failure the quorum table above exists to prevent.
+>   Restate the base arguments in full every time. The shipped profiles do.
+
+Receive also offers `--receive.limits-config` with a per-tenant `head_series_limit`, which the profiles deliberately leave unset.
+It enforces that cap by querying a meta-monitoring endpoint for `head_series` on an interval, so it is a runtime dependency on Thanos Query rather than a flag, and it fails in a direction that is not obvious when the dependency is unavailable.
+
+#### Retention and downsampling {#retention-and-downsampling}
+
+| Size | raw | 5m | 1h |
+|---|---|---|---|
+| S | 14d | 30d | 90d |
+| M | 30d | 90d | 365d |
+| L | 30d | 180d | 730d |
+
+> [!INFO]
+>   **Downsampled volume does not depend on the scrape interval.**
+>   A 5m block is five aggregates per 300s and a 1h block five per 3600s, however often you scrape — only raw blocks scale with the interval.
+>   So moving from a 60s interval to 30s raises total bucket size by roughly a fifth rather than doubling it, because raw is the smaller share of a retention shape that keeps downsampled data far longer.
+>   The cost of finer granularity lands on Receive's CPU and local disk, not on object storage.
+>
+>   The corollary is that at a 60s scrape interval **5m downsampling saves no storage at all** — five aggregates per 300s is the same sample rate as one per 60s. It buys query speed over long ranges. All the real storage reduction is in the 1h tier.
+
+**Raw retention has a floor set by the downsampling thresholds.**
+Thanos produces 5m downsamples only from blocks spanning 40h or more, and 1h downsamples only from blocks spanning 10d or more.
+Cut raw retention below those and the corresponding tier is never created at all, so long-range queries fall back to reading raw blocks — slower and more expensive, which is the opposite of the intent.
+That is why **S** keeps 14d of raw rather than something smaller.
+
+#### Scaling past large {#scaling-past-large}
+
+Above roughly 4M active series the profiles stop being a menu and become a starting point.
+Three things change, in the order they bite:
+
+1. **Add Receive replicas**, in multiples of the replication factor and the zone count, so streams shard evenly and no pod carries the whole series set.
+2. **Shard the Store Gateway** once the bucket reaches the multi-TB range. Binary index-headers run roughly 1% of block size, so one StatefulSet eventually cannot hold them. `storegateway.sharded.hashPartitioning.shards` renders one StatefulSet per shard, and the headless Service, ServiceMonitor, and Query's DNS-SRV discovery fan out across them with no further configuration. Changing the shard count later renumbers shards and forces recreation, so decide it at install time rather than tuning into it.
+3. **The Compactor runs out of room to grow.** It is a singleton by necessity, so the only levers are a bigger pod and a bigger volume, and compaction falling behind becomes a thing to alert on rather than discover. Thanos itself supports sharding compaction across instances with disjoint `--selector.relabel-config` selections, but the bundled subchart renders exactly one Compactor StatefulSet and exposes no selector — so that path needs an upstream change, or a second Compactor managed outside this chart.
+
+#### Cost control is the metric tiers, not the profile {#cost-control-metric-tiers}
+
+The write path filters by importance — `essential`, `recommended`, `extended`, `diagnostic`, `all` — through `minMetricImportance` on each destination.
+The in-cluster Thanos destination deliberately defaults to **`all`**, unlike the external destinations, which default to `recommended`.
+Raw metrics are worth their cost while Thanos is still an early improvement over what came before; narrowing that is a later and deliberate step, not an oversight to correct.
+
+> [!WARNING]
+>   **Do not downshift the profile to reduce cost.**
+>   The profile sizes the ingest path for the series you actually send, so sending the same series into a smaller path is an OOM rather than a saving.
+>   Tighten `minMetricImportance`, re-measure head series, and downshift only once the series count has genuinely fallen.
+
 
 ### Checklist
 
@@ -487,34 +746,43 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [ ] `[operator]` Set an **odd** `--receive.replication-factor` (3) via `receive.extraArgs`; the chart cannot set it in standalone mode. A render-time check warns at factor 1, warns harder at 2, and errors when the factor exceeds `replicaCount`.
 - [ ] `[operator]` Keep `replicaCount >= replicationFactor`. At `replicaCount == replicationFactor` every pod holds every series — good availability, no horizontal capacity.
 - [x] `[chart]` PodDisruptionBudgets on **every** component (`thanos.global.pdb`, `maxUnavailable: 1`) — matching the Loki ingester convention. `maxUnavailable` rather than `minAvailable` deliberately: it scales with the replica count, and on the single-replica Compactor `minAvailable: 1` would permit no eviction at all and hang node drains. A validator errors when the Receive budget exceeds what write quorum tolerates, and warns on `minAvailable` for the singleton.
-- [ ] `[chart]` `topologySpreadConstraints` across zones for Receive, so RF 3 actually survives an AZ loss rather than landing three copies in one zone. Receive is PVC-backed and therefore AZ-pinned, so this matters more here than for Loki's ephemeral ingesters.
+- [x] `[chart]` `topologySpreadConstraints` across zones for Receive — **hard** (`DoNotSchedule`, `minDomains: 2`, `nodeTaintsPolicy: Honor`) so RF 3 actually survives an AZ loss rather than landing three copies in one zone; **soft across hosts** so pods still schedule when nodes are momentarily scarce. Matching the Loki ingester convention. Store Gateway, Query, and Query Frontend get **soft** spread on both axes; the Compactor gets none, being a singleton. See [Spreading across zones](#thanos-topology-spread).
+- [ ] `[operator]` **Tell the chart how many zones you actually have.** The default assumes two or more, and below that it fails closed rather than degrading — see [Fewer than two zones](#thanos-few-zones). Terraform: `min_zones`. Helm: the `no-zone-spread` profile.
+- [ ] `[operator]` Aim for **≥3 zones** for true AZ resilience under RF 3, and raise `minDomains` to the count your node pool can actually launch in — the chart ships a floor of 2, so with three zones a two-zone placement still satisfies it. Setting it *above* your real count leaves pods Pending forever. With 2 zones, know that an AZ loss can break write quorum (2 of 3) until the ring recovers.
 - [x] `[chart]` `priorityClassName` on every Thanos pod (`monitoring-scalable`, via `thanos.global`), so Receive and the Compactor outrank ordinary workloads under node pressure. See [Scheduling priority](#scheduling-priority).
 
 #### 2. Object storage & credentials
 
 - [x] `[chart]` Objstore config rendered into a Secret (`global.objstore.createSecret`), consumed by every component.
 - [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Supply the bucket and grant access by **workload identity** (IRSA / GKE Workload Identity / Azure Workload Identity) rather than static keys. A render-time check errors when the identity annotation names a different cloud than the objstore backend, and warns when a cloud backend has neither an annotation nor inline credentials.
-- [ ] `[consumer]` **(Terraform: `storage_class`)** A dynamic-provisioning **StorageClass** must exist *and be attachable by the nodes these land on* — Receive, Store Gateway, and Compactor are all PVC-backed. On GCP C4/N4 that rules out every default class; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
+- [ ] `[consumer]` **(Terraform: `storage_class`)** A dynamic-provisioning **StorageClass** must exist *and be attachable by the nodes it lands on* — for Thanos that is the **Store Gateway only**, since Receive and the Compactor are `emptyDir`-backed. On GCP C4/N4 that rules out every default class; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
+- [ ] `[operator]` Those two need **node ephemeral storage** instead, which the requests in [Per-size resources](#thanos-per-size-resources) declare. The Compactor's is the one to check against your node shape: 100Gi at `thanos-large`.
 
 #### 3. Components & read path
 
 - [x] `[chart]` Query, Receive, Store Gateway, and Compactor enabled by default.
-- [ ] `[operator]` Enable **Query Frontend** for production read paths (splitting and result caching) — and repoint `connections.datasources.thanos.url` at it, or the cache is deployed and bypassed. A render-time check warns on exactly that mismatch.
+- [ ] `[operator]` Enable **Query Frontend** for production read paths (splitting and result caching) — and repoint `connections.datasources.thanos.url` at it, or the cache is deployed and bypassed. A render-time check warns on exactly that mismatch. The `thanos-large` profile does both; at S and M the query-frontend is omitted and Query is the datasource target.
 - [ ] `[operator]` Store Gateway is how queries reach historical blocks; disabling it limits reads to what Receive still holds locally.
 - [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
 - [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
 
 #### 4. Retention & compaction
 
-- [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d.
+- [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d — the medium row of [Retention and downsampling](#retention-and-downsampling).
 - [ ] `[operator]` Set those to your storage budget. Retention is enforced by the Compactor — with it disabled nothing expires and bucket cost grows without bound.
+- [ ] `[operator]` Keep raw retention above the downsampling thresholds (40h for the 5m tier, 10d for the 1h tier). Below them the tier is never produced and long-range queries silently fall back to raw blocks. See [Retention and downsampling](#retention-and-downsampling).
 - [x] `[chart]` Receive TSDB WAL retention 24h with compression, so blocks ship to object storage promptly.
 
 #### 5. Sizing
 
-- [ ] `[chart]` **No resource requests or limits are set on any Thanos component.** Sizing profiles (`thanos-small` / `thanos-large`, mirroring the Loki convention where the chart defaults are medium) are outstanding work.
-- [ ] `[operator]` Until they land, set requests explicitly. Thanos sizes off different axes than Loki — active series and samples/sec for Receive, block volume and retention for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [ ] `[operator]` Pick the profile from [Choosing a profile](#choosing-a-thanos-profile) and record the inventory it was based on. `thanos-small` and `thanos-large` are deltas from the chart defaults, which target medium.
+- [ ] `[operator]` Re-measure head series against the envelope after install, and after any change in collection count. See [Measure to validate](#thanos-measure-to-validate).
+- [x] `[chart]` Resource requests on every enabled component, per [Per-size resources](#thanos-per-size-resources). Thanos sizes off different axes than Loki — active series for Receive memory, samples/sec for its CPU and disk, block volume for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
+- [x] `[chart]` No memory limit on Receive, so an OOM-kill cannot drop the un-uploaded block window. Requests are set for scheduling; alert on usage instead.
 - [ ] `[operator]` Autoscaling on Query does not remove the need for requests: without them the HPA has no CPU target to measure against, so it never scales.
+- [x] `[chart]` **VerticalPodAutoscaler disabled on Receive and Compactor.** The subchart defaults it *on* for exactly those two, in `updateMode: Auto`, so where the VPA CRD is present it rewrites the requests a profile sets and evicts pods to apply them — on a StatefulSet holding up to 24h of blocks whose only redundancy is the replication factor. The template is CRD-gated, so leaving it on would make the stack behave differently on clusters that have VPA installed than on those that do not, with no signal either way. A unit test asserts this with the CRD declared present, so it fails on the value rather than passing on the gate.
+- [x] `[chart]` **Every profile restates `receive.extraArgs` in full**, so the replication factor survives. Helm overwrites lists, and a profile that adds a flag without restating `--receive.replication-factor=3` silently drops to Thanos's default of 1. A unit test pins this at all three sizes.
+- [ ] `[operator]` If you re-enable VPA deliberately, use `updateMode: "Off"` for recommendations only, and know that its numbers will disagree with the profile by design.
 
 #### 6. Meta-monitoring
 
@@ -531,6 +799,8 @@ Note this differs from Loki, where ingesters are deliberately ephemeral and dura
 - [Metrics](../../metrics/) — the metrics architecture these items configure.
 - [Storing](../../metrics/storing/) — object storage and retention in depth.
 - [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.
+- [Thanos Compactor documentation](https://thanos.io/tip/components/compact.md/) (official) — compaction levels, downsampling thresholds, and why the singleton constraint exists.
+- [Thanos Store Gateway documentation](https://thanos.io/tip/components/store.md/) (official) — index-header caching, the memory pools, and time/hash partitioning.
 
 ## Grafana
 

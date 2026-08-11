@@ -40,7 +40,12 @@ impl ScrapeConfigDocument {
     }
 }
 
-/// The `global:` block. Defaults mirror `legacy_scrape_config.yaml`.
+/// The `global:` block.
+///
+/// `scrape_interval` is 30s to match the rest of the stack (the Alloy gateway's
+/// `default_scrape_interval` and `GMP_DEFAULT_INTERVAL`). `evaluation_interval`
+/// stays at 1m — it governs rule evaluation, not scraping, and does not follow
+/// the scrape interval.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GlobalConfig {
     pub evaluation_interval: String,
@@ -52,7 +57,7 @@ impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
             evaluation_interval: "1m".into(),
-            scrape_interval: "1m".into(),
+            scrape_interval: "30s".into(),
             scrape_timeout: "10s".into(),
         }
     }

@@ -1,0 +1,199 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: kind sizing profile
+release:
+  name: t
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.loki: true
+  tags.thanos: true
+  thanos.global.objstore.createSecret: false
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.enabled: false
+tests:
+  # --- Composability: the property that makes this a sizing profile ----------
+  # `loki-test` disables Loki's distributed components with `replicas: 0`. If
+  # this profile set any replica count, it would switch them back on and Loki
+  # would refuse to render at all ("more than zero replicas configured for both
+  # the monolithic and distributed targets"). These two cases are the reason
+  # `kind.values.yaml` contains no replica counts, and they fail loudly if one
+  # is ever added.
+  - it: composes over loki-test without reviving the distributed ingester
+    values:
+      - ../profiles/loki-test.values.yaml
+      - ../profiles/kind.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: composes over loki-test and sizes the single binary instead
+    values:
+      - ../profiles/loki-test.values.yaml
+      - ../profiles/kind.values.yaml
+    template: ../charts/loki/templates/monolithic/workload.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+
+  # Control: over the *defaults* the distributed ingester does render, and this
+  # profile shrinks it while leaving the replication-factor floor of 3 alone.
+  - it: over the defaults it shrinks the ingester but not its replica count
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+
+  # --- Thanos: the bulk of the reduction ------------------------------------
+  - it: shrinks Receive but inherits the replication factor rather than restating it
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+      # Receive stays at the RF floor — three tiny pods, not one big one, so the
+      # hashring and quorum path stay under test.
+      - equal:
+          path: spec.replicas
+          value: 3
+      # This profile never sets `receive.extraArgs`, so the factor survives from
+      # whatever composed before it. Setting that list here would silently drop
+      # it to Thanos's default of 1.
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+
+  - it: keeps the replication factor when composed after thanos-small
+    values:
+      - ../profiles/thanos-small.values.yaml
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+      # kind composes last, so its size wins over the small profile's.
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+
+  # The Store Gateway is the one place where shrinking the request alone is
+  # fatal: Thanos's stock 2GB chunk pool and 250MB index cache against a 192Mi
+  # request is an OOM-kill loop.
+  - it: shrinks the Store Gateway memory pools alongside its request
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 192Mi
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --chunk-pool-size=32MB
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --index-cache-size=16MB
+
+  - it: shrinks the Compactor and declares its ephemeral scratch budget
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
+          value: 1Gi
+
+  # kind is the one place Store Gateway gives up its volume — the single
+  # structural override in an otherwise sizing-only profile. Its emptyDir still
+  # gets a declared budget, because ephemeral storage is the scarcest resource
+  # on a CI runner.
+  - it: drops the Store Gateway volume in CI but still budgets its emptyDir
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
+          value: 1Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.ephemeral-storage
+          value: 2Gi
+
+  # --- VPA must stay off, since these requests are the whole point ----------
+  - it: leaves VPA off, so nothing rewrites the CI sizes
+    capabilities:
+      apiVersions:
+        - autoscaling.k8s.io/v1/VerticalPodAutoscaler
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/receive/vpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- Grafana's limit comes down with its request -------------------------
+  - it: lowers the Grafana memory limit with the request
+    set:
+      tags.managed-grafana: true
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 128Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 384Mi
+
+  # --- kind has no zones, so the hard spread has to go ----------------------
+  # `minDomains: 2` cannot be met on a cluster that labels no node with
+  # `topology.kubernetes.io/zone`, and a DoNotSchedule constraint whose
+  # topologyKey no node carries leaves the pods unschedulable rather than merely
+  # unbalanced. Without these two overrides the E2E comes up with its ring
+  # members Pending forever, and the failure reads as a chart bug.
+  - it: drops the hard zone spread from Thanos Receive
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: drops the hard zone spread from Loki's ingesters too
+    values:
+      - ../profiles/kind.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  # Control: the hard rule really is there without this profile, so the two
+  # assertions above are removing something rather than asserting an absence
+  # that was always true.
+  - it: confirms the hard rule exists without the kind profile
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: DoNotSchedule

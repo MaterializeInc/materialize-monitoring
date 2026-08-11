@@ -23,6 +23,9 @@ EXAMPLES_DIR="${REPO_ROOT}/terraform/modules/materialize-monitoring/examples"
 
 TERRAFORM="${TERRAFORM:-terraform}"
 HELM="${HELM:-helm}"
+# Matches the Makefile's PY_RUN. Used only by the scheduling assertion, which
+# needs a YAML parser that jq cannot provide.
+PY_RUN="${PY_RUN:-uv run}"
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -106,6 +109,38 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
             continue
         fi
         echo "    storageClass reached all ${got} volumeClaimTemplates"
+    fi
+
+    # Scheduling has the same failure mode as the storage class — a selector
+    # written to a path no subchart reads renders fine and does nothing — plus a
+    # wrinkle that makes counting insufficient: two DaemonSets are *supposed* to
+    # lack the node selector, because narrowing a per-node collector to a
+    # workload pool is a silent blind spot rather than a placement choice. So
+    # assert the exact set rather than a total, which catches a workload that
+    # missed the fan-out *and* a DaemonSet that wrongly picked it up.
+    #
+    # Needs YAML, which jq cannot read; `uv run` matches the Makefile's PY_RUN.
+    #
+    # The exit code is inspected rather than just tested, so a missing interpreter
+    # does not masquerade as a failed assertion: the checker returns 1 only when a
+    # workload is genuinely misconfigured, and anything else (127 for a `uv` that
+    # is not installed, or a crash) is a tooling problem that deserves to say so.
+    scheduling_rc=0
+    ${PY_RUN} python "${REPO_ROOT}/bin/check_scheduling_fanout.py" \
+        "${rendered}" "${WORK_DIR}/${example}"-[0-9]*.yaml || scheduling_rc=$?
+
+    if [ "${scheduling_rc}" -eq 1 ]; then
+        echo "  !! ${example}: scheduling fan-out is incomplete." >&2
+        echo "     See scheduling.tf and profiles/scheduling.values.yaml." >&2
+        status=1
+        continue
+    elif [ "${scheduling_rc}" -ne 0 ]; then
+        echo "  !! could not run the scheduling check: '${PY_RUN} python' exited ${scheduling_rc}." >&2
+        echo "     This is a tooling problem, not a fan-out failure. Install uv" >&2
+        echo "     (https://docs.astral.sh/uv/), or set PY_RUN to something that" >&2
+        echo "     can run bin/check_scheduling_fanout.py with pyyaml available." >&2
+        status=1
+        continue
     fi
 
     # node-exporter's toggle writes the chart's circuit breaker rather than a

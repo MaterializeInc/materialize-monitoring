@@ -402,9 +402,13 @@ variable "node_selector" {
 
 variable "storage_class" {
   description = <<-EOT
-    StorageClass for the five PVC-backed workloads (Alertmanager, the Loki ruler, and Thanos
-    receive/compactor/store-gateway). Null uses the cluster default. Loki's ingesters are
-    unaffected — node-local `emptyDir` by design.
+    StorageClass for the PVC-backed workloads. Null uses the cluster default.
+
+    Three are PVC-backed by default: Alertmanager, the Loki ruler, and the Thanos Store Gateway.
+    Loki's ingesters and Thanos receive/compactor use node-local `emptyDir` by design — durability
+    is the replication factor, and a volume would pin them to one availability zone. The class is
+    still fanned out to receive and compactor so that re-enabling their persistence (a documented
+    escape hatch) picks it up rather than silently missing it.
 
     Required where the default class cannot serve the nodes: GCP's C4 and N4 families take only
     Hyperdisk, and every Persistent Disk class fails to attach with `pd-balanced disk type cannot
@@ -415,6 +419,36 @@ variable "storage_class" {
   EOT
   type        = string
   default     = null
+}
+
+variable "min_zones" {
+  description = <<-EOT
+    Number of availability zones the node pool can actually launch in, used to adjust the hard zone
+    spread on Thanos Receive and Loki's ingesters. Null leaves the chart's defaults alone, which
+    assume two or more zones and is correct for every managed cloud default.
+
+    Set this when that assumption does not hold, because the chart's constraints fail closed rather
+    than degrading:
+
+      * `0` — no node carries a `topology.kubernetes.io/zone` label. Common on `kind` and on many
+        on-premises distributions. The hard constraints are dropped; the soft host spread stays.
+      * `1` — a single zone. `minDomains` becomes 1, which is satisfiable now and turns into real
+        protection the day a second zone appears.
+      * `2` or more — `minDomains` is set to the real count, which is stricter than the chart's
+        floor of 2 whenever you have more zones than that.
+
+    Leaving this null on a cluster with fewer than two zones leaves those pods **Pending forever**
+    rather than unbalanced: below `minDomains` Kubernetes treats the global minimum as 0, so one
+    zone holding every replica computes a skew equal to the replica count. One zone is exactly as
+    broken as none.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.min_zones == null || var.min_zones >= 0
+    error_message = "min_zones must be null or a non-negative number."
+  }
 }
 
 variable "tolerations" {

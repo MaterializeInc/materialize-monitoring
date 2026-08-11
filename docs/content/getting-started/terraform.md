@@ -91,7 +91,7 @@ These are set on the `monitoring` module block rather than as root variables, so
 
 | Variable | Default | Notes |
 |---|---|---|
-| `storage_class` | `null` (cluster default) | Reaches the five PVC-backed workloads. **Required on GCP C4/N4 node pools** — see below. Loki's ingesters are unaffected; they use node-local `emptyDir` by design |
+| `storage_class` | `null` (cluster default) | Reaches the three PVC-backed workloads — Alertmanager, the Loki ruler, the Thanos Store Gateway. **Required on GCP C4/N4 node pools** — see below. Loki's ingesters and Thanos receive/compactor are unaffected; they use node-local `emptyDir` by design |
 | `bucket_force_destroy` | `false` | Allows `terraform destroy` to delete non-empty buckets. Leave false outside throwaway environments |
 | `enable_bucket_versioning` | `true` | Versioning is the disaster-recovery primitive — neither Loki nor Thanos has a native snapshot |
 | `logs_retention_days` | `null` | Bucket-level expiry for logs. Off by default; Loki's compactor already enforces retention |

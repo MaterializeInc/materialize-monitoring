@@ -1,0 +1,267 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: scheduling and storage-class profiles
+release:
+  name: t
+  namespace: test-monitoring
+set:
+  tags.default: true
+  thanos.global.objstore.createSecret: false
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.enabled: false
+tests:
+  # --- The subcharts disagree about where scheduling goes ---------------------
+  # Four different shapes, one per test, because a profile that gets any of them
+  # wrong renders perfectly and does nothing at all. `terraform-render` asserts
+  # the same property against a real plan; these pin it per key shape so the
+  # failure names the subchart.
+
+  - it: reaches Thanos through its global block
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: workload
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  # `loki.defaults` resolves through `_pod.tpl`'s coalesce, covering 23
+  # workloads with one key.
+  - it: reaches Loki's pod-template components through defaults
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: workload
+
+  # memcached renders from its own template, so `defaults` does not reach it.
+  - it: reaches Loki's memcached, which defaults does not cover
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/loki/templates/chunks-cache/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  - it: reaches a subchart that takes scheduling at its top level
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  - it: reaches the Alloy gateway under controller
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-critical
+
+  # --- The DaemonSet asymmetry ----------------------------------------------
+  # A nodeSelector *narrows* placement, so on a per-node collector it is a
+  # silent blind spot rather than a preference. Tolerations *widen* placement,
+  # which is what a DaemonSet wants. These two tests are the reason the profile
+  # treats them separately, and they fail if someone "fixes" the asymmetry.
+  - it: gives the Alloy agent tolerations but never a node selector
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: workload
+      - notExists:
+          path: spec.template.spec.nodeSelector.workload
+
+  # node-exporter takes neither: its chart default already tolerates every
+  # NoSchedule taint, and a toleration list here would REPLACE that rather than
+  # extend it (Helm merges maps but overwrites lists), silently narrowing
+  # collection to whichever taints the caller happened to name.
+  - it: gives node-exporter neither, but still carries its priority class
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.nodeSelector.workload
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-critical
+      # The upstream tolerate-everything default must survive.
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            effect: NoSchedule
+            operator: Exists
+
+  # --- The canary was the component this profile found missing ---------------
+  # It renders from its own template, so neither `loki.global` (priority class)
+  # nor `loki.defaults` (scheduling) reaches it. Left out it runs at priority 0,
+  # below ordinary workloads, so the first node under pressure evicts the
+  # end-to-end write→read check.
+  - it: covers the Loki canary, which neither global nor defaults reaches
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  - it: gives the canary a priority class even without the scheduling profile
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      # Set in the base values, because the canary reaches neither of the keys
+      # that cover the rest of Loki.
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  # --- Renaming the priority classes must not half-apply --------------------
+  # The classes are cluster-scoped, so two releases in one cluster fight over
+  # them unless one renames. A `priorityClassName` naming a class that does not
+  # exist is *rejected* by the API server rather than degraded, with the only
+  # evidence an admission error on a ReplicaSet nobody watches. The profile
+  # aliases both sides off one anchor so the two cannot disagree.
+  - it: creates classes whose names match what the workloads reference
+    values:
+      - ../profiles/scheduling.values.yaml
+    template: templates/priorityclasses.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: monitoring-critical
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: monitoring-scalable
+        documentIndex: 1
+
+  # --- Storage class ---------------------------------------------------------
+  # Only three workloads claim a volume; everything else is emptyDir on purpose.
+  - it: reaches the Store Gateway, the one Thanos component with a volume
+    values:
+      - ../profiles/storage-class.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: standard
+
+  - it: reaches the Loki ruler
+    values:
+      - ../profiles/storage-class.values.yaml
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: standard
+
+  # Receive and the Compactor are named in the profile but inert, because both
+  # default to `persistence.enabled: false`. Asserting no volume renders is what
+  # proves the keys are harmless rather than accidentally re-enabling storage.
+  - it: leaves the ephemeral Thanos components without volumes
+    values:
+      - ../profiles/storage-class.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  # --- The two profiles must compose with the sizing ones -------------------
+  - it: composes with the sizing profiles without losing the replication factor
+    values:
+      - ../profiles/thanos-large.values.yaml
+      - ../profiles/scheduling.values.yaml
+      - ../profiles/storage-class.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+      - equal:
+          path: spec.replicas
+          value: 6
+      - equal:
+          path: spec.template.spec.nodeSelector.workload
+          value: monitoring
+
+  # --- Clusters with no zones, or one -----------------------------------------
+  # The chart's hard rule assumes two or more zones and fails closed below that:
+  # with zero zone labels a DoNotSchedule constraint has no domain to place into,
+  # and with one zone `minDomains: 2` makes Kubernetes treat the global minimum as
+  # 0, so the single zone computes a skew equal to the replica count. Both leave
+  # the pods Pending forever rather than unbalanced.
+  - it: drops the hard zone rule for Thanos Receive on a zoneless cluster
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.topologySpreadConstraints
+          count: 1
+      # What survives is the host rule, not nothing. On a bare-metal cluster with
+      # no zones the node is the only failure domain there is, so dropping host
+      # spread as well would remove the last protection against all three ring
+      # members landing together.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+
+  - it: drops it for Loki's ingesters too, keeping their fuller selector
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.topologySpreadConstraints
+          count: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+      # Loki renders these through `tpl`, so the restatement must carry the
+      # templated name and instance or it selects a different pod set.
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/name"]
+          value: loki
+
+  # `minDomains` is only valid alongside DoNotSchedule; the API server rejects the
+  # pod otherwise. Neither restated host rule may carry it.
+  - it: never puts minDomains on a soft constraint
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints[0].minDomains

@@ -950,7 +950,7 @@ Configuration for metrics behavior
   <tbody>    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"60s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
+      <td class="helm-value-default"><code>{"cadvisor":{"disabledCollectors":["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "referenced_memory", "resctrl", "sched", "tcp", "udp"], "enabled":true, "enabledCollectors":[], "scrapeInterval":"30s"}, "destination":{"otlp":{"url":"alloy-gateway.{{ include \"mzmon.alloyGateway.namespace\" $ }}.svc:4317"}}}</code></td>
       <td class="helm-value-desc">Node-local metric collection on the Alloy agent DaemonSet.
 
 cAdvisor runs in-process in the agent rather than being scraped off the
@@ -976,8 +976,15 @@ enabled below. Verified by running the rendered config under
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.agent<wbr>.cadvisor<wbr>.scrapeInterval</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"60s"</code></td>
-      <td class="helm-value-desc">Scrape interval for the in-process cAdvisor exporter. The dominant cost lever: cAdvisor's series count scales with containers-per-node, so this is what you turn down on dense pools.
+      <td class="helm-value-default"><code>"30s"</code></td>
+      <td class="helm-value-desc">Scrape interval for the in-process cAdvisor exporter.
+30s, matching the rest of the stack. Lengthening this is the lever for
+dense pools, where cAdvisor is the largest single contributor of
+*samples* — its series count scales with containers-per-node, and the
+interval divides into that to give samples/sec. Note the interval
+changes samples, not cardinality: doubling it halves the sample rate
+and leaves the series count untouched, so it reduces ingest CPU and
+raw block volume but not Receive's memory.
 </td>
     </tr>
     <tr>
@@ -3095,8 +3102,22 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section.
+Set explicitly because the canary reaches neither of the two keys that
+cover the rest of Loki: it renders from its own template rather than
+`_pod.tpl`, so `loki.global.priorityClassName` does not reach it, and
+`loki.defaults` does not either. Left unset it runs at priority 0 —
+*below* ordinary workloads — so the first node under pressure evicts the
+end-to-end write→read check, which is exactly the signal you want during
+the incident that caused the pressure.
 </td>
     </tr>
   </tbody>
@@ -3175,7 +3196,41 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
     "minReplicas": 2,
     "targetCPUUtilizationPercentage": 80
   },
-  "enabled": true
+  "enabled": true,
+  "resources": {
+    "requests": {
+      "cpu": "500m",
+      "memory": "1Gi"
+    }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query configuration. Query provides a PromQL query endpoint.
@@ -3193,6 +3248,68 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
 }</pre>
 </td>
       <td class="helm-value-desc">Horizontal autoscaling for Query. Query is a stateless PromQL fan-out, so it is the natural place to autoscale: no local state, no ring membership, no PVC.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.query<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Query: soft on both axes.
+Stateless and autoscaled, so an unbalanced placement costs query capacity
+rather than correctness — soft is sufficient, and it keeps an HPA scale-up
+from stalling on a hard rule when the newest zone has no room yet.
+
+`pod-template-hash`, not `controller-revision-hash`: Query is a Deployment,
+and that is the label its ReplicaSets carry. Using the StatefulSet label
+here would match nothing and quietly disable the same-revision guard.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.query<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "500m",
+    "memory": "1Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Thanos Query. Medium sizing; see the `thanos-small` / `thanos-large` profiles for the other two columns.
+A CPU request is load-bearing here beyond scheduling: `targetCPUUtilization`
+is a percentage *of the request*, so without one the HPA above has no
+denominator and never scales. No memory limit — a fan-out query's peak
+scales with the series it touches, and an OOM-kill mid-query is a worse
+failure than a slow one.
 </td>
     </tr>
     <tr>
@@ -3217,11 +3334,227 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--receive.replication-factor=3"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for Receive.
+**This is a list, and Helm overwrites lists rather than merging them.**
+Anything that sets `receive.extraArgs` replaces this entry wholesale, so
+the replication factor must be restated or it silently falls back to
+Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
+profiles restate it; so must yours. See Production Best Practices >
+Metrics (Thanos) for the quorum table.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.vpa</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">VerticalPodAutoscaler for Receive.
+Off, overriding the subchart's `true`. Three reasons, in order:
+
+1. It rewrites the requests below, so a sizing profile would not survive
+   contact with it.
+2. `updateMode: Auto` evicts pods to apply new requests, and Receive is a
+   PVC-backed StatefulSet holding up to `tsdb.retention` (24h) of blocks
+   that have not reached object storage yet.
+3. The subchart's VPA template is CRD-gated, so leaving it on makes the
+   stack behave differently on clusters with the VPA CRD installed than on
+   those without — silently, in both directions.
+
+If you want its recommendations without its actions, set
+`updateMode: "Off"` rather than re-enabling Auto.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "ephemeral-storage": "30Gi"
+  },
+  "requests": {
+    "cpu": "500m",
+    "ephemeral-storage": "20Gi",
+    "memory": "4Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Receive. Medium sizing.
+Memory is the cell to get right: budget ~3 KB per active series held, and
+note that at `replicaCount == replicationFactor` **every pod holds every
+series** — sharding begins only above RF.
+
+No memory limit, deliberately, and for a sharper reason than elsewhere in
+this chart: an OOM-kill drops the un-uploaded block window, and unlike
+Loki's ingesters that window has nothing protecting it but the replication
+factor. Alert on usage instead.
+
+`ephemeral-storage` is declared because the TSDB now lives on an
+`emptyDir` (see `persistence`). The request is what the scheduler places
+against, so a node without room refuses the pod instead of filling up
+silently. The limit carries deliberate headroom over the request: the
+kubelet's response to exceeding it is **eviction**, and evicting Receive
+destroys exactly the un-uploaded window this sizing exists to protect.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "receive"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "minDomains": 2,
+    "nodeTaintsPolicy": "Honor",
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "DoNotSchedule"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "receive"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Receive: hard across zones, soft across hosts.
+This is the constraint that makes `--receive.replication-factor=3` mean
+what the quorum table says. Without it the scheduler is free to place all
+three replicas in one zone, and RF 3 buys nothing against the failure it
+exists for — losing a zone takes every copy and, since write quorum is 2,
+takes writes with it.
+
+**Hard** (`DoNotSchedule`) on zones, deliberately. A pod that cannot
+satisfy it goes Pending, which is the signal Karpenter or the
+cluster-autoscaler uses to add a node in the deficient zone — a soft rule
+cannot summon capacity that way, it just quietly places the pod wrongly.
+Host spread stays soft so pods still schedule when nodes are momentarily
+scarce; two pods sharing a node is a smaller problem than a pod not
+running.
+
+**This became viable when Receive stopped using a PVC** (see
+`persistence` below). A zonal volume cannot be attached from another zone,
+so a hard zone rule and an AZ-pinned pod pull in opposite directions: the
+rule says "go to the empty zone", the volume says "you may only run in
+zone A", and the pod goes Pending forever rather than for as long as it
+takes to add a node. On `emptyDir` there is nothing holding it back.
+
+Matched on `app.kubernetes.io/component` alone rather than the full
+selector, because the subchart renders this through `toYaml` rather than
+`tpl` — a `{{ include ... }}` here would land in the manifest literally, so
+the release name is unavailable. Spread is namespace-scoped and this chart
+assumes one instance of each backend per namespace, so the component label
+is unambiguous. See the Namespace layout section.
+
+Note this cannot move to `thanos.global.topologySpreadConstraints`: each
+constraint carries its own `labelSelector`, and a global one would make
+every Thanos component count Receive's pods when computing its own skew.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Local TSDB storage for Receive: **ephemeral, not a PVC.**
+This is the same call the chart makes for Loki's ingesters, for the same
+reason, and it is worth spelling out because Receive looks stateful.
+
+Durability comes from `--receive.replication-factor=3`, not from disk.
+Blocks ship to object storage every 2h, so the window that exists only
+locally is at most 2h — and every replica uploads its own copy under a
+distinct `replica` external label, which the Compactor deduplicates. A pod
+that comes back with an empty volume has lost its copy of that window, and
+the query path still answers from the surviving replicas.
+
+A PVC makes an AZ failure **worse**, not merely less flexible: an EBS
+volume cannot be attached from another zone, so a pod whose zone is gone
+stays Pending until the zone returns rather than rescheduling into a
+healthy one. On the write path that turns a recoverable event into an
+outage that waits on the cloud provider — with RF 3 write quorum is 2, so
+two pods stuck Pending block writes outright.
+
+The trade accepted in exchange: Thanos Receive has no peer hand-off, so
+unlike Loki it will not backfill an emptied pod from its neighbours. That
+window stays at two copies instead of three until the next block ships.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.storegateway</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "enabled": true
+  "enabled": true,
+  "extraArgs": [
+    "--store.limits.request-series=5000000",
+    "--store.limits.request-samples=200000000"
+  ],
+  "persistence": {
+    "enabled": true,
+    "size": "10Gi"
+  },
+  "resources": {
+    "requests": {
+      "cpu": "500m",
+      "memory": "3Gi"
+    }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "storegateway"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "storegateway"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Store Gateway configuration. Store Gateway provides historical block querying.
@@ -3232,6 +3565,125 @@ startup, so scale-up is slow to become useful (it serves nothing until the
 index is warm) and CPU-triggered scaling reacts long after the load that
 triggered it. Scale-down also leaves orphaned PVCs behind, since
 StatefulSet volumes are not reclaimed. Size it deliberately instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "size": "10Gi"
+}</pre>
+</td>
+      <td class="helm-value-desc">Index-header cache for Store Gateway: **the one Thanos component that keeps a PVC.**
+Receive and the Compactor are both ephemeral (see their `persistence`
+keys). Store Gateway is the exception, and the reason is startup cost
+rather than durability: the on-disk binary index-headers are a
+read-through cache of the bucket and lose nothing when discarded, but
+rebuilding them means re-downloading from object storage, and the
+component serves no historical query until that finishes. On a large
+bucket that is minutes of degraded long-range dashboards on every restart.
+
+Kept on at **every** size deliberately, rather than flipping to ephemeral
+for small installs. A volume that appears and disappears with the profile
+is a surprise during an incident, and the AZ-pinning argument that drives
+Receive to `emptyDir` is much weaker here: Store Gateway is a read-only
+replica set with no quorum, so a pod stuck Pending in a dead zone costs
+read capacity rather than blocking writes.
+
+The `kind` profile is the one exception, where CI would rather not wait on
+volume provisioning for a cache.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "500m",
+    "memory": "3Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Store Gateway. Medium sizing.
+There is a floor here that is easy to trip over. Thanos defaults
+`--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart
+passes neither, so a stock Store Gateway wants ~2.5Gi before it serves a
+single query. A request below that is an OOM, not a small install — the
+`thanos-small` profile shrinks the pools through `extraArgs` instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "storegateway"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "storegateway"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Store Gateway: soft on both axes.
+**Soft** (`ScheduleAnyway`) where Receive is hard, and the difference is
+the point rather than an inconsistency. Two things make it the right trade
+here:
+
+1. **Nothing depends on quorum.** Store Gateway is a read-only replica set
+   over object storage, so an unbalanced placement costs read capacity
+   during a zone loss rather than correctness. Receive's hard rule protects
+   write quorum; there is no equivalent to protect here.
+2. **It is the one Thanos component that still keeps a PVC**, and a hard
+   zone rule against a zonal volume can deadlock rather than merely wait.
+   With `volumeBindingMode: WaitForFirstConsumer` — the default for the
+   zonal CSI classes and what you want — the volume follows the pod and the
+   two agree. With `Immediate`, the PVC's zone is chosen *before* scheduling
+   and a hard rule pointing elsewhere leaves the pod Pending forever. Soft
+   degrades instead of deadlocking on a StorageClass we do not control.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.storegateway<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--store.limits.request-series=5000000",
+  "--store.limits.request-samples=200000000"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for Store Gateway.
+Read-path protection. Thanos has no per-tenant write limit to set; the
+realistic failure is one query fanning out across the bucket and taking
+this component down, which takes historical reads with it. These two caps
+make that query fail instead.
+
+The subchart ships this empty, so unlike `receive.extraArgs` there is
+nothing to lose by overriding it — but it is still a list, so restate both
+entries when adding a third.
 </td>
     </tr>
     <tr>
@@ -3252,6 +3704,83 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.
 }</pre>
 </td>
       <td class="helm-value-desc">Retention policies for Thanos Compactor downsampled data
+The medium row of the retention table in Production Best Practices.
+
+Raw retention has a floor set by the downsampling thresholds: Thanos
+produces 5m downsamples only from blocks spanning 40h or more, and 1h
+downsamples only from blocks spanning 10d or more. Below those the tier is
+never created at all and long-range queries silently fall back to reading
+raw blocks — slower and more expensive, which is the opposite of the
+intent. 30d clears both comfortably.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.vpa</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">VerticalPodAutoscaler for the Compactor. Off for the same reasons as `receive.vpa`, minus the block-loss argument — the Compactor's local volume is an idempotent working copy, so an eviction costs a restarted compaction rather than data. It still overwrites the requests below, and still behaves differently depending on whether the VPA CRD happens to be installed.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "ephemeral-storage": "30Gi"
+  },
+  "requests": {
+    "cpu": 1,
+    "ephemeral-storage": "20Gi",
+    "memory": "2Gi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for the Compactor. Medium sizing.
+The Compactor is a **singleton by necessity** — concurrent compactors
+against one block set corrupt data — so it is the one component here with
+no horizontal escape hatch. Vertical is the only lever, which makes
+compaction falling behind something to alert on rather than discover.
+
+Downsampling is the memory-heavy phase, and `--compact.concurrency`
+multiplies it; leave that at 1 unless compaction is provably behind.
+
+`ephemeral-storage` is the scratch budget, now that the working directory
+is an `emptyDir` (see `persistence`). This is the largest ephemeral request
+in the stack and the one most likely to make a pod unschedulable — which is
+the intended behaviour: a Compactor that cannot fit belongs on a bigger
+node, not silently filling the one it landed on.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Working directory for the Compactor: **ephemeral, not a PVC.**
+Scratch space for the block group under compaction. Nothing here is
+authoritative — the bucket is — and a Compactor killed mid-compaction
+simply redoes the work, so there is no durability argument for a volume.
+
+The availability argument runs the other way, and it is stronger here than
+anywhere else in the chart: this is a **hard** singleton, so unlike Receive
+there is not even a second replica to serve while one is stuck. Pinning it
+to a zone means a zone outage stops compaction entirely, and while
+compaction is stopped retention is not enforced and the bucket grows
+without bound. This mirrors the call already made for Loki's compactor.
+
+The cost: `emptyDir` draws on node ephemeral storage rather than a
+provisioned volume, so the node must actually have this much free. At
+`thanos-large`'s 100Gi that is a real node-shape requirement — see
+`resources.requests.ephemeral-storage`, which makes it explicit to the
+scheduler rather than a surprise to the kubelet.
 </td>
     </tr>
     <tr>
@@ -3265,7 +3794,41 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.
     "minReplicas": 2,
     "targetCPUUtilizationPercentage": 80
   },
-  "enabled": false
+  "enabled": false,
+  "resources": {
+    "requests": {
+      "cpu": "250m",
+      "memory": "512Mi"
+    }
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query-frontend"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "query-frontend"
+        }
+      },
+      "matchLabelKeys": [
+        "pod-template-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.
@@ -3288,6 +3851,56 @@ validator warns when the two disagree.
 }</pre>
 </td>
       <td class="helm-value-desc">Horizontal autoscaling for Query Frontend. Stateless like Query, so the same reasoning applies. Inert until `queryFrontend.enabled` is true.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.queryFrontend<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query-frontend"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "query-frontend"
+      }
+    },
+    "matchLabelKeys": [
+      "pod-template-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for Query Frontend: soft on both axes, same reasoning as Query. Inert until `enabled` is true.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.queryFrontend<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "250m",
+    "memory": "512Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for Query Frontend. Inert until it is enabled, which `thanos-large` does. Sized for splitting and result caching rather than query execution — the work happens in Query behind it.
 </td>
     </tr>
     <tr>

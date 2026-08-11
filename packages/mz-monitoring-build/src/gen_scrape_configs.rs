@@ -70,7 +70,11 @@ pub struct GenScrapeConfigsArgs {
     format: Vec<OutputFormat>,
 
     /// `global.scrape_interval` (classic only).
-    #[arg(long, default_value = "1m")]
+    ///
+    /// 30s matches `GMP_DEFAULT_INTERVAL`, the Alloy gateway's
+    /// `default_scrape_interval`, and the agent's cAdvisor interval, so every
+    /// scrape surface this repo generates agrees.
+    #[arg(long, default_value = "30s")]
     scrape_interval: String,
 
     /// `global.scrape_timeout` (classic only).
