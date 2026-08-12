@@ -57,7 +57,7 @@ jobs:
           # `helm package` bundles the real subcharts, not LFS pointer files.
           lfs: true
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
       # Build the packaged chart .tgz — a gitignored build output — for chart
       # components, so the component's `artifacts` glob resolves for the release
