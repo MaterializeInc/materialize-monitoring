@@ -29,7 +29,7 @@ One module per cloud creates the storage and identity the stack needs, then inst
 Cloud-side, per backend: one bucket, and one IAM role (AWS) or Google service account with a Workload Identity binding (GCP).
 Plus, unless you turn it off, one small PostgreSQL instance for Grafana — see [Reaching Grafana](#reaching-grafana).
 
-On GCP and Azure Grafana gets an internal load balancer with the rest of the stack; on AWS it stays `ClusterIP` until you name a host. Either way DNS, a certificate, and an identity provider are still yours — see [Reaching Grafana](#reaching-grafana).
+Grafana gets an internal L4 load balancer with the rest of the stack on all three clouds. DNS, TLS, and an identity provider are still yours — see [Reaching Grafana](#reaching-grafana).
 
 ## Usage
 
@@ -166,10 +166,8 @@ See [Reaching Grafana](#reaching-grafana) for what each one implies.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `enable_grafana_database` | `true` | Example root variable. A dedicated small PostgreSQL instance for Grafana's own state. Inert without `enable_observability` |
-| `grafana_host` | `null` | Example root variable. Optional on GCP and Azure, where the load balancer exists regardless and this only fixes `root_url`; on AWS it is what creates the ALB at all |
-| `grafana_certificate_arn` | `null` | AWS only. ACM certificate for the ALB listener |
-| `grafana_ingress` / `grafana_load_balancer` | `null` | The wrapper's own input. Internal by default; public requires `ingress_cidr_blocks` |
+| `grafana_host` | `null` | Example root variable. Optional on all three: the load balancer exists regardless, and this only makes `root_url` correct |
+| `grafana_load_balancer` | `null` | The wrapper's own input. Internal by default; public requires `ingress_cidr_blocks`, and refuses `0.0.0.0/0`. Its `ip` field pre-allocates the address, which on GCP and Azure is what makes `grafana_url` known at plan time |
 | `grafana_database_ssl_mode` | `"require"` | `verify-full` also authenticates the server, but needs a CA bundle mounted through `additional_values` |
 
 ### Anything else
@@ -232,8 +230,7 @@ The per-cloud wrapper modules provision a **dedicated** small PostgreSQL instanc
 
 | Variable | Default | Notes |
 |---|---|---|
-| `enable_grafana_database` | `true` | Root variable in the examples. Inert without `enable_observability`, so a `simple` apply — where observability is off — creates nothing |
-| `grafana_database` | — | The wrapper's own input: the networking facts its cloud needs. The examples fill it in |
+| `grafana_database` | set in the examples | The wrapper's own input: the networking facts its cloud needs. The examples always fill it in, so it follows `enable_observability`; set it `null` on the module block to opt out |
 | `grafana_database_host` and friends | `null` | Point at a database you already run instead. Mutually exclusive with `grafana_database` |
 
 Dedicated rather than a database inside the Materialize instance, for reasons that differ per cloud and happen to agree — RDS has no API to add a database to an existing instance, and an Azure Flexible Server has one administrator login and no ARM resource for extra roles.
@@ -244,17 +241,26 @@ The default sizes are the smallest each cloud offers, which is enough: Grafana's
 
 ### 2. Put a load balancer in front
 
-| Cloud | Variable | Shape | Wired in the examples |
-|---|---|---|---|
-| AWS | `grafana_ingress` | An Ingress the AWS Load Balancer Controller turns into an ALB | Only once `grafana_host` is set |
-| GCP | `grafana_load_balancer` | An annotated `LoadBalancer` Service | Always, alongside the Materialize load balancers |
-| Azure | `grafana_load_balancer` | An annotated `LoadBalancer` Service | Always, alongside the Materialize load balancers |
+All three clouds take the same variable, `grafana_load_balancer`, and produce an L4 load balancer. How it is built differs, because the deterministic option does:
 
-That last column is a Kubernetes constraint, not an opinion. A `LoadBalancer` Service answers on an IP whether or not you have a hostname, so on GCP and Azure there is nothing to gate on and the examples create it with the rest of the stack. An ALB comes from an Ingress, and an Ingress with no hosts renders no rules and routes nothing — so on AWS a hostname *is* the exposure.
+| Cloud | Result | Built from |
+|---|---|---|
+| AWS | Network Load Balancer | `aws_lb` and a `TargetGroupBinding` onto a `ClusterIP` Service, all Terraform resources |
+| GCP | passthrough Network Load Balancer | the chart's `LoadBalancer` Service |
+| Azure | Azure Load Balancer | the chart's `LoadBalancer` Service |
 
-The split follows what each platform's controllers actually consume, not a protocol tier.
-An Ingress and an annotated Service are two ways of asking the same cloud for a load balancer, and both terminate TLS in front of Grafana — see [Ingress or Service is not L7 or L4](../../dashboards/grafana/architecture/#ingress-or-service-is-not-l7-or-l4).
-On AWS the controller has to already be installed; the examples install it as `module.aws_lbc`.
+On AWS that means the address is a Terraform attribute rather than something read back after apply, so `grafana_url` is known at plan time — and the allowlist is security-group rules on the NLB rather than `loadBalancerSourceRanges`.
+
+The examples pass it unconditionally, alongside the Materialize console and balancerd load balancers, and `host` is optional — the load balancer answers on an address of its own either way, and the hostname only fixes `root_url`.
+
+> [!WARNING]
+> **None of these terminate TLS.** An L4 load balancer passes bytes through, so Grafana serves plain HTTP — its session cookie and admin password included — until it is given a certificate of its own. That is [DEP-195](https://linear.app/materializeinc/issue/DEP-195)'s work; treat exposure before then as internal-only.
+>
+> Do not set `security.cookie_secure` in the meantime. It marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
+
+L7 — an ALB, a GCP Application Load Balancer, an Azure Application Gateway — is the intended end state for public exposure, because a WAF and authentication at the edge are the two things L4 cannot do. It is deferred rather than rejected: Azure has no ingress-controller module yet, and the chart's Gateway API support is still BETA, so adopting Ingress now would mean migrating twice. See [Ingress and Service are not interchangeable](../../dashboards/grafana/architecture/#ingress-and-service-are-not-interchangeable).
+
+On AWS the Load Balancer Controller has to already be installed — it reconciles the `TargetGroupBinding` that attaches the NLB's target group to the Grafana Service — and the examples install it as `module.aws_lbc`.
 
 Both are **internal by default**, and both read the `internal_load_balancer` and `ingress_cidr_blocks` variables the Materialize load balancers already use, with the presence check enforced by a `validation` block copied from the repo's `nlb` module rather than left as a convention.
 
@@ -276,7 +282,7 @@ ingress_cidr_blocks    = ["203.0.113.0/24"]
 Two things the modules cannot do for you:
 
 - **DNS.** Neither the Ingress nor the Service publishes the hostname, and Terraform has no view of your zone. An ACME challenge against a name that does not resolve is the usual way this gets noticed.
-- **TLS material.** On AWS pass `grafana_certificate_arn`; elsewhere terminate at the load balancer against a certificate the platform holds, or put cert-manager in front.
+- **TLS.** Nothing here terminates it; see the warning above.
 
 ### 3. Configure an identity provider
 
