@@ -1467,36 +1467,9 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
+&lt;h2 id="container-images-v030-unreleased"&gt;Container Images v0.3.0 (Unreleased)&lt;a class="anchor" href="#container-images-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0160-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0160-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="pipelines-v0100-unreleased"&gt;Pipelines v0.10.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0150"&gt;materialize-monitoring (Helm chart + Terraform module) v0.15.0&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0150"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;CLO-180 Support sidechannel logging path (agent doesn&amp;rsquo;t read its own logs)
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/202" rel="external" class="github-source-link"&gt;materialize-monitoring#202&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;DEP-187 Collect cAdvisor metrics with Alloy
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/200" rel="external" class="github-source-link"&gt;materialize-monitoring#200&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;Upgrade all subcharts to latest version (Loki 15-&amp;gt;18, etc)
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/198" rel="external" class="github-source-link"&gt;materialize-monitoring#198&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="dependencies"&gt;Dependencies&lt;a class="anchor" href="#dependencies"&gt;#&lt;/a&gt;&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Included Dashboards @ v0.11.0..v0.12.0&lt;/li&gt;
-&lt;li&gt;Included Pipelines @ v0.9.0..v0.10.0&lt;/li&gt;
-&lt;li&gt;Included Prometheus Scrapers @ v0.3.0..v0.4.0&lt;/li&gt;
-&lt;li&gt;Included mzmon-lib (shared library) @ v0.9.0..v0.10.0&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="mzmon-lib-shared-library-v0100-unreleased"&gt;mzmon-lib (shared library) v0.10.0 (Unreleased)&lt;a class="anchor" href="#mzmon-lib-shared-library-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
