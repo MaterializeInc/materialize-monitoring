@@ -1469,9 +1469,9 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v0130-unreleased"&gt;Dashboards v0.13.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0130-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0160-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0160-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="container-images-v030-unreleased"&gt;Container Images v0.3.0 (Unreleased)&lt;a class="anchor" href="#container-images-v030-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="pipelines-v0100-unreleased"&gt;Pipelines v0.10.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v0100-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0160-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0160-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
