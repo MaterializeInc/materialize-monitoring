@@ -736,8 +736,11 @@ pub struct TlsConfigBlock {
     pub key_file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_pem: Option<String>,
+    /// `Expressable`: kubelet serving certs verify against the cluster CA on
+    /// some distributions and not others, and getting it wrong stops collection
+    /// silently — so it needs to be settable per deployment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub insecure_skip_verify: Option<bool>,
+    pub insecure_skip_verify: Option<Expressable<bool>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -761,8 +764,8 @@ impl ToBlock for TlsConfigBlock {
                 attributes.insert(key.into(), AttributeValue::String(v.clone()));
             }
         }
-        if let Some(v) = self.insecure_skip_verify {
-            attributes.insert("insecure_skip_verify".into(), AttributeValue::Bool(v));
+        if let Some(v) = &self.insecure_skip_verify {
+            attributes.insert("insecure_skip_verify".into(), v.to_attribute_value()?);
         }
         Ok(Block {
             component: "tls_config".into(),

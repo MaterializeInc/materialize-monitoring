@@ -12,6 +12,12 @@ metadata:
     {{- include "mzmon.annotations" $ | nindent 4 }}
 data:
   {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
+  {{- $kubelet := .Values.pipeline.metrics.kubelet }}
+  GATEWAY_CADVISOR_SCRAPE_INTERVAL: {{ $kubelet.scrapeInterval | quote }}
+  {{- /* Rendered as a JSON literal because the pipeline unwraps it with
+         `encoding.from_json` — sys.env yields a string and the attribute wants
+         a bool. */}}
+  GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
   {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
   {{- if $lokiDest.enabled }}
   GATEWAY_LOKI_DEST: {{ tpl $lokiDest.url $ | quote }}
