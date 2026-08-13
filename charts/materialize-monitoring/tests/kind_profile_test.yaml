@@ -107,7 +107,7 @@ tests:
           path: spec.template.spec.containers[0].args
           content: --index-cache-size=16MB
 
-  - it: shrinks the Compactor and declares its ephemeral scratch budget
+  - it: shrinks the Compactor and its scratch volume
     values:
       - ../profiles/kind.values.yaml
     template: ../charts/thanos/templates/compactor/statefulset.yaml
@@ -115,11 +115,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 256Mi
-      - notExists:
-          path: spec.volumeClaimTemplates
+      # A PVC, which kind's local-path provisioner serves instantly. The Compactor
+      # is the one Thanos component whose scratch does not fit node ephemeral
+      # storage at real sizes.
       - equal:
-          path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
-          value: 1Gi
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 2Gi
 
   # kind is the one place Store Gateway gives up its volume — the single
   # structural override in an otherwise sizing-only profile. Its emptyDir still

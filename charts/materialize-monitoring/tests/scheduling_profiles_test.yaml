@@ -166,7 +166,7 @@ tests:
         documentIndex: 1
 
   # --- Storage class ---------------------------------------------------------
-  # Only three workloads claim a volume; everything else is emptyDir on purpose.
+  # Only four workloads claim a volume; everything else is emptyDir on purpose.
   - it: reaches the Store Gateway, the one Thanos component with a volume
     values:
       - ../profiles/storage-class.values.yaml

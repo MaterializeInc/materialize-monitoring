@@ -1,19 +1,17 @@
 # StorageClass fan-out.
 #
-# Five keys, of which **three are live by default** — there is no lever covering
+# Five keys, of which **four are live by default** — there is no lever covering
 # more than one (Thanos has a `global` for scheduling but not persistence).
 # Written out literally rather than generated: the nesting depths differ, and at
 # this size an explicit map is easier to check against the subcharts.
 #
-# Live: Alertmanager, the Loki ruler, and the Thanos Store Gateway.
+# Live: Alertmanager, the Loki ruler, and the Thanos Store Gateway and Compactor.
 #
-# Inert but retained: `thanos.receive` and `thanos.compactor` both default to
-# `persistence.enabled: false` (node-local `emptyDir` with an explicit
-# `ephemeral-storage` budget; durability is the replication factor, and a volume
-# would pin them to one AZ). The keys stay because turning persistence back on is
-# a documented escape hatch — the Compactor's 100Gi scratch at `thanos-large` may
-# not fit a node pool's ephemeral storage — and a re-enabled volume that silently
-# missed the class would be a worse trap than two no-op keys.
+# Inert but retained: `thanos.receive` defaults to `persistence.enabled: false`
+# (node-local `emptyDir` with an explicit `ephemeral-storage` budget; durability
+# is the replication factor, and a volume would pin it to one AZ). The key stays
+# because re-enabling persistence is a documented escape hatch, and a re-enabled
+# volume that silently missed the class would be a worse trap than one no-op key.
 #
 # Loki's ingesters are absent deliberately: node-local `emptyDir`, durability
 # from the replication factor, and no escape hatch worth wiring.

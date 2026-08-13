@@ -12,14 +12,14 @@
 # fails in this repository's CI rather than in an apply.
 #
 # ---------------------------------------------------------------------------
-# Three live targets, and two that are deliberately inert
+# Four live targets, and one that is deliberately inert
 # ---------------------------------------------------------------------------
 # Most of this stack is volumeless on purpose. Loki's ingesters, index-gateway and
-# compactor, and Thanos's Receive and Compactor, all run on node-local
-# `emptyDir`: durability comes from the replication factor or from object storage,
-# and a volume that cannot cross availability zones makes a zone failure worse
-# rather than safer — a pod whose zone is gone stays `Pending` instead of
-# rescheduling. See [Storage: ephemeral by default](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#thanos-ephemeral-storage).
+# compactor, and Thanos's Receive, all run on node-local `emptyDir`: durability
+# comes from the replication factor or from object storage, and a volume that
+# cannot cross availability zones makes a zone failure worse rather than safer — a
+# pod whose zone is gone stays `Pending` instead of rescheduling. See
+# [Storage: ephemeral by default](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#thanos-ephemeral-storage).
 #
 # What is left:
 #
@@ -30,15 +30,19 @@
 #     samples while the metric store is unreachable. Useful durability in the
 #     run-up to an incident, exactly when you do not want to drop derived signals.
 #   * **The Thanos Store Gateway** — the on-disk index-header cache. Cheap to lose
-#     and slow to rebuild, and it has no write quorum to block, so it is the one
-#     Thanos component where a volume is the better trade.
+#     but slow to rebuild, and it has no write quorum to block, so a volume is the
+#     better trade despite the AZ pin.
+#   * **The Thanos Compactor** — scratch for the block group under compaction. The
+#     odd one out: its data is as reconstructible as Receive's, but the volume is
+#     about *size*. Compaction works on whole block groups, so it needs tens of
+#     GiB — more than a typical node's *allocatable* ephemeral storage — and an
+#     `emptyDir` that large simply never schedules.
 #
-# `thanos.receive` and `thanos.compactor` are still named below even though both
-# default to `persistence.enabled: false`. Re-enabling their persistence is a
-# documented escape hatch — the Compactor's 100Gi scratch at `thanos-large` may
-# not fit a node pool's ephemeral storage — and a re-enabled volume that silently
-# missed the class would be a worse trap than two no-op keys. The `kind` profile
-# turns the Store Gateway's volume off too, so under it nothing here applies.
+# `thanos.receive` is still named below even though it defaults to
+# `persistence.enabled: false`. Re-enabling it is a documented escape hatch, and a
+# re-enabled volume that silently missed the class would be a worse trap than one
+# no-op key. The `kind` profile turns the Store Gateway's volume off too, so under
+# it only the Compactor and the two non-Thanos volumes apply.
 #
 # > A class that cannot serve the nodes is not the same as a missing class.
 # > On GCP's C4 and N4 machine families, which accept only Hyperdisk, *every*
@@ -70,12 +74,12 @@ thanos:
   storegateway:
     persistence:
       storageClass: *storageClass
-
-  # Inert while `persistence.enabled` is false, which is the default for both.
-  # Retained so re-enabling either picks the class up. See the header.
-  receive:
+  compactor:
     persistence:
       storageClass: *storageClass
-  compactor:
+
+  # Inert while `persistence.enabled` is false, which is Receive's default.
+  # Retained so re-enabling it picks the class up. See the header.
+  receive:
     persistence:
       storageClass: *storageClass
