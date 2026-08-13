@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.11.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,33 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.16.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.16.0
 
-_Changes Pending_
+* Update loki helm chart to v18.8.0
+    * [materialize-monitoring#225](https://github.com/MaterializeInc/materialize-monitoring/pull/225)
+* Update ghcr.io/materializeinc/mzmon-alloy Docker tag to v1.18.1
+    * [materialize-monitoring#224](https://github.com/MaterializeInc/materialize-monitoring/pull/224)
+* Ensure thanos fits onto default self-managed nodes
+    * [materialize-monitoring#223](https://github.com/MaterializeInc/materialize-monitoring/pull/223)
+* DEP-187 Scrape cadvisor from kubelet instead of via daemonset
+    * [materialize-monitoring#222](https://github.com/MaterializeInc/materialize-monitoring/pull/222)
+* Update docker.io/grafana/grafana Docker tag to v13.1.3
+    * [materialize-monitoring#221](https://github.com/MaterializeInc/materialize-monitoring/pull/221)
+* DEP-190 Provide separate sizing profiles for thanos
+    * [materialize-monitoring#210](https://github.com/MaterializeInc/materialize-monitoring/pull/210)
+* Update docker.io/grafana/grafana Docker tag to v13.1.2
+    * [materialize-monitoring#208](https://github.com/MaterializeInc/materialize-monitoring/pull/208)
+* Convert raw blocks into structured configs
+    * [materialize-monitoring#203](https://github.com/MaterializeInc/materialize-monitoring/pull/203)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.10.0..v0.11.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * Update Rust crate jsonschema to v0.49.4
+        * [materialize-monitoring#206](https://github.com/MaterializeInc/materialize-monitoring/pull/206)
 
 ## Pipelines v0.10.0
 
