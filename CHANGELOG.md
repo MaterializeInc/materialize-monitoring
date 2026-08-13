@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.11.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.3.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,20 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Pipelines v0.10.0 (Unreleased)
+## Pipelines v0.10.0
 
-_Changes Pending_
+* DEP-187 Scrape cadvisor from kubelet instead of via daemonset
+    * [materialize-monitoring#222](https://github.com/MaterializeInc/materialize-monitoring/pull/222)
+* Convert raw blocks into structured configs
+    * [materialize-monitoring#203](https://github.com/MaterializeInc/materialize-monitoring/pull/203)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * DEP-190 Provide separate sizing profiles for thanos
+        * [materialize-monitoring#210](https://github.com/MaterializeInc/materialize-monitoring/pull/210)
+    * Update Rust crate jsonschema to v0.49.4
+        * [materialize-monitoring#206](https://github.com/MaterializeInc/materialize-monitoring/pull/206)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.15.0
 
