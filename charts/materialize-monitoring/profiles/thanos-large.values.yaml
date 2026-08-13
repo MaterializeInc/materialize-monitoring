@@ -11,10 +11,9 @@
 # nodes of a shared cluster is still an L.
 #
 # This file defines ONLY the deltas from the medium defaults — larger resources
-# (including the ephemeral-storage budgets that back Receive's and the
-# Compactor's `emptyDir`), a larger Store Gateway volume, more receive replicas,
-# higher read limits, longer downsampled retention, and the query-frontend read
-# path.
+# (including the ephemeral-storage budget backing Receive's `emptyDir`), larger
+# Store Gateway and Compactor volumes, more receive replicas, higher read limits,
+# longer downsampled retention, and the query-frontend read path.
 #
 # Above roughly 4M series this stops being a menu and becomes a starting point:
 # add receive replicas in multiples of the replication factor and the zone
@@ -88,8 +87,8 @@ thanos:
     persistence:
       # -- Binary index-headers for the blocks under retention, roughly 1% of
       # block size. Past the multi-TB range this is the signal to shard rather
-      # than to grow the volume; see "Scaling past large". Store Gateway is the
-      # one Thanos component that keeps a PVC, at every size.
+      # than to grow the volume; see "Scaling past large". Store Gateway keeps a
+      # PVC at every size, for startup cost rather than for capacity.
       enabled: true
       size: 20Gi
 

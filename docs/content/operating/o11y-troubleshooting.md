@@ -95,6 +95,101 @@ kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
 
 Then wait it out, add zones, or change the machine type. A pod requiring a node pool that cannot scale looks identical to a scheduling misconfiguration, so confirm which one it is before changing selectors.
 
+### Pods `Pending` with `Insufficient ephemeral-storage`, and the autoscaler will not help
+
+Thanos Receive or another `emptyDir`-backed workload sits `Pending` indefinitely, and the cluster-autoscaler logs that it declined to scale up:
+
+```text
+0/5 nodes are available: 4 Insufficient ephemeral-storage.
+Pod didn't trigger scale-up: 3 Insufficient ephemeral-storage
+```
+
+**Cause.** An `ephemeral-storage` request larger than any node's **allocatable** ephemeral storage — which is far below its disk size.
+GKE reserves most of the boot disk for the image filesystem, so a 47Gi disk offers roughly **18.8Gi allocatable**.
+This is not a transient capacity problem: the autoscaler correctly refuses to add nodes, because a new node of the same shape would not fit the pod either, so it never resolves on its own.
+
+**Fix.** Compare the request against allocatable, not against the disk:
+
+```bash
+kubectl get nodes -o custom-columns='NODE:.metadata.name,DISK:.status.capacity.ephemeral-storage,ALLOC:.status.allocatable.ephemeral-storage'
+```
+
+Then lower the request, or lower what drives it.
+For Receive that is `thanos.receive.tsdb.retention` — local retention sets the disk requirement almost linearly, and the chart ships 6h for this reason.
+See [Declaring the ephemeral budget](production-best-practices/#thanos-ephemeral-budget).
+
+Two things that make this harder to spot than it should be:
+
+- **The budget is shared and partly undeclared.** Loki's ingesters are `emptyDir`-backed and request no `ephemeral-storage` at all, so the scheduler believes they need none. A node can look free and still be full.
+- **The limit is enforced by eviction, not throttling.** A request that fits but a limit that is too tight trades `Pending` for a pod that starts and is later evicted — which on Receive discards the not-yet-uploaded block window. Keep real headroom between the two.
+
+### `helm upgrade` fails with `updates to statefulset spec ... are forbidden`
+
+```text
+cannot patch "thanos-compactor" with kind StatefulSet: StatefulSet.apps
+"thanos-compactor" is invalid: spec: Forbidden: updates to statefulset spec for
+fields other than 'replicas', 'ordinals', 'template', 'updateStrategy',
+'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden
+```
+
+**Cause.** Something outside that allowed list changed — in practice almost always `volumeClaimTemplates` (a component gaining, losing, or resizing its volume) or `selector`.
+Both are immutable after creation, so Helm cannot patch its way there and the release fails mid-upgrade.
+
+**Fix.** Delete the StatefulSet and let the upgrade recreate it. Which cascade mode you want depends on whether the pods may stop:
+
+```bash
+# Recreate the pods too. Correct for anything whose local state is scratch.
+kubectl -n monitoring delete statefulset thanos-compactor
+
+# Keep the pods running while the StatefulSet is replaced; the new one adopts
+# them. Use when a restart is what you are avoiding.
+kubectl -n monitoring delete statefulset <name> --cascade=orphan
+```
+
+Then re-run the upgrade.
+
+> [!WARNING]
+>  **`--cascade=orphan` does not apply the new volume.** An orphaned pod keeps the volumes it started with, so a StatefulSet that gained a `volumeClaimTemplate` will adopt a pod that is still using an `emptyDir`. The new volume only appears when the pod is replaced. If the point of the change was the volume, use the default cascade.
+>
+>  **Neither mode deletes PVCs.** The default `persistentVolumeClaimRetentionPolicy` is `Retain`, and PVCs created from `volumeClaimTemplates` outlive the StatefulSet. That cuts both ways:
+>
+>  - Recreating a StatefulSet **rebinds the existing PVCs** by name (`data-<sts>-0`), which is usually what you want — the data survives.
+>  - A component that moves *away* from a volume leaves its PVCs behind with nothing to reclaim them, still costing money. After moving Thanos Receive to `emptyDir`, delete them: `kubectl -n monitoring delete pvc -l app.kubernetes.io/component=receive`.
+
+### The Thanos Compactor is stuck in a zone
+
+The Compactor is `Pending` and its events point at its volume rather than at resources — the zone holding its PVC has no schedulable capacity, or is gone.
+
+**Cause.** The Compactor keeps a PersistentVolume (its scratch space needs more than node ephemeral storage can offer), and a zonal disk cannot be attached from another zone.
+It is also a **hard singleton** — concurrent compactors against one block set corrupt data — so there is no second replica to carry on, and it cannot simply be rescheduled elsewhere while the volume exists.
+
+**This is safe to resolve by deleting the volume.** Nothing on it is authoritative: the bucket is, and compaction is idempotent, so a Compactor that loses its scratch mid-run redoes the work.
+
+**Fix.** Order matters, because the one thing that must not happen is two Compactors running at once:
+
+```bash
+# 1. Stop it, and confirm it is actually gone before continuing.
+kubectl -n monitoring scale statefulset thanos-compactor --replicas=0
+# Both labels, not just the component: Loki also has a `compactor`, and a
+# component-only selector would wait on its pod too and never return.
+kubectl -n monitoring wait --for=delete pod -l app.kubernetes.io/component=compactor,app.kubernetes.io/name=thanos --timeout=120s
+
+# 2. Delete the volume. This does nothing while the pod still mounts it — the
+#    PVC sits Terminating on its finalizer — which is why step 1 comes first.
+kubectl -n monitoring delete pvc data-thanos-compactor-0
+
+# 3. Bring it back. The StatefulSet recreates the PVC, and it binds wherever the
+#    pod lands.
+kubectl -n monitoring scale statefulset thanos-compactor --replicas=1
+```
+
+> [!INFO]
+>  **Step 3 only lands in a healthy zone if the StorageClass uses `volumeBindingMode: WaitForFirstConsumer`.** With `Immediate`, the volume is provisioned before the scheduler picks a node, so a new PVC can be created right back in the zone you were trying to leave. `WaitForFirstConsumer` is the default for the zonal CSI classes and is what you want here; check with `kubectl get storageclass -o custom-columns='NAME:.metadata.name,BINDING:.volumeBindingMode'`.
+>
+>  If you are on an `Immediate` class and the replacement PVC lands back in the unusable zone, the escape is to give the pod a temporary `nodeSelector` for a healthy zone (`topology.kubernetes.io/zone`) so provisioning follows it, or to point the Compactor at a `WaitForFirstConsumer` class and let it bind on the next attempt.
+>
+>  While the Compactor is down, **retention is not enforced** and the bucket grows. That is tolerable for minutes and worth watching over days — it is why compaction falling behind deserves an alert rather than a periodic look.
+
 ### Everything suddenly fails, and it worked an hour ago
 
 Terraform cannot reach the cluster, `kubectl` returns an auth error, or a plan that succeeded this morning now fails on the provider rather than on anything you changed.

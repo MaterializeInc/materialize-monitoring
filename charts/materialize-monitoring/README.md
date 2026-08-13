@@ -3363,6 +3363,23 @@ claim 40% of the node's budget, and Loki's ingesters draw on the same pool.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--receive.replication-factor=3"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for Receive.
+**This is a list, and Helm overwrites lists rather than merging them.**
+Anything that sets `receive.extraArgs` replaces this entry wholesale, so
+the replication factor must be restated or it silently falls back to
+Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
+profiles restate it; so must yours. See Production Best Practices >
+Metrics (Thanos) for the quorum table.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.receive<wbr>.vpa</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -3375,9 +3392,10 @@ Off, overriding the subchart's `true`. Three reasons, in order:
 
 1. It rewrites the requests below, so a sizing profile would not survive
    contact with it.
-2. `updateMode: Auto` evicts pods to apply new requests, and Receive is a
-   PVC-backed StatefulSet holding up to `tsdb.retention` (24h) of blocks
-   that have not reached object storage yet.
+2. `updateMode: Auto` evicts pods to apply new requests, and Receive holds
+   up to `tsdb.retention` (6h) of blocks on an `emptyDir` whose only
+   redundancy is the replication factor — an eviction discards that pod's
+   copy of the window.
 3. The subchart's VPA template is CRD-gated, so leaving it on makes the
    stack behave differently on clusters with the VPA CRD installed than on
    those without — silently, in both directions.
@@ -3612,14 +3630,14 @@ StatefulSet volumes are not reclaimed. Size it deliberately instead.
   "size": "10Gi"
 }</pre>
 </td>
-      <td class="helm-value-desc">Index-header cache for Store Gateway: **the one Thanos component that keeps a PVC.**
-Receive and the Compactor are both ephemeral (see their `persistence`
-keys). Store Gateway is the exception, and the reason is startup cost
-rather than durability: the on-disk binary index-headers are a
+      <td class="helm-value-desc">Index-header cache for Store Gateway.
+One of two Thanos components that keep a PVC — the Compactor is the other,
+and Receive alone is `emptyDir`-backed. The reason here is startup cost
+rather than durability or size: the on-disk binary index-headers are a
 read-through cache of the bucket and lose nothing when discarded, but
-rebuilding them means re-downloading from object storage, and the
-component serves no historical query until that finishes. On a large
-bucket that is minutes of degraded long-range dashboards on every restart.
+rebuilding them means re-downloading from object storage, and the component
+serves no historical query until that finishes. On a large bucket that is
+minutes of degraded long-range dashboards on every restart.
 
 Kept on at **every** size deliberately, rather than flipping to ephemeral
 for small installs. A volume that appears and disappears with the profile
@@ -3783,8 +3801,8 @@ compaction falling behind something to alert on rather than discover.
 Downsampling is the memory-heavy phase, and `--compact.concurrency`
 multiplies it; leave that at 1 unless compaction is provably behind.
 
-No `ephemeral-storage` here: the Compactor is the one component that kept a
-PersistentVolume. See `persistence` for why.
+No `ephemeral-storage` here: the Compactor keeps a PersistentVolume, so its
+scratch does not draw on the node's budget. See `persistence` for why.
 </td>
     </tr>
     <tr>

@@ -476,7 +476,7 @@ thanos:
       - --receive.replication-factor=3
 ```
 
-This is the same shape as Loki, where ingesters are deliberately ephemeral and durability comes from RF 3 alone — **Thanos Receive is `emptyDir`-backed for the same reason**, and the replication factor is therefore the only thing standing between you and data loss. It holds up to `receive.tsdb.retention` (24h) of blocks locally, of which at most 2h has not yet reached object storage. With RF 1 that window exists in exactly one copy, on one node. See [Storage: ephemeral by default](#thanos-ephemeral-storage) for why no volume is involved.
+This is the same shape as Loki, where ingesters are deliberately ephemeral and durability comes from RF 3 alone — **Thanos Receive is `emptyDir`-backed for the same reason**, and the replication factor is therefore the only thing standing between you and data loss. It holds up to `receive.tsdb.retention` (6h) of blocks locally, of which at most 2h has not yet reached object storage. With RF 1 that window exists in exactly one copy, on one node. See [Storage: ephemeral by default](#thanos-ephemeral-storage) for why no volume is involved.
 
 > [!WARNING]
 >   **Split mode is not recommended yet.** It landed upstream only recently, and `receive.ingester` does not inherit from the top-level `receive.*` defaults — upstream considers the non-merging behavior intentional, so this is unlikely to change. In practice that means restating ~31 keys, of which the values schema hard-requires eight sub-objects (`hashrings`, `service`, `vpa`, `persistence`, `podSecurityContext`, `probes`, `serviceMonitor`, `pdb`) before the chart will render at all. Prefer standalone with an odd replication factor until that changes.
@@ -572,7 +572,7 @@ Starting points — `replicas × (cpu request / memory request)`; tune from real
 | Query Frontend | omit | omit | 2–5 × (250m / 512Mi) |
 
 - **At `replicaCount == replicationFactor` every Receive pod holds every series.** Sharding begins only above RF, which is why **L** runs six pods rather than three — and why a replica count that is a multiple of both the replication factor and the zone count spreads evenly across both.
-- **Do not set a tight memory limit on Receive.** An OOM-kill drops up to `tsdb.retention` (24h) of not-yet-uploaded blocks, and unlike Loki's ingesters that window has nothing protecting it but the replication factor.
+- **Do not set a tight memory limit on Receive.** An OOM-kill drops up to `tsdb.retention` (6h) of locally-held blocks, and unlike Loki's ingesters that window has nothing protecting it but the replication factor.
 - **Store Gateway has a memory floor the requests must respect.** Thanos defaults `--chunk-pool-size=2GB` and `--index-cache-size=250MB`, and the subchart passes neither, so a stock Store Gateway wants ~2.5Gi before it serves anything. The **S** profile shrinks those pools through `extraArgs` rather than only lowering the request — a 1Gi request against 2.25GB of pools is an OOM, not a small install.
 - **The Compactor is vertical-only.** It must stay `replicaCount: 1`, because concurrent compactors against one block set corrupt data. Its PVC is scratch space for the block group under compaction, which is why it grows faster with size than the other two volumes.
 
@@ -634,8 +634,8 @@ On the Terraform path that falls out for free, because `min_zones` filters the o
 
 #### Storage: ephemeral by default {#thanos-ephemeral-storage}
 
-Of the three Thanos components with local disk, **only the Store Gateway keeps a PersistentVolume.**
-Receive and the Compactor use node-local `emptyDir` with an explicit `ephemeral-storage` budget.
+Of the three Thanos components with local disk, **only Receive uses node-local `emptyDir`**, with an explicit `ephemeral-storage` budget.
+The Store Gateway and the Compactor both keep a PersistentVolume, for different reasons.
 
 | Component | Storage | Why |
 |---|---|---|
@@ -670,6 +670,7 @@ That is a genuine cost.
 It loses anyway, because the alternative is worse: at the medium envelope a 2d compaction group is roughly six 8h blocks at ~2.4Gi each, and the Compactor needs the sources and the output together — on the order of 30Gi.
 A GKE node with a 47Gi boot disk offers about 18.8Gi of *allocatable* ephemeral storage, so an `emptyDir` that size never schedules at all.
 **"Compaction pauses during a zone outage" beats "compaction never runs because the pod cannot be placed."**
+And the pause is recoverable by hand: the scratch is not authoritative, so a Compactor wedged in a dead zone is unstuck by deleting its PVC and letting it rebind elsewhere — see [The Thanos Compactor is stuck in a zone](../o11y-troubleshooting/#the-thanos-compactor-is-stuck-in-a-zone) for the ordering, which matters because two Compactors running at once is the one thing that corrupts data.
 
 #### Declaring the ephemeral budget {#thanos-ephemeral-budget}
 
@@ -808,7 +809,7 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 - [x] `[chart]` Resource requests on every enabled component, per [Per-size resources](#thanos-per-size-resources). Thanos sizes off different axes than Loki — active series for Receive memory, samples/sec for its CPU and disk, block volume for Store Gateway and Compactor, query concurrency for Query and Query Frontend.
 - [x] `[chart]` No memory limit on Receive, so an OOM-kill cannot drop the un-uploaded block window. Requests are set for scheduling; alert on usage instead.
 - [ ] `[operator]` Autoscaling on Query does not remove the need for requests: without them the HPA has no CPU target to measure against, so it never scales.
-- [x] `[chart]` **VerticalPodAutoscaler disabled on Receive and Compactor.** The subchart defaults it *on* for exactly those two, in `updateMode: Auto`, so where the VPA CRD is present it rewrites the requests a profile sets and evicts pods to apply them — on a StatefulSet holding up to 24h of blocks whose only redundancy is the replication factor. The template is CRD-gated, so leaving it on would make the stack behave differently on clusters that have VPA installed than on those that do not, with no signal either way. A unit test asserts this with the CRD declared present, so it fails on the value rather than passing on the gate.
+- [x] `[chart]` **VerticalPodAutoscaler disabled on Receive and Compactor.** The subchart defaults it *on* for exactly those two, in `updateMode: Auto`, so where the VPA CRD is present it rewrites the requests a profile sets and evicts pods to apply them — on a StatefulSet holding up to `tsdb.retention` (6h) of blocks on an `emptyDir` whose only redundancy is the replication factor. The template is CRD-gated, so leaving it on would make the stack behave differently on clusters that have VPA installed than on those that do not, with no signal either way. A unit test asserts this with the CRD declared present, so it fails on the value rather than passing on the gate.
 - [x] `[chart]` **Every profile restates `receive.extraArgs` in full**, so the replication factor survives. Helm overwrites lists, and a profile that adds a flag without restating `--receive.replication-factor=3` silently drops to Thanos's default of 1. A unit test pins this at all three sizes.
 - [ ] `[operator]` If you re-enable VPA deliberately, use `updateMode: "Off"` for recommendations only, and know that its numbers will disagree with the profile by design.
 
