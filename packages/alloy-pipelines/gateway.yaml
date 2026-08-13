@@ -210,6 +210,107 @@ blocks:
         - clustering:
             enabled: true
 
+  # --- node metrics: cAdvisor, scraped off the kubelet ---------------------
+  #
+  # Container resource metrics come from each node's kubelet rather than from a
+  # cAdvisor we run ourselves.
+  #
+  # The kubelet already runs cAdvisor — it needs those stats for eviction and for
+  # the metrics API. Running our own on every node computes the same numbers a
+  # second time, and measurably so: an in-agent cAdvisor cost ~45 MiB of heap for
+  # housekeeping plus ~40 MiB for the scrape that read it, which took the agent
+  # DaemonSet from a 200Mi envelope to needing ~750Mi on every node. Scraping the
+  # kubelet deletes the housekeeping half outright and moves the scrape half here,
+  # where it is shared across gateway replicas instead of multiplied by node count
+  # — the distinction that matters in a bin-packed cluster, where a DaemonSet
+  # request is reserved on every node forever.
+  #
+  # The completeness objection that argued for running our own does not survive
+  # measurement: a GKE kubelet serves 69 distinct `container_*` metrics against
+  # the 70 our own cAdvisor produced, including the `container_file_descriptors`
+  # / `container_sockets` / `container_threads` family that otherwise needs the
+  # `process` collector AND the host PID namespace. Nothing our queries reference
+  # is missing. Where GKE dashboards look sparse it is the *collector* scraping a
+  # subset, not the kubelet withholding anything.
+  #
+  # The kubelet also labels series with `namespace` / `pod` / `container`
+  # directly, so none of the `container_label_io_kubernetes_*` remapping an
+  # in-process cAdvisor needs applies here.
+  - discovery.kubernetes:
+      label: nodes
+      role: node
+
+  # `discovery.kubernetes` role=node already points `__address__` at the
+  # kubelet's port, so this only shapes labels and the metrics path.
+  - discovery.relabel:
+      label: kubelet_cadvisor
+      targets: ["discovery.kubernetes.nodes.targets"]
+      blocks:
+        # Node identity. Every series from a node shares this, and it is the join
+        # key against node-exporter.
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_name"]
+            target_label: node
+        # Node-label allowlist, matching packages/prometheus-scrapers/scrapeconfig
+        # -cadvisor.yaml. A blanket labelmap would promote every node label
+        # (autoscaler hints, hostname, …) onto every container series; these are
+        # the dimensions the dashboards actually group by. A node missing one
+        # yields an empty value, which Prometheus drops, so they are harmless.
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_topology_kubernetes_io_region"]
+            target_label: topology_kubernetes_io_region
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_topology_kubernetes_io_zone"]
+            target_label: topology_kubernetes_io_zone
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_karpenter_sh_nodepool"]
+            target_label: karpenter_sh_nodepool
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_karpenter_sh_capacity_type"]
+            target_label: karpenter_sh_capacity_type
+        - rule:
+            action: replace
+            source_labels: ["__meta_kubernetes_node_label_node_kubernetes_io_instance_type"]
+            target_label: node_kubernetes_io_instance_type
+
+  - prometheus.scrape:
+      label: kubelet_cadvisor
+      job_name: cadvisor
+      targets: ["discovery.relabel.kubelet_cadvisor.output"]
+      forward_to: ["otelcol.receiver.prometheus.inputBridge.receiver"]
+      scheme: https
+      metrics_path: /metrics/cadvisor
+      # The gateway runs several replicas. Without clustering every replica
+      # scrapes every node and each series lands once per replica.
+      blocks:
+        - clustering:
+            enabled: true
+        - tls_config:
+            # On GKE the kubelet's serving certificate verifies against the
+            # in-cluster CA (measured, not assumed). Distributions where it does
+            # not need the skip below, so it is env-driven — a wrong value here
+            # stops collection silently rather than loudly.
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify:
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: GATEWAY_KUBELET_TLS_INSECURE
+                    - "false"
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # Dominant cost lever: ~6.7k series per node per scrape.
+      scrape_interval:
+        function: coalesce
+        arguments:
+          - env: GATEWAY_CADVISOR_SCRAPE_INTERVAL
+          - "60s"
+
   # --- input bridges ------------------------------------------------------
   # Bridge: turns OTLP logs into loki entries and feeds the main processor.
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)

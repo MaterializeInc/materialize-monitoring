@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# Container metrics, scraped from each node's kubelet by the gateway.
+#
+# This replaced an in-process cAdvisor on the agent DaemonSet, which needed
+# ~750Mi per node against a 200Mi logs-only envelope because it recomputed stats
+# the kubelet already produces. The properties below are the ones that would
+# regress quietly: a duplicated scrape, a lost node label, or an agent that
+# silently regrows host access it no longer needs.
+suite: kubelet cAdvisor scrape
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.logging.gateway.destination.loki.enabled: false
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+tests:
+  - it: should scrape the kubelet cAdvisor endpoint from the gateway
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.scrape "kubelet_cadvisor"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'metrics_path = "/metrics/cadvisor"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'scheme = "https"'
+
+  # Without clustering every gateway replica scrapes every node, and each of the
+  # ~6.7k series per node lands once per replica.
+  - it: should cluster the scrape so replicas do not duplicate
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.scrape "kubelet_cadvisor" \{[\s\S]*?clustering \{\s+enabled = true'
+
+  # The in-cluster CA verifies the kubelet certificate on GKE. Where it does not,
+  # scrapes fail silently, so the skip is a knob rather than a code change.
+  - it: should verify the kubelet certificate against the in-cluster CA
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'ca_file\s+= "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"'
+  - it: should expose the TLS skip as a value
+    set:
+      pipeline.metrics.kubelet.tlsInsecureSkipVerify: true
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_KUBELET_TLS_INSECURE
+          value: "true"
+
+  # A blanket labelmap would promote every node label onto every container
+  # series; these are the dimensions the dashboards group by.
+  - it: should keep the node-label allowlist
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'target_label\s+= "topology_kubernetes_io_zone"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'target_label\s+= "karpenter_sh_nodepool"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'target_label\s+= "node"'
+
+  # --- what the agent must NOT regrow ---------------------------------------
+  - it: should leave no cAdvisor exporter on the agent
+    template: templates/pipelines/cm-alloy-agent.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.cadvisor'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlp'
+
+  # hostPID was enabled only for cAdvisor's `process` collector. With uid 0 it
+  # also grants read access to every process's environment on the node, so it
+  # must not come back without that justification.
+  - it: should not share the host PID namespace
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.hostPID
+
+  - it: should not mount host paths it no longer reads
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: containerd
+            hostPath:
+              path: /run/containerd
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: rootfs
+            hostPath:
+              path: /
+
+  # Go's GC does not know about the cgroup limit; without this it grows the heap
+  # toward a ceiling the kernel enforces by killing the process.
+  - it: should tell the Go runtime about the memory ceiling
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMEMLIMIT
+            value: 240MiB

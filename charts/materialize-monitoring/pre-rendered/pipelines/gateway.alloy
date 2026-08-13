@@ -167,6 +167,83 @@ loki.source.kubernetes "agent_logs" {
 	}
 }
 
+discovery.kubernetes "nodes" {
+	role = "node"
+}
+
+discovery.relabel "kubelet_cadvisor" {
+	targets = discovery.kubernetes.nodes.targets
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_name",
+		]
+		target_label = "node"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_topology_kubernetes_io_region",
+		]
+		target_label = "topology_kubernetes_io_region"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_topology_kubernetes_io_zone",
+		]
+		target_label = "topology_kubernetes_io_zone"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_karpenter_sh_nodepool",
+		]
+		target_label = "karpenter_sh_nodepool"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_karpenter_sh_capacity_type",
+		]
+		target_label = "karpenter_sh_capacity_type"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_node_label_node_kubernetes_io_instance_type",
+		]
+		target_label = "node_kubernetes_io_instance_type"
+	}
+}
+
+prometheus.scrape "kubelet_cadvisor" {
+	targets = discovery.relabel.kubelet_cadvisor.output
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+	scrape_interval = coalesce(sys.env("GATEWAY_CADVISOR_SCRAPE_INTERVAL"), "60s")
+	metrics_path = "/metrics/cadvisor"
+	scheme = "https"
+	job_name = "cadvisor"
+	bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+	clustering {
+		enabled = true
+	}
+
+	tls_config {
+		ca_file              = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+		insecure_skip_verify = encoding.from_json(coalesce(sys.env("GATEWAY_KUBELET_TLS_INSECURE"), "false"))
+	}
+}
+
 otelcol.exporter.loki "bridge" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,

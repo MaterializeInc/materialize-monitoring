@@ -590,7 +590,9 @@ $defs:
         description: |
           When true, skip server certificate verification. Common for scraping
           the kubelet with its self-signed certificate.
-        type: boolean
+        anyOf:
+          - type: boolean
+          - $ref: "./common/expression.schema.yaml"
       server_name:
         description: ServerName (SNI) used to verify the server certificate.
         type: string

@@ -23,24 +23,4 @@ data:
   {{- if $lokiDest.tls.enabled }}
     {{- fail "TLS is not supported for the alloy-gateway destination yet" }}
   {{- end }}
-  {{- $agentMetrics := .Values.pipeline.metrics.agent }}
-  AGENT_OTLP_DEST: {{ tpl $agentMetrics.destination.otlp.url $ | quote }}
-  {{- $cadvisor := $agentMetrics.cadvisor }}
-  {{- if $cadvisor.enabled }}
-  AGENT_CADVISOR_SCRAPE_INTERVAL: {{ $cadvisor.scrapeInterval | quote }}
-  {{- /* Both lists reach the pipeline as JSON, which `encoding.from_json`
-         turns back into list(string). toJson on a Helm list gives exactly
-         that. An empty enabled list must stay `[]` rather than being
-         omitted: cAdvisor treats a non-empty enabled_metrics as a full
-         replacement of disabled_metrics. */}}
-  ALLOY_CADVISOR_ENABLED: {{ $cadvisor.enabledCollectors | default list | toJson | quote }}
-  ALLOY_CADVISOR_DISABLED: {{ $cadvisor.disabledCollectors | default list | toJson | quote }}
-  {{- else }}
-  {{- /* Disabling means collecting nothing, which is what an exhaustive-but-
-         empty enabled list cannot express — `[]` reads as "unset". Naming every
-         collector in the disabled list is the only way to turn it fully off
-         without a separate component toggle in the pipeline. */}}
-  ALLOY_CADVISOR_ENABLED: "[]"
-  ALLOY_CADVISOR_DISABLED: {{ list "advtcp" "app" "cpu" "cpuLoad" "cpu_topology" "cpuset" "disk" "diskIO" "hugetlb" "memory" "memory_numa" "network" "oom_event" "percpu" "perf_event" "process" "referenced_memory" "resctrl" "sched" "tcp" "udp" | toJson | quote }}
-  {{- end }}
 {{- end }}
