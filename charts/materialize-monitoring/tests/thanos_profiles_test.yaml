@@ -175,18 +175,15 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 8Gi
-      # Scratch is an emptyDir, budgeted through ephemeral-storage rather than a
-      # volume — the Compactor is a hard singleton, so a PVC would pin the only
-      # copy of it to one AZ and a zone outage would stop compaction (and
-      # therefore retention) entirely.
+      # Scratch is a PVC, not an emptyDir. Compaction works on whole block groups,
+      # so the requirement scales with days of data rather than hours — no
+      # realistic node offers this much *allocatable* ephemeral storage, and a
+      # request that large simply never schedules.
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 200Gi
       - notExists:
-          path: spec.volumeClaimTemplates
-      - equal:
           path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
-          value: 100Gi
-      - equal:
-          path: spec.template.spec.containers[0].resources.limits.ephemeral-storage
-          value: 150Gi
 
   # --- Ephemeral by default, and explicitly budgeted -----------------------
   # Receive and the Compactor are emptyDir-backed at every size: durability is
@@ -203,12 +200,12 @@ tests:
           path: spec.volumeClaimTemplates
       - equal:
           path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
-          value: 10Gi
+          value: 2Gi
       # The limit must exceed the request: the kubelet's response to overrunning
       # it is eviction, which destroys the un-uploaded block window.
       - equal:
           path: spec.template.spec.containers[0].resources.limits.ephemeral-storage
-          value: 15Gi
+          value: 3Gi
 
   - it: Receive is ephemeral at medium too
     template: ../charts/thanos/templates/receive/statefulset.yaml
@@ -217,7 +214,14 @@ tests:
           path: spec.volumeClaimTemplates
       - equal:
           path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
-          value: 20Gi
+          value: 4Gi
+      # Must fit a node's *allocatable* ephemeral storage, which is far below its
+      # disk size — GKE leaves ~18.8Gi on a 47Gi boot disk. A request above that
+      # can never schedule, and the autoscaler cannot help because no node of that
+      # shape would fit either.
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.ephemeral-storage
+          value: 6Gi
 
   # Store Gateway is the deliberate exception: it keeps a PVC at every real
   # size, because the index-header cache is cheap to lose and slow to rebuild,
@@ -403,3 +407,32 @@ tests:
       - equal:
           path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
           value: DoNotSchedule
+
+  # --- Spread selectors must not reach another backend ------------------------
+  # `app.kubernetes.io/component` is NOT unique across backends: Loki also ships a
+  # `compactor`, a `query-frontend` and a `ruler`. A component-only selector makes
+  # Thanos count Loki's pods when computing its own skew — silently, and only for
+  # the components whose names happen to collide, which is the worst way to find
+  # out. Every selector names the chart as well.
+  - it: qualifies the Receive spread selector with the chart name
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/name"]
+          value: thanos
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[1].labelSelector.matchLabels["app.kubernetes.io/name"]
+          value: thanos
+
+  # query-frontend is the collision that actually existed: Loki has one too.
+  - it: qualifies the Query Frontend selector, whose component name Loki shares
+    set:
+      thanos.queryFrontend.enabled: true
+    template: ../charts/thanos/templates/query-frontend/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/name"]
+          value: thanos
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
+          value: query-frontend

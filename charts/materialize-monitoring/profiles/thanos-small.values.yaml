@@ -52,12 +52,12 @@ thanos:
       requests:
         cpu: 250m
         memory: 1Gi
-        # -- ~5k samples/s for 24h plus WAL fits well inside this. The limit
-        # carries headroom because exceeding it evicts the pod, which destroys
-        # the un-uploaded window the replication factor exists to protect.
-        ephemeral-storage: 10Gi
+        # -- ~5k samples/s for 6h plus WAL is well under 1Gi; 2Gi is headroom.
+        # The limit carries more, because exceeding it evicts the pod and that
+        # destroys the un-uploaded window the replication factor protects.
+        ephemeral-storage: 2Gi
       limits:
-        ephemeral-storage: 15Gi
+        ephemeral-storage: 3Gi
 
   storegateway:
     resources:
@@ -85,11 +85,11 @@ thanos:
       requests:
         cpu: 500m
         memory: 1Gi
-        # -- Scratch space for the block group under compaction, on an
-        # `emptyDir` (see the base values). Small blocks at this size.
-        ephemeral-storage: 10Gi
-      limits:
-        ephemeral-storage: 15Gi
+    persistence:
+      # -- Scratch for the block group under compaction, on a PVC (see the base
+      # values — it scales with days of data, not hours, so it does not fit node
+      # ephemeral storage). Small blocks at this size.
+      size: 20Gi
     retention:
       # -- Shorter horizons for a small storage budget.
       #

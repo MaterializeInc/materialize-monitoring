@@ -3200,7 +3200,8 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "query"
+          "app.kubernetes.io/component": "query",
+          "app.kubernetes.io/name": "thanos"
         }
       },
       "matchLabelKeys": [
@@ -3213,7 +3214,8 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "query"
+          "app.kubernetes.io/component": "query",
+          "app.kubernetes.io/name": "thanos"
         }
       },
       "matchLabelKeys": [
@@ -3251,7 +3253,8 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "query"
+        "app.kubernetes.io/component": "query",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3264,7 +3267,8 @@ This matches the Loki convention (ingester `maxUnavailable: 1`).
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "query"
+        "app.kubernetes.io/component": "query",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3327,20 +3331,28 @@ failure than a slow one.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.receive<wbr>.extraArgs</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">thanos<wbr>.receive<wbr>.tsdb</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "--receive.replication-factor=3"
-]</pre>
+{
+  "retention": "6h"
+}</pre>
 </td>
-      <td class="helm-value-desc">Extra CLI arguments for Receive.
-**This is a list, and Helm overwrites lists rather than merging them.**
-Anything that sets `receive.extraArgs` replaces this entry wholesale, so
-the replication factor must be restated or it silently falls back to
-Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
-profiles restate it; so must yours. See Production Best Practices >
-Metrics (Thanos) for the quorum table.
+      <td class="helm-value-desc">How long Receive keeps blocks on local disk before they age out.
+**6h, overriding the subchart's 24h**, because local retention is what sets
+Receive's disk requirement — and on an `emptyDir` that disk is the node's, a
+far scarcer and much smaller pool than a provisioned volume was.
+
+This is a recent-query cache, not a durability window: blocks ship to object
+storage every 2h and the Store Gateway serves everything older, so all that
+shortens here is how far back a query is answered from local TSDB rather
+than from the bucket. 6h covers the common dashboard ranges and leaves 4h of
+margin after a block closes, uploads, and the Store Gateway syncs it.
+
+Raising it back is a real cost rather than just a number. At the medium
+envelope (1.5M series) 24h is ~7.3Gi per pod, and a GKE node with a 47Gi boot
+disk offers only ~18.8Gi of *allocatable* ephemeral storage — one pod would
+claim 40% of the node's budget, and Loki's ingesters draw on the same pool.
 </td>
     </tr>
     <tr>
@@ -3373,11 +3385,11 @@ If you want its recommendations without its actions, set
       <td class="helm-value-default"><pre>
 {
   "limits": {
-    "ephemeral-storage": "30Gi"
+    "ephemeral-storage": "6Gi"
   },
   "requests": {
     "cpu": "500m",
-    "ephemeral-storage": "20Gi",
+    "ephemeral-storage": "4Gi",
     "memory": "4Gi"
   }
 }</pre>
@@ -3392,12 +3404,26 @@ this chart: an OOM-kill drops the un-uploaded block window, and unlike
 Loki's ingesters that window has nothing protecting it but the replication
 factor. Alert on usage instead.
 
-`ephemeral-storage` is declared because the TSDB now lives on an
-`emptyDir` (see `persistence`). The request is what the scheduler places
-against, so a node without room refuses the pod instead of filling up
-silently. The limit carries deliberate headroom over the request: the
-kubelet's response to exceeding it is **eviction**, and evicting Receive
-destroys exactly the un-uploaded window this sizing exists to protect.
+`ephemeral-storage` is declared because the TSDB lives on an `emptyDir`
+(see `persistence`). The request is what the scheduler places against, so a
+node without room refuses the pod instead of filling up silently. The limit
+carries deliberate headroom over the request: the kubelet's response to
+exceeding it is **eviction**, and evicting Receive destroys exactly the
+un-uploaded window this sizing exists to protect.
+
+**Size these against a node's *allocatable* ephemeral storage, not its disk
+size.** The two are nowhere near each other: GKE reserves most of the boot
+disk for the image filesystem, so a 47Gi disk offers roughly 18.8Gi
+allocatable. A request above that cannot schedule anywhere, and the
+cluster-autoscaler will not rescue it — no node of that shape would fit
+either, so the pod sits Pending indefinitely on `Insufficient
+ephemeral-storage`. Check before raising these:
+
+  kubectl get nodes -o custom-columns='NODE:.metadata.name,EPH:.status.allocatable.ephemeral-storage'
+
+4Gi holds 6h of the medium envelope (~1.8Gi) with room for the WAL and
+compaction churn, and leaves the rest of the node for everything sharing that
+pool — including Loki's ingesters, which are also `emptyDir`-backed.
 </td>
     </tr>
     <tr>
@@ -3408,7 +3434,8 @@ destroys exactly the un-uploaded window this sizing exists to protect.
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "receive"
+        "app.kubernetes.io/component": "receive",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3423,7 +3450,8 @@ destroys exactly the un-uploaded window this sizing exists to protect.
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "receive"
+        "app.kubernetes.io/component": "receive",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3457,12 +3485,18 @@ rule says "go to the empty zone", the volume says "you may only run in
 zone A", and the pod goes Pending forever rather than for as long as it
 takes to add a node. On `emptyDir` there is nothing holding it back.
 
-Matched on `app.kubernetes.io/component` alone rather than the full
-selector, because the subchart renders this through `toYaml` rather than
-`tpl` — a `{{ include ... }}` here would land in the manifest literally, so
-the release name is unavailable. Spread is namespace-scoped and this chart
-assumes one instance of each backend per namespace, so the component label
-is unambiguous. See the Namespace layout section.
+The selector names **both** `app.kubernetes.io/name` and
+`app.kubernetes.io/component`, and the first of those is load-bearing:
+component names are not unique across backends. Loki also ships a
+`compactor`, a `query-frontend` and a `ruler`, so a component-only selector
+would make Thanos count Loki's pods when computing its own skew — silently,
+and only for the components whose names happen to collide.
+
+The release name is deliberately absent: the subchart renders this through
+`toYaml` rather than `tpl`, so a `{{ include ... }}` would land in the
+manifest literally. Spread is namespace-scoped and this chart assumes one
+instance of each backend per namespace, so name plus component is
+sufficient. See the Namespace layout section.
 
 Note this cannot move to `thanos.global.topologySpreadConstraints`: each
 constraint carries its own `labelSelector`, and a global one would make
@@ -3524,7 +3558,8 @@ window stays at two copies instead of three until the next block ships.
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "storegateway"
+          "app.kubernetes.io/component": "storegateway",
+          "app.kubernetes.io/name": "thanos"
         }
       },
       "matchLabelKeys": [
@@ -3537,7 +3572,8 @@ window stays at two copies instead of three until the next block ships.
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "storegateway"
+          "app.kubernetes.io/component": "storegateway",
+          "app.kubernetes.io/name": "thanos"
         }
       },
       "matchLabelKeys": [
@@ -3616,7 +3652,8 @@ single query. A request below that is an OOM, not a small install — the
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "storegateway"
+        "app.kubernetes.io/component": "storegateway",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3629,7 +3666,8 @@ single query. A request below that is an OOM, not a small install — the
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "storegateway"
+        "app.kubernetes.io/component": "storegateway",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3723,12 +3761,8 @@ intent. 30d clears both comfortably.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "limits": {
-    "ephemeral-storage": "30Gi"
-  },
   "requests": {
     "cpu": 1,
-    "ephemeral-storage": "20Gi",
     "memory": "2Gi"
   }
 }</pre>
@@ -3742,11 +3776,8 @@ compaction falling behind something to alert on rather than discover.
 Downsampling is the memory-heavy phase, and `--compact.concurrency`
 multiplies it; leave that at 1 unless compaction is provably behind.
 
-`ephemeral-storage` is the scratch budget, now that the working directory
-is an `emptyDir` (see `persistence`). This is the largest ephemeral request
-in the stack and the one most likely to make a pod unschedulable — which is
-the intended behaviour: a Compactor that cannot fit belongs on a bigger
-node, not silently filling the one it landed on.
+No `ephemeral-storage` here: the Compactor is the one component that kept a
+PersistentVolume. See `persistence` for why.
 </td>
     </tr>
     <tr>
@@ -3754,26 +3785,32 @@ node, not silently filling the one it landed on.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "enabled": false
+  "enabled": true,
+  "size": "50Gi"
 }</pre>
 </td>
-      <td class="helm-value-desc">Working directory for the Compactor: **ephemeral, not a PVC.**
+      <td class="helm-value-desc">Working directory for the Compactor: **a PersistentVolume**, unlike Receive.
 Scratch space for the block group under compaction. Nothing here is
-authoritative — the bucket is — and a Compactor killed mid-compaction
-simply redoes the work, so there is no durability argument for a volume.
+authoritative — the bucket is — and a Compactor killed mid-compaction simply
+redoes the work, so there is no *durability* argument for a volume. The
+argument is size.
 
-The availability argument runs the other way, and it is stronger here than
-anywhere else in the chart: this is a **hard** singleton, so unlike Receive
-there is not even a second replica to serve while one is stuck. Pinning it
-to a zone means a zone outage stops compaction entirely, and while
-compaction is stopped retention is not enforced and the bucket grows
-without bound. This mirrors the call already made for Loki's compactor.
+Compaction works on whole block groups, not on the recent window, so the
+requirement scales with days of data rather than hours. At the medium
+envelope a 2d group is roughly six 8h blocks at ~2.4Gi each, and the
+Compactor needs the sources and the output at once — on the order of 30Gi.
+A GKE node with a 47Gi boot disk offers about 18.8Gi of *allocatable*
+ephemeral storage, so that never fits: the pod stays Pending on
+`Insufficient ephemeral-storage`, and the cluster-autoscaler cannot help
+because no node of that shape would fit either.
 
-The cost: `emptyDir` draws on node ephemeral storage rather than a
-provisioned volume, so the node must actually have this much free. At
-`thanos-large`'s 100Gi that is a real node-shape requirement — see
-`resources.requests.ephemeral-storage`, which makes it explicit to the
-scheduler rather than a surprise to the kubelet.
+This is the reverse of the call made for Receive, and deliberately so.
+Receive holds hours of small, replicated data and is the better trade on
+`emptyDir`; the Compactor holds days of it and is not. The AZ-pinning cost is
+real — a zone outage stops compaction, and while compaction is stopped
+retention is not enforced and the bucket grows — but "compaction pauses
+during a zone outage" is a far better failure than "compaction never runs
+because the pod cannot be scheduled".
 </td>
     </tr>
     <tr>
@@ -3798,7 +3835,8 @@ scheduler rather than a surprise to the kubelet.
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "query-frontend"
+          "app.kubernetes.io/component": "query-frontend",
+          "app.kubernetes.io/name": "thanos"
         }
       },
       "matchLabelKeys": [
@@ -3811,7 +3849,8 @@ scheduler rather than a surprise to the kubelet.
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "query-frontend"
+          "app.kubernetes.io/component": "query-frontend",
+          "app.kubernetes.io/name": "thanos"
         }
       },
       "matchLabelKeys": [
@@ -3854,7 +3893,8 @@ validator warns when the two disagree.
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "query-frontend"
+        "app.kubernetes.io/component": "query-frontend",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [
@@ -3867,7 +3907,8 @@ validator warns when the two disagree.
   {
     "labelSelector": {
       "matchLabels": {
-        "app.kubernetes.io/component": "query-frontend"
+        "app.kubernetes.io/component": "query-frontend",
+        "app.kubernetes.io/name": "thanos"
       }
     },
     "matchLabelKeys": [

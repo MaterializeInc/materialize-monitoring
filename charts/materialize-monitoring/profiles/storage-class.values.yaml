@@ -12,7 +12,7 @@
 # fails in this repository's CI rather than in an apply.
 #
 # ---------------------------------------------------------------------------
-# Three live targets, and two that are deliberately inert
+# Four live targets, and one that is deliberately inert
 # ---------------------------------------------------------------------------
 # Most of this stack is volumeless on purpose. Loki's ingesters, index-gateway and
 # compactor, and Thanos's Receive and Compactor, all run on node-local

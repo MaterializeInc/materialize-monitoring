@@ -144,12 +144,10 @@ thanos:
       requests:
         cpu: 25m
         memory: 256Mi
-        # -- Scratch space on an `emptyDir` (base values). At real sizes this is
-        # the largest ephemeral request in the stack; in CI there is nothing to
-        # compact.
-        ephemeral-storage: 1Gi
-      limits:
-        ephemeral-storage: 2Gi
+    persistence:
+      # -- The Compactor keeps a PVC (see the base values); kind's local-path
+      # provisioner serves one instantly. There is nothing to compact in CI.
+      size: 2Gi
 
   queryFrontend:
     # -- Inert unless something upstream enabled it (`thanos-large` does).

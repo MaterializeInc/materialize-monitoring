@@ -70,7 +70,7 @@ Every PVC-backed pod stays `Pending` or `ContainerCreating`; the rest of the sta
 
 **Cause.** GCP's **C4 and N4** machine families accept only Hyperdisk. They cannot attach Persistent Disk of any type, and *every* StorageClass GKE creates by default — `standard-rwo` (`pd-balanced`), `premium-rwo` (`pd-ssd`), `standard` (`pd-standard`) — is Persistent Disk. GKE does not create a Hyperdisk class for you.
 
-**Fix.** Create a `hyperdisk-balanced` StorageClass and point the three PVC-backed workloads at it. The Terraform modules take `storage_class`; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools) for the manifest and the migration caveat.
+**Fix.** Create a `hyperdisk-balanced` StorageClass and point the four PVC-backed workloads at it. The Terraform modules take `storage_class`; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools) for the manifest and the migration caveat.
 
 > [!WARNING]
 >  Changing the class does **not** move existing volumes, and this is easy to miss: a StatefulSet's `volumeClaimTemplates` are immutable, and Kubernetes does not garbage-collect PVCs created from them — the default `persistentVolumeClaimRetentionPolicy` is `Retain`.
