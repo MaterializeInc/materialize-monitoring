@@ -341,29 +341,33 @@ The values are the same either way; what differs is who fills in the cloud speci
 The Terraform wrapper does not invent a path around the chart: it computes these same values and appends them ahead of your `additional_values`, so every render-time check below still applies, and anything the wrapper does not model stays reachable.
 See [Reaching Grafana](../../../getting-started/terraform/#reaching-grafana) on the Terraform side for the variables and what each one implies.
 
-### Ingress or Service is not L7 or L4
+### Ingress and Service are not interchangeable
 
-It is tempting to read `grafana.ingress` as "the HTTPS one" and `grafana.service.type: LoadBalancer` as "the raw TCP one".
-That is not how the cloud controllers work, and getting it backwards leads to the wrong shape on platforms where Ingress is not the idiom.
-
-**Both are ways of asking for the same cloud load balancer.**
-AWS's Load Balancer Controller provisions an ALB from an Ingress and an NLB from an annotated `LoadBalancer` Service; GKE and AKS have the same duality.
-In both cases the load balancer sits in front of Grafana, holds the certificate, and terminates TLS — the Kubernetes object only decides which controller reads the configuration and where the annotations go.
+It is tempting to read `grafana.ingress` and `grafana.service.type: LoadBalancer` as two ways of asking for the same thing.
+On AWS they nearly are — the Load Balancer Controller builds an **ALB** from an Ingress and an **NLB** from an annotated Service, and either can hold a certificate.
+Everywhere else the choice decides the protocol layer, and a Service cannot be talked into L7.
 
 | | `grafana.ingress` | `grafana.service` |
 |---|---|---|
-| Consumed by | an ingress controller | a cloud provider or LB controller |
-| Typical result on AWS | ALB | NLB |
-| TLS | Ingress `tls`, or a certificate named in annotations | a certificate named in annotations |
+| AWS | ALB — **L7** | NLB — **L4** |
+| GCP | Application Load Balancer — **L7** | passthrough NLB — **L4** |
+| Azure | Application Gateway — **L7** | Azure Load Balancer — **L4** |
+| Needs a controller installed | yes, except on GKE (built in) | no |
+| Terminates TLS | yes | no — bytes pass through |
 | Host-based routing | yes | no — one load balancer, one backend |
 | Allowlist the chart can read | no; it lives in controller annotations | `loadBalancerSourceRanges` |
 
-The one shape that really is bare L4 with no TLS is a `LoadBalancer` Service on a cluster with no controller interpreting it — a plain cloud L4 forward to port 80.
-That is the case the chart's TLS warning is aimed at, and it is also the case that cannot be fixed with annotations.
+The consequence that matters: **on a Service, nothing in front of Grafana terminates TLS.**
+Grafana serves plain HTTP until it is given a certificate of its own, so `server.root_url` stays `http://` and `security.cookie_secure` must stay off — setting it marks the session cookie `Secure`, the browser then refuses to send it over the connection that actually works, and nobody can log in.
 
-**So pick by what your platform's controller consumes**, not by which sounds more like HTTP.
-Where you have an ingress controller, Ingress is the better fit: host-based routing and a certificate reference are what it is for, and several Grafanas can share one load balancer.
-Where the platform expects an annotated Service, use that; the chart validates it more tightly, not less.
+**Pick by what your platform's controllers consume, and by whether you need what L7 adds.**
+A WAF, rate limiting, and authentication at the edge are the things L4 cannot do at all, and they are the reason to take on an ingress controller for a Grafana that faces the internet.
+Against that, L4 has no request-timeout ceiling — an L7 backend timeout of 30–60 seconds will cut off the long Thanos and Loki queries a dashboard panel makes, and it does so in a way that reads as a flaky panel rather than a load-balancer setting.
+
+> [!INFO]
+> The [Terraform wrappers](../../../getting-started/terraform/#reaching-grafana) are L4 on all three clouds, so that they agree with each other and with the Materialize console. GCP and Azure use the `LoadBalancer` Service above; AWS builds the NLB in Terraform and attaches it to a `ClusterIP` Service with a `TargetGroupBinding`, which is how that repo gets a load-balancer address it knows at plan time.
+>
+> L7 is the intended end state for public exposure and is deferred rather than rejected — Azure has no ingress-controller module yet, and this chart's Gateway API support is still marked BETA.
 
 ### Internal by default, public against an allowlist
 
