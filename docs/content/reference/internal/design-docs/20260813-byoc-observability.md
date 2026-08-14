@@ -130,47 +130,35 @@ That reframes the roadmap's [dual-destination row](https://linear.app/materializ
 
 ## Architecture
 
-```text
-CUSTOMER ENVIRONMENT (their cloud account)          │  MATERIALIZE CONTROL PLANE
-                                                    │
-  alloy-agent (DaemonSet, per node)                 │
-    pod logs · journal                              │
-        │ OTLP/gRPC (+ node-local WAL, DEP-189)     │
-        ▼                                           │
-  alloy-gateway  ──────────────────────┐            │
-    receivers: loki.source.api :3100   │            │
-               otelcol.receiver.otlp   │            │
-    kubelet cAdvisor scrape            │            │
-    loki.process.inputProcessor        │            │
-        │                              │            │
-        ├── egress:local ──────────────┼──▶ Loki / Thanos (theirs, full fidelity)
-        │     no redaction             │            │        ▲
-        │     metrics: all             │            │        │
-        │                              │            │   their Grafana
-        │                              │            │   (DNS + TLS, configured)
-        │                              │            │
-        └── egress:controlPlane        │            │
-              redact + reduce          │            │
-              metrics: essential       │            │
-              own queue, own drops     │            │
-                    │                  │            │
-                    │  OTLP/gRPC 4317, mTLS         │
-                    │  client cert from license     │
-                    └───────────────────────────────┼──▶ L7 LB  ── verify chain
-                                                    │      │      check revocation
-                                                    │      │      inject tenant header
-                                                    │      ▼
-                                                    │   alloy-gateway (control plane)
-                                                    │      otelcol.receiver.otlp
-                                                    │      verify client cert again
-                                                    │      OVERWRITE tenant metadata
-                                                    │      per-tenant limits
-                                                    │         │
-                                                    │         ▼
-                                                    │   Loki / Thanos (ours, multi-tenant)
-                                                    │         │
-                                                    │         ▼
-                                                    │   Grafana + Alertmanager (internal)
+The thick edge is the only flow that leaves the customer's account.
+
+```mermaid
+flowchart TB
+  subgraph cust["Customer environment — their cloud account"]
+    agent["alloy-agent (DaemonSet, per node)<br/>pod logs · systemd journal"]
+    gw["alloy-gateway<br/>receivers: loki.source.api :3100 · otelcol.receiver.otlp<br/>kubelet cAdvisor scrape<br/>loki.process.inputProcessor"]
+    local["egress:local<br/>no redaction<br/>metrics: all"]
+    cpbranch["egress:controlPlane<br/>redact + reduce<br/>metrics: essential<br/>own queue · droppable"]
+    custstore[("Loki / Thanos — theirs<br/>full fidelity, their retention")]
+    custgraf["Their Grafana<br/>DNS + TLS configured"]
+
+    agent -->|"OTLP/gRPC + node-local WAL"| gw
+    gw --> local
+    gw --> cpbranch
+    local --> custstore
+    custstore --> custgraf
+  end
+
+  subgraph mz["Materialize control plane"]
+    lb["L7 load balancer<br/>verify chain · check revocation<br/>inject tenant header"]
+    cpgw["alloy-gateway — control plane role<br/>otelcol.receiver.otlp · verify client cert again<br/>OVERWRITE tenant metadata · per-tenant limits"]
+    mzstore[("Loki / Thanos — ours<br/>multi-tenant, reduced, shorter retention")]
+    mzgraf["Grafana + Alertmanager<br/>internal only"]
+
+    lb --> cpgw --> mzstore --> mzgraf
+  end
+
+  cpbranch ==>|"OTLP/gRPC :4317 · mTLS<br/>client cert from license"| lb
 ```
 
 Two properties of this diagram carry the design:
@@ -261,13 +249,16 @@ Today: `loki.process.inputProcessor` → `loki.process.egress` → `loki.write "
 
 Proposed: `inputProcessor` forwards to **N per-destination chains**, each with its own processing and its own writer.
 
-```text
-loki.process.inputProcessor
-  (global drops, rate limit, level normalization, tenancy — unchanged)
-    │
-    ├──▶ loki.process.egress.local          ──▶ loki.write.local          (no redaction)
-    │
-    └──▶ loki.process.egress.controlPlane   ──▶ loki.write.controlPlane   (redact + reduce)
+```mermaid
+flowchart LR
+  ip["loki.process.inputProcessor<br/>global drops · rate limit<br/>level normalization · tenancy<br/>(unchanged)"]
+  el["loki.process.egress.local<br/>no redaction"]
+  ec["loki.process.egress.controlPlane<br/>redact · reduce · sample"]
+  wl["loki.write.local"]
+  wc["loki.write.controlPlane<br/>own WAL · bounded · droppable"]
+
+  ip --> el --> wl
+  ip --> ec --> wc
 ```
 
 `loki.process` already accepts a list in `forward_to`, so the fan-out itself is free.
