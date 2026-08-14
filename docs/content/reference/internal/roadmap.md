@@ -175,7 +175,7 @@ Exposing Grafana without a durable backend turns a bundled extra nobody depended
 
 ### Terraform
 
-Designed in [Terraform Modules for materialize-monitoring](design-docs/20260803-terraform-modules/).
+Designed in [Terraform Modules for materialize-monitoring](../design-docs/20260803-terraform-modules/).
 The **common module lives in this repo** (`terraform/modules/materialize-monitoring`), next to the chart whose value paths it encodes; **per-cloud wrapper modules** live in `materialize-terraform-self-managed` and wrap it.
 This replaces the hand-rolled Prometheus + Grafana modules that repo shipped, which vendored a point-in-time dashboard copy and a legacy scrape config.
 
@@ -235,7 +235,7 @@ Scheduling and storage class are profiles rather than a `global.*` block so the 
 | Item | Milestone | Status |
 |---|---|---|
 | Pre-commit suite (ruff, pyright, shellcheck, yamllint, cargo fmt, helm-docs) | FCO-M1 | ✅ |
-| Per-component versioning + changelog + release automation (see [Versioning](versioning/) / [Releasing](releasing/)) | FCO-M2 | ✅ |
+| Per-component versioning + changelog + release automation (see [Versioning](../versioning/) / [Releasing](../releasing/)) | FCO-M2 | ✅ |
 | `auto-format` workflow (label-driven formatter fixups) | FCO-M2 | ✅ |
 | `renovate` for automated dependency bumps | FCO-M2 | ✅ |
 | Chart-shape fail-fast: Thanos + Alloy validators wired into `mzmon.validate.collect`, snapshot tests pinning rendered service-account names and workload-identity subject strings | FCO-M3 | ✅ |
@@ -288,12 +288,21 @@ The two Cloud rows are complements: one is *what* Cloud deploys, the other is *h
 
 | Item | Milestone | Status |
 |---|---|---|
-| [Gateway-to-gateway architecture and proposal](https://linear.app/materializeinc/issue/DEP-219) — design doc plus review | OO-M3 | ⬜ |
+| [Gateway-to-gateway architecture and proposal](https://linear.app/materializeinc/issue/DEP-219) — design doc plus review | OO-M3 | 🔨 ([design doc](../design-docs/20260813-byoc-observability/) drafted; review outstanding) |
 | [Dual-destination pipeline pattern](https://linear.app/materializeinc/issue/DEP-124) (customer-local + control plane) | OO-M3 | ⬜ |
 | [Sanitize telemetry before control-plane egress](https://linear.app/materializeinc/issue/DEP-220) | OO-M3 | ⬜ |
 
-Logs stay inside the customer network; metrics may cross.
-The gateway pair is what enforces that boundary, rather than ad-hoc network configuration — and sanitization is what makes "metrics may cross" true, since the `_info` metrics that made dashboards legible are precisely the ones carrying customer names.
+**A reduced copy of telemetry crosses into the control plane; the customer's full-fidelity copy always stays with them.**
+Metrics cross selected by importance tier — the tiers already exist and already work per-destination.
+Logs cross as an allowlisted, redacted, level-filtered subset, and log egress is opt-out for customers who will not permit it at any level of redaction, at a stated cost in support quality.
+
+This revises an earlier position that logs never leave the customer network.
+Metrics alone do not make an escalation tractable: [Upgrades](#dashboards) above is the worked example of a question ("is it stuck, and what do I do") that metrics describe and logs answer.
+What made the original position worth stating is preserved rather than dropped — the claim was never that logs are uniquely sensitive, but that nothing should cross unexamined.
+
+The gateway pair is what enforces the boundary, rather than ad-hoc network configuration.
+Sanitization is what makes *anything* crossing safe, since the `_info` metrics that made dashboards legible are precisely the ones carrying customer names, and the same tension applies to log labels.
+Redaction attaches to the destination rather than to the pipeline, so the reduced copy is a fork of the customer's stream and never a downgrade of it.
 
 ## Metrics contract (upstream dependency)
 
@@ -319,7 +328,7 @@ The remaining drilldowns are still ⛓️ gated on the items above: **Sources / 
 ## Versioning, changelog, and releases
 
 **Built.** Each artifact has its own SemVer stream — the Helm chart, the optional CRDs chart, dashboards, pipelines, scrapers, and the shared lib — declared in `packages/components.yaml`.
-Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); this replaces the earlier single-umbrella-chart framing.
+Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/); this replaces the earlier single-umbrella-chart framing.
 
 - **Per-component streams.** ✅
   Merged PRs are attributed to components by path; `CHANGELOG.md` is the source of truth, with cumulative `Included <dep> @ vPREV..vNEW` dependency rollups.
@@ -333,20 +342,20 @@ Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); thi
 - **Deprecation policy.** ⬜ ([DEP-127](https://linear.app/materializeinc/issue/DEP-127), OO-M1)
   Still to commit: at least one minor-release cycle for breaking changes to the label/metric contract, with a release-process check, and a called-out "customer-facing surface" changelog subsection.
 - **Stamping 1.0.** ⬜ ([DEP-205](https://linear.app/materializeinc/issue/DEP-205), OO-M1)
-  The [pre-1.0 bump policy](releasing/#choosing-the-next-version) lets breaking changes ride minors.
+  The [pre-1.0 bump policy](../releasing/#choosing-the-next-version) lets breaking changes ride minors.
   At 1.0 that stops, and the label/metric contract, profile semantics, alert names, and chart value paths all acquire a deprecation cycle we owe.
   The window closes on its own: once enough customers have dashboards built on these labels the contract is frozen in practice whether or not it is frozen on paper, so the discipline should land before broad adoption rather than after.
 
 ## Follow-up documentation
 
-- [Releasing](releasing/) and [Versioning](versioning/) are written, covering the release mechanics and the per-component model. ✅
+- [Releasing](../releasing/) and [Versioning](../versioning/) are written, covering the release mechanics and the per-component model. ✅
 - `CHANGELOG.md` exists and is maintained by the release tooling. ✅
 - A **customer-facing** contract/deprecation-policy page (in customer terms, distinct from the internal `versioning.md`) is still to write. ⬜
-- [Repo Layout](repo-layout/) refreshed against the tree (August 2026), including `terraform/` and `test/`. ✅
+- [Repo Layout](../repo-layout/) refreshed against the tree (August 2026), including `terraform/` and `test/`. ✅
   It goes stale easily by design — re-check it whenever a top-level directory moves.
 - [Uninstalling](../../../operating/uninstalling/) is written: the grafana-operator finalizer deadlock, the ordered teardown, and recovery. ✅
-- [Choosing the next version](releasing/#choosing-the-next-version) records the pre-1.0 bump policy and that the changelog placeholder heading is the decision. ✅
+- [Choosing the next version](../releasing/#choosing-the-next-version) records the pre-1.0 bump policy and that the changelog placeholder heading is the decision. ✅
 - Alloy's rollout requirement is called out in [Production Best Practices](../../../operating/production-best-practices/#collection-alloy) as an inversion of the normal chart guarantee — the one place the chart cannot own its own rollout. ✅
 - A BYOC gateway-to-gateway design doc is owed under `design-docs/`, tracked as [DEP-219](https://linear.app/materializeinc/issue/DEP-219). 🔨
-  [Observability for Bring-Your-Own-Cloud](design-docs/20260813-byoc-observability/) is written and in review as a draft; it also covers [DEP-124](https://linear.app/materializeinc/issue/DEP-124) and [DEP-220](https://linear.app/materializeinc/issue/DEP-220).
-  Note it proposes revising the "logs stay inside the customer network" position in [BYOC](#byoc) — that line and this one need settling together.
+  [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byoc-observability/) is written and in review as a draft; it also covers [DEP-124](https://linear.app/materializeinc/issue/DEP-124) and [DEP-220](https://linear.app/materializeinc/issue/DEP-220).
+  The [BYOC](#byoc) section above is updated to match it: a reduced log subset crosses, where the earlier position was that logs never leave the customer network.

@@ -30,7 +30,7 @@ lands here, the stack deployer and cloud wrappers land in the BYOC and terraform
 service is control-plane work. When a decision lands in code, update the section and check the matching open
 question. The "Chart-side prerequisites" table is the work-in-this-repo list; keep it in sync with the Roadmap.
 
-Note this doc revises a Roadmap claim — see "A roadmap position this changes". Do not let the two drift.
+This doc revises a Roadmap claim and roadmap.md is already updated to match — see "A roadmap position this changes". Do not let the two drift.
 -->
 
 ## Goals
@@ -409,13 +409,18 @@ Two constraints if we build it: consent must be explicit and auditable, and the 
 
 ## A roadmap position this changes
 
-The [Roadmap's BYOC section](../../roadmap/#byoc) currently states: *"Logs stay inside the customer network; metrics may cross."*
+The [Roadmap's BYOC section](../../roadmap/#byoc) previously stated: *"Logs stay inside the customer network; metrics may cross."*
 
-**This proposal revises that.** Limited, redacted, reduced logs crossing the boundary is a deliberate change of position, and the reason is that metrics alone do not make an escalation tractable — the roadmap's own [Upgrades dashboard rationale](../../roadmap/#dashboards) is a worked example of a question ("is it stuck, and what do I do") that metrics describe and logs answer.
+**That position is revised, and the roadmap now says so directly** rather than leaving it to be inferred from this doc.
+Limited, redacted, reduced logs crossing the boundary is a deliberate change, and the reason is that metrics alone do not make an escalation tractable — the roadmap's own [Upgrades dashboard rationale](../../roadmap/#dashboards) is a worked example of a question ("is it stuck, and what do I do") that metrics describe and logs answer.
 
-The change should be made explicitly in the roadmap rather than left to be inferred from this doc, and the customer-facing framing should be the one this design earns: not "logs cross" but "a redacted, reduced, allowlisted subset crosses, and here is the generated schedule of exactly what".
+Worth being precise about what changed and what did not, because the original line was not wrong so much as too blunt.
+The claim it was defending — that nothing should cross unexamined — survives intact and is in fact what [Redaction](#redaction) implements.
+What it got wrong was treating the signal type as the boundary, when the boundary that matters is *examined versus unexamined*: a redacted, allowlisted, level-filtered log subset is a smaller disclosure than an unfiltered `_info` metric carrying object and cluster names, which the original position permitted.
 
-<!-- Agent note: offer to update roadmap.md's BYOC section when this doc is accepted. The two must not disagree. -->
+The customer-facing framing should be the one this design earns: not "logs cross" but "a redacted, reduced, allowlisted subset crosses, and here is the generated schedule of exactly what".
+
+<!-- Agent note: roadmap.md's BYOC section is updated to match this. Keep them in sync if either moves. -->
 
 ## Chart-side prerequisites
 
@@ -454,7 +459,7 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 ## Documentation to update
 
 - A **customer-facing egress document**: what crosses, why, how it is reduced and redacted, how to read the generated schedule, and how to turn log egress off. This is the compliance-review artifact and the most important item in this list.
-- `reference/internal/roadmap.md` — the BYOC section's three rows, and the "logs stay inside the customer network" line, per [A roadmap position this changes](#a-roadmap-position-this-changes).
+- `reference/internal/roadmap.md` — ✅ done. The BYOC section carries the revised egress position and the DEP-219 row points here, per [A roadmap position this changes](#a-roadmap-position-this-changes).
 - `logs-and-events/storing.md` — a multi-destination section mirroring `metrics/storing.md`'s "Controlling what each destination stores", which is the model to copy.
 - `metrics/storing.md` — the control plane as a destination in the fan-out list.
 - `operating/production-best-practices.md` — the shared responsibility model gains a BYOC column, since the `[consumer]` items are ours in that deployment rather than the customer's.
