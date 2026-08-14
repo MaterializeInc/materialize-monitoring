@@ -59,7 +59,13 @@ module "monitoring" {
     loki_bucket   = "example-mzmon-loki"
     thanos_bucket = "example-mzmon-thanos"
     region        = "us-east-1"
-    endpoint      = "s3.amazonaws.com"
+    # The regional host, not the global `s3.amazonaws.com`. Both work, but the
+    # global one is also the chart's default for Loki — naming it here would
+    # make the rendered config look correct whether or not the module actually
+    # wrote an endpoint, which is the failure this example is here to catch.
+    # Omitting it entirely is supported too: the module derives this same host
+    # from `region`.
+    endpoint = "s3.us-east-1.amazonaws.com"
 
     loki_service_account_annotations = {
       "eks.amazonaws.com/role-arn" = "arn:aws:iam::012345678901:role/ExampleLoki"

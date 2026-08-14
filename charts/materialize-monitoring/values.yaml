@@ -1398,8 +1398,23 @@ loki:
       use_thanos_objstore: true
       # -- Object storage configuration.
       # Modify as needed.
+      # Only the block named by `type` is read; it is handed to Loki verbatim,
+      # with `bucket_name` filled in from `bucketNames` above.
       object_store:
         type: s3
+        s3:
+          # The endpoint is required and Loki does not default one. With
+          # `use_thanos_objstore` on, the bucket is built by the Thanos objstore
+          # client, which rejects an empty endpoint outright rather than letting
+          # the AWS SDK resolve the regional default — so every component that
+          # touches storage crash-loops at startup with "create bucket: no s3
+          # endpoint in config file".
+          #
+          # The global endpoint works in any region (the client resolves the
+          # bucket's own region from it), but prefer the regional form
+          # (`s3.us-east-1.amazonaws.com`) where the region is known. An
+          # S3-compatible store names its own host here, as `hostname[:port]`.
+          endpoint: s3.amazonaws.com
 
     # -- Schema configuration for the loki TSDB.
     # This is append-only and MUST be copied into projects and mutated on upgrades

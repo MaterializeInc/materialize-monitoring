@@ -319,6 +319,11 @@ rather than at pod start.
 `azure_storage_account` is required when `cloud` is `azure`, and only then: both Loki and Thanos
 name the account separately from the container. Azure needs nothing else — the annotation plus
 the pod label the module applies are all the Entra webhook requires.
+
+`endpoint` applies to `aws` only, and both backends need one — their shared objstore client
+rejects an empty endpoint rather than resolving the AWS SDK's regional default. It is optional
+because the module derives `s3.<region>.amazonaws.com` from `region`, falling back to the global
+host when neither is given; name it to point at a VPC endpoint or an S3-compatible store.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     cloud                               = string

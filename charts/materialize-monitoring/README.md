@@ -2326,10 +2326,13 @@ Upstream reference:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "s3": {
+    "endpoint": "s3.amazonaws.com"
+  },
   "type": "s3"
 }</pre>
 </td>
-      <td class="helm-value-desc">Object storage configuration. Modify as needed.
+      <td class="helm-value-desc">Object storage configuration. Modify as needed. Only the block named by `type` is read; it is handed to Loki verbatim, with `bucket_name` filled in from `bucketNames` above.
 </td>
     </tr>
     <tr>
