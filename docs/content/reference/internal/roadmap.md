@@ -347,4 +347,6 @@ Full mechanics are in [Versioning](versioning/) and [Releasing](releasing/); thi
 - [Uninstalling](../../../operating/uninstalling/) is written: the grafana-operator finalizer deadlock, the ordered teardown, and recovery. ✅
 - [Choosing the next version](releasing/#choosing-the-next-version) records the pre-1.0 bump policy and that the changelog placeholder heading is the decision. ✅
 - Alloy's rollout requirement is called out in [Production Best Practices](../../../operating/production-best-practices/#collection-alloy) as an inversion of the normal chart guarantee — the one place the chart cannot own its own rollout. ✅
-- A BYOC gateway-to-gateway design doc is owed under `design-docs/`, tracked as [DEP-219](https://linear.app/materializeinc/issue/DEP-219). ⬜
+- A BYOC gateway-to-gateway design doc is owed under `design-docs/`, tracked as [DEP-219](https://linear.app/materializeinc/issue/DEP-219). 🔨
+  [Observability for Bring-Your-Own-Cloud](design-docs/20260813-byoc-observability/) is written and in review as a draft; it also covers [DEP-124](https://linear.app/materializeinc/issue/DEP-124) and [DEP-220](https://linear.app/materializeinc/issue/DEP-220).
+  Note it proposes revising the "logs stay inside the customer network" position in [BYOC](#byoc) — that line and this one need settling together.
