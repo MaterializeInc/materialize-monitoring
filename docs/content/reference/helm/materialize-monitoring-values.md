@@ -1891,7 +1891,7 @@ only once the finalizers have been processed, and Helm proceeds from there.
   "pullPolicy": "IfNotPresent",
   "registry": "registry.k8s.io",
   "repository": "kubectl",
-  "tag": "v1.34.9"
+  "tag": "v1.35.6"
 }</pre>
 </td>
       <td class="helm-value-desc">Image for the cleanup job. Upstream's own kubectl build: distroless, multi-arch, and published beside Kubernetes itself, so it tracks patch releases without a third-party rebuild. Its entrypoint is `/bin/kubectl` and there is no shell in the image — the hook runs one argv and needs nothing else. Keep `tag` within one minor of your API server, per Kubernetes' version-skew policy.

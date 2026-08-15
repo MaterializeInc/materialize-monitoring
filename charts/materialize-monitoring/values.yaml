@@ -1044,7 +1044,7 @@ cleanup:
     image:
       registry: registry.k8s.io
       repository: kubectl
-      tag: v1.34.9
+      tag: v1.35.6
       pullPolicy: IfNotPresent
 
     # -- Resources for the cleanup job.
