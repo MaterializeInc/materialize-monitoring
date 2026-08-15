@@ -1984,6 +1984,20 @@ equal to the request turns that into CFS throttling on the busiest nodes.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.tolerations</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Taints the agent tolerates out of the box: every `NoSchedule` one. Coverage is correctness for this workload, not a placement preference. A node the DaemonSet never lands on produces no logs and no error, and nothing shows a hole where a node should be — so the default is the same blanket rule `node-exporter` already ships, for the same reason.  Enumerating keys instead would make coverage depend on this chart knowing your taints, which it does not: a node pool tainted with anything the list does not name goes silently uncollected. That is the failure this replaced.  It is not always silent, either. A bootstrap gate — a `NoSchedule` taint applied to every node at boot and lifted once the DaemonSets are running, which is what `node.materialize.com/daemonsets-not-scheduled` is — deadlocks outright against an agent that does not tolerate it: the taint waits on a pod that is waiting on the taint, and the node never admits any workload.  `NoExecute` is deliberately not tolerated here — a node being drained for a problem should shed the agent too. The two exceptions are not the chart's to make: the DaemonSet controller adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` (both `NoExecute`) to every DaemonSet pod unconditionally, so the agent keeps running on a node that goes unreachable whatever is written here. Add other `NoExecute` taints through the Terraform module's `tolerations`, which appends to this list.  To narrow this — a node pool whose per-node budget genuinely cannot absorb the agent — replace the list rather than adding to it, and record which pools you gave up. Helm overwrites lists, so setting this key at all replaces the whole default.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.priorityClassName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-critical"</code></td>

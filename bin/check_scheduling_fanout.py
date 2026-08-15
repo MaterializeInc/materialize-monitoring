@@ -46,6 +46,15 @@ WORKLOAD_KINDS = {"Deployment", "StatefulSet", "DaemonSet"}
 NO_NODE_SELECTOR = ("alloy-agent", "node-exporter")
 NO_TOLERATIONS = ("node-exporter",)
 
+# The toleration the chart ships on the agent, which a caller's own list must not
+# cost them: keyless `Exists` on `NoSchedule`, i.e. every NoSchedule taint. Helm
+# overwrites lists, so `alloy-agent.controller.tolerations` is replaced wholesale
+# by whatever the module writes there; `daemonset_tolerations` in scheduling.tf
+# exists to append instead. The failure that guards against is invisible from the
+# values alone — the rendered pod carries a toleration list that looks entirely
+# correct while covering only the taints the caller happened to name.
+CHART_AGENT_TOLERATION = {"key": None, "operator": "Exists", "effect": "NoSchedule"}
+
 
 def find_value(obj: Any, key: str) -> Any:
     """First non-empty value for `key` anywhere in the composed values.
@@ -114,6 +123,22 @@ def bad_min_domains(workloads: list[tuple[str, dict[str, Any]]]) -> list[str]:
     return offenders
 
 
+def dropped_chart_tolerations(
+    workloads: list[tuple[str, dict[str, Any]]],
+) -> list[str]:
+    """Agent DaemonSets whose blanket NoSchedule toleration was overwritten."""
+    offenders = []
+    for name, spec in workloads:
+        if not name.startswith("alloy-agent"):
+            continue
+        if not any(
+            all(t.get(k) == v for k, v in CHART_AGENT_TOLERATION.items())
+            for t in (spec.get("tolerations") or [])
+        ):
+            offenders.append(name)
+    return offenders
+
+
 def load_docs(paths: list[str]) -> list[Any]:
     """Parse every YAML document from the paths that exist."""
     docs: list[Any] = []
@@ -160,6 +185,10 @@ def main(argv: list[str]) -> int:
         problems += [
             ("missing the tolerations", missing),
             ("carry tolerations they must not", unexpected),
+            (
+                "lost the chart's blanket NoSchedule toleration",
+                dropped_chart_tolerations(workloads),
+            ),
         ]
 
     failed = False
