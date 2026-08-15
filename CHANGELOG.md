@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.16.1 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.16.1
+
+* DEP-227 DEP-197 Fix s3 endpoint; agent tolerations; relax gateway HPA; add pre-delete for GFx resources
+    * [materialize-monitoring#231](https://github.com/MaterializeInc/materialize-monitoring/pull/231)
 
 ## Pipelines v0.11.0 (Unreleased)
 
