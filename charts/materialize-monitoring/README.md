@@ -2091,12 +2091,39 @@ memory limit above.
     {
       "mountPath": "/tmp",
       "name": "tmp"
+    },
+    {
+      "mountPath": "/run/log/journal",
+      "name": "runlogjournal",
+      "readOnly": true
     }
   ],
   "varlog": true
 }</pre>
 </td>
       <td class="helm-value-desc">Volume mounts to expose to alloy agent.
+`varlog` covers the container logs *and* a persistent systemd journal,
+which lives under `/var/log/journal`. The journal mount below covers
+the one case it misses.
+
+**A volatile journal is not under `/var/log`.** With `Storage=volatile`
+journald writes to `/run/log/journal/<machine-id>/` and never creates
+`/var/log/journal` at all — that is the default on Bottlerocket, and on
+`kindest/node`, so it is the configuration on both a real EKS cluster and
+the E2E tier. Without `/run/log/journal`, `loki.source.journal` starts
+cleanly, reports healthy, and collects nothing: the most misleading state
+of the three.
+
+Deliberately *not* mounting `/var/log/journal` directly: journald's default
+`Storage=auto` switches to persistent storage as soon as that directory
+exists, so a `hostPath` mount that creates it would change how the host
+journals. `varlog` already exposes it wherever it legitimately exists.
+
+`/etc/machine-id` is **not** mounted, though journal DaemonSets commonly do.
+It is unnecessary: `sd_journal_open` discovers every journal directory
+under the paths it scans rather than only `<path>/<machine-id>`, so
+collection works without it. Verified on kind by removing it — entries kept
+arriving. Do not add it back without evidence it is needed.
 </td>
     </tr>
     <tr>

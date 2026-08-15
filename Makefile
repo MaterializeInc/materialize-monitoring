@@ -210,7 +210,7 @@ CONTAINER_REGISTRY ?= ghcr.io/materializeinc
 # Upstream alloy version is used for the tag
 ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile | head -n1 | cut -d= -f2)
 # Extra suffix if there are multiple images at the same version (revert back to mz1 on upgrade)
-ALLOY_SUFFIX ?= mz1
+ALLOY_SUFFIX ?= mz2
 
 alloy-image.iid: $(wildcard packages/alloy/*)
 	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
