@@ -137,3 +137,6 @@ dmypy.json
 packages/ref-*
 /test-schemas/
 /scratch/
+
+# E2E diagnostics artifacts, collected on failure.
+e2e-diagnostics*/

@@ -4,6 +4,7 @@ resolver = "3"
 members = [
     "packages/mz-monitoring-build",
     "packages/mz-monitoring-check",
+    "packages/mz-monitoring-e2e",
     "packages/mzmon-lib",
 ]
 

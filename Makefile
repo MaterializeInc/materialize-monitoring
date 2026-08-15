@@ -16,6 +16,7 @@ ALL_BINARIES = mz-monitoring-build mz-monitoring-check
 SOURCES_mzmon-lib = $(shell find packages/mzmon-lib -type f)
 SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
 SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
+SOURCES_mz-monitoring-e2e = $(shell find packages/mz-monitoring-e2e -type f)
 
 # Alloy targets
 ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent
@@ -431,9 +432,28 @@ e2e-tier1:
 	$(KUBECTL) rollout status -n monitoring deployment/alloy-gateway --timeout 5m
 .PHONY: e2e-tier1
 
+# The assertion suite. One binary for every tier: which assertions apply is read
+# from the release's own Helm values, so the tier is a property of the cluster
+# rather than a flag. Overridable so a tier-3 run can point it at a real cluster:
+#
+#   make e2e-verify E2E_CONTEXT=my-eks-context E2E_NAMESPACE=monitoring
+E2E_BIN ?= target/debug/mz-monitoring-e2e
+E2E_CONTEXT ?= $(KIND_CONTEXT)
+E2E_NAMESPACE ?= monitoring
+E2E_RELEASE ?= mzmon
+# Same directory the CI job uploads, and the collector is idempotent — so
+# whichever step fails first, the artifact is there and there is only one of it.
+E2E_DIAGNOSTICS_DIR ?= e2e-diagnostics-tier1
+
+e2e-verify: | $(E2E_BIN)
+	$(E2E_BIN) --context $(E2E_CONTEXT) --namespace $(E2E_NAMESPACE) \
+		--release $(E2E_RELEASE) --diagnostics-dir $(E2E_DIAGNOSTICS_DIR)
+.PHONY: e2e-verify
+
 # Assert the logging round trip rather than just that the install exited zero.
-e2e-verify-tier1:
-	KUBE_CONTEXT=$(KIND_CONTEXT) ./test/e2e/verify-tier1.sh
+# Kept as its own name because that is what CI and the docs call; it is
+# `e2e-verify` against the tier-1 cluster.
+e2e-verify-tier1: e2e-verify
 .PHONY: e2e-verify-tier1
 
 # The tier-2 substrate on its own: object storage and Postgres, no monitoring

@@ -103,6 +103,24 @@ Every E2E target names its cluster explicitly (`KIND_CONTEXT`) rather than
 inheriting the current kubeconfig context. Keep it that way: these targets
 install, restart, and delete.
 
+The assertions live in `packages/mz-monitoring-e2e`. One binary for every tier —
+it reads the release's coalesced Helm values (`helm get values --all`) to decide
+what applies, so there is no tier flag, and `make e2e-verify E2E_CONTEXT=<ctx>`
+points it at any cluster including a real one. It asserts only; it never
+installs.
+
+Two rules when extending it:
+
+- **Values are intent, not description.** A component the values enable but the
+  cluster lacks is a *failure*. Only a genuinely-disabled component skips, and a
+  skip is an ignored test rather than an absent one — a suite whose list silently
+  shrinks looks exactly like one that passed.
+- **Assert query success everywhere, non-empty results only on self-monitoring
+  series.** Materialize scrapers stay off in these tiers, so the only data
+  guaranteed to exist is what the stack produces about itself. Backwards, this
+  yields either a suite that passes while blind or one that flakes on empty
+  Materialize series forever.
+
 ## Iterating without cutting a release
 
 The default loop makes you release the chart, release the module, and bump the

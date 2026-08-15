@@ -41,6 +41,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`)
     * `mz-monitoring-check/`: Rust schema/consistency checks
+    * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
     * `materialize-monitoring/`: umbrella chart
       * `Chart.yaml` / `Chart.lock`: chart metadata; lock pins subchart versions
@@ -61,7 +62,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `modules/materialize-monitoring/`: the module. Concern per file — `values.tf` (composition order), `scheduling.tf` and `storage_class.tf` (subchart fan-outs), `destinations.tf` (extra metric destinations), `config_hash.tf` (the pod-template hash that rolls Alloy)
       * `examples/{aws,gcp}/`: not deployable roots — plan targets for the tier-0 render check. Both clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
-  * `test/e2e/`: kind cluster config, the tier-1 round-trip assertion, and the failure-diagnostics collector (`make e2e-*`). Superseded in part by `packages/mz-monitoring-e2e` once that lands
+  * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown

@@ -37,11 +37,13 @@ jobs:
             chart:
               - charts/**
               - test/e2e/**
+              - packages/mz-monitoring-e2e/**
               - Makefile
               - .github/workflows/e2e.yaml
             terraform:
               - terraform/**
               - test/e2e/**
+              - packages/mz-monitoring-e2e/**
               - Makefile
               - .github/workflows/e2e.yaml
 
@@ -69,6 +71,15 @@ jobs:
           curl -sSLo /tmp/kind \
             "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
           sudo install -m 0755 /tmp/kind /usr/local/bin/kind
+
+      # The assertion suite is a workspace member, so the tier needs a toolchain.
+      # Set up before the cluster so the build overlaps nothing and a compile
+      # error fails the job in seconds rather than after a 10-minute install.
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Build the assertion suite
+        run: cargo build -p mz-monitoring-e2e
 
       - name: Create cluster
         run: make e2e-cluster
