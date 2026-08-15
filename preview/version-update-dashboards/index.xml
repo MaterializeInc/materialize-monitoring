@@ -1401,33 +1401,7 @@ A release that changes either — a component gaining, losing, or resizing its v
 &lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt;&amp;#39;persistentVolumeClaimRetentionPolicy&amp;#39; and &amp;#39;minReadySeconds&amp;#39; are forbidden&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Nothing in the chart can smooth this over — it is a Kubernetes API constraint, not a Helm one — so the StatefulSet has to be deleted and recreated by the upgrade.&lt;/p&gt;</description></item><item><title>Uninstalling</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/operating/uninstalling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/operating/uninstalling/</guid><description>&lt;h1 id="uninstalling-materialize-monitoring"&gt;Uninstalling materialize-monitoring&lt;a class="anchor" href="#uninstalling-materialize-monitoring"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;Uninstalling is not symmetric with installing.
 The chart&amp;rsquo;s Grafana resources are reconciled by an operator that also owns their deletion, so tearing the release down in an arbitrary order deadlocks.&lt;/p&gt;
-&lt;h2 id="the-grafana-operator-finalizer-deadlock"&gt;The grafana-operator finalizer deadlock&lt;a class="anchor" href="#the-grafana-operator-finalizer-deadlock"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;p&gt;grafana-operator attaches the finalizer &lt;code&gt;operator.grafana.com/finalizer&lt;/code&gt; to the custom resources it reconciles.
-This chart creates three kinds that carry it:&lt;/p&gt;
-&lt;table&gt;
- &lt;thead&gt;
- &lt;tr&gt;
- &lt;th&gt;Kind&lt;/th&gt;
- &lt;th&gt;Created by&lt;/th&gt;
- &lt;/tr&gt;
- &lt;/thead&gt;
- &lt;tbody&gt;
- &lt;tr&gt;
- &lt;td&gt;&lt;code&gt;Grafana&lt;/code&gt;&lt;/td&gt;
- &lt;td&gt;the Grafana instance&lt;/td&gt;
- &lt;/tr&gt;
- &lt;tr&gt;
- &lt;td&gt;&lt;code&gt;GrafanaDatasource&lt;/code&gt;&lt;/td&gt;
- &lt;td&gt;the Loki and Thanos datasources&lt;/td&gt;
- &lt;/tr&gt;
- &lt;tr&gt;
- &lt;td&gt;&lt;code&gt;GrafanaManifest&lt;/code&gt;&lt;/td&gt;
- &lt;td&gt;the bundled dashboards&lt;/td&gt;
- &lt;/tr&gt;
- &lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;Only the operator removes that finalizer.&lt;/strong&gt;
-Delete the operator first and the finalizer has no remover: every one of those resources sits in &lt;code&gt;Terminating&lt;/code&gt; forever, &lt;code&gt;helm uninstall --wait&lt;/code&gt; never returns, and the namespace cannot finish terminating either.&lt;/p&gt;</description></item><item><title>Custom Resource Definitions (CRDs)</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/crds/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/crds/</guid><description>&lt;h1 id="custom-resource-definitions-crds"&gt;Custom Resource Definitions (CRDs)&lt;a class="anchor" href="#custom-resource-definitions-crds"&gt;#&lt;/a&gt;&lt;/h1&gt;
+&lt;p&gt;&lt;strong&gt;The chart now handles this for you.&lt;/strong&gt; A &lt;code&gt;pre-delete&lt;/code&gt; hook deletes the affected resources while the operator is still running, and blocks until their finalizers clear. Read on for what it is doing and when you still have to intervene.&lt;/p&gt;</description></item><item><title>Custom Resource Definitions (CRDs)</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/crds/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/crds/</guid><description>&lt;h1 id="custom-resource-definitions-crds"&gt;Custom Resource Definitions (CRDs)&lt;a class="anchor" href="#custom-resource-definitions-crds"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;Kubernetes Custom Resource Definitions (CRDs) are a powerful way to extend the Kubernetes API with custom resources that can be managed using standard Kubernetes tools.
 &lt;code&gt;materialize-monitoring&lt;/code&gt; relies on several CRDs to function properly, and this section provides an overview of these CRDs and how to install them.&lt;/p&gt;
 &lt;h2 id="servicemonitor-monitoringcoreoscomv1"&gt;ServiceMonitor (monitoring.coreos.com/v1)&lt;a class="anchor" href="#servicemonitor-monitoringcoreoscomv1"&gt;#&lt;/a&gt;&lt;/h2&gt;
@@ -1472,7 +1446,7 @@ reference/internal/releasing.md.
 --&gt;
 &lt;h2 id="dashboards-v0130-unreleased"&gt;Dashboards v0.13.0 (Unreleased)&lt;a class="anchor" href="#dashboards-v0130-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0170-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0170-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0161-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.1 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0161-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="pipelines-v0110-unreleased"&gt;Pipelines v0.11.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v0110-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
