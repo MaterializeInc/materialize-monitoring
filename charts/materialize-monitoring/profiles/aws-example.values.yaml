@@ -61,6 +61,13 @@ loki:
         ruler: "your-loki-bucket-name"
       object_store:
         type: s3
+        s3:
+          # Required — Loki's client rejects an empty endpoint at startup ("no
+          # s3 endpoint in config file") rather than resolving one from the
+          # region. The base default is the global `s3.amazonaws.com`; name the
+          # regional host instead, matching the Thanos endpoint below.
+          endpoint: s3.us-east-1.amazonaws.com
+          region: us-east-1
     compactor:
       # MUST match storage.object_store.type. (s3 is also the base default, so
       # this is explicit)

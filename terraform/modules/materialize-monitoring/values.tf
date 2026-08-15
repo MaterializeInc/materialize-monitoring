@@ -87,13 +87,28 @@ locals {
     })
   ]
 
+  # Loki and Thanos both reach S3 through the same Thanos objstore client, and
+  # that client validates the endpoint itself — an empty one is rejected up
+  # front ("no s3 endpoint in config file") rather than falling through to the
+  # AWS SDK's regional default. So it is required on the AWS path, for both, and
+  # is derived here when the caller named only a region. The global host is the
+  # last resort: it works in any region, since the client resolves the bucket's
+  # own region from it.
+  s3_endpoint = local.storage == null || local.storage.cloud != "aws" ? null : coalesce(
+    local.storage.endpoint,
+    local.storage.region == null ? null : "s3.${local.storage.region}.amazonaws.com",
+    "s3.amazonaws.com",
+  )
+
   thanos_objstore_config = local.storage == null ? null : (
     local.storage.cloud == "aws" ? yamlencode({
       type = "S3"
       config = merge(
-        { bucket = local.storage.thanos_bucket },
+        {
+          bucket   = local.storage.thanos_bucket
+          endpoint = local.s3_endpoint
+        },
         local.storage.region == null ? {} : { region = local.storage.region },
-        local.storage.endpoint == null ? {} : { endpoint = local.storage.endpoint },
       )
       }) : local.storage.cloud == "gcp" ? yamlencode({
       type   = "GCS"
@@ -120,10 +135,20 @@ locals {
             chunks = local.storage.loki_bucket
             ruler  = local.storage.loki_bucket
           }
-          # Azure needs the account alongside the type; the other two backends
-          # carry everything they need in the bucket name.
+          # Only GCS carries everything it needs in the bucket name. S3 needs an
+          # endpoint — Loki does not default one, and every component that
+          # touches storage crash-loops without it — and Azure needs the account,
+          # which is not derivable from the container name.
           object_store = merge(
             { type = local.loki_object_store },
+            local.storage.cloud != "aws" ? {} : {
+              s3 = merge(
+                { endpoint = local.s3_endpoint },
+                # Named rather than left to be parsed back out of the endpoint
+                # host, so request signing does not depend on that inference.
+                local.storage.region == null ? {} : { region = local.storage.region },
+              )
+            },
             local.storage.cloud != "azure" ? {} : {
               azure = { account_name = local.storage.azure_storage_account }
             },

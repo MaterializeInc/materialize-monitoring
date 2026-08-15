@@ -92,9 +92,11 @@ every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the
 including ones this stack did not create. It is a separate `helm_release` so it can be
 targeted independently (`-target=module.monitoring.helm_release.crds`).
 
-Teardown also needs the Grafana custom resources deleted before grafana-operator goes, or
-their finalizers have no remover and the CRDs wedge in Terminating. See the "Uninstalling"
-page in the docs.
+The Grafana custom resources still have to go before grafana-operator does, or their
+finalizers have no remover and the CRDs wedge in Terminating. The chart's `pre-delete` hook
+handles that ordering now — but it lives in the *main* release, so destroying this one first
+takes the resource types out from under it. Destroy in the module's own order, and see the
+"Uninstalling" page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
     </tr>
@@ -319,6 +321,11 @@ rather than at pod start.
 `azure_storage_account` is required when `cloud` is `azure`, and only then: both Loki and Thanos
 name the account separately from the container. Azure needs nothing else — the annotation plus
 the pod label the module applies are all the Entra webhook requires.
+
+`endpoint` applies to `aws` only, and both backends need one — their shared objstore client
+rejects an empty endpoint rather than resolving the AWS SDK's regional default. It is optional
+because the module derives `s3.<region>.amazonaws.com` from `region`, falling back to the global
+host when neither is given; name it to point at a VPC endpoint or an S3-compatible store.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     cloud                               = string

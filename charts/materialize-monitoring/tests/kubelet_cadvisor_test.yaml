@@ -84,6 +84,32 @@ tests:
           path: data["config.alloy"]
           pattern: 'otelcol\.exporter\.otlp'
 
+  # Tainted node pools are the norm, not the exception — the Materialize pool is
+  # tainted in every self-managed reference architecture, and it runs the pods
+  # whose logs this stack exists to collect. Enumerating keys would make coverage
+  # depend on the chart knowing each one; the blanket rule does not. A DaemonSet
+  # that never schedules reports nothing, so the gap is silent either way.
+  - it: should tolerate every NoSchedule taint without configuration
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            operator: Exists
+            effect: NoSchedule
+      # Keyless, so it covers taints the chart has never heard of. A `key` here
+      # would silently narrow it back to an enumeration.
+      - notExists:
+          path: spec.template.spec.tolerations[0].key
+      # NoExecute stays untolerated: a node draining for a problem should shed
+      # the agent. The not-ready/unreachable exceptions come from the DaemonSet
+      # controller, which adds them to every DaemonSet pod regardless.
+      - notContains:
+          path: spec.template.spec.tolerations
+          content:
+            operator: Exists
+            effect: NoExecute
+
   # hostPID was enabled only for cAdvisor's `process` collector. With uid 0 it
   # also grants read access to every process's environment on the node, so it
   # must not come back without that justification.

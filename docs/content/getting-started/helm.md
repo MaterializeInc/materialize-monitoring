@@ -263,7 +263,7 @@ On the Helm path every `[consumer]` item is yours, including the buckets and wor
 ## Upgrading and uninstalling
 
 - [Upgrading](../../operating/upgrading/) — ingester rollouts are ordered and readiness-gated, so budget roughly a minute per ingester and raise your client's timeout accordingly.
-- [Uninstalling](../../operating/uninstalling/) — **read this before tearing down.** Deleting the release without first removing the Grafana custom resources deadlocks on finalizers that only grafana-operator can remove, and the namespace never finishes terminating.
+- [Uninstalling](../../operating/uninstalling/) — a `pre-delete` hook now clears the Grafana custom resources while grafana-operator is still running, so an ordinary `helm uninstall` no longer deadlocks on finalizers with no remover. Read this before tearing down a release **installed before that hook existed**, or one you plan to remove with `--no-hooks`.
 
 ## Reference
 

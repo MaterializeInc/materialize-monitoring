@@ -176,6 +176,46 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
     fi
     echo "    node-exporter enabled=${want_ne}, rendered=${got_ne}"
 
+    # Loki's S3 endpoint, which has no default inside Loki and is not derivable
+    # from the bucket or the region: the client rejects an empty one up front
+    # ("create bucket: no s3 endpoint in config file") instead of falling through
+    # to the AWS SDK, and every component that touches storage crash-loops. The
+    # chart ships a default, so what this proves is that the module's own
+    # `object_store` document did not overwrite it — a values-level regression
+    # that renders perfectly and only fails in the cluster.
+    #
+    # Two clients are built off the same block by different helpers, so both are
+    # checked; `backend:` gates the whole thing to the s3 examples.
+    # The endpoint the module wrote is what must appear, not merely *an*
+    # endpoint: the chart's default would satisfy a bare presence check even if
+    # the module contributed nothing.
+    if grep -q '^[[:space:]]*backend: s3$' "${rendered}"; then
+        expected_ep="$(grep -hoE '"endpoint": *"[^"]+"' \
+            "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \
+            | head -1 | sed -E 's/.*: *"//; s/"$//' || true)"
+
+        if [ -z "${expected_ep}" ]; then
+            echo "  !! ${example}: loki is on s3 but the module wrote no endpoint" >&2
+            status=1
+            continue
+        fi
+
+        missing_ep=""
+        grep -A 4 '^[[:space:]]*object_store:$' "${rendered}" \
+            | grep -q "endpoint: ${expected_ep}" || missing_ep="${missing_ep} chunk-client"
+        grep -A 4 '^[[:space:]]*backend: s3$' "${rendered}" \
+            | grep -q "endpoint: ${expected_ep}" || missing_ep="${missing_ep} ruler-storage"
+
+        if [ -n "${missing_ep}" ]; then
+            echo "  !! ${example}: loki is on s3 but ${expected_ep} did not reach:${missing_ep}" >&2
+            echo "     Loki does not default one, so those components crash-loop with" >&2
+            echo "     \"create bucket: no s3 endpoint in config file\"." >&2
+            status=1
+            continue
+        fi
+        echo "    loki s3 endpoint ${expected_ep} reached the chunk and ruler clients"
+    fi
+
     # Same reasoning for the Google Cloud Monitoring exporter: the observable
     # proof it landed is the per-destination filter env var, which only renders
     # when the chart actually sees the exporter enabled.

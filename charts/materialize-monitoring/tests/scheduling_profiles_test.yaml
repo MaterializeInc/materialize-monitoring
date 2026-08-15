@@ -92,11 +92,26 @@ tests:
       - ../profiles/scheduling.values.yaml
     template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
     asserts:
-      - equal:
-          path: spec.template.spec.tolerations[0].key
-          value: workload
       - notExists:
           path: spec.template.spec.nodeSelector.workload
+      # The profile REPLACES the chart's toleration rather than extending it —
+      # Helm overwrites lists — so it restates the blanket rule. Aliasing the
+      # profile's single-pool list in here instead would narrow the log
+      # collector to the monitoring pool, which renders perfectly and collects
+      # almost nothing.
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            operator: Exists
+            effect: NoSchedule
+      # The single-pool list is for the centralized tier, not for the agent.
+      - notContains:
+          path: spec.template.spec.tolerations
+          content:
+            key: workload
+            operator: Equal
+            value: monitoring
+            effect: NoSchedule
 
   # node-exporter takes neither: its chart default already tolerates every
   # NoSchedule taint, and a toleration list here would REPLACE that rather than

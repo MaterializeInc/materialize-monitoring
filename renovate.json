@@ -9,6 +9,9 @@
     "helpers:pinGitHubActionDigests",
     "mergeConfidence:all-badges"
   ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "labels": ["dependencies", "auto-format"],
   "rebaseWhen": "automerging",
   "reviewersFromCodeOwners": true,
@@ -79,19 +82,19 @@
       "automerge": false
     },
     {
-      "description": "Kubernetes puts its breaking changes in the minor, so for anything pinned to a k8s version v1.34 -> v1.36 is the risky bump and v1.34.8 -> v1.34.9 is the routine one. Renovate buckets both as `non-major` by default and only ever offers the newest, so the patch is swallowed by the minor and never gets a PR of its own — `separateMinorPatch` is what makes the two reachable separately. Add any future k8s-versioned dependency here (kubectl, k8s.io/*) rather than writing it a rule of its own.",
+      "description": "Kubernetes puts its breaking changes in the minor, so for anything pinned to a k8s version v1.34 -> v1.36 is the risky bump and v1.34.8 -> v1.34.9 is the routine one. PVP versioning treats X.Y as the major version.",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["kindest/node", "**/kindest/node"],
-      "separateMinorPatch": true
+      "matchPackageNames": ["kubectl", "**/kubectl", "kindest/node", "**/kindest/node"],
+      "separateMajorMinor": true,
+      "versioning": "pvp"
     },
     {
-      "description": "Treat a Kubernetes minor exactly like a major: labeled and never automerged. This must stay after the generic minor/patch automerge rule above, which would otherwise automerge a whole control-plane minor. The patch bucket is deliberately left alone so it still automerges through that rule.",
+      "description": "Treat Kubernetes major versions (X.Y+1 PVP versioning) as requiring manual review before opening.",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["kindest/node", "**/kindest/node"],
-      "matchUpdateTypes": ["minor"],
+      "matchPackageNames": ["kubectl", "**/kubectl", "kindest/node", "**/kindest/node"],
+      "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true,
-      "automerge": false,
-      "addLabels": ["major"]
+      "automerge": false
     },
     {
       "description": "Do not upgrade grafana-foundation-sdk to v10+. Only 0.0.x versions are valid",

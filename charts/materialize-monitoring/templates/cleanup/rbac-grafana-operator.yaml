@@ -1,0 +1,96 @@
+{{/*
+RBAC for the grafana-operator pre-delete cleanup hook.
+
+Hook resources in their own right, at negative weights, so they exist before the
+Job that uses them and are torn down with it. `hook-succeeded` without
+`hook-failed` is deliberate: a failed uninstall leaves the ServiceAccount and its
+binding in place, which is what makes the Job's own logs readable afterwards.
+
+Scoped to a Role rather than a ClusterRole. The finalizer-bearing resources are
+namespaced and the chart puts them all in the release namespace, so a
+cluster-scoped grant would be strictly more permission for no additional reach.
+*/}}
+{{- $cleanup := .Values.cleanup.grafanaOperator }}
+{{- if and ( include "mzmon.grafanaOperator.enabled" $ ) $cleanup.enabled }}
+{{- $fullname := include "mzmon.fullname" . }}
+{{- $name := printf "%s-cleanup-grafana-operator" $fullname }}
+{{- $namespace := include "mzmon.namespace" $ }}
+{{- $hookAnnotations := dict
+  "helm.sh/hook" "pre-delete"
+  "helm.sh/hook-weight" "-5"
+  "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded"
+}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace | quote }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+    {{- toYaml $hookAnnotations | nindent 4 }}
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace | quote }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+    {{- toYaml $hookAnnotations | nindent 4 }}
+rules:
+  {{- /*
+    Grouped by API group so the rule set stays readable as `kinds` grows.
+    `list` is not optional decoration: `kubectl delete --selector` resolves the
+    selector with a LIST before it deletes anything, and `get`/`watch` are what
+    let it block until the finalizers clear rather than returning immediately.
+  */}}
+  {{- $byGroup := dict }}
+  {{- range $kind := $cleanup.kinds }}
+    {{- $parts := splitn "." 2 $kind }}
+    {{- $resource := $parts._0 }}
+    {{- $group := $parts._1 | default "" }}
+    {{- $existing := get $byGroup $group | default list }}
+    {{- $_ := set $byGroup $group ( append $existing $resource ) }}
+  {{- end }}
+  {{- range $group, $resources := $byGroup }}
+  - apiGroups:
+      - {{ $group | quote }}
+    resources:
+      {{- range $resource := $resources | uniq | sortAlpha }}
+      - {{ $resource | quote }}
+      {{- end }}
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
+      - deletecollection
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace | quote }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+    {{- toYaml $hookAnnotations | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $namespace | quote }}
+{{- end }}

@@ -328,6 +328,20 @@ Usage:
 
     {{- $objType := dig "loki" "storage" "object_store" "type" "" $values }}
     {{- if and ( dig "loki" "storage" "use_thanos_objstore" false $values ) $objType }}
+      {{- /* The one field in the backend block that has no working default.
+             Loki hands `object_store.s3` to the Thanos objstore client, which
+             validates the endpoint before the AWS SDK ever sees the config and
+             refuses an empty one instead of resolving a regional default. The
+             chart ships `s3.amazonaws.com`, so this only fires when something
+             blanks it — an `object_store` written wholesale by a wrapper, most
+             likely, since Helm's merge would otherwise leave the default in
+             place. Every component that touches storage crash-loops on it. */}}
+      {{- if eq $objType "s3" }}
+        {{- if not ( dig "loki" "storage" "object_store" "s3" "endpoint" "" $values ) }}
+          {{- $errors = append $errors "loki.loki.storage.object_store.s3.endpoint is required when the object store is s3. Loki does not default one, and its client rejects an empty endpoint at startup with \"create bucket: no s3 endpoint in config file\". Use the regional host where you know the region (e.g. s3.us-east-1.amazonaws.com), s3.amazonaws.com otherwise, or your own host for an S3-compatible store." }}
+        {{- end }}
+      {{- end }}
+
       {{- $delStore := dig "loki" "compactor" "delete_request_store" "" $values }}
       {{- if and $delStore ( ne $delStore $objType ) }}
         {{- $errors = append $errors ( printf "loki.loki.compactor.delete_request_store (%q) must match loki.loki.storage.object_store.type (%q); otherwise the compactor's delete-request store falls back and fails at startup with \"no s3 endpoint in config file\"." $delStore $objType ) }}

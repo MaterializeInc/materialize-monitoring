@@ -1,0 +1,169 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the grafana-operator pre-delete cleanup hook.
+#
+# The hook exists because grafana-operator finalizers outlive the operator during
+# an ordinary `helm uninstall`: the operator Deployment is removed alongside the
+# custom resources it reconciles, so nothing is left to clear
+# `operator.grafana.com/finalizer` and the objects sit in `Terminating` forever,
+# taking the namespace with them.
+#
+# Almost every way of getting this wrong still renders valid YAML — a `post-delete`
+# hook runs too late, a missing selector deletes another release's resources, a
+# `--wait=false` returns before the finalizers clear — so these tests pin the
+# behaviour rather than the shape.
+suite: grafana-operator pre-delete cleanup
+release:
+  name: mzmon
+  namespace: monitoring
+set:
+  tags.default: false
+  tags.managed-grafana: true
+tests:
+  # `pre-delete` is the entire mechanism. At `post-delete` the operator is
+  # already gone and the hook deletes nothing that was not already wedged.
+  - it: should run before Helm deletes anything
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-delete
+
+  # RBAC has to exist before the Job and outlive it. Negative weight orders the
+  # creation; Helm deletes `hook-succeeded` resources only after every hook in
+  # the phase has finished, so the binding is still there while the Job runs.
+  - it: should create its RBAC ahead of the job
+    templates:
+      - cleanup/rbac-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-5"
+
+  - it: should not leave hook resources behind on success
+    templates:
+      - cleanup/job-grafana-operator.yaml
+      - cleanup/rbac-grafana-operator.yaml
+    asserts:
+      # `hook-failed` is deliberately absent: a failed uninstall keeps the Job
+      # and its logs, which is the only evidence of why it failed.
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded
+
+  # Scoping. Unscoped, this deletes every grafana-operator resource in the
+  # namespace, including a second release's. kubectl also refuses `--all`
+  # alongside a selector, so the two are not interchangeable.
+  - it: should delete only this release's resources
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --selector=app.kubernetes.io/instance=mzmon
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --all
+
+  # The wait is what keeps Helm from tearing down the operator underneath a
+  # half-finished deletion. kubectl waits by default, so the test is that
+  # nothing turns it off.
+  - it: should block until the finalizers clear
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --wait=false
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --timeout=2m
+
+  # Fully-qualified resource names: a bare `grafanamanifests` goes through
+  # discovery and can collide with another CRD's short name.
+  - it: should name resource types by group
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org
+
+  # The image entrypoint is already kubectl. Setting `command` would override it
+  # and pin this template to the image's internal binary path.
+  - it: should pass args rather than overriding the entrypoint
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].command
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: registry\.k8s\.io/kubectl\:v1\.3[0-9]+\.[0-9]+
+
+  # The image ships USER 0. kubectl needs no privileges to call an API server,
+  # so the pod drops itself rather than trusting the image's default.
+  - it: should run the cleanup as a non-root user
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+  # The Role is generated from `kinds`, so an added kind must bring its own
+  # permission with it — otherwise the hook fails at uninstall time with a
+  # forbidden error, which is the worst possible moment to find out.
+  - it: should grant permissions for every configured kind
+    set:
+      cleanup.grafanaOperator.kinds:
+        - grafanamanifests.grafana.integreatly.org
+        - grafanadatasources.grafana.integreatly.org
+        - grafanafolders.grafana.integreatly.org
+    template: cleanup/rbac-grafana-operator.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: rules[0].apiGroups[0]
+          value: grafana.integreatly.org
+      - equal:
+          path: rules[0].resources
+          value:
+            - grafanadatasources
+            - grafanafolders
+            - grafanamanifests
+      # `list` resolves the selector and `watch` backs the wait; without either,
+      # `kubectl delete --selector` fails before it deletes anything.
+      - contains:
+          path: rules[0].verbs
+          content: list
+      - contains:
+          path: rules[0].verbs
+          content: watch
+      - contains:
+          path: rules[0].verbs
+          content: delete
+
+  - it: should render nothing when the cleanup is disabled
+    set:
+      cleanup.grafanaOperator.enabled: false
+    templates:
+      - cleanup/job-grafana-operator.yaml
+      - cleanup/rbac-grafana-operator.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # No operator means no finalizers to clear, so the hook would be a Job that
+  # deletes nothing and a pod scheduled during every uninstall.
+  - it: should render nothing when grafana-operator is not installed
+    set:
+      tags.managed-grafana: false
+      grafana-operator.enabled: false
+    templates:
+      - cleanup/job-grafana-operator.yaml
+      - cleanup/rbac-grafana-operator.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

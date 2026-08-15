@@ -978,6 +978,113 @@ connections:
       # @default -- `[]`
       valuesFrom: []
 
+cleanup:
+  # -- (h4) Deleting resources this chart cannot delete on its own.
+  # @notationType -- (sectionstart) Uninstall cleanup
+  # @raw
+  #
+  # grafana-operator puts `operator.grafana.com/finalizer` on the custom
+  # resources it reconciles, and clears it only after removing the corresponding
+  # object from the Grafana instance. Helm's uninstall does not order that
+  # against the operator's own removal, so the ordinary teardown races: the
+  # operator Deployment goes away with everything else, nobody is left to process
+  # the finalizers, and the `GrafanaManifest` / `GrafanaDatasource` objects sit in
+  # `Terminating` forever. The namespace then will not delete either, and the next
+  # install adopts the leftovers.
+  #
+  # A `pre-delete` hook is the fix because of when it runs: before Helm removes
+  # anything, so the operator is still up and still watching. `kubectl delete`
+  # blocks until the objects are actually gone, which is the point — it returns
+  # only once the finalizers have been processed, and Helm proceeds from there.
+  grafanaOperator:
+    # -- Run the pre-delete cleanup hook.
+    # Turning this off restores the hang described above; the manual recovery is
+    # to delete the resources yourself before `helm uninstall`, or to clear the
+    # finalizers by hand afterwards.
+    enabled: true
+
+    # -- Resource types to delete, as `<resource>.<group>`.
+    # Fully qualified on purpose: a bare `grafanamanifests` resolves through
+    # discovery and can collide with another CRD of the same short name.
+    # Only kinds that actually carry the operator's finalizer belong here — the
+    # `Grafana` instance CR does not, so Helm removes it unaided.
+    # Extend this if you add your own operator resources (`GrafanaFolder`,
+    # `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+    kinds:
+      - grafanamanifests.grafana.integreatly.org
+      - grafanadatasources.grafana.integreatly.org
+
+    # -- How long `kubectl delete` waits for the finalizers to clear.
+    # This bounds the hook rather than the uninstall: on expiry the objects are
+    # already marked for deletion, the hook fails, and Helm stops before removing
+    # the operator — which leaves the cluster recoverable instead of wedged.
+    timeout: 2m
+
+    # -- Number of times to retry the job before failing the uninstall.
+    backoffLimit: 1
+
+    # -- Hard ceiling on the Job, including retries.
+    # Sized above `timeout` × (`backoffLimit` + 1) so the kubectl timeout is what
+    # normally fires; this only catches a pod that never gets that far.
+    activeDeadlineSeconds: 420
+
+    # -- Job specific annotations.
+    # The default makes this a pre-delete hook; setting any annotation replaces
+    # that, which is how you would move it to `post-delete` or set an argocd sync wave.
+    # @default -- `{"helm.sh/hook": "pre-delete", "helm.sh/hook-weight": "0", "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"}`
+    annotations: {}
+
+    # -- Image for the cleanup job.
+    # Upstream's own kubectl build: distroless, multi-arch, and published beside
+    # Kubernetes itself, so it tracks patch releases without a third-party
+    # rebuild. Its entrypoint is `/bin/kubectl` and there is no shell in the
+    # image — the hook runs one argv and needs nothing else.
+    # Keep `tag` within one minor of your API server, per Kubernetes' version-skew
+    # policy.
+    image:
+      registry: registry.k8s.io
+      repository: kubectl
+      tag: v1.35.6
+      pullPolicy: IfNotPresent
+
+    # -- Resources for the cleanup job.
+    # It issues one API call and waits, so this is deliberately small.
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 50m
+        memory: 32Mi
+
+    # -- Security context for the cleanup job pod.
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+
+    # -- Security context for the cleanup job container.
+    # The image ships `USER 0`; kubectl needs no privileges to call an API
+    # server, so it is dropped to nonroot here rather than trusted to the image.
+    containerSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+
+    # -- Node selector for the cleanup job.
+    nodeSelector: {}
+    # -- Tolerations for the cleanup job.
+    # An uninstall has to work even when the ordinary pools are tainted or full,
+    # so this is worth widening if scheduling it is ever the thing that fails.
+    tolerations: []
+
 # -- Configuration for bundled subcharts
 # @notationType -- (sectionstart) Bundled subchart configurations
 _subchartSection: stub
@@ -1118,9 +1225,37 @@ alloy-agent:
     hostPID: false
 
     nodeSelector: {}
+    # -- Taints the agent tolerates out of the box: every `NoSchedule` one.
+    # Coverage is correctness for this workload, not a placement preference. A
+    # node the DaemonSet never lands on produces no logs and no error, and
+    # nothing shows a hole where a node should be — so the default is the same
+    # blanket rule `node-exporter` already ships, for the same reason.
+    #
+    # Enumerating keys instead would make coverage depend on this chart knowing
+    # your taints, which it does not: a node pool tainted with anything the list
+    # does not name goes silently uncollected. That is the failure this replaced.
+    #
+    # It is not always silent, either. A bootstrap gate — a `NoSchedule` taint
+    # applied to every node at boot and lifted once the DaemonSets are running,
+    # which is what `node.materialize.com/daemonsets-not-scheduled` is — deadlocks
+    # outright against an agent that does not tolerate it: the taint waits on a
+    # pod that is waiting on the taint, and the node never admits any workload.
+    #
+    # `NoExecute` is deliberately not tolerated here — a node being drained for a
+    # problem should shed the agent too. The two exceptions are not the chart's
+    # to make: the DaemonSet controller adds `node.kubernetes.io/not-ready` and
+    # `node.kubernetes.io/unreachable` (both `NoExecute`) to every DaemonSet pod
+    # unconditionally, so the agent keeps running on a node that goes unreachable
+    # whatever is written here. Add other `NoExecute` taints through the
+    # Terraform module's `tolerations`, which appends to this list.
+    #
+    # To narrow this — a node pool whose per-node budget genuinely cannot absorb
+    # the agent — replace the list rather than adding to it, and record which
+    # pools you gave up. Helm overwrites lists, so setting this key at all
+    # replaces the whole default.
     tolerations:
-      - key: node.materialize.com/daemonsets-not-scheduled
-        operator: Exists
+      - operator: Exists
+        effect: NoSchedule
 
     # -- Scheduling priority. See the Priority classes section.
     # Critical: this is a per-node singleton, so an eviction is a log gap on that
@@ -1186,9 +1321,15 @@ alloy-gateway:
     # `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the
     # agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap
     # scales with node count — keep this in step with the limit.
+    #
+    # It is the ceiling the GC works against, so it also sets where the gateway
+    # idles. Leaving it near the old limit while raising `resources` would waste
+    # the new headroom; leaving it *above* the limit forfeits the whole point,
+    # since the runtime would only start collecting hard after the kubelet has
+    # already OOM-killed the pod.
     extraEnv:
       - name: GOMEMLIMIT
-        value: 400MiB
+        value: 600MiB
     # -- Environment variable configmaps/secrets to pass to the alloy gateway pod.
     envFrom:
       - configMapRef:
@@ -1238,13 +1379,20 @@ alloy-gateway:
           - ALL
 
     # -- Resources for the alloy gateway containers.
+    # Memory is the gateway's binding constraint and the only axis that actually
+    # relieves it — see the `targetMemoryUtilizationPercentage` note below for
+    # why adding replicas does not. Sized for the floor a CPU-scaled gateway
+    # settles at: at `minReplicas` each pod carries the whole scrape fan-out
+    # rather than a shard of it, so the per-pod working set is higher than it
+    # looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it,
+    # as node count grows.
     resources:
       limits:
         cpu: 500m
-        memory: 512Mi
+        memory: 768Mi
       requests:
         cpu: 500m
-        memory: 512Mi
+        memory: 768Mi
 
   image:
     registry: ghcr.io
@@ -1294,7 +1442,26 @@ alloy-gateway:
         minReplicas: 2
         maxReplicas: 8
         targetCPUUtilizationPercentage: 50
-        targetMemoryUtilizationPercentage: 60
+        # -- Memory scaling is deliberately OFF (`0` is the subchart's disable
+        # value; it renders the metric away rather than setting it to zero).
+        # Not a tuning choice — memory is the wrong *signal* for this component,
+        # because scaling out does not relieve it. The gateway's footprint is
+        # dominated by fixed per-process cost, not by per-replica load: measured
+        # on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory
+        # from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi.
+        # Each new replica adds a whole baseline to save a few Mi on its peers,
+        # so a memory-driven scale-out makes cluster memory pressure *worse*.
+        #
+        # It also cannot stabilize. Idle sat at ~62% of the request, so a 60%
+        # target was below the floor: the HPA scaled up, the metric did not move,
+        # and it flapped against maxReplicas indefinitely. No target value fixes
+        # that, because the control loop is open — the action does not change the
+        # measurement.
+        #
+        # Relieve gateway memory vertically instead: raise `resources` and keep
+        # `GOMEMLIMIT` in step (see both, above). That is also what the node-count
+        # scaling in the `GOMEMLIMIT` note means in practice.
+        targetMemoryUtilizationPercentage: 0
         scaleDown:
           stabilizationWindowSeconds: 300
           selectPolicy: Max
@@ -1398,8 +1565,23 @@ loki:
       use_thanos_objstore: true
       # -- Object storage configuration.
       # Modify as needed.
+      # Only the block named by `type` is read; it is handed to Loki verbatim,
+      # with `bucket_name` filled in from `bucketNames` above.
       object_store:
         type: s3
+        s3:
+          # The endpoint is required and Loki does not default one. With
+          # `use_thanos_objstore` on, the bucket is built by the Thanos objstore
+          # client, which rejects an empty endpoint outright rather than letting
+          # the AWS SDK resolve the regional default — so every component that
+          # touches storage crash-loops at startup with "create bucket: no s3
+          # endpoint in config file".
+          #
+          # The global endpoint works in any region (the client resolves the
+          # bucket's own region from it), but prefer the regional form
+          # (`s3.us-east-1.amazonaws.com`) where the region is known. An
+          # S3-compatible store names its own host here, as `hostname[:port]`.
+          endpoint: s3.amazonaws.com
 
     # -- Schema configuration for the loki TSDB.
     # This is append-only and MUST be copied into projects and mutated on upgrades

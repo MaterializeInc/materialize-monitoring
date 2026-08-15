@@ -65,6 +65,17 @@ _scheduling:
       value: monitoring
       effect: NoSchedule
 
+  # -- The agent's own list, which is deliberately NOT the one above.
+  # The list above names one pool, because the centralized tier belongs on one
+  # pool. The agent belongs on every node, so it keeps the chart's blanket rule
+  # — restated here because this key **replaces** what the chart put there
+  # rather than extending it (Helm overwrites lists), and aliasing the
+  # single-pool list into it would quietly narrow the log collector to the
+  # monitoring pool. That renders perfectly and collects almost nothing.
+  agentTolerations: &agentTolerations
+    - operator: Exists
+      effect: NoSchedule
+
   # -- Priority class names. These match the chart defaults, so they change
   # nothing until you rename them — and renaming them here is the point. The
   # classes are cluster-scoped, so two releases of this chart in one cluster will
@@ -91,7 +102,7 @@ priorityClasses:
 alloy-agent:
   controller:
     # No nodeSelector: per-node DaemonSet. See the header.
-    tolerations: *tolerations
+    tolerations: *agentTolerations
     priorityClassName: *criticalClass
 
 alloy-gateway:

@@ -13,7 +13,9 @@
 #     job is to collect from every node, so constraining it to a workload pool
 #     would silently stop collecting logs and node metrics from everywhere else.
 #   * `tolerations` ARE applied to it. Tolerations widen where a pod may run, so
-#     a DaemonSet wants them in order to reach tainted nodes.
+#     a DaemonSet wants them in order to reach tainted nodes. They are appended
+#     to the chart's own list rather than replacing it — see
+#     `daemonset_tolerations` below for why that distinction is load-bearing.
 #
 # `node-exporter` is deliberately absent from all three maps, which is the same
 # reasoning taken one step further. Its chart default already tolerates every
@@ -65,6 +67,22 @@ locals {
     "alloy-agent" = "controller"
   }
 
+  # Helm overwrites lists rather than merging them, so writing `var.tolerations`
+  # straight into the agent *replaces* the chart's own toleration instead of
+  # adding to it. That is the same trap that keeps `node-exporter` out of these
+  # maps entirely — but the agent cannot take that exit, because reaching a
+  # tainted pool is exactly what a caller needs it for. Naming one taint would
+  # otherwise cost coverage of every pool the chart already reached, silently and
+  # in the same apply that was meant to widen it.
+  #
+  # So the chart's list is read and extended, the way the Loki schema config is
+  # read rather than restated: a toleration added to the chart is carried along
+  # for free, and callers only ever add.
+  daemonset_tolerations = concat(
+    try(local.chart_values["alloy-agent"].controller.tolerations, []),
+    var.tolerations,
+  )
+
   scheduling_leaf = merge(
     local.has_node_selector ? { nodeSelector = var.node_selector } : {},
     local.has_tolerations ? { tolerations = var.tolerations } : {},
@@ -76,7 +94,7 @@ locals {
       { for chart, keys in local.scheduling_targets_nested : chart => { for k in keys : k => local.scheduling_leaf } },
       local.has_tolerations ? {
         for chart, key in local.scheduling_targets_daemonset :
-        chart => { (key) = { tolerations = var.tolerations } }
+        chart => { (key) = { tolerations = local.daemonset_tolerations } }
       } : {},
     ))
   ] : []

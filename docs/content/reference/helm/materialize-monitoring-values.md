@@ -1808,6 +1808,170 @@ valuesFrom:
   </tbody>
 </table>
 
+#### Uninstall cleanup
+
+Deleting resources this chart cannot delete on its own.
+
+grafana-operator puts `operator.grafana.com/finalizer` on the custom
+resources it reconciles, and clears it only after removing the corresponding
+object from the Grafana instance. Helm's uninstall does not order that
+against the operator's own removal, so the ordinary teardown races: the
+operator Deployment goes away with everything else, nobody is left to process
+the finalizers, and the `GrafanaManifest` / `GrafanaDatasource` objects sit in
+`Terminating` forever. The namespace then will not delete either, and the next
+install adopts the leftovers.
+
+A `pre-delete` hook is the fix because of when it runs: before Helm removes
+anything, so the operator is still up and still watching. `kubectl delete`
+blocks until the objects are actually gone, which is the point — it returns
+only once the finalizers have been processed, and Helm proceeds from there.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run the pre-delete cleanup hook. Turning this off restores the hang described above; the manual recovery is to delete the resources yourself before `helm uninstall`, or to clear the finalizers by hand afterwards.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.kinds</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "grafanamanifests.grafana.integreatly.org",
+  "grafanadatasources.grafana.integreatly.org"
+]</pre>
+</td>
+      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaFolder`, `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.timeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">How long `kubectl delete` waits for the finalizers to clear. This bounds the hook rather than the uninstall: on expiry the objects are already marked for deletion, the hook fails, and Helm stops before removing the operator — which leaves the cluster recoverable instead of wedged.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.backoffLimit</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Number of times to retry the job before failing the uninstall.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.activeDeadlineSeconds</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>420</code></td>
+      <td class="helm-value-desc">Hard ceiling on the Job, including retries. Sized above `timeout` × (`backoffLimit` + 1) so the kubectl timeout is what normally fires; this only catches a pod that never gets that far.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "helm.sh/hook": "pre-delete",
+  "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded",
+  "helm.sh/hook-weight": "0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Job specific annotations. The default makes this a pre-delete hook; setting any annotation replaces that, which is how you would move it to `post-delete` or set an argocd sync wave.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "registry.k8s.io",
+  "repository": "kubectl",
+  "tag": "v1.35.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the cleanup job. Upstream's own kubectl build: distroless, multi-arch, and published beside Kubernetes itself, so it tracks patch releases without a third-party rebuild. Its entrypoint is `/bin/kubectl` and there is no shell in the image — the hook runs one argv and needs nothing else. Keep `tag` within one minor of your API server, per Kubernetes' version-skew policy.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "cpu": "100m",
+    "memory": "64Mi"
+  },
+  "requests": {
+    "cpu": "50m",
+    "memory": "32Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resources for the cleanup job. It issues one API call and waits, so this is deliberately small.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsGroup": 65532,
+  "runAsNonRoot": true,
+  "runAsUser": 65532,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the cleanup job pod.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true,
+  "runAsGroup": 65532,
+  "runAsNonRoot": true,
+  "runAsUser": 65532
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the cleanup job container. The image ships `USER 0`; kubectl needs no privileges to call an API server, so it is dropped to nonroot here rather than trusted to the image.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.nodeSelector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Node selector for the cleanup job.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.tolerations</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Tolerations for the cleanup job. An uninstall has to work even when the ordinary pools are tainted or full, so this is worth widening if scheduling it is ever the thing that fails.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Bundled subchart configurations
 
 Configuration for bundled subcharts
@@ -1984,6 +2148,20 @@ equal to the request turns that into CFS throttling on the busiest nodes.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.tolerations</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Taints the agent tolerates out of the box: every `NoSchedule` one. Coverage is correctness for this workload, not a placement preference. A node the DaemonSet never lands on produces no logs and no error, and nothing shows a hole where a node should be — so the default is the same blanket rule `node-exporter` already ships, for the same reason.  Enumerating keys instead would make coverage depend on this chart knowing your taints, which it does not: a node pool tainted with anything the list does not name goes silently uncollected. That is the failure this replaced.  It is not always silent, either. A bootstrap gate — a `NoSchedule` taint applied to every node at boot and lifted once the DaemonSets are running, which is what `node.materialize.com/daemonsets-not-scheduled` is — deadlocks outright against an agent that does not tolerate it: the taint waits on a pod that is waiting on the taint, and the node never admits any workload.  `NoExecute` is deliberately not tolerated here — a node being drained for a problem should shed the agent too. The two exceptions are not the chart's to make: the DaemonSet controller adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` (both `NoExecute`) to every DaemonSet pod unconditionally, so the agent keeps running on a node that goes unreachable whatever is written here. Add other `NoExecute` taints through the Terraform module's `tolerations`, which appends to this list.  To narrow this — a node pool whose per-node budget genuinely cannot absorb the agent — replace the list rather than adding to it, and record which pools you gave up. Helm overwrites lists, so setting this key at all replaces the whole default.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alloy-agent<wbr>.controller<wbr>.priorityClassName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-critical"</code></td>
@@ -2057,11 +2235,11 @@ Upstream reference:
 [
   {
     "name": "GOMEMLIMIT",
-    "value": "400MiB"
+    "value": "600MiB"
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.  It is the ceiling the GC works against, so it also sets where the gateway idles. Leaving it near the old limit while raising `resources` would waste the new headroom; leaving it *above* the limit forfeits the whole point, since the runtime would only start collecting hard after the kubelet has already OOM-killed the pod.
 </td>
     </tr>
     <tr>
@@ -2163,15 +2341,15 @@ Upstream reference:
 {
   "limits": {
     "cpu": "500m",
-    "memory": "512Mi"
+    "memory": "768Mi"
   },
   "requests": {
     "cpu": "500m",
-    "memory": "512Mi"
+    "memory": "768Mi"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers.
+      <td class="helm-value-desc">Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.
 </td>
     </tr>
     <tr>
@@ -2188,6 +2366,13 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-critical"</code></td>
       <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical despite being a Deployment: every signal in the stack leaves through here, so losing it stops logs and metrics at once.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>0</code></td>
+      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.
 </td>
     </tr>
     <tr>
@@ -2319,10 +2504,13 @@ Upstream reference:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "s3": {
+    "endpoint": "s3.amazonaws.com"
+  },
   "type": "s3"
 }</pre>
 </td>
-      <td class="helm-value-desc">Object storage configuration. Modify as needed.
+      <td class="helm-value-desc">Object storage configuration. Modify as needed. Only the block named by `type` is read; it is handed to Loki verbatim, with `bucket_name` filled in from `bucketNames` above.
 </td>
     </tr>
     <tr>
