@@ -1156,12 +1156,38 @@ alloy-agent:
           optional: true
 
     # -- Volume mounts to expose to alloy agent.
+    # @raw
+    # `varlog` covers the container logs *and* a persistent systemd journal,
+    # which lives under `/var/log/journal`. The journal mount below covers
+    # the one case it misses.
+    #
+    # **A volatile journal is not under `/var/log`.** With `Storage=volatile`
+    # journald writes to `/run/log/journal/<machine-id>/` and never creates
+    # `/var/log/journal` at all — that is the default on Bottlerocket, and on
+    # `kindest/node`, so it is the configuration on both a real EKS cluster and
+    # the E2E tier. Without `/run/log/journal`, `loki.source.journal` starts
+    # cleanly, reports healthy, and collects nothing: the most misleading state
+    # of the three.
+    #
+    # Deliberately *not* mounting `/var/log/journal` directly: journald's default
+    # `Storage=auto` switches to persistent storage as soon as that directory
+    # exists, so a `hostPath` mount that creates it would change how the host
+    # journals. `varlog` already exposes it wherever it legitimately exists.
+    #
+    # `/etc/machine-id` is **not** mounted, though journal DaemonSets commonly do.
+    # It is unnecessary: `sd_journal_open` discovers every journal directory
+    # under the paths it scans rather than only `<path>/<machine-id>`, so
+    # collection works without it. Verified on kind by removing it — entries kept
+    # arriving. Do not add it back without evidence it is needed.
     mounts:
       varlog: true
 
       extra:
         - name: tmp
           mountPath: /tmp
+        - name: runlogjournal
+          mountPath: /run/log/journal
+          readOnly: true
 
     # -- Security context for the alloy agent containers.
     # The agent MUST run as root in order to be able to read container logs.
@@ -1262,10 +1288,20 @@ alloy-agent:
     # node with no replica to cover it.
     priorityClassName: monitoring-critical
 
+    # @raw
+    # The journal volume uses the **default** `hostPath` type rather than
+    # `Directory`. A typed mount makes the pod unschedulable on a host that lacks
+    # the path, and a host with a purely persistent journal has no
+    # `/run/log/journal` — so typing it would trade "collects nothing" for "the
+    # agent will not start", which is worse. Untyped, the agent comes up on every
+    # host and finds entries wherever they exist.
     volumes:
       extra:
         - name: tmp
           emptyDir: {}
+        - name: runlogjournal
+          hostPath:
+            path: /run/log/journal
 
   serviceMonitor:
     enabled: true
