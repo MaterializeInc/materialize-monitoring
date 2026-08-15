@@ -93,9 +93,9 @@ tests:
     asserts:
       - notExists:
           path: spec.template.spec.containers[0].command
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: registry.k8s.io/kubectl:v1.34.9
+          pattern: registry\.k8s\.io/kubectl\:v1\.3[0-9]+\.[0-9]+
 
   # The image ships USER 0. kubectl needs no privileges to call an API server,
   # so the pod drops itself rather than trusting the image's default.

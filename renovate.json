@@ -9,6 +9,9 @@
     "helpers:pinGitHubActionDigests",
     "mergeConfidence:all-badges"
   ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "labels": ["dependencies", "auto-format"],
   "rebaseWhen": "automerging",
   "reviewersFromCodeOwners": true,
@@ -81,14 +84,14 @@
     {
       "description": "Kubernetes puts its breaking changes in the minor, so for anything pinned to a k8s version v1.34 -> v1.36 is the risky bump and v1.34.8 -> v1.34.9 is the routine one. PVP versioning treats X.Y as the major version.",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["kubectl", "kindest/node", "**/kindest/node"],
+      "matchPackageNames": ["kubectl", "**/kubectl", "kindest/node", "**/kindest/node"],
       "separateMajorMinor": true,
       "versioning": "pvp"
     },
     {
-      "description": "Treat a Kubernetes major versions (X.Y+1 PVP versioning) as requiring manual review before opening.",
+      "description": "Treat Kubernetes major versions (X.Y+1 PVP versioning) as requiring manual review before opening.",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["kubectl", "kindest/node", "**/kindest/node"],
+      "matchPackageNames": ["kubectl", "**/kubectl", "kindest/node", "**/kindest/node"],
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true,
       "automerge": false

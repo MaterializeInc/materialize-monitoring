@@ -1880,7 +1880,7 @@ only once the finalizers have been processed, and Helm proceeds from there.
   "helm.sh/hook-weight": "0"
 }</pre>
 </td>
-      <td class="helm-value-desc">Job specific annotations. The default makes this a pre-delete hook; setting any annotation replaces that, which is how you would move it to `post-delete` or drive it yourself.
+      <td class="helm-value-desc">Job specific annotations. The default makes this a pre-delete hook; setting any annotation replaces that, which is how you would move it to `post-delete` or set an argocd sync wave.
 </td>
     </tr>
     <tr>

@@ -1030,7 +1030,7 @@ cleanup:
 
     # -- Job specific annotations.
     # The default makes this a pre-delete hook; setting any annotation replaces
-    # that, which is how you would move it to `post-delete` or drive it yourself.
+    # that, which is how you would move it to `post-delete` or set an argocd sync wave.
     # @default -- `{"helm.sh/hook": "pre-delete", "helm.sh/hook-weight": "0", "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"}`
     annotations: {}
 
