@@ -454,21 +454,14 @@ e2e-verify: | $(E2E_BIN)
 
 # Assert the stack behaves, rather than just that the install exited zero.
 # Kept as its own name because that is what CI and the docs call; it is
-# `e2e-verify` against the tier-1 cluster, plus the one exemption kind forces.
+# `e2e-verify` against the tier-1 cluster.
 #
-# `loki.source.journal.node_logs` is unhealthy on every cluster, not just kind:
-# the distroless Alloy image copies `libsystemd.so.0` but none of the libraries
-# it needs (`libcap.so.2`, `libgcrypt.so.20`, `liblz4.so.1`, `liblzma.so.5`), so
-# the dlopen fails with "unable to open a handle to the library" and journal
-# collection has never run. Confirmed on kind and on EKS. The fix belongs in
-# packages/alloy/Dockerfile; until it lands, the exemption keeps the rest of the
-# component-health assertion useful. Tracked as DEP-230.
-#
-# Stated per-invocation on purpose: the suite prints every exemption it honours,
-# so this cannot quietly become the reason a real failure goes unnoticed. Delete
-# this line once the image carries the dependencies — the assertion will then
-# cover journal collection for free.
-e2e-verify-tier1: E2E_FLAGS += --allow-unhealthy loki.source.journal.node_logs
+# No exemptions. This carried `--allow-unhealthy loki.source.journal.node_logs`
+# while the Alloy image was missing libsystemd's dependencies (DEP-230); with
+# v1.18.1-mz2 and the `/run/log/journal` mount, journal collection works and the
+# component-health assertion covers it for free. Resist adding another exemption
+# here without a ticket and a removal condition — the value of that assertion is
+# that it has none.
 e2e-verify-tier1: e2e-verify
 .PHONY: e2e-verify-tier1
 
