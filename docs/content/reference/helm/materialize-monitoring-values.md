@@ -1808,6 +1808,170 @@ valuesFrom:
   </tbody>
 </table>
 
+#### Uninstall cleanup
+
+Deleting resources this chart cannot delete on its own.
+
+grafana-operator puts `operator.grafana.com/finalizer` on the custom
+resources it reconciles, and clears it only after removing the corresponding
+object from the Grafana instance. Helm's uninstall does not order that
+against the operator's own removal, so the ordinary teardown races: the
+operator Deployment goes away with everything else, nobody is left to process
+the finalizers, and the `GrafanaManifest` / `GrafanaDatasource` objects sit in
+`Terminating` forever. The namespace then will not delete either, and the next
+install adopts the leftovers.
+
+A `pre-delete` hook is the fix because of when it runs: before Helm removes
+anything, so the operator is still up and still watching. `kubectl delete`
+blocks until the objects are actually gone, which is the point — it returns
+only once the finalizers have been processed, and Helm proceeds from there.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run the pre-delete cleanup hook. Turning this off restores the hang described above; the manual recovery is to delete the resources yourself before `helm uninstall`, or to clear the finalizers by hand afterwards.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.kinds</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "grafanamanifests.grafana.integreatly.org",
+  "grafanadatasources.grafana.integreatly.org"
+]</pre>
+</td>
+      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaFolder`, `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.timeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">How long `kubectl delete` waits for the finalizers to clear. This bounds the hook rather than the uninstall: on expiry the objects are already marked for deletion, the hook fails, and Helm stops before removing the operator — which leaves the cluster recoverable instead of wedged.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.backoffLimit</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Number of times to retry the job before failing the uninstall.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.activeDeadlineSeconds</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>420</code></td>
+      <td class="helm-value-desc">Hard ceiling on the Job, including retries. Sized above `timeout` × (`backoffLimit` + 1) so the kubectl timeout is what normally fires; this only catches a pod that never gets that far.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "helm.sh/hook": "pre-delete",
+  "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded",
+  "helm.sh/hook-weight": "0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Job specific annotations. The default makes this a pre-delete hook; setting any annotation replaces that, which is how you would move it to `post-delete` or drive it yourself.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "registry.k8s.io",
+  "repository": "kubectl",
+  "tag": "v1.34.9"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the cleanup job. Upstream's own kubectl build: distroless, multi-arch, and published beside Kubernetes itself, so it tracks patch releases without a third-party rebuild. Its entrypoint is `/bin/kubectl` and there is no shell in the image — the hook runs one argv and needs nothing else. Keep `tag` within one minor of your API server, per Kubernetes' version-skew policy.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "cpu": "100m",
+    "memory": "64Mi"
+  },
+  "requests": {
+    "cpu": "50m",
+    "memory": "32Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resources for the cleanup job. It issues one API call and waits, so this is deliberately small.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsGroup": 65532,
+  "runAsNonRoot": true,
+  "runAsUser": 65532,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the cleanup job pod.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true,
+  "runAsGroup": 65532,
+  "runAsNonRoot": true,
+  "runAsUser": 65532
+}</pre>
+</td>
+      <td class="helm-value-desc">Security context for the cleanup job container. The image ships `USER 0`; kubectl needs no privileges to call an API server, so it is dropped to nonroot here rather than trusted to the image.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.nodeSelector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Node selector for the cleanup job.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.tolerations</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Tolerations for the cleanup job. An uninstall has to work even when the ordinary pools are tainted or full, so this is worth widening if scheduling it is ever the thing that fails.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Bundled subchart configurations
 
 Configuration for bundled subcharts

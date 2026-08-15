@@ -1,0 +1,101 @@
+{{/*
+Pre-delete cleanup of the grafana-operator resources Helm cannot remove alone.
+
+The operator holds `operator.grafana.com/finalizer` on everything it reconciles
+and clears it only after unregistering the object from the Grafana instance.
+Nothing orders that against the operator's own teardown, so an ordinary
+`helm uninstall` deletes the operator alongside its custom resources, leaving
+those resources in `Terminating` with no controller left to finish the job.
+
+Running at `pre-delete` is the whole mechanism: the operator is still up, so the
+finalizers get processed. `kubectl delete` waits by default, and that wait is
+load-bearing — it returns only once the objects are really gone, which is what
+keeps Helm from tearing down the operator underneath a half-finished deletion.
+
+One argv, no shell. The upstream kubectl image is distroless with
+`/bin/kubectl` as its entrypoint, so this passes `args` and leaves the
+entrypoint alone rather than reaching for a shell to hold a pipeline together.
+*/}}
+{{- $cleanup := .Values.cleanup.grafanaOperator }}
+{{- if and ( include "mzmon.grafanaOperator.enabled" $ ) $cleanup.enabled }}
+{{- $fullname := include "mzmon.fullname" . }}
+{{- $name := printf "%s-cleanup-grafana-operator" $fullname }}
+{{- $namespace := include "mzmon.namespace" $ }}
+{{- $defaultAnnotations := dict
+  "helm.sh/hook" "pre-delete"
+  "helm.sh/hook-weight" "0"
+  "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded"
+}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace | quote }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+    {{- if $cleanup.annotations }}
+      {{- toYaml $cleanup.annotations | nindent 4 }}
+    {{- else }}
+      {{- toYaml $defaultAnnotations | nindent 4 }}
+    {{- end }}
+spec:
+  backoffLimit: {{ $cleanup.backoffLimit }}
+  activeDeadlineSeconds: {{ $cleanup.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "mzmon.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: cleanup
+    spec:
+      serviceAccountName: {{ $name }}
+      restartPolicy: Never
+      {{- with $cleanup.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cleanup.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $cleanup.podSecurityContext | nindent 8 }}
+      containers:
+        - name: cleanup
+          image: {{ printf "%s/%s:%s" $cleanup.image.registry $cleanup.image.repository $cleanup.image.tag | quote }}
+          imagePullPolicy: {{ $cleanup.image.pullPolicy }}
+          {{- /*
+            `args`, not `command`: the entrypoint is already kubectl, and
+            replacing it would mean naming the binary path here and pinning this
+            template to the image's internal layout.
+
+            `--ignore-not-found` covers the ordinary case of a release whose
+            dashboards or datasources were switched off, so the selector matches
+            nothing. It does NOT cover a missing CRD — kubectl fails on an
+            unknown resource type, and no flag suppresses that. Uninstalling the
+            CRDs chart first is therefore the one ordering that breaks this hook,
+            and `helm uninstall --no-hooks` is the way out: with the CRDs gone
+            the custom resources went with them, so there is nothing left to
+            clean up anyway.
+          */}}
+          args:
+            - delete
+            - {{ $cleanup.kinds | join "," | quote }}
+            - --namespace={{ $namespace }}
+            {{- /*
+              Scoped to this release, so two releases sharing a namespace do not
+              delete each other's resources. `--all` is NOT an alternative here:
+              kubectl refuses it alongside a selector ("setting 'all' parameter
+              but found a non empty selector"), and unscoped it would take out
+              every operator resource in the namespace.
+            */}}
+            - --selector=app.kubernetes.io/instance={{ .Release.Name }}
+            - --ignore-not-found=true
+            - --timeout={{ $cleanup.timeout }}
+          securityContext:
+            {{- toYaml $cleanup.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml $cleanup.resources | nindent 12 }}
+{{- end }}

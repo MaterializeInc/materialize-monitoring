@@ -347,13 +347,19 @@ The `prometheus` and `grafana` modules are replaced. Applying the change:
 
 ## Tearing it down
 
-`terraform destroy` deadlocks unless the Grafana custom resources are deleted first, while grafana-operator is still running to remove its finalizers:
+`terraform destroy` works unaided now: the chart's `pre-delete` hook removes the Grafana custom resources while grafana-operator is still running to clear its finalizers, and blocks until they are gone. The module already orders its two releases so the main release is destroyed before the CRDs release, and the hook covers the ordering *within* a release that Terraform cannot control.
+
+Two cases still deadlock:
+
+- **A release applied before the hook existed.** Helm runs pre-delete hooks from the stored release manifest, so bump the module and `terraform apply` once before destroying.
+- **Removing the CRDs first**, which takes the resource types with it and leaves the hook failing on an unknown type.
+
+In either case, delete them by hand first:
 
 ```bash
-kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanas --all
+kubectl -n monitoring delete grafanadatasources,grafanamanifests --all
 ```
 
-The module orders its two releases correctly, but ordering *within* a release is not something Terraform controls.
 See [Operating > Uninstalling](../../operating/uninstalling/) for the mechanism and for recovering a teardown that is already stuck.
 
 ## If you are not using Terraform

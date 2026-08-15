@@ -92,9 +92,11 @@ every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the
 including ones this stack did not create. It is a separate `helm_release` so it can be
 targeted independently (`-target=module.monitoring.helm_release.crds`).
 
-Teardown also needs the Grafana custom resources deleted before grafana-operator goes, or
-their finalizers have no remover and the CRDs wedge in Terminating. See the "Uninstalling"
-page in the docs.
+The Grafana custom resources still have to go before grafana-operator does, or their
+finalizers have no remover and the CRDs wedge in Terminating. The chart's `pre-delete` hook
+handles that ordering now — but it lives in the *main* release, so destroying this one first
+takes the resource types out from under it. Destroy in the module's own order, and see the
+"Uninstalling" page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
     </tr>
