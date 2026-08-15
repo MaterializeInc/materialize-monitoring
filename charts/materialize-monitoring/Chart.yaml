@@ -6,7 +6,9 @@ description: |
   and the dashboards / alerts / rules that consume the Materialize
   metrics surface.
 type: application
-version: 0.16.1
+# In development, you may need to bump this in order for TF to see changes
+# if you are using a relative repo path for your chart repo.
+version: 0.16.2
 appVersion: "0.0.0"
 kubeVersion: ">=1.27.0-0"
 home: https://materializeinc.github.io/materialize-monitoring/
