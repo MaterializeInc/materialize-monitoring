@@ -37,15 +37,7 @@ version-update/&lt;component&gt; PR populates and releases them; that PR also bu
 the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 --&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0170-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0170-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="container-images-v040-unreleased"&gt;Container Images v0.4.0 (Unreleased)&lt;a class="anchor" href="#container-images-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0161"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.1&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0161"&gt;#&lt;/a&gt;&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;DEP-227 DEP-197 Fix s3 endpoint; agent tolerations; relax gateway HPA; add pre-delete for GFx resources
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/MaterializeInc/materialize-monitoring/pull/231" rel="external" class="github-source-link"&gt;materialize-monitoring#231&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="pipelines-v0110-unreleased"&gt;Pipelines v0.11.0 (Unreleased)&lt;a class="anchor" href="#pipelines-v0110-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0162-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.2 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0162-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item></channel></rss>
