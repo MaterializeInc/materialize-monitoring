@@ -2078,11 +2078,11 @@ Upstream reference:
 [
   {
     "name": "GOMEMLIMIT",
-    "value": "400MiB"
+    "value": "600MiB"
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.  It is the ceiling the GC works against, so it also sets where the gateway idles. Leaving it near the old limit while raising `resources` would waste the new headroom; leaving it *above* the limit forfeits the whole point, since the runtime would only start collecting hard after the kubelet has already OOM-killed the pod.
 </td>
     </tr>
     <tr>
@@ -2184,15 +2184,15 @@ Upstream reference:
 {
   "limits": {
     "cpu": "500m",
-    "memory": "512Mi"
+    "memory": "768Mi"
   },
   "requests": {
     "cpu": "500m",
-    "memory": "512Mi"
+    "memory": "768Mi"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers.
+      <td class="helm-value-desc">Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.
 </td>
     </tr>
     <tr>
@@ -2209,6 +2209,13 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-critical"</code></td>
       <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical despite being a Deployment: every signal in the stack leaves through here, so losing it stops logs and metrics at once.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>0</code></td>
+      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.
 </td>
     </tr>
     <tr>

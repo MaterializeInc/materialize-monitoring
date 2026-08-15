@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the Alloy gateway's horizontal autoscaling.
+#
+# The gateway scales on CPU alone, deliberately. Memory was removed as a metric
+# rather than retuned, because scaling out does not relieve it: the gateway's
+# footprint is dominated by fixed per-process cost, so each replica added to
+# shed memory brings a whole new baseline with it. Measured on a 7-node cluster,
+# 3 replicas to 6 moved per-pod memory 370Mi -> 341Mi while total consumption
+# went 1.1Gi -> 2.0Gi. The HPA's action did not move the HPA's metric, and with
+# idle at ~62% of a 60% target it flapped against maxReplicas indefinitely.
+#
+# These tests exist because the failure is invisible in a diff. Re-adding a
+# memory target renders valid YAML, produces a healthy-looking HPA, and only
+# shows up as a replica count that never comes down.
+suite: alloy gateway autoscaling
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://metrics.example.com/api/v1/receive
+  pipeline.logging.agent.destination.loki.url: https://logs.example.com/loki/api/v1/push
+tests:
+  - it: should scale the gateway on CPU alone
+    template: ../charts/alloy-gateway/templates/hpa.yaml
+    asserts:
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu
+      # Exactly one metric: the subchart renders memory first when it is set, so
+      # a re-added target would take index 0 and leave CPU at 1. Asserting the
+      # length is what catches it rather than just the name above.
+      - lengthEqual:
+          path: spec.metrics
+          count: 1
+
+  - it: should not scale the gateway on memory
+    template: ../charts/alloy-gateway/templates/hpa.yaml
+    asserts:
+      - notContains:
+          path: spec.metrics
+          content:
+            type: Resource
+            resource:
+              name: memory
+              target:
+                type: Utilization
+                averageUtilization: 60
+          any: true
+
+  # `0` is the subchart's documented disable value and renders the metric away
+  # entirely — it does NOT set a zero-percent target, which would scale to
+  # maxReplicas immediately. Worth pinning: the two readings differ by an outage.
+  - it: should treat a zero memory target as disabled rather than as zero percent
+    set:
+      alloy-gateway.controller.autoscaling.horizontal.targetMemoryUtilizationPercentage: 0
+    template: ../charts/alloy-gateway/templates/hpa.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.metrics
+          count: 1
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu
+
+  # GOMEMLIMIT is the ceiling the Go GC works against, so it decides where the
+  # gateway idles. Above the container limit it is inert — the kubelet OOM-kills
+  # the pod before the runtime ever collects hard — and far below it wastes the
+  # request. Neither shows up as a render failure.
+  - it: should keep GOMEMLIMIT below the container memory limit
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 768Mi
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMEMLIMIT
+            value: 600MiB
+
+  # Memory scaling is off, so the request is the only thing standing between the
+  # gateway and an OOM kill. At minReplicas each pod carries the whole scrape
+  # fan-out rather than a shard, which is the case this has to cover.
+  - it: should request the same memory it limits
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 768Mi
