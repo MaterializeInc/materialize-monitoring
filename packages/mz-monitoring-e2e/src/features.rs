@@ -173,6 +173,63 @@ impl Features {
             .unwrap_or("loki")
     }
 
+    /// How the chart reaches Grafana: `bundled`, `external`, or `operator`.
+    ///
+    /// Only `bundled` is assertable today — it is the only mode where the admin
+    /// credentials are a Secret in this namespace and the server is a Service we
+    /// can proxy to.
+    pub fn grafana_mode(&self) -> &str {
+        self.string("connections.grafana.mode").unwrap_or("bundled")
+    }
+
+    /// The bundled Grafana's Service name and port.
+    pub fn grafana_service(&self) -> (&str, u16) {
+        let name = self.string("grafana.fullnameOverride").unwrap_or("grafana");
+        let port = self
+            .get("grafana.service.port")
+            .and_then(Value::as_u64)
+            .and_then(|p| u16::try_from(p).ok())
+            .unwrap_or(80);
+        (name, port)
+    }
+
+    /// Secret and keys holding the bundled Grafana's admin credentials.
+    ///
+    /// The chart generates the Secret when `admin.existingSecret` is empty, and
+    /// names it after the release — so there is nothing for a caller to pass in,
+    /// and reading it here is the only way to authenticate.
+    pub fn grafana_admin_secret(&self) -> (&str, &str, &str) {
+        let existing = self.string("grafana.admin.existingSecret").unwrap_or("");
+        let name = if existing.is_empty() {
+            self.grafana_service().0
+        } else {
+            existing
+        };
+        let user_key = self.string("grafana.admin.userKey").unwrap_or("admin-user");
+        let password_key = self
+            .string("grafana.admin.passwordKey")
+            .unwrap_or("admin-password");
+        (name, user_key, password_key)
+    }
+
+    /// Whether the chart provisions its datasources at all.
+    pub fn datasources_enabled(&self) -> bool {
+        self.get("connections.datasources.enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    /// The stable UID a datasource is provisioned under.
+    ///
+    /// Read from values rather than hardcoded: the dashboards resolve their
+    /// datasource by UID, so a release that overrides one and a suite that
+    /// assumes the default would disagree silently.
+    pub fn datasource_uid(&self, which: &str) -> String {
+        self.string(&format!("connections.datasources.{which}.uid"))
+            .unwrap_or("")
+            .to_owned()
+    }
+
     /// Loki's deployment mode, which decides what its Services are called.
     pub fn loki_deployment_mode(&self) -> &str {
         self.string("loki.deploymentMode").unwrap_or("Distributed")

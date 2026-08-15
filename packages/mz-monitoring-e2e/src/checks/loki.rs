@@ -34,7 +34,7 @@ pub async fn ready(ctx: &Ctx) -> Result<()> {
         .first_existing_service(&ctx.features.loki_service_candidates().read)
         .await?;
     // No tenant header: `/ready` is not a tenant-scoped endpoint.
-    let target = ServiceTarget::new(&service, LOKI_PORT);
+    let target = ServiceTarget::new(service, LOKI_PORT);
 
     retry_until("loki /ready", ctx.deadline, ctx.interval, || async {
         let body = ctx.cluster.get(&target, "ready").await?;
@@ -60,7 +60,7 @@ pub async fn streams_created(ctx: &Ctx) -> Result<()> {
         .cluster
         .first_existing_service(&ctx.features.loki_service_candidates().ingester)
         .await?;
-    let target = ServiceTarget::new(&service, LOKI_PORT);
+    let target = ServiceTarget::new(service, LOKI_PORT);
 
     retry_until(
         "loki ingested at least one stream",
@@ -76,8 +76,9 @@ pub async fn streams_created(ctx: &Ctx) -> Result<()> {
                 Some(n) if n > 0.0 => Ok(()),
                 Some(_) => bail!("{STREAMS_METRIC} is 0: nothing has been ingested"),
                 None => bail!(
-                    "{STREAMS_METRIC} is absent from {service}:{LOKI_PORT}/metrics \
-                     — this is not an ingester"
+                    "{STREAMS_METRIC} is absent from {}:{LOKI_PORT}/metrics \
+                     — this is not an ingester",
+                    target.service
                 ),
             }
         },
@@ -95,9 +96,7 @@ pub async fn gateway_labels(ctx: &Ctx) -> Result<()> {
         .cluster
         .first_existing_service(&ctx.features.loki_service_candidates().read)
         .await?;
-    let tenant = ctx.features.loki_tenant();
-    let headers = [("X-Scope-OrgID", tenant)];
-    let target = ServiceTarget::new(&service, LOKI_PORT).with_headers(&headers);
+    let target = ServiceTarget::new(service, LOKI_PORT).with_tenant(ctx.features.loki_tenant());
 
     retry_until(
         "gateway-applied k8s_pod label is present",
@@ -139,9 +138,7 @@ pub async fn recent_query(ctx: &Ctx) -> Result<()> {
         .cluster
         .first_existing_service(&ctx.features.loki_service_candidates().read)
         .await?;
-    let tenant = ctx.features.loki_tenant();
-    let headers = [("X-Scope-OrgID", tenant)];
-    let target = ServiceTarget::new(&service, LOKI_PORT).with_headers(&headers);
+    let target = ServiceTarget::new(service, LOKI_PORT).with_tenant(ctx.features.loki_tenant());
 
     // The gateway applies `namespace` alongside the `k8s_*` families, so this
     // selector also confirms the logs came through the pipeline rather than

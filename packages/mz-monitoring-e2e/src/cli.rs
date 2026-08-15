@@ -19,6 +19,8 @@ use std::time::Duration;
 
 use clap::Parser;
 
+use crate::cluster::Transport;
+
 #[derive(Parser)]
 #[command(
     name = "mz-monitoring-e2e",
@@ -52,6 +54,16 @@ pub struct Args {
     #[arg(long, default_value = "mzmon", env = "RELEASE")]
     pub release: String,
 
+    /// How to reach in-cluster Services.
+    ///
+    /// `port-forward` (the default) goes through the kubelet and works on kind
+    /// and on real clouds alike. `proxy` uses the API server's Service proxy —
+    /// lighter, but it cannot carry `Authorization`, and on EKS the control
+    /// plane cannot reach pods on arbitrary ports, so it times out. Grafana
+    /// port-forwards either way.
+    #[arg(long, value_enum, default_value_t = Transport::PortForward)]
+    pub transport: Transport,
+
     /// Seconds any single assertion may retry before it fails.
     #[arg(long, default_value_t = 180, value_name = "SECONDS")]
     pub deadline: u64,
@@ -66,6 +78,19 @@ pub struct Args {
     /// chunks left by a previous run cannot satisfy it.
     #[arg(long, default_value_t = 120, value_name = "SECONDS")]
     pub recent_window: u64,
+
+    /// An Alloy component ID that is permitted to be unhealthy.
+    ///
+    /// Exact IDs only, no globbing, and repeatable. This exists so an
+    /// environment limitation can be stated at the invocation site with its
+    /// reason next to it, rather than buried in the check as a special case that
+    /// nobody revisits. A run that honours an exemption says so in its output.
+    ///
+    /// The case it was added for: `loki.source.journal.node_logs`, which fails
+    /// to start on every cluster because the Alloy image ships `libsystemd.so.0`
+    /// without the libraries it links against.
+    #[arg(long = "allow-unhealthy", value_name = "COMPONENT_ID")]
+    pub allow_unhealthy: Vec<String>,
 
     /// Directory to collect cluster diagnostics into when anything fails.
     ///

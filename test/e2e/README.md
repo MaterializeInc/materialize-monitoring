@@ -35,9 +35,14 @@ cargo run -p mz-monitoring-e2e -- --context <ctx> --list  # which assertions app
 
 Use `--all` if you ever read those values by hand. Plain `helm get values` returns only what the caller supplied, so a default install answers `null` and nothing is inferable from it.
 
-**It talks to Services through the API server's proxy subresource**, not through a port-forward — `/api/v1/namespaces/<ns>/services/<svc>:<port>/proxy/<path>`.
-Same destination, but with no local listener, no port allocation, no teardown, and no window where the tunnel is up but not yet forwarding.
-It also behaves identically on kind, EKS and GKE, so tier 3 needs no separate transport. The cost is one RBAC verb, `services/proxy`.
+**It reaches Services by port-forward, and there is a second transport it deliberately does not default to.**
+`src/forward.rs` speaks HTTP straight over the forwarded stream — no local listener, so no port allocation, no bind race and no teardown, which is where a `kubectl port-forward` actually flakes.
+The API server's Service proxy (`/api/v1/namespaces/<ns>/services/<svc>:<port>/proxy/<path>`) is lighter and available with `--transport proxy`, but it is not a general answer, for two measured reasons:
+
+- **It cannot carry `Authorization`.** The API server strips it before proxying — correctly, since it must not hand a caller's cluster credentials to an arbitrary backend. Custom headers pass through untouched, which is why Loki's `X-Scope-OrgID` works over the proxy and Grafana's basic auth returns `Unauthorized` no matter what you send. Grafana port-forwards regardless of the flag.
+- **It needs control-plane-to-pod reachability on the target port.** On EKS the control plane sits in an AWS-managed VPC and the node security groups admit only a few ports: a proxied request to Thanos on 9090 times out, while a port-forward to the same pod answers immediately. The proxy is a kind-and-similar optimisation, not the portable choice.
+
+**Path segments and query values need different escaping.** `encode` is aggressive and right for a query value, which the server URL-decodes before reading. A path segment is matched *raw* by the router, so escaping a character that did not need it changes which route matches — `mzmon-loki` written as `mzmon%2Dloki` is a 404 from Grafana even though the two decode to the same string. Use `encode_segment` there.
 
 **Every assertion retries against a deadline** (`--deadline`, 180s) rather than checking once, and the last error is carried into the timeout message.
 Ingestion is asynchronous; a bare check here is the classic E2E flake, and a timeout that does not say how the final attempt failed is the least actionable line a CI log can contain.
@@ -78,6 +83,12 @@ rustfs stands in for S3 and CNPG for RDS/Cloud SQL. Outputs are shaped to line u
 
 Keep `--recent-window` meaningfully smaller than how long a broken stack would have been broken. Too wide and stale-but-in-window chunks satisfy it, which is how the first version of this check passed against a stack that had stopped ingesting.
 
+**The support bundle is the highest-yield single request in the suite.** One fetch of `/-/support` carries the rendered config and every component's health, and the health half found a live bug the first time it ran: `loki.source.journal.node_logs` is unhealthy on every cluster, kind and EKS alike, because the distroless Alloy image copies `libsystemd.so.0` without the libraries it links against (`libcap.so.2`, `libgcrypt.so.20`, `liblz4.so.1`, `liblzma.so.5`). Journal collection has therefore never run — tracked as [DEP-230](https://linear.app/materializeinc/issue/DEP-230) (internal). `make e2e-verify-tier1` exempts that one component by ID until [`packages/alloy/Dockerfile`](../../packages/alloy/Dockerfile) carries the dependencies; the suite prints every exemption it honours, so the exemption cannot become the reason a real failure goes unnoticed.
+
+**Querying a backend *through Grafana* is not redundant with querying it directly.** `loki::gateway_labels` sends `X-Scope-OrgID` itself, so it passes against a stack whose *datasource* never sends it — and the bundled Loki runs `auth_enabled: true`, so that stack has empty Loki panels and a perfectly healthy Loki. `grafana::loki_datasource_query` is the only assertion covering that gap. Verified by pointing the datasource's `httpHeaderName1` at a header Loki ignores: the direct checks stayed green and this one failed with `Authentication to data source failed`, which is how Grafana surfaces `no org id`.
+
+**Expected UIDs come from the operator's own custom resources, never a list in the suite.** A hardcoded list goes stale the moment a dashboard is added, and it goes stale in the direction that passes: the suite keeps asserting the dashboards it knows about and never notices the new one failing to land. An empty declared set is a failure for the same reason — every member of an empty set is present in Grafana.
+
 **Breaking the write path to re-verify that check takes one extra step.** `kubectl scale deployment/alloy-gateway --replicas=0` returns immediately, but Alloy flushes its WAL on shutdown, so writes keep landing for as long as the pods take to terminate. Start the clock from `kubectl wait --for=delete pod -l app.kubernetes.io/instance=alloy-gateway`, not from the scale — otherwise the flush lands inside the window and the check passes against a stack you believe you have broken, which is the one result that teaches you the wrong thing.
 
 ## CI
@@ -93,7 +104,8 @@ The assertion suite runs the same collector itself when `--diagnostics-dir` is s
 
 The tier-1 job installs a Rust toolchain and builds the suite *before* creating the cluster, so a compile error fails in seconds rather than after a ten-minute install.
 
-**Still to build:** the rest of the assertions — Grafana (`/api/search`, dashboard UIDs, and queries through the datasource proxy, where the `no org id` failure surfaces), Thanos (`/api/v1/stores` and instant queries for `up` and `scrape_samples_scraped`), and the Alloy gateway support bundle.
-Also the tier-2 root composing the substrate with the module, and `thanos-small` plus a kind resource-sizing profile, without which "small on PRs, medium on main" says nothing about Thanos.
+**Still to build:** WAL durability across a gateway outage, the tier-2 root composing the substrate with the module, and `thanos-small` plus a kind resource-sizing profile, without which "small on PRs, medium on main" says nothing about Thanos.
+
+The Thanos assertions exist but no CI tier runs them: tier 1 has no object storage, so all five Thanos-gated trials report as ignored there — the expected result rather than a gap. They were developed and verified against a real EKS cluster, and a tier-2 root is what would put them under CI.
 
 `container_*` and `node_*` assertions are not writable until cAdvisor and node-exporter collection land. Worth encoding as tests expected to fail until then, so they convert to coverage the moment collection ships.

@@ -7,14 +7,18 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.104"
+base64 = "0.23.1"
 clap = { version = "4.6.6", features = ["derive", "env"] }
 # Used to build proxy requests by hand. The kube client takes an `http::Request`
 # rather than exposing a URL-shaped API, so the subresource path is assembled here.
 http = "1.5.0"
+http-body-util = "0.1.5"
+hyper = { version = "1.11.0", features = ["client", "http1"] }
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
 k8s-openapi = { version = "0.28.0", features = ["latest"] }
 # `client` + `config` only: no `runtime`. Nothing here watches or reconciles, it
 # reads a kubeconfig and issues requests.
-kube = { version = "4.2.0", default-features = false, features = ["client", "rustls-tls", "config"] }
+kube = { version = "4.2.0", default-features = false, features = ["client", "rustls-tls", "config", "ws"] }
 # Cargo's own test harness cannot build its test list at runtime, and this suite
 # has to: which assertions exist depends on what the release enabled. libtest-mimic
 # gives the same reporting and filtering over a list assembled after startup, plus
@@ -29,3 +33,4 @@ rustls = { version = "0.23.43", default-features = false, features = ["aws-lc-rs
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

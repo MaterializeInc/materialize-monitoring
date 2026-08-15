@@ -445,14 +445,30 @@ E2E_RELEASE ?= mzmon
 # whichever step fails first, the artifact is there and there is only one of it.
 E2E_DIAGNOSTICS_DIR ?= e2e-diagnostics-tier1
 
+E2E_FLAGS ?=
+
 e2e-verify: | $(E2E_BIN)
 	$(E2E_BIN) --context $(E2E_CONTEXT) --namespace $(E2E_NAMESPACE) \
-		--release $(E2E_RELEASE) --diagnostics-dir $(E2E_DIAGNOSTICS_DIR)
+		--release $(E2E_RELEASE) --diagnostics-dir $(E2E_DIAGNOSTICS_DIR) $(E2E_FLAGS)
 .PHONY: e2e-verify
 
-# Assert the logging round trip rather than just that the install exited zero.
+# Assert the stack behaves, rather than just that the install exited zero.
 # Kept as its own name because that is what CI and the docs call; it is
-# `e2e-verify` against the tier-1 cluster.
+# `e2e-verify` against the tier-1 cluster, plus the one exemption kind forces.
+#
+# `loki.source.journal.node_logs` is unhealthy on every cluster, not just kind:
+# the distroless Alloy image copies `libsystemd.so.0` but none of the libraries
+# it needs (`libcap.so.2`, `libgcrypt.so.20`, `liblz4.so.1`, `liblzma.so.5`), so
+# the dlopen fails with "unable to open a handle to the library" and journal
+# collection has never run. Confirmed on kind and on EKS. The fix belongs in
+# packages/alloy/Dockerfile; until it lands, the exemption keeps the rest of the
+# component-health assertion useful. Tracked as DEP-230.
+#
+# Stated per-invocation on purpose: the suite prints every exemption it honours,
+# so this cannot quietly become the reason a real failure goes unnoticed. Delete
+# this line once the image carries the dependencies — the assertion will then
+# cover journal collection for free.
+e2e-verify-tier1: E2E_FLAGS += --allow-unhealthy loki.source.journal.node_logs
 e2e-verify-tier1: e2e-verify
 .PHONY: e2e-verify-tier1
 

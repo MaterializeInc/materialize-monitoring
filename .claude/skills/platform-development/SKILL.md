@@ -109,6 +109,15 @@ what applies, so there is no tier flag, and `make e2e-verify E2E_CONTEXT=<ctx>`
 points it at any cluster including a real one. It asserts only; it never
 installs.
 
+Transport defaults to a port-forward (`src/forward.rs`, no local listener). The
+API server's Service proxy is available with `--transport proxy` but is not the
+portable choice: it **strips `Authorization`** (so Grafana cannot authenticate
+over it, though custom headers like Loki's `X-Scope-OrgID` pass fine), and it
+needs control-plane-to-pod reachability — on EKS a proxied request to Thanos on
+9090 times out where a port-forward succeeds. Also use `encode_segment`, not
+`encode`, for path segments: routers match the raw path, so `mzmon%2Dloki` is a
+404 where `mzmon-loki` is not.
+
 Two rules when extending it:
 
 - **Values are intent, not description.** A component the values enable but the

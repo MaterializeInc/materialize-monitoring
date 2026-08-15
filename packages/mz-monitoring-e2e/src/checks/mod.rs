@@ -16,4 +16,7 @@
 //! backwards yields either a suite that passes while blind, or one that flakes on
 //! empty Materialize series forever.
 
+pub mod alloy;
+pub mod grafana;
 pub mod loki;
+pub mod thanos;

@@ -34,6 +34,7 @@ mod cluster;
 mod ctx;
 mod diagnostics;
 mod features;
+mod forward;
 mod promtext;
 mod retry;
 
@@ -97,6 +98,7 @@ async fn connect(args: &Args) -> Result<Ctx> {
         args.kubeconfig.as_ref(),
         args.context.as_deref(),
         &args.namespace,
+        args.transport,
     )
     .await?;
     cluster.preflight().await?;
@@ -116,6 +118,7 @@ async fn connect(args: &Args) -> Result<Ctx> {
         deadline: args.deadline(),
         interval: args.retry_interval(),
         recent_window: args.recent_window(),
+        allow_unhealthy: args.allow_unhealthy.clone(),
     })
 }
 
@@ -161,6 +164,98 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         "loki::recent_query",
         logging,
         checks::loki::recent_query,
+    ));
+
+    // Only the bundled mode is assertable: it is the one where the admin
+    // credentials are a Secret in this namespace and the server is a Service we
+    // can proxy to. `external` and `operator` are skips, not failures.
+    let grafana = ctx.features.enabled("grafana") && ctx.features.grafana_mode() == "bundled";
+    // Provisioning is the operator's job, so without it there is nothing to
+    // assert about how dashboards and datasources got there.
+    let provisioned = grafana && ctx.features.enabled("grafana-operator");
+    let datasources = provisioned && ctx.features.datasources_enabled();
+
+    trials.push(trial(
+        runtime,
+        ctx,
+        "grafana::health",
+        grafana,
+        checks::grafana::health,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "grafana::dashboards_provisioned",
+        provisioned,
+        checks::grafana::dashboards_provisioned,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "grafana::datasources_provisioned",
+        datasources,
+        checks::grafana::datasources_provisioned,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "grafana::loki_datasource_query",
+        datasources && ctx.features.enabled("loki"),
+        checks::grafana::loki_datasource_query,
+    ));
+    // Enabled by default and needing no flag: the support bundle is the single
+    // richest artifact the stack exposes, and each role has its own.
+    trials.push(trial(
+        runtime,
+        ctx,
+        "alloy::gateway_support_bundle",
+        ctx.features.enabled("alloy-gateway"),
+        checks::alloy::gateway_support_bundle,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "alloy::agent_support_bundle",
+        ctx.features.enabled("alloy-agent"),
+        checks::alloy::agent_support_bundle,
+    ));
+
+    let thanos = ctx.features.enabled("thanos");
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::ready",
+        thanos,
+        checks::thanos::ready,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::stores",
+        thanos,
+        checks::thanos::stores,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::targets_up",
+        thanos,
+        checks::thanos::targets_up,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::samples_scraped",
+        thanos,
+        checks::thanos::samples_scraped,
+    ));
+
+    trials.push(trial(
+        runtime,
+        ctx,
+        "grafana::thanos_datasource_query",
+        datasources && thanos,
+        checks::grafana::thanos_datasource_query,
     ));
 
     trials

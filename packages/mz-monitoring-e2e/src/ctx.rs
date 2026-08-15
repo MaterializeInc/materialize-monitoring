@@ -24,4 +24,6 @@ pub struct Ctx {
     pub interval: Duration,
     /// How recent a log line has to be to count as proof the write path is live.
     pub recent_window: Duration,
+    /// Alloy component IDs allowed to be unhealthy; see `--allow-unhealthy`.
+    pub allow_unhealthy: Vec<String>,
 }
