@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.4.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)
 
 _Changes Pending_
@@ -21,9 +25,12 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Container Images v0.3.0 (Unreleased)
+## Container Images v0.3.0
 
-_Changes Pending_
+* DEP-230 Fixes for collecting node logs (journald)
+    * [materialize-monitoring#234](https://github.com/MaterializeInc/materialize-monitoring/pull/234)
+* Update debian:13 Docker digest to 34cd9e9
+    * [materialize-monitoring#212](https://github.com/MaterializeInc/materialize-monitoring/pull/212)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.16.0
 
