@@ -6,9 +6,13 @@ Two bases, both runnable locally with the same targets CI uses.
 make e2e-cluster          # kind cluster + the namespaces a real install has
 make e2e-tier1            # chart, hermetic shape
 make e2e-verify-tier1     # assert the logging round trip
-make e2e-generic-cloud    # rustfs + CNPG substrate
+make e2e-tier1-down       # remove tier 1 so the same cluster can host tier 2
+make e2e-tier2            # substrate + the module composed onto it
+make e2e-verify-tier2     # same assertions, with Thanos live
 make e2e-cluster-down
 ```
+
+**The tiers collide rather than coexist.** Both name their CRDs release `mzmon-crds` in `monitoring`, and Helm refuses a name already in use, so a tier-2 apply against a tier-1 cluster fails on the first release it creates. `make e2e-tier1-down` is the switch; recreating the cluster also works and takes minutes longer.
 
 Every one of these names its target cluster explicitly (`KIND_CONTEXT`, default `kind-mzmon-e2e`) rather than inheriting the current kubeconfig context.
 These targets install, restart, and delete things; without that, `make e2e-tier1` would run against whatever cluster you last used — a production one, if that is what it was.
@@ -64,10 +68,18 @@ Three warnings are expected here and are not failures: SingleBinary deployment m
 
 ## Tier 2 — generic-cloud base
 
-`terraform/test/generic-cloud` provisions what a cloud wrapper provisions — S3-compatible storage with credentials, and Postgres — and stops there.
-It does not call the monitoring module. The substrate has to be provable on its own, and a tier-2 root is the composition of the two.
+Two roots, composed in one direction.
 
-rustfs stands in for S3 and CNPG for RDS/Cloud SQL. Outputs are shaped to line up with the module's `object_storage` object, so composing them is a copy rather than a mapping.
+`terraform/test/generic-cloud` provisions what a cloud wrapper provisions — S3-compatible storage with credentials, and Postgres — and stops there.
+rustfs stands in for S3 and CNPG for RDS/Cloud SQL. It does not call the monitoring module: the substrate has to be provable on its own.
+
+`terraform/test/tier2` is the composition. It reads the substrate's outputs and installs the module against them — both backends on rustfs, Grafana's state in the Postgres, `sizing = "small"` so it fits a kind node.
+
+It composes through the substrate's **state file** rather than instantiating it as a child module, because the substrate configures its own providers to stay applyable alone, and a child module carrying provider blocks cannot be cleanly removed. Hence two applies; `make e2e-tier2` runs both.
+
+**What this proves that tier 1 cannot:** the object-storage paths. Tier 1 runs Loki on a local filesystem and no Thanos at all, so the entire storage surface — Loki's S3 chunk client, the Thanos objstore config, the static-credential wiring — is unexercised there. It is also the only tier where the suite's five Thanos assertions run rather than report `ignored`.
+
+Credentials go in through `object_storage_access_key_id` / `object_storage_secret_access_key`, the module's first-class static-credential path — not `additional_values`. That is deliberate: a tier-2 root wired through the escape hatch would validate a composition no customer uses, while this exercises exactly the path a deployment without workload identity takes in production.
 
 **What tier 2 cannot cover:** workload identity. rustfs takes static credentials and kind has no OIDC issuer an IAM provider trusts, so IRSA and GKE Workload Identity are only exercised at tier 3 — after we have already tagged. The `workload_identity_available` output states this so a caller cannot miss it.
 
@@ -89,9 +101,15 @@ That is the shape of failure this assertion exists for: the pod was Ready, the D
 
 `--allow-unhealthy <component-id>` exists for the window between finding such a thing and fixing it. It takes exact IDs, never globs, and every exemption honoured is printed in the run output — so it cannot quietly become the reason a real failure goes unnoticed. There are none today; adding one should come with a ticket and a condition for removing it.
 
+**Loki's egress NetworkPolicy has to name the port object storage is really on, *and* keep 443.** The module derives the store's port from the endpoint and always adds 443, because the same rule is what grants egress to **STS** for workload identity — always 443, wherever the bucket lives. Getting it wrong in either direction breaks something: hardcoded at 443, which is what it was since real S3 is HTTPS, a self-hosted store on any other port is unreachable; narrowed to only the store's port, IRSA breaks instead, with the credential fetch hanging at pod start rather than failing as a config error. It is a superset of the old rule, so no existing deployment loses access. The symptom is worth memorising because nothing in it mentions a policy: Loki's index gateway logs a bare `dial tcp ...: i/o timeout`, every query that needs the index hangs, and the query frontend eventually answers `504 request timed out, decrease the duration of the request` — which reads as "your query is too expensive" and sends you off narrowing selectors. A 10-second window failed exactly like a 2-hour one, which is the tell: cost-related timeouts scale with the range, and this did not. Thanos hides it further by working perfectly, because the chart writes no policy for it.
+
+**Bound every Loki label query by time.** Unbounded, `/loki/api/v1/labels` spans every index period the schema knows about. SingleBinary answers instantly on a small store, so tier 1 is happy; a distributed Loki fans the request across queriers and returns `504: request timed out, decrease the duration of the request`, which Grafana passes through as a `502`. Two assertions shipped with that bug and only tier 2 found it — which is the clearest argument for the tier there is. Bound it wider than the write-path window, though: a label query asks *which labels exist*, not whether data is arriving, so it should not fail on a brief lull.
+
 **Querying a backend *through Grafana* is not redundant with querying it directly.** `loki::gateway_labels` sends `X-Scope-OrgID` itself, so it passes against a stack whose *datasource* never sends it — and the bundled Loki runs `auth_enabled: true`, so that stack has empty Loki panels and a perfectly healthy Loki. `grafana::loki_datasource_query` is the only assertion covering that gap. Verified by pointing the datasource's `httpHeaderName1` at a header Loki ignores: the direct checks stayed green and this one failed with `Authentication to data source failed`, which is how Grafana surfaces `no org id`.
 
 **Expected UIDs come from the operator's own custom resources, never a list in the suite.** A hardcoded list goes stale the moment a dashboard is added, and it goes stale in the direction that passes: the suite keeps asserting the dashboards it knows about and never notices the new one failing to land. An empty declared set is a failure for the same reason — every member of an empty set is present in Grafana.
+
+**An interrupted tier-2 apply leaves two kinds of debris, and neither error says so.** Terraform records a `helm_release` only once it completes, so a cancelled apply leaves the release live in the cluster and absent from state; the next apply fails with `cannot re-use a name that is still in use`. `helm uninstall mzmon` clears it and the apply recreates it. Separately, VS Code's Terraform extension holds an flock on the state file, which surfaces as `Error acquiring the state lock: resource temporarily unavailable` even with no apply running — `terraform force-unlock` reports the state as *not locked*, because the lock is an flock rather than the lock file. Closing the editor or passing `-lock=false` (safe only when no other apply is running) gets past it.
 
 **Breaking the write path to re-verify that check takes one extra step.** `kubectl scale deployment/alloy-gateway --replicas=0` returns immediately, but Alloy flushes its WAL on shutdown, so writes keep landing for as long as the pods take to terminate. Start the clock from `kubectl wait --for=delete pod -l app.kubernetes.io/instance=alloy-gateway`, not from the scale — otherwise the flush lands inside the window and the check passes against a stack you believe you have broken, which is the one result that teaches you the wrong thing.
 
@@ -108,8 +126,6 @@ The assertion suite runs the same collector itself when `--diagnostics-dir` is s
 
 The tier-1 job installs a Rust toolchain and builds the suite *before* creating the cluster, so a compile error fails in seconds rather than after a ten-minute install.
 
-**Still to build:** WAL durability across a gateway outage, the tier-2 root composing the substrate with the module, and `thanos-small` plus a kind resource-sizing profile, without which "small on PRs, medium on main" says nothing about Thanos.
+**Still to build:** WAL durability across a gateway outage; NetworkPolicy and in-cluster mTLS, both of which the design doc assigns to tier 2 and neither of which is asserted yet; and a kind resource-sizing profile, without which "medium on main" has nowhere to run.
 
-The Thanos assertions exist but no CI tier runs them: tier 1 has no object storage, so all five Thanos-gated trials report as ignored there — the expected result rather than a gap. They were developed and verified against a real EKS cluster, and a tier-2 root is what would put them under CI.
-
-`container_*` and `node_*` assertions are not writable until cAdvisor and node-exporter collection land. Worth encoding as tests expected to fail until then, so they convert to coverage the moment collection ships.
+`container_*` and `node_*` assertions are now writable — the gateway scrapes `/metrics/cadvisor` on every kubelet, and node-exporter installs behind `tags.node-exporter`. They belong at tier 2, where a metrics backend exists to query them out of; tier 1 discards metrics entirely.

@@ -94,11 +94,52 @@ locals {
   # is derived here when the caller named only a region. The global host is the
   # last resort: it works in any region, since the client resolves the bucket's
   # own region from it.
-  s3_endpoint = local.storage == null || local.storage.cloud != "aws" ? null : coalesce(
+  s3_endpoint_given = local.storage == null || local.storage.cloud != "aws" ? null : coalesce(
     local.storage.endpoint,
     local.storage.region == null ? null : "s3.${local.storage.region}.amazonaws.com",
     "s3.amazonaws.com",
   )
+
+  # An S3-compatible store is normally named by URL, and the objstore client
+  # wants a bare `host:port` — given a scheme it fails at startup with
+  # "Endpoint url cannot have fully qualified paths", which names neither the
+  # offending value nor the component. So the scheme is stripped here rather than
+  # made the caller's problem.
+  #
+  # It also *selects the transport*: `http://` means plain HTTP, which the client
+  # will not do unless told. Deriving it from the scheme keeps one fact in one
+  # place; as two inputs they could disagree, and the failure for that is a TLS
+  # handshake error against a plaintext port.
+  s3_endpoint = local.s3_endpoint_given == null ? null : replace(local.s3_endpoint_given, "/^https?:///", "")
+  s3_insecure = local.s3_endpoint_given != null && can(regex("^http://", local.s3_endpoint_given))
+
+  # The port object storage is actually on, for Loki's egress NetworkPolicy.
+  #
+  # Hardcoding 443 here is what broke tier 2: a self-hosted store answers on its
+  # own port (rustfs on 9000), the policy blocked the dial, and Loki's index
+  # gateway failed with a bare `i/o timeout` — which surfaces to a user as every
+  # query hanging until the frontend returns 504, with nothing naming the policy.
+  # Thanos hid it further by working fine, since the chart writes no policy for it.
+  s3_port = local.s3_endpoint == null ? 443 : try(
+    tonumber(regex(":(\\d+)$", local.s3_endpoint)[0]),
+    local.s3_insecure ? 80 : 443,
+  )
+
+  # 443 stays in the list unconditionally, because this same rule is what grants
+  # egress to **STS** for workload identity — always 443, and unrelated to
+  # wherever the bucket lives. Swapping it for the store's port rather than
+  # adding to it would break IRSA on any deployment that puts S3 somewhere else,
+  # and the failure is a credential fetch hanging at pod start, not a config
+  # error. A superset also means this can only widen what the rule allowed
+  # before, so no existing deployment loses access.
+  s3_egress_ports = distinct(concat([local.s3_port], [443]))
+
+  # Static credentials, when the deployment has no workload identity to bind to.
+  # Both backends reach S3 through the same Thanos objstore client, but they name
+  # the keys differently — `access_key`/`secret_key` in the objstore config,
+  # `access_key_id`/`secret_access_key` in Loki's own s3 block — so the pair is
+  # rendered twice rather than shared.
+  static_s3_credentials = var.object_storage_access_key_id != null
 
   thanos_objstore_config = local.storage == null ? null : (
     local.storage.cloud == "aws" ? yamlencode({
@@ -109,6 +150,14 @@ locals {
           endpoint = local.s3_endpoint
         },
         local.storage.region == null ? {} : { region = local.storage.region },
+        # The chart renders this whole document into a Secret
+        # (`global.objstore.createSecret`), so the key is not exposed by putting
+        # it here.
+        !local.static_s3_credentials ? {} : {
+          access_key = var.object_storage_access_key_id
+          secret_key = var.object_storage_secret_access_key
+        },
+        !local.s3_insecure ? {} : { insecure = true },
       )
       }) : local.storage.cloud == "gcp" ? yamlencode({
       type   = "GCS"
@@ -129,7 +178,7 @@ locals {
   # separate document is closer to how the values list actually composes.
   storage_documents = local.storage == null ? [] : [yamlencode({
     loki = {
-      loki = {
+      loki = merge({
         storage = {
           bucketNames = {
             chunks = local.storage.loki_bucket
@@ -147,6 +196,11 @@ locals {
                 # Named rather than left to be parsed back out of the endpoint
                 # host, so request signing does not depend on that inference.
                 local.storage.region == null ? {} : { region = local.storage.region },
+                !local.static_s3_credentials ? {} : {
+                  access_key_id     = var.object_storage_access_key_id
+                  secret_access_key = var.object_storage_secret_access_key
+                },
+                !local.s3_insecure ? {} : { insecure = true },
               )
             },
             local.storage.cloud != "azure" ? {} : {
@@ -164,7 +218,16 @@ locals {
         schemaConfig = { configs = local.loki_schema_configs }
         # Must match storage.object_store.type or the compactor fails at startup.
         compactor = { delete_request_store = local.loki_object_store }
-      }
+        },
+        !local.static_s3_credentials ? {} : {
+          # **Load-bearing.** The Loki chart defaults `configStorageType` to
+          # ConfigMap, and the rendered config carries `secret_access_key`
+          # verbatim — so leaving the default publishes the key to anyone who can
+          # read ConfigMaps in the namespace. Thanos needs no equivalent: its
+          # objstore document already renders into a Secret.
+          configStorageType = "Secret"
+        }
+      )
       serviceAccount = { annotations = local.storage.loki_service_account_annotations }
 
       # With NetworkPolicy on, Loki has no egress to object storage or STS
@@ -173,7 +236,7 @@ locals {
       # endpoint's CIDR through additional_values where you can.
       networkPolicy = local.storage.cloud != "aws" ? {} : {
         externalStorage = {
-          ports = [443]
+          ports = local.s3_egress_ports
           cidrs = ["0.0.0.0/0"]
         }
       }

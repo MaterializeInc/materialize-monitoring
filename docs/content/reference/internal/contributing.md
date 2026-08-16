@@ -80,9 +80,13 @@ Two examples are rendered, `aws` and `gcp`, and that is not redundancy — the c
 make e2e-cluster          # kind cluster + the namespaces a real install has
 make e2e-tier1            # chart, hermetic shape
 make e2e-verify-tier1     # assert the logging round trip
-make e2e-generic-cloud    # rustfs + CNPG substrate (tier-2 base)
+make e2e-tier1-down       # remove tier 1 so the same cluster can host tier 2
+make e2e-tier2            # rustfs + CNPG substrate, then the module onto it
+make e2e-verify-tier2     # same assertions, with Thanos live
 make e2e-cluster-down
 ```
+
+The tiers do not coexist — both name their CRDs release `mzmon-crds`, so switching needs `make e2e-tier1-down` first (or a fresh cluster, which is slower).
 
 The assertions themselves live in `packages/mz-monitoring-e2e`, a Rust workspace member, and there is one binary for every tier.
 It reads the release's own coalesced Helm values to decide which assertions apply, so the tier is a property of the cluster rather than a flag — which means the same binary answers "is this stack healthy?" against a live cluster too:

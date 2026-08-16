@@ -223,6 +223,38 @@ variable "object_storage" {
   }
 }
 
+variable "object_storage_access_key_id" {
+  description = <<-EOT
+    Static access key for an S3-compatible object store, for deployments that have no workload
+    identity to bind to — an on-prem or self-hosted store (MinIO, rustfs, Ceph), or a cluster whose
+    IAM provider does not trust its OIDC issuer.
+
+    Prefer workload identity wherever it exists: it rotates, and the
+    `object_storage.*_service_account_annotations` maps are how it is configured. These two
+    variables are the fallback, not the default path.
+
+    Set both or neither. `aws` only — GCS takes a service-account key and Azure a storage-account
+    key, neither of which is an access-key pair; configure those through `additional_values`.
+  EOT
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "object_storage_secret_access_key" {
+  description = <<-EOT
+    Secret key paired with `object_storage_access_key_id`.
+
+    Reaches the backends as a Secret in both cases, never a ConfigMap: Thanos already renders its
+    objstore config into one, and the module switches Loki's `configStorageType` to `Secret` when
+    these are set — the chart's default puts the rendered config in a ConfigMap, which would publish
+    this value to anyone with read access to the namespace.
+  EOT
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 # ==============================================================================
 # Extra metrics destinations
 # ==============================================================================

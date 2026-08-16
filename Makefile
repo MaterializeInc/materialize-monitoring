@@ -480,6 +480,51 @@ e2e-generic-cloud-down:
 			-var 'kube_context=$(KIND_CONTEXT)' )
 .PHONY: e2e-generic-cloud-down
 
+# Remove the tier-1 install so the same cluster can host tier 2.
+#
+# Needed because the two tiers collide rather than coexist: both name their CRDs
+# release `mzmon-crds` in `monitoring`, and Helm refuses a name already in use —
+# so a tier-2 apply against a tier-1 cluster fails on the first release it tries
+# to create. Recreating the cluster also works and takes minutes longer.
+#
+# Order is load-bearing. The main release goes first because its `pre-delete`
+# hook removes the Grafana custom resources; take the CRDs out from under it and
+# their finalizers have no remover, leaving the CRDs wedged in Terminating.
+#
+# PVCs outlive their StatefulSets by design, and a tier-2 Loki that adopts a
+# tier-1 filesystem volume is a confusing failure — so they go too. Scoped to the
+# release namespace: the substrate keeps its own in `mzmon-cloud`.
+e2e-tier1-down:
+	-helm uninstall mzmon $(HELM_KUBE) --namespace monitoring --wait --timeout 5m
+	-helm uninstall mzmon-crds $(HELM_KUBE) --namespace monitoring --wait --timeout 5m
+	$(KUBECTL) delete pvc -n monitoring --all --ignore-not-found
+.PHONY: e2e-tier1-down
+
+# Tier 2: the substrate, then the monitoring module composed onto it.
+#
+# Two applies rather than one root, because the substrate configures its own
+# providers so it stays applyable alone; the tier-2 root reads its state. That is
+# also why this depends on `e2e-generic-cloud` rather than duplicating it.
+e2e-tier2: e2e-generic-cloud
+	( cd terraform/test/tier2 && \
+		$(TERRAFORM) init -input=false >/dev/null && \
+		$(TERRAFORM) apply -auto-approve -input=false \
+			-var 'kube_context=$(KIND_CONTEXT)' )
+.PHONY: e2e-tier2
+
+# Assert the tier-2 stack. Same binary and same target as tier 1 — the Thanos
+# assertions that report `ignored` there run here, because the values now enable
+# Thanos.
+e2e-verify-tier2: E2E_DIAGNOSTICS_DIR = e2e-diagnostics-tier2
+e2e-verify-tier2: e2e-verify
+.PHONY: e2e-verify-tier2
+
+e2e-tier2-down:
+	( cd terraform/test/tier2 && \
+		$(TERRAFORM) destroy -auto-approve -input=false \
+			-var 'kube_context=$(KIND_CONTEXT)' )
+.PHONY: e2e-tier2-down
+
 ### HUGO DOCS ###
 
 serve-docs:

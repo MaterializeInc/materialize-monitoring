@@ -189,6 +189,192 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
     # The endpoint the module wrote is what must appear, not merely *an*
     # endpoint: the chart's default would satisfy a bare presence check even if
     # the module contributed nothing.
+    # Static object-storage credentials (DEP-203).
+    #
+    # Gated on the *module call* declaring the variable, read from the plan's
+    # configuration rather than from the rendered output. Gating on the output
+    # would be circular: if the module stopped composing the credential, the gate
+    # would stop firing and the check would pass. The first version of this did
+    # exactly that and reported OK against a deliberately broken module.
+    expected_key="$(jq -r '
+        .configuration.root_module.module_calls.monitoring.expressions
+        .object_storage_access_key_id.constant_value // empty
+    ' "${plan_json}" 2>/dev/null || true)"
+
+    if [ -n "${expected_key}" ]; then
+        # Three things land, each failing differently: the key in Loki's own s3
+        # block (chunk writes 403), the key in the Thanos objstore document
+        # (receive and store fail the same way), and `configStorageType: Secret`.
+        # That last one is not a correctness bug at all — everything works with it
+        # wrong — it just publishes the secret key in a ConfigMap, which is
+        # exactly why it needs an assertion rather than trust.
+        # Asserted against the composed *values*, not the rendered manifests:
+        # once the config lands in a Secret it is base64, so a plaintext grep of
+        # the render would fail for the very reason the fix is correct.
+        # `yamlencode` quotes every key, so these have to tolerate `"key": "value"`
+        # as well as the bare form.
+        missing_cred=""
+        grep -hqE "\"?access_key_id\"?: \"?${expected_key}\"?" "${WORK_DIR}/${example}"-[0-9]*.yaml \
+            || missing_cred="${missing_cred} loki-s3"
+        grep -hqE "\"?access_key\"?: \"?${expected_key}\"?" "${WORK_DIR}/${example}"-[0-9]*.yaml \
+            || missing_cred="${missing_cred} thanos-objstore"
+
+        if [ -n "${missing_cred}" ]; then
+            echo "  !! ${example}: static credentials did not reach:${missing_cred}" >&2
+            echo "     Those backends fall back to the default credential chain and fail" >&2
+            echo "     to authenticate at pod start, not at plan time." >&2
+            status=1
+            continue
+        fi
+
+        # The security half, stated as what must *not* happen: the key may appear
+        # in a Secret (Helm writes those with `stringData`, so cleartext in the
+        # manifest is normal and it is still a Secret at rest) and nowhere else.
+        # The chart defaults Loki's configStorageType to ConfigMap and the
+        # rendered Loki config carries secret_access_key verbatim, so a
+        # regression puts it in a ConfigMap — which works perfectly and publishes
+        # the key to anyone with get on ConfigMaps. That is exactly the kind of
+        # thing that needs an assertion rather than trust.
+        expected_secret="$(jq -r '
+            .configuration.root_module.module_calls.monitoring.expressions
+            .object_storage_secret_access_key.constant_value // empty
+        ' "${plan_json}" 2>/dev/null || true)"
+
+        if [ -n "${expected_secret}" ]; then
+            leaked="$(python3 -c '
+import sys
+rendered, needle = sys.argv[1], sys.argv[2]
+bad = []
+for doc in open(rendered).read().split("\n---"):
+    if needle not in doc:
+        continue
+    kind = next((l.split(":", 1)[1].strip() for l in doc.splitlines()
+                 if l.startswith("kind:")), "?")
+    if kind == "Secret":
+        continue
+    name = next((l.split(":", 1)[1].strip() for l in doc.splitlines()
+                 if l.strip().startswith("name:")), "?")
+    bad.append(kind + "/" + name)
+print(" ".join(sorted(set(bad))))
+' "${rendered}" "${expected_secret}")"
+
+            if [ -n "${leaked}" ]; then
+                echo "  !! ${example}: the secret access key reached non-Secret objects:${leaked}" >&2
+                echo "     Check that Loki's configStorageType is Secret; the chart default is" >&2
+                echo "     ConfigMap, which works but publishes the key to the namespace." >&2
+                status=1
+                continue
+            fi
+        fi
+
+        # A scheme in the endpoint has to be stripped and turned into the
+        # insecure flag, in *both* backends. Checked structurally rather than by
+        # grep: the two write the same key name in different places, so a flat
+        # search is satisfied by either one alone — the first version of this
+        # passed with Loki's flag deliberately removed, because Thanos still had
+        # its own.
+        #
+        # Both halves fail differently and neither error names the value that
+        # caused it: a surviving scheme is "Endpoint url cannot have fully
+        # qualified paths" at startup, and a missing insecure flag is a TLS
+        # handshake against a plaintext port.
+        given_ep="$(jq -r '
+            .configuration.root_module.module_calls.monitoring.expressions
+            .object_storage.constant_value.endpoint // empty
+        ' "${plan_json}" 2>/dev/null || true)"
+
+        case "${given_ep}" in
+            http://*)
+                if ! ${PY_RUN} python - "${given_ep}" "${WORK_DIR}/${example}"-[0-9]*.yaml <<'PYEOF'; then
+import sys, yaml
+
+given = sys.argv[1]
+bare = given.split("://", 1)[1]
+found = {}
+
+for path in sys.argv[2:]:
+    with open(path) as fh:
+        doc = yaml.safe_load(fh) or {}
+    s3 = (doc.get("loki", {}).get("loki", {}).get("storage", {})
+             .get("object_store", {}).get("s3"))
+    if isinstance(s3, dict):
+        found["loki"] = s3
+    cfg = doc.get("thanos", {}).get("global", {}).get("objstore", {}).get("config")
+    if isinstance(cfg, str):
+        found["thanos"] = (yaml.safe_load(cfg) or {}).get("config", {})
+
+problems = []
+for name in ("loki", "thanos"):
+    block = found.get(name)
+    if block is None:
+        problems.append(f"{name}: no s3 config in the composed values")
+        continue
+    endpoint = str(block.get("endpoint", ""))
+    if "://" in endpoint:
+        problems.append(f"{name}: endpoint kept its scheme ({endpoint})")
+    elif endpoint != bare:
+        problems.append(f"{name}: endpoint is {endpoint!r}, expected {bare!r}")
+    if block.get("insecure") is not True:
+        problems.append(f"{name}: insecure is {block.get('insecure')!r}, expected True")
+
+for p in problems:
+    print(f"     {p}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+PYEOF
+                    echo "  !! ${example}: the http:// endpoint did not compose correctly" >&2
+                    status=1
+                    continue
+                fi
+                echo "    http:// endpoint reached both backends bare, with insecure set"
+                ;;
+        esac
+
+        # Loki's egress policy has to name the port the endpoint is actually
+        # on, *and* keep 443 for STS. Hardcoded at 443 it blocks any self-hosted
+        # store, and the symptom names nothing useful: a bare `i/o timeout` in
+        # the index gateway and every query hanging to a 504. Swapped to only the
+        # store's port it would break workload identity instead, since the same
+        # rule is what reaches STS.
+        #
+        # Read structurally, because a grep for a port number matches anything on
+        # the page — including the endpoint it came from.
+        if ! ${PY_RUN} python - "${given_ep}" "${WORK_DIR}/${example}"-[0-9]*.yaml <<'PYEOF'; then
+import sys, yaml
+
+given = sys.argv[1]
+tail = given.rsplit(":", 1)[-1]
+want = int(tail) if tail.isdigit() else (80 if given.startswith("http://") else 443)
+
+ports = None
+for path in sys.argv[2:]:
+    with open(path) as fh:
+        doc = yaml.safe_load(fh) or {}
+    ext = (doc.get("loki", {}).get("networkPolicy", {}).get("externalStorage"))
+    if isinstance(ext, dict) and ext.get("ports") is not None:
+        ports = [int(p) for p in ext["ports"]]
+
+if ports is None:
+    sys.exit(0)  # no policy composed for this example; nothing to check
+
+problems = []
+if want not in ports:
+    problems.append(f"object storage is on :{want} but egress allows {ports}")
+if 443 not in ports:
+    problems.append(f"443 missing from {ports}; STS is always 443, so workload identity breaks")
+
+for p in problems:
+    print(f"     {p}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+PYEOF
+            echo "  !! ${example}: Loki's external-storage egress is wrong" >&2
+            status=1
+            continue
+        fi
+        echo "    Loki's external-storage egress covers the endpoint and STS"
+
+        echo "    static object-storage credentials reached loki, thanos, and a Secret"
+    fi
+
     if grep -q '^[[:space:]]*backend: s3$' "${rendered}"; then
         expected_ep="$(grep -hoE '"endpoint": *"[^"]+"' \
             "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \

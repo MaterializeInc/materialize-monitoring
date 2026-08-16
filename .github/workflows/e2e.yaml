@@ -111,7 +111,19 @@ jobs:
     # tier-1 gate and breaks against real object storage.
     if: ${{ (needs.changes.outputs.terraform == 'true' || needs.changes.outputs.chart == 'true') && !startsWith(github.head_ref, 'version-update/') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # A green run is ~5 minutes. The bound is set well above that on purpose:
+    # it has to clear a *failing* run, not a passing one.
+    #
+    # A job killed by `timeout-minutes` is cancelled, so its `if: failure()`
+    # diagnostics step never runs and the cluster dies with the runner — the
+    # exact "red E2E with no artifacts" the tier exists to avoid. Meanwhile a
+    # failing run is dominated by the suite's per-assertion deadline (180s each,
+    # serial), so a badly broken stack legitimately takes far longer than a
+    # healthy one: locally, runs with one or two failures took 12-14 minutes.
+    #
+    # 20 leaves room for that while still catching a genuine hang long before the
+    # 6-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -127,15 +139,30 @@ jobs:
             "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
           sudo install -m 0755 /tmp/kind /usr/local/bin/kind
 
+      # The suite is a workspace member, so this tier needs a toolchain too. Set
+      # up before the cluster so a compile error fails in seconds rather than
+      # after a long install.
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Build the assertion suite
+        run: cargo build -p mz-monitoring-e2e
+
       - name: Create cluster
         run: make e2e-cluster
 
-      # Currently the substrate only: rustfs, its buckets, and CNPG. This is
-      # already a real check — it proves the storage and database a cloud wrapper
-      # stands in for come up on a clean cluster. It grows into the full tier when
-      # the root composing this with the monitoring module lands.
-      - name: Provision the generic-cloud substrate
-        run: make e2e-generic-cloud
+      # Substrate, then the module composed onto it. `e2e-tier2` depends on
+      # `e2e-generic-cloud`, so this runs both — the substrate stays separately
+      # applyable, which is why it is its own root.
+      - name: Provision the substrate and install the stack
+        run: make e2e-tier2
+
+      # The assertions that only this tier can run. Tier 1 has no object storage,
+      # so its five Thanos trials report `ignored`; here they execute, and with
+      # them the storage wiring, the static-credential path, and Grafana on a real
+      # Postgres.
+      - name: Verify the stack
+        run: make e2e-verify-tier2
 
       - name: Collect diagnostics
         if: failure()

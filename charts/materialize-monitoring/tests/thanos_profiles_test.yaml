@@ -130,7 +130,19 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --chunk-pool-size=512MB
+      # Both halves of the index cache, not just the total. `--index-cache-size`
+      # alone leaves `max_item_size` at Thanos's 125MiB default, and Store
+      # refuses to start when the total is below it — which is what this profile
+      # did until tier 2 installed it for the first time. The earlier version of
+      # this assertion pinned that exact broken flag, so it is a good reminder
+      # that a render test proves shape and not startup.
+      #
+      # `large` needs no equivalent: its 2GB total is already above the default
+      # item size, so the shorthand is safe there.
       - contains:
+          path: spec.template.spec.containers[0].args
+          content: '--index-cache.config={"type": "IN-MEMORY", "config": {"max_size": "100MB", "max_item_size": "10MB"}}'
+      - notContains:
           path: spec.template.spec.containers[0].args
           content: --index-cache-size=100MB
       - equal:

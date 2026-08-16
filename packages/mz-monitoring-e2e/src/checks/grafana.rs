@@ -16,13 +16,15 @@
 //! suite would keep asserting the dashboards it knows about and never notice the
 //! new one failing to land.
 
+use std::time::Duration;
+
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use kube::api::DynamicObject;
 use serde_json::Value;
 
-use crate::cluster::{ServiceTarget, encode_segment};
+use crate::cluster::{ServiceTarget, encode_segment, unix_nanos_ago, unix_nanos_now};
 use crate::ctx::Ctx;
 use crate::retry::retry_until;
 
@@ -212,9 +214,14 @@ pub async fn dashboards_provisioned(ctx: &Ctx) -> Result<()> {
 pub async fn loki_datasource_query(ctx: &Ctx) -> Result<()> {
     let target = access(ctx).await?;
     let uid = ctx.features.datasource_uid("loki");
+    // Time-bounded for the same reason the direct Loki check is: unbounded, the
+    // label endpoint fans out across every index period and a distributed Loki
+    // answers 504 — which Grafana passes through as a 502.
     let path = format!(
-        "api/datasources/proxy/uid/{}/loki/api/v1/labels",
-        encode_segment(&uid)
+        "api/datasources/proxy/uid/{}/loki/api/v1/labels?start={}&end={}",
+        encode_segment(&uid),
+        unix_nanos_ago(Duration::from_secs(3600))?,
+        unix_nanos_now()?,
     );
 
     retry_until(
