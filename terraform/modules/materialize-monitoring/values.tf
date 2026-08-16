@@ -113,6 +113,27 @@ locals {
   s3_endpoint = local.s3_endpoint_given == null ? null : replace(local.s3_endpoint_given, "/^https?:///", "")
   s3_insecure = local.s3_endpoint_given != null && can(regex("^http://", local.s3_endpoint_given))
 
+  # The port object storage is actually on, for Loki's egress NetworkPolicy.
+  #
+  # Hardcoding 443 here is what broke tier 2: a self-hosted store answers on its
+  # own port (rustfs on 9000), the policy blocked the dial, and Loki's index
+  # gateway failed with a bare `i/o timeout` — which surfaces to a user as every
+  # query hanging until the frontend returns 504, with nothing naming the policy.
+  # Thanos hid it further by working fine, since the chart writes no policy for it.
+  s3_port = local.s3_endpoint == null ? 443 : try(
+    tonumber(regex(":(\\d+)$", local.s3_endpoint)[0]),
+    local.s3_insecure ? 80 : 443,
+  )
+
+  # 443 stays in the list unconditionally, because this same rule is what grants
+  # egress to **STS** for workload identity — always 443, and unrelated to
+  # wherever the bucket lives. Swapping it for the store's port rather than
+  # adding to it would break IRSA on any deployment that puts S3 somewhere else,
+  # and the failure is a credential fetch hanging at pod start, not a config
+  # error. A superset also means this can only widen what the rule allowed
+  # before, so no existing deployment loses access.
+  s3_egress_ports = distinct(concat([local.s3_port], [443]))
+
   # Static credentials, when the deployment has no workload identity to bind to.
   # Both backends reach S3 through the same Thanos objstore client, but they name
   # the keys differently — `access_key`/`secret_key` in the objstore config,
@@ -215,7 +236,7 @@ locals {
       # endpoint's CIDR through additional_values where you can.
       networkPolicy = local.storage.cloud != "aws" ? {} : {
         externalStorage = {
-          ports = [443]
+          ports = local.s3_egress_ports
           cidrs = ["0.0.0.0/0"]
         }
       }

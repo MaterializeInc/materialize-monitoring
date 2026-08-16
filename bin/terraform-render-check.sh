@@ -329,6 +329,49 @@ PYEOF
                 ;;
         esac
 
+        # Loki's egress policy has to name the port the endpoint is actually
+        # on, *and* keep 443 for STS. Hardcoded at 443 it blocks any self-hosted
+        # store, and the symptom names nothing useful: a bare `i/o timeout` in
+        # the index gateway and every query hanging to a 504. Swapped to only the
+        # store's port it would break workload identity instead, since the same
+        # rule is what reaches STS.
+        #
+        # Read structurally, because a grep for a port number matches anything on
+        # the page — including the endpoint it came from.
+        if ! ${PY_RUN} python - "${given_ep}" "${WORK_DIR}/${example}"-[0-9]*.yaml <<'PYEOF'; then
+import sys, yaml
+
+given = sys.argv[1]
+tail = given.rsplit(":", 1)[-1]
+want = int(tail) if tail.isdigit() else (80 if given.startswith("http://") else 443)
+
+ports = None
+for path in sys.argv[2:]:
+    with open(path) as fh:
+        doc = yaml.safe_load(fh) or {}
+    ext = (doc.get("loki", {}).get("networkPolicy", {}).get("externalStorage"))
+    if isinstance(ext, dict) and ext.get("ports") is not None:
+        ports = [int(p) for p in ext["ports"]]
+
+if ports is None:
+    sys.exit(0)  # no policy composed for this example; nothing to check
+
+problems = []
+if want not in ports:
+    problems.append(f"object storage is on :{want} but egress allows {ports}")
+if 443 not in ports:
+    problems.append(f"443 missing from {ports}; STS is always 443, so workload identity breaks")
+
+for p in problems:
+    print(f"     {p}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+PYEOF
+            echo "  !! ${example}: Loki's external-storage egress is wrong" >&2
+            status=1
+            continue
+        fi
+        echo "    Loki's external-storage egress covers the endpoint and STS"
+
         echo "    static object-storage credentials reached loki, thanos, and a Secret"
     fi
 
