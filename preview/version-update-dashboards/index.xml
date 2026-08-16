@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/</link><description>Recent content on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Mon, 03 Aug 2026 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/index.xml" rel="self" type="application/rss+xml"/><item><title>Architecture</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/logs-and-events/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/logs-and-events/architecture/</guid><description>&lt;h1 id="logging-architecture"&gt;Logging Architecture&lt;a class="anchor" href="#logging-architecture"&gt;#&lt;/a&gt;&lt;/h1&gt;
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>materialize-monitoring Documentation</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/</link><description>Recent content on materialize-monitoring Documentation</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Thu, 13 Aug 2026 00:00:00 +0000</lastBuildDate><atom:link href="https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/index.xml" rel="self" type="application/rss+xml"/><item><title>Architecture</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/logs-and-events/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/logs-and-events/architecture/</guid><description>&lt;h1 id="logging-architecture"&gt;Logging Architecture&lt;a class="anchor" href="#logging-architecture"&gt;#&lt;/a&gt;&lt;/h1&gt;
 &lt;p&gt;This page describes how container logs and Kubernetes &lt;a href="../../o11y-glossary/#logs-and-events"&gt;events&lt;/a&gt; move through &lt;code&gt;materialize-monitoring&lt;/code&gt;: collected at the edge by &lt;a href="../../o11y-glossary/#collection-and-pipeline"&gt;Alloy&lt;/a&gt;, stored in &lt;a href="../../o11y-glossary/#stack-components"&gt;Loki&lt;/a&gt; (the default logging backend), and queried through Grafana.&lt;/p&gt;
 &lt;p&gt;The other pages in this section cover each stage in depth, including its day-2 and customization operations:&lt;/p&gt;
 &lt;ul&gt;
@@ -45,6 +45,13 @@ The contents of this chapter describe how to install and configure
  &lt;a href="https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260803-terraform-modules/"&gt;Terraform Modules for materialize-monitoring&lt;/a&gt;
  &lt;ul&gt;
  &lt;li&gt;&lt;strong&gt;lastmod:&lt;/strong&gt; 2026-08-03 00:00:00 &amp;#43;0000 UTC&lt;/li&gt;
+ &lt;li&gt;&lt;strong&gt;status:&lt;/strong&gt; Draft&lt;/li&gt;
+ &lt;/ul&gt;
+ &lt;/li&gt;
+ &lt;li&gt;
+ &lt;a href="https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260813-byoc-observability/"&gt;Observability for Bring-Your-Own-Cloud&lt;/a&gt;
+ &lt;ul&gt;
+ &lt;li&gt;&lt;strong&gt;lastmod:&lt;/strong&gt; 2026-08-13 00:00:00 &amp;#43;0000 UTC&lt;/li&gt;
  &lt;li&gt;&lt;strong&gt;status:&lt;/strong&gt; Draft&lt;/li&gt;
  &lt;/ul&gt;
  &lt;/li&gt;
@@ -1515,4 +1522,29 @@ prerequisites" table is the work-in-this-repo list; keep it in sync with the Roa
 &lt;h2 id="goals"&gt;Goals&lt;a class="anchor" href="#goals"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;Functional requirements, framed as value-first user stories.
 Each describes &lt;em&gt;what&lt;/em&gt; a user needs and &lt;em&gt;why it matters&lt;/em&gt;; the &lt;a href="#technical-bluf"&gt;Technical BLUF&lt;/a&gt; and the sections below describe &lt;em&gt;how&lt;/em&gt; we deliver it.
-Priority tags (&lt;strong&gt;Must&lt;/strong&gt; / &lt;strong&gt;Should&lt;/strong&gt; / &lt;strong&gt;Could&lt;/strong&gt;) are relative to the first shipped version of the module.&lt;/p&gt;</description></item></channel></rss>
+Priority tags (&lt;strong&gt;Must&lt;/strong&gt; / &lt;strong&gt;Should&lt;/strong&gt; / &lt;strong&gt;Could&lt;/strong&gt;) are relative to the first shipped version of the module.&lt;/p&gt;</description></item><item><title>Observability for Bring-Your-Own-Cloud</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260813-byoc-observability/</link><pubDate>Thu, 13 Aug 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260813-byoc-observability/</guid><description>&lt;h1 id="observability-for-bring-your-own-cloud"&gt;Observability for Bring-Your-Own-Cloud&lt;a class="anchor" href="#observability-for-bring-your-own-cloud"&gt;#&lt;/a&gt;&lt;/h1&gt;
+
+&lt;table class="param-table"&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;
+ &lt;th&gt;author&lt;/th&gt;
+ &lt;td&gt;Heather Lapointe&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;lastmod&lt;/th&gt;
+ &lt;td&gt;2026-08-13 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;publishdate&lt;/th&gt;
+ &lt;td&gt;2026-08-13 00:00:00 &amp;#43;0000 UTC&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;tr&gt;
+ &lt;th&gt;status&lt;/th&gt;
+ &lt;td&gt;Draft&lt;/td&gt;
+ &lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;This doc is the &lt;strong&gt;BYOC gateway-to-gateway architecture and proposal&lt;/strong&gt; owed by the &lt;a href="../../roadmap/#byoc"&gt;Roadmap&lt;/a&gt; (&lt;a href="https://linear.app/materializeinc/issue/DEP-219" rel="external nofollow" class="internal-protected-link"&gt;DEP-219&lt;/a&gt;), and it covers the two rows next to it: the &lt;a href="https://linear.app/materializeinc/issue/DEP-124" rel="external nofollow" class="internal-protected-link"&gt;dual-destination pipeline pattern&lt;/a&gt; and &lt;a href="https://linear.app/materializeinc/issue/DEP-220" rel="external nofollow" class="internal-protected-link"&gt;sanitizing telemetry before control-plane egress&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;The shape is centralized monitoring in our management/control plane, fed by an OTLP ingress that customer environments reach with a client certificate shipped in their license.
+Inside the customer environment, &lt;code&gt;materialize-monitoring&lt;/code&gt; deploys as it does for any self-managed install — the full stack, their Grafana, their retention — and a &lt;em&gt;second&lt;/em&gt;, reduced copy of telemetry crosses the boundary to us.&lt;/p&gt;</description></item></channel></rss>
