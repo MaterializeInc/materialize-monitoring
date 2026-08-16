@@ -2096,34 +2096,52 @@ memory limit above.
       "mountPath": "/run/log/journal",
       "name": "runlogjournal",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/machine-id",
+      "name": "machineid",
+      "readOnly": true
     }
   ],
   "varlog": true
 }</pre>
 </td>
       <td class="helm-value-desc">Volume mounts to expose to alloy agent.
-`varlog` covers the container logs *and* a persistent systemd journal,
-which lives under `/var/log/journal`. The journal mount below covers
-the one case it misses.
+Three mounts feed `loki.source.journal`, and journal collection needs all
+three. Every way of getting it wrong fails the same silent way: the
+component starts, reports healthy, and reads nothing.
 
-**A volatile journal is not under `/var/log`.** With `Storage=volatile`
-journald writes to `/run/log/journal/<machine-id>/` and never creates
-`/var/log/journal` at all — that is the default on Bottlerocket, and on
-`kindest/node`, so it is the configuration on both a real EKS cluster and
-the E2E tier. Without `/run/log/journal`, `loki.source.journal` starts
-cleanly, reports healthy, and collects nothing: the most misleading state
-of the three.
+**Where the journal lives is host-specific**, so both roots have to be
+covered. Observed:
+
+| Host | Journal | Covered by |
+| --- | --- | --- |
+| Bottlerocket (EKS) | `/var/log/journal/<machine-id>/`, persistent | `varlog` |
+| `kindest/node` | `/run/log/journal/<machine-id>/`, volatile | `runlogjournal` |
+
+Bottlerocket also has an empty `/run/log/journal`, and kind has no
+`/var/log/journal` at all — neither is a problem, but neither alone is
+enough either.
 
 Deliberately *not* mounting `/var/log/journal` directly: journald's default
 `Storage=auto` switches to persistent storage as soon as that directory
 exists, so a `hostPath` mount that creates it would change how the host
 journals. `varlog` already exposes it wherever it legitimately exists.
 
-`/etc/machine-id` is **not** mounted, though journal DaemonSets commonly do.
-It is unnecessary: `sd_journal_open` discovers every journal directory
-under the paths it scans rather than only `<path>/<machine-id>`, so
-collection works without it. Verified on kind by removing it — entries kept
-arriving. Do not add it back without evidence it is needed.
+**`/etc/machine-id` is required, and its absence is silent.** systemd stores
+the journal under `<path>/<machine-id>/`, and the container has no
+machine-id of its own — the Alloy image ships none. Without the host's,
+`loki.source.journal` starts, reports healthy, and reads zero lines.
+
+Measured on a Bottlerocket node, controlling for the restart that a mount
+change forces: with the mount, `loki_source_journal_target_lines_total`
+went 0 -> 1244; removed again, back to 0 on a freshly started pod.
+
+A kind node happens to work without it, which makes this a bad thing to
+test on kind alone — the two differ in *which* directory holds the journal
+(`/run/log/journal` there, `/var/log/journal` on Bottlerocket), and only
+the latter needs the ID to resolve. Do not remove this because kind stays
+green.
 </td>
     </tr>
     <tr>
