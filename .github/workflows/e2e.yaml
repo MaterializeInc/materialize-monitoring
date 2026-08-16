@@ -111,10 +111,19 @@ jobs:
     # tier-1 gate and breaks against real object storage.
     if: ${{ (needs.changes.outputs.terraform == 'true' || needs.changes.outputs.chart == 'true') && !startsWith(github.head_ref, 'version-update/') }}
     runs-on: ubuntu-24.04
-    # Longer than tier 1's: this installs microservice Loki, Thanos, Grafana,
-    # CNPG and rustfs rather than a filesystem-mode Loki. A hung wait is still the
-    # expected failure mode, so the bound stays.
-    timeout-minutes: 45
+    # A green run is ~5 minutes. The bound is set well above that on purpose:
+    # it has to clear a *failing* run, not a passing one.
+    #
+    # A job killed by `timeout-minutes` is cancelled, so its `if: failure()`
+    # diagnostics step never runs and the cluster dies with the runner — the
+    # exact "red E2E with no artifacts" the tier exists to avoid. Meanwhile a
+    # failing run is dominated by the suite's per-assertion deadline (180s each,
+    # serial), so a badly broken stack legitimately takes far longer than a
+    # healthy one: locally, runs with one or two failures took 12-14 minutes.
+    #
+    # 20 leaves room for that while still catching a genuine hang long before the
+    # 6-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
