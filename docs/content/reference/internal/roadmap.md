@@ -115,7 +115,7 @@ That makes it dependent on those existing, so it sequences last within OO-M2.
 ### Pipelines (Alloy)
 
 Alloy carries both metrics and logs.
-The agent and gateway pipelines are in place; the OTLP export path is the near-term work.
+The agent and gateway pipelines are in place, the OTLP export path shipped with FCO-M2, and the metrics half now delivers — the gateway scrapes every kubelet's cAdvisor endpoint. The near-term work is the OTLP/gRPC agent→gateway transport with a node-local WAL.
 
 | Item | Milestone | Status |
 |---|---|---|
@@ -123,7 +123,7 @@ The agent and gateway pipelines are in place; the OTLP export path is the near-t
 | Native **OTLP exporter** (forwarding workflows evaluated for Honeycomb, Datadog, Google Cloud Observability) | FCO-M2 | ✅ |
 | Gateway pipeline (ported from the staging-gateway reference; log processing + loki.source.api / OTLP-log ingress) | FCO-M2 | ✅ |
 | Loki (logs) + Thanos (metrics) wiring | FCO-M2 | ✅ |
-| Agent **metrics path** + `prometheus.exporter.cadvisor` ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — the agent is logs-only today | OO-M1 | ⬜ |
+| Agent **metrics path** ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — superseded rather than deferred: `prometheus.exporter.cadvisor` was removed from the agent, and the gateway scrapes each kubelet's `/metrics/cadvisor` instead. A per-agent cAdvisor cost ~750Mi against a 200Mi logs-only envelope, so the agent stays logs-only by design | OO-M1 | ✅ |
 | Agent → gateway transport over **OTLP/gRPC with a node-local WAL** ([DEP-189](https://linear.app/materializeinc/issue/DEP-189); `hostPath`, compaction-bounded); gateway stays stateless and backend fan-outs are unchanged | OO-M3 | ⬜ |
 | `otelcol.processor.transform` before the log bridge ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) — becomes load-bearing once agent logs arrive as OTLP | OO-M3 | ⬜ |
 | [Backup log collection path](https://linear.app/materializeinc/issue/CLO-180) for alloy-agent failures — today an agent crash loses the logs explaining why | OO-M3 | ⬜ |
@@ -138,7 +138,7 @@ These ship as the released **Prometheus Scrapers** component and are bundled int
 | ScrapeConfigs (consumed manually) | FCO-M1 | ✅ |
 | ServiceMonitors / PodMonitors (incl. GCP `PodMonitoring`) | FCO-M1 | ✅ |
 | Sync scrapers into the charts and docs | FCO-M1 | ✅ |
-| **cAdvisor on the bundled path** ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — the shipped `ScrapeConfig` is only consumable by Prometheus, and Alloy has no `prometheus.operator.scrapeconfigs` equivalent, so the Kubernetes dashboards have no data on the default Alloy → Thanos path | OO-M1 | ⬜ |
+| **cAdvisor on the bundled path** ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — the shipped `ScrapeConfig` is only consumable by Prometheus, and Alloy has no `prometheus.operator.scrapeconfigs` equivalent, so the Kubernetes dashboards had no data on the default Alloy → Thanos path | OO-M1 | ✅ (the gateway scrapes `/metrics/cadvisor` on every kubelet, on by default. Verified on EKS: 7/7 targets up, ~24.6k `container_*` series. kind additionally needs `pipeline.metrics.kubelet.tlsInsecureSkipVerify`, since it signs kubelet certs with a CA the pods do not trust — set in the tier-2 root, not the chart defaults, because leaving verification on is correct everywhere real) |
 | **node-exporter subchart** ([DEP-188](https://linear.app/materializeinc/issue/DEP-188)) — kept a separate workload rather than folded into the agent so its resource envelope stays known for bin-packed clusters. Ships on the `default` tag with a collector allowlist, a ServiceMonitor, a NetworkPolicy, and the `monitoring-critical` priority class | OO-M1 | ✅ |
 | NetworkPolicy for Thanos / Grafana / Alloy / Alertmanager / kube-state-metrics ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) — Loki and node-exporter have one | OO-M1 | ⬜ |
 | Generic `prometheus.io/scrape` discovery ([DEP-193](https://linear.app/materializeinc/issue/DEP-193)), default off, with exclusions generated from the same source as the monitors | OO-M3 | ⬜ |
@@ -146,7 +146,9 @@ These ship as the released **Prometheus Scrapers** component and are bundled int
 
 The cAdvisor and node-exporter rows are **parity gaps against the stack the Terraform repo shipped before the cutover**, which collected both.
 They are functional gaps in the chart's own default path, not Terraform-specific — the Terraform work only makes the bundled path everyone's default, which is what moved them to OO-M1.
-node-exporter has landed; cAdvisor is the remaining half, and until it does the Kubernetes container panels stay empty on the bundled path.
+Both have landed and both deliver: ~3.7k `node_*` and ~14k `container_*` series on the tier-2 cluster, and ~24.6k `container_*` on a real EKS cluster.
+
+That closes the parity gap, and it makes `container_*` and `node_*` assertions writable in the E2E suite for the first time — worth adding, because the failure mode across this whole area is *configured but returning nothing*, which no render test can see. Note the trap the chart already documents: a distribution signing kubelet certs with an untrusted CA fails the scrape quietly, so `up{job="cadvisor"}` is the thing to check when bringing up a new one.
 
 Long term, ServiceMonitors belong in the `materialize-operator` Helm chart rather than here.
 This repo carries them now to fill the gap, with the intent to hand them off once the operator owns that surface.
@@ -218,14 +220,14 @@ Adoption is the higher-value half — until routing exists nobody is paged, whic
 
 The profile set is **deliberately not finalized** — final shape is an OO-M1 activity, tracked as one issue ([DEP-190](https://linear.app/materializeinc/issue/DEP-190)) rather than four.
 The convention that has settled: **the chart defaults target a medium install**, and profiles are deltas away from it in both directions, each documenting the envelope it is sized for.
-Loki follows this today; Thanos has no sizing profiles at all (the chart sets no resources or replica counts for it).
+Loki and Thanos both follow it now.
 
 | Item | Milestone | Status |
 |---|---|---|
 | Loki sizing profiles (`small` / `large`, deltas from the medium defaults) | FCO-M2 | ✅ |
-| Thanos sizing profiles (`small` / `large`), mirroring the Loki convention | OO-M1 | ⬜ |
-| `kind` profile — CI-appropriate resource sizes only, no feature management, composable with the rest | OO-M1 | ⬜ |
-| Scheduling profiles (nodeSelector / tolerations / priorityClassName) and a storage-class profile, fanned out to subcharts | OO-M1 | ⬜ |
+| Thanos sizing profiles (`small` / `large`), mirroring the Loki convention | OO-M1 | ✅ (`small` had never actually been installed until tier 2 did it, and did not start: `--index-cache-size` alone leaves `max_item_size` at the 125MiB default, so any total below that fails validation. Fixed, and the unit test now pins the full `--index-cache.config`) |
+| `kind` profile — CI-appropriate resource sizes only, no feature management, composable with the rest | OO-M1 | ✅ (`kind`, plus `kind-tier1` for the hermetic E2E shape and `no-zone-spread` for clusters whose nodes carry no zone label) |
+| Scheduling profiles (nodeSelector / tolerations / priorityClassName) and a storage-class profile, fanned out to subcharts | OO-M1 | ✅ (tier 0 asserts the fan-out lands, since a value written to a path no subchart reads is still valid HCL) |
 | Profile-set finalization | OO-M1 | ⬜ |
 
 Scheduling and storage class are profiles rather than a `global.*` block so the subchart fan-out map is inspectable data that snapshot tests can pin, instead of an unverified projection living in a downstream consumer.
@@ -240,8 +242,8 @@ Scheduling and storage class are profiles rather than a `global.*` block so the 
 | `renovate` for automated dependency bumps | FCO-M2 | ✅ |
 | Chart-shape fail-fast: Thanos + Alloy validators wired into `mzmon.validate.collect`, snapshot tests pinning rendered service-account names and workload-identity subject strings | FCO-M3 | ✅ |
 | **Tier 0** — plan each Terraform example, extract the composed values, and render the chart against them (`make terraform-render`). Asserts values *land*, which `validate` cannot: a wrong value path is still valid HCL | FCO-M3 | ✅ |
-| **kind E2E**, path-filtered behind `e2e-gate`: tier-1 chart variant on `loki-test` + `kind-tier1`; tier-2 generic-cloud substrate (rustfs + CNPG) | FCO-M3 | 🔨 (both tiers install and are gated in CI; the tier-2 root composes substrate + module on `thanos-small`. A kind resource-sizing profile, and therefore medium-on-main, outstanding) |
-| **Rust E2E suite** ([DEP-185](https://linear.app/materializeinc/issue/DEP-185), `packages/mz-monitoring-e2e`): Grafana API dashboard + datasource-query assertions, Loki / Thanos direct health, Alloy support-bundle inspection, WAL durability across a gateway outage | OO-M1 | 🔨 (every capability in the ticket lands — Loki round trip, Grafana dashboards/datasources/proxied queries, Thanos store fanout and scrape assertions, Alloy support bundle. Verified green on tier 1 and against a real EKS cluster. WAL durability across a gateway outage outstanding, as is a tier-2 root to run the Thanos half in CI) |
+| **kind E2E**, path-filtered behind `e2e-gate`: tier-1 chart variant on `loki-test` + `kind-tier1`; tier-2 generic-cloud substrate (rustfs + CNPG) | FCO-M3 | ✅ (both tiers install and assert in CI. Tier 2 composes `terraform/test/generic-cloud` with the module via `terraform/test/tier2`, on `sizing = "small"` against rustfs and CNPG; ~5 min green. `make e2e-tier1-down` switches a cluster between tiers, which is needed because both name their CRDs release `mzmon-crds`) |
+| **Rust E2E suite** ([DEP-185](https://linear.app/materializeinc/issue/DEP-185), `packages/mz-monitoring-e2e`): Grafana API dashboard + datasource-query assertions, Loki / Thanos direct health, Alloy support-bundle inspection, WAL durability across a gateway outage | OO-M1 | 🔨 (15 assertions, green on tier 1, tier 2, and a real EKS cluster — Loki round trip, Grafana dashboards/datasources/proxied queries, Thanos store fanout and scrape assertions, Alloy support bundles. The Thanos half runs in CI at tier 2. WAL durability across a gateway outage outstanding, as are NetworkPolicy and mTLS, which the design doc assigns to tier 2) |
 | ArgoCD / FluxCD CI matrix ([DEP-111](https://linear.app/materializeinc/issue/DEP-111), [DEP-118](https://linear.app/materializeinc/issue/DEP-118)) | OO-M3 | ⬜ (very low priority) |
 
 The E2E suite subsumes what was previously tracked as a synthetic-data smoke test ([DEP-119](https://linear.app/materializeinc/issue/DEP-119), now closed as a duplicate).
