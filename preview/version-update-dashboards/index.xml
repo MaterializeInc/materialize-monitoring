@@ -200,6 +200,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;mzmon-lib/&lt;/code&gt;: Rust library — typed Alloy model, the &lt;code&gt;scrape&lt;/code&gt; transpiler, and the &lt;code&gt;query&lt;/code&gt; registry (model + rendering + metric extraction); embedded JSONSchemas under &lt;code&gt;schemas/{alloy,scrape,query}/&lt;/code&gt;; not consumed by customers&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;mz-monitoring-build/&lt;/code&gt;: Rust CLI for artifact generation (&lt;code&gt;gen_pipelines.rs&lt;/code&gt;, &lt;code&gt;gen_scrape_configs.rs&lt;/code&gt;, &lt;code&gt;extract_metrics.rs&lt;/code&gt;, &lt;code&gt;main.rs&lt;/code&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;mz-monitoring-check/&lt;/code&gt;: Rust schema/consistency checks&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mz-monitoring-e2e/&lt;/code&gt;: Rust assertion suite for a &lt;em&gt;running&lt;/em&gt; stack — one binary for every kind and cloud tier, reading the release&amp;rsquo;s coalesced Helm values to decide what applies (&lt;code&gt;make e2e-verify&lt;/code&gt;). Asserts only; installs nothing&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;code&gt;charts/&lt;/code&gt;
@@ -240,7 +241,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 &lt;li&gt;&lt;code&gt;test/generic-cloud/&lt;/code&gt;: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;code&gt;test/e2e/&lt;/code&gt;: kind cluster config, the tier-1 round-trip assertion, and the failure-diagnostics collector (&lt;code&gt;make e2e-*&lt;/code&gt;). Superseded in part by &lt;code&gt;packages/mz-monitoring-e2e&lt;/code&gt; once that lands&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;test/e2e/&lt;/code&gt;: kind cluster config and the failure-diagnostics collector (&lt;code&gt;make e2e-*&lt;/code&gt;). The assertions themselves live in &lt;code&gt;packages/mz-monitoring-e2e&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;docs/&lt;/code&gt;: Hugo docsite (the source of this page)
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;hugo.toml&lt;/code&gt;: site config; &lt;code&gt;go.mod&lt;/code&gt; / &lt;code&gt;go.sum&lt;/code&gt; pin the theme&lt;/li&gt;
@@ -1448,7 +1449,7 @@ reference/internal/releasing.md.
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id="container-images-v040-unreleased"&gt;Container Images v0.4.0 (Unreleased)&lt;a class="anchor" href="#container-images-v040-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;
-&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0170-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0170-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id="materialize-monitoring-helm-chart--terraform-module-v0162-unreleased"&gt;materialize-monitoring (Helm chart + Terraform module) v0.16.2 (Unreleased)&lt;a class="anchor" href="#materialize-monitoring-helm-chart--terraform-module-v0162-unreleased"&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;&lt;em&gt;Changes Pending&lt;/em&gt;&lt;/p&gt;</description></item><item><title>First-Class Production Loki Infrastructure</title><link>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/</link><pubDate>Sat, 27 Jun 2026 00:00:00 +0000</pubDate><guid>https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/</guid><description>&lt;h1 id="first-class-production-loki-infrastructure"&gt;First-Class Production Loki Infrastructure&lt;a class="anchor" href="#first-class-production-loki-infrastructure"&gt;#&lt;/a&gt;&lt;/h1&gt;
 
 &lt;table class="param-table"&gt;
