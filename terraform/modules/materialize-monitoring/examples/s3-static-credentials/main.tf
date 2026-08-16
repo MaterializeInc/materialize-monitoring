@@ -57,10 +57,12 @@ module "monitoring" {
     loki_bucket   = "example-mzmon-loki"
     thanos_bucket = "example-mzmon-thanos"
 
-    # An S3-compatible store reached by its own hostname. No region: the store
-    # is not AWS, so there is no regional host to derive and nothing to sign
-    # against a region.
-    endpoint = "objectstore.example.internal:9000"
+    # Named by URL, scheme included, which is how an S3-compatible store is
+    # normally addressed. The module strips the scheme — the objstore client
+    # rejects one outright — and reads `http://` as "use plain HTTP", so this one
+    # value also selects the transport. No region: the store is not AWS, so there
+    # is no regional host to derive and nothing to sign against a region.
+    endpoint = "http://objectstore.example.internal:9000"
 
     # No service-account annotations. That is the point of this example — the
     # deployment has no workload identity to bind to.

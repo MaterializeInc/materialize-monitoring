@@ -94,11 +94,24 @@ locals {
   # is derived here when the caller named only a region. The global host is the
   # last resort: it works in any region, since the client resolves the bucket's
   # own region from it.
-  s3_endpoint = local.storage == null || local.storage.cloud != "aws" ? null : coalesce(
+  s3_endpoint_given = local.storage == null || local.storage.cloud != "aws" ? null : coalesce(
     local.storage.endpoint,
     local.storage.region == null ? null : "s3.${local.storage.region}.amazonaws.com",
     "s3.amazonaws.com",
   )
+
+  # An S3-compatible store is normally named by URL, and the objstore client
+  # wants a bare `host:port` — given a scheme it fails at startup with
+  # "Endpoint url cannot have fully qualified paths", which names neither the
+  # offending value nor the component. So the scheme is stripped here rather than
+  # made the caller's problem.
+  #
+  # It also *selects the transport*: `http://` means plain HTTP, which the client
+  # will not do unless told. Deriving it from the scheme keeps one fact in one
+  # place; as two inputs they could disagree, and the failure for that is a TLS
+  # handshake error against a plaintext port.
+  s3_endpoint = local.s3_endpoint_given == null ? null : replace(local.s3_endpoint_given, "/^https?:///", "")
+  s3_insecure = local.s3_endpoint_given != null && can(regex("^http://", local.s3_endpoint_given))
 
   # Static credentials, when the deployment has no workload identity to bind to.
   # Both backends reach S3 through the same Thanos objstore client, but they name
@@ -123,6 +136,7 @@ locals {
           access_key = var.object_storage_access_key_id
           secret_key = var.object_storage_secret_access_key
         },
+        !local.s3_insecure ? {} : { insecure = true },
       )
       }) : local.storage.cloud == "gcp" ? yamlencode({
       type   = "GCS"
@@ -165,6 +179,7 @@ locals {
                   access_key_id     = var.object_storage_access_key_id
                   secret_access_key = var.object_storage_secret_access_key
                 },
+                !local.s3_insecure ? {} : { insecure = true },
               )
             },
             local.storage.cloud != "azure" ? {} : {

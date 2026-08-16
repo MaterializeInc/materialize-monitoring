@@ -187,7 +187,7 @@ This replaces the hand-rolled Prometheus + Grafana modules that repo shipped, wh
 | Per-cloud wrapper modules; retire the legacy modules downstream | FCO-M3 | 🔨 (AWS + GCP built; Azure in review) |
 | Terraform install guide + tfvars reference + Terraform ↔ chart version compatibility row | FCO-M3 | 🔨 (in review) |
 | Levers beyond the base install: `storage_class`, `google_cloud_metrics` (GCM fan-out with an importance tier), and a values hash that rolls Alloy on a config change | FCO-M3 | ✅ |
-| Static object-storage credentials ([DEP-203](https://linear.app/materializeinc/issue/DEP-203)), so a consumer without workload identity does not need `additional_values` | OO-M1 | ⬜ |
+| Static object-storage credentials ([DEP-203](https://linear.app/materializeinc/issue/DEP-203)), so a consumer without workload identity does not need `additional_values` | OO-M1 | ✅ (`object_storage_access_key_id` / `_secret_access_key`; tier-0 asserts they reach both backends and that Loki's config becomes a Secret rather than a ConfigMap) |
 | Expose the remaining destinations ([DEP-204](https://linear.app/materializeinc/issue/DEP-204)) — OTLP, Datadog, and the full `authType` set. The chart supports all of them; the module surfaces only `google_cloud_metrics` | OO-M1 | ⬜ |
 | S3 account-regional namespaced buckets ([DEP-201](https://linear.app/materializeinc/issue/DEP-201)), blocked on the downstream AWS provider v6 upgrade | OO-M1 | ⬜ |
 
@@ -240,7 +240,7 @@ Scheduling and storage class are profiles rather than a `global.*` block so the 
 | `renovate` for automated dependency bumps | FCO-M2 | ✅ |
 | Chart-shape fail-fast: Thanos + Alloy validators wired into `mzmon.validate.collect`, snapshot tests pinning rendered service-account names and workload-identity subject strings | FCO-M3 | ✅ |
 | **Tier 0** — plan each Terraform example, extract the composed values, and render the chart against them (`make terraform-render`). Asserts values *land*, which `validate` cannot: a wrong value path is still valid HCL | FCO-M3 | ✅ |
-| **kind E2E**, path-filtered behind `e2e-gate`: tier-1 chart variant on `loki-test` + `kind-tier1`; tier-2 generic-cloud substrate (rustfs + CNPG) | FCO-M3 | 🔨 (both bases land; tier-2 root composing substrate + module, and small/medium sizing, outstanding) |
+| **kind E2E**, path-filtered behind `e2e-gate`: tier-1 chart variant on `loki-test` + `kind-tier1`; tier-2 generic-cloud substrate (rustfs + CNPG) | FCO-M3 | 🔨 (both tiers install and are gated in CI; the tier-2 root composes substrate + module on `thanos-small`. A kind resource-sizing profile, and therefore medium-on-main, outstanding) |
 | **Rust E2E suite** ([DEP-185](https://linear.app/materializeinc/issue/DEP-185), `packages/mz-monitoring-e2e`): Grafana API dashboard + datasource-query assertions, Loki / Thanos direct health, Alloy support-bundle inspection, WAL durability across a gateway outage | OO-M1 | 🔨 (every capability in the ticket lands — Loki round trip, Grafana dashboards/datasources/proxied queries, Thanos store fanout and scrape assertions, Alloy support bundle. Verified green on tier 1 and against a real EKS cluster. WAL durability across a gateway outage outstanding, as is a tier-2 root to run the Thanos half in CI) |
 | ArgoCD / FluxCD CI matrix ([DEP-111](https://linear.app/materializeinc/issue/DEP-111), [DEP-118](https://linear.app/materializeinc/issue/DEP-118)) | OO-M3 | ⬜ (very low priority) |
 

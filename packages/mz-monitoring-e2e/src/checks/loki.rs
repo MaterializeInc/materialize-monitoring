@@ -14,16 +14,31 @@
 //! not find one. Both kinds are worth having, but do not mistake a green
 //! `/ready` for evidence that logs are arriving.
 
+use std::time::Duration;
+
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
-use crate::cluster::{ServiceTarget, encode, unix_nanos_ago};
+use crate::cluster::{ServiceTarget, encode, unix_nanos_ago, unix_nanos_now};
 use crate::ctx::Ctx;
 use crate::promtext::sum_samples;
 use crate::retry::retry_until;
 
 const LOKI_PORT: u16 = 3100;
 const STREAMS_METRIC: &str = "loki_ingester_streams_created_total";
+
+/// How far back the label queries look.
+///
+/// **Bounding them is not optional.** Unbounded, Loki's label endpoints span
+/// every index period the schema knows about; SingleBinary answers instantly on
+/// a tiny store, but a distributed Loki fans the request across queriers and
+/// returns `504: request timed out, decrease the duration of the request`. Tier 1
+/// passed this for months before tier 2 exposed it.
+///
+/// Wider than the write-path window on purpose: this asks *which labels exist*,
+/// not whether data is arriving — [`recent_query`] owns that — so a brief lull in
+/// ingestion should not fail it.
+const LABEL_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Loki answers HTTP at all.
 ///
@@ -103,7 +118,12 @@ pub async fn gateway_labels(ctx: &Ctx) -> Result<()> {
         ctx.deadline,
         ctx.interval,
         || async {
-            let body = ctx.cluster.get_json(&target, "loki/api/v1/labels").await?;
+            let path = format!(
+                "loki/api/v1/labels?start={}&end={}",
+                unix_nanos_ago(LABEL_WINDOW)?,
+                unix_nanos_now()?,
+            );
+            let body = ctx.cluster.get_json(&target, &path).await?;
             expect_success(&body).context("querying labels")?;
             let labels = body
                 .get("data")

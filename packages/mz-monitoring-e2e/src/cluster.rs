@@ -404,6 +404,11 @@ pub fn encode_segment(value: &str) -> String {
 
 /// Nanoseconds since the epoch, which is the timestamp unit Loki's query API
 /// takes.
+pub fn unix_nanos_now() -> Result<u128> {
+    unix_nanos_ago(Duration::ZERO)
+}
+
+/// Nanoseconds since the epoch, `window` ago.
 pub fn unix_nanos_ago(window: Duration) -> Result<u128> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

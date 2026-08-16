@@ -70,7 +70,14 @@ thanos:
     # Read limits scale down with the smaller bucket.
     extraArgs:
       - --chunk-pool-size=512MB
-      - --index-cache-size=100MB
+      # -- `--index-cache-size` on its own is a trap, and it is why this profile
+      # could not start Store at all before tier 2 exercised it. The shorthand
+      # sets the pool's *total* size and leaves `max_item_size` at the Thanos
+      # default of 125MiB, so any total below that fails validation at startup —
+      # "max item size (131072000) cannot be bigger than overall cache size
+      # (104857600)" — and the pod crash-loops. Naming both means the full config
+      # rather than the shorthand.
+      - '--index-cache.config={"type": "IN-MEMORY", "config": {"max_size": "100MB", "max_item_size": "10MB"}}'
       - --store.limits.request-series=1000000
       - --store.limits.request-samples=50000000
     persistence:

@@ -96,12 +96,27 @@ default it fails to set.
 |---|---|---|---|
 | 0 | `make terraform-check` | none | values land in the paths the chart reads |
 | 1 | `make e2e-tier1` + `make e2e-verify-tier1` | kind | the logging round trip actually works |
-| 2 | `make e2e-generic-cloud` | kind | real object storage and a real Postgres |
+| 2 | `make e2e-tier2` + `make e2e-verify-tier2` | kind | real object storage, a real Postgres, and Thanos |
 | 3 | — | real clouds | downstream, on released tags only |
 
 Every E2E target names its cluster explicitly (`KIND_CONTEXT`) rather than
 inheriting the current kubeconfig context. Keep it that way: these targets
 install, restart, and delete.
+
+**The tiers collide rather than coexist** — both name their CRDs release
+`mzmon-crds`, so a tier-2 apply onto a tier-1 cluster fails on the first release
+it creates. `make e2e-tier1-down` is the switch, and it uninstalls the main
+release *before* the CRDs one: the main release's `pre-delete` hook is what
+removes the Grafana custom resources, and without it their finalizers have no
+remover and the CRDs wedge in Terminating.
+
+Tier 2 composes two roots — `terraform/test/generic-cloud` (the substrate, still
+applyable alone) and `terraform/test/tier2` (the composition, which reads the
+substrate's state). It sets `chart_registry` to the repo's `charts/` directory,
+which is load-bearing: the module's default is the published OCI registry, and a
+tier installing a *released* chart would be testing the wrong artifact. It also
+needs `min_zones = 0` — kind's nodes carry no zone label at all, so any spread
+constraint over that key fails to schedule no matter how low `minDomains` is.
 
 The assertions live in `packages/mz-monitoring-e2e`. One binary for every tier —
 it reads the release's coalesced Helm values (`helm get values --all`) to decide
