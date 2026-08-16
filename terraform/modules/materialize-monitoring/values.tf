@@ -100,6 +100,13 @@ locals {
     "s3.amazonaws.com",
   )
 
+  # Static credentials, when the deployment has no workload identity to bind to.
+  # Both backends reach S3 through the same Thanos objstore client, but they name
+  # the keys differently — `access_key`/`secret_key` in the objstore config,
+  # `access_key_id`/`secret_access_key` in Loki's own s3 block — so the pair is
+  # rendered twice rather than shared.
+  static_s3_credentials = var.object_storage_access_key_id != null
+
   thanos_objstore_config = local.storage == null ? null : (
     local.storage.cloud == "aws" ? yamlencode({
       type = "S3"
@@ -109,6 +116,13 @@ locals {
           endpoint = local.s3_endpoint
         },
         local.storage.region == null ? {} : { region = local.storage.region },
+        # The chart renders this whole document into a Secret
+        # (`global.objstore.createSecret`), so the key is not exposed by putting
+        # it here.
+        !local.static_s3_credentials ? {} : {
+          access_key = var.object_storage_access_key_id
+          secret_key = var.object_storage_secret_access_key
+        },
       )
       }) : local.storage.cloud == "gcp" ? yamlencode({
       type   = "GCS"
@@ -129,7 +143,7 @@ locals {
   # separate document is closer to how the values list actually composes.
   storage_documents = local.storage == null ? [] : [yamlencode({
     loki = {
-      loki = {
+      loki = merge({
         storage = {
           bucketNames = {
             chunks = local.storage.loki_bucket
@@ -147,6 +161,10 @@ locals {
                 # Named rather than left to be parsed back out of the endpoint
                 # host, so request signing does not depend on that inference.
                 local.storage.region == null ? {} : { region = local.storage.region },
+                !local.static_s3_credentials ? {} : {
+                  access_key_id     = var.object_storage_access_key_id
+                  secret_access_key = var.object_storage_secret_access_key
+                },
               )
             },
             local.storage.cloud != "azure" ? {} : {
@@ -164,7 +182,16 @@ locals {
         schemaConfig = { configs = local.loki_schema_configs }
         # Must match storage.object_store.type or the compactor fails at startup.
         compactor = { delete_request_store = local.loki_object_store }
-      }
+        },
+        !local.static_s3_credentials ? {} : {
+          # **Load-bearing.** The Loki chart defaults `configStorageType` to
+          # ConfigMap, and the rendered config carries `secret_access_key`
+          # verbatim — so leaving the default publishes the key to anyone who can
+          # read ConfigMaps in the namespace. Thanos needs no equivalent: its
+          # objstore document already renders into a Secret.
+          configStorageType = "Secret"
+        }
+      )
       serviceAccount = { annotations = local.storage.loki_service_account_annotations }
 
       # With NetworkPolicy on, Loki has no egress to object storage or STS

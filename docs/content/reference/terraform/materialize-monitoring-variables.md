@@ -340,6 +340,34 @@ host when neither is given; name it to point at a VPC endpoint or an S3-compatib
   })</code></pre></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="object_storage_access_key_id" href="#object_storage_access_key_id">object_<wbr>storage_<wbr>access_<wbr>key_<wbr>id</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Static access key for an S3-compatible object store, for deployments that have no workload
+identity to bind to — an on-prem or self-hosted store (MinIO, rustfs, Ceph), or a cluster whose
+IAM provider does not trust its OIDC issuer.
+
+Prefer workload identity wherever it exists: it rotates, and the
+`object_storage.*_service_account_annotations` maps are how it is configured. These two
+variables are the fallback, not the default path.
+
+Set both or neither. `aws` only — GCS takes a service-account key and Azure a storage-account
+key, neither of which is an access-key pair; configure those through `additional_values`.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="object_storage_secret_access_key" href="#object_storage_secret_access_key">object_<wbr>storage_<wbr>secret_<wbr>access_<wbr>key</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Secret key paired with `object_storage_access_key_id`.
+
+Reaches the backends as a Secret in both cases, never a ConfigMap: Thanos already renders its
+objstore config into one, and the module switches Loki's `configStorageType` to `Secret` when
+these are set — the chart's default puts the rendered config in a ConfigMap, which would publish
+this value to anyone with read access to the namespace.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Deployment size. The chart's defaults target `medium`, and the small/large profiles are deltas

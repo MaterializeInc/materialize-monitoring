@@ -172,6 +172,37 @@ resource "helm_release" "monitoring" {
         chart_version and crds_chart_version explicitly.
       EOT
     }
+
+    # A `validation` block cannot see another variable on the module's minimum
+    # Terraform (cross-variable validation landed in 1.9), so the paired checks
+    # for the static credentials live here.
+    precondition {
+      condition = (
+        (var.object_storage_access_key_id == null) ==
+        (var.object_storage_secret_access_key == null)
+      )
+      error_message = <<-EOT
+        object_storage_access_key_id and object_storage_secret_access_key must be set together.
+
+        With only one, the objstore client falls back to its default credential chain for the other
+        half and fails to authenticate at pod start rather than at plan time.
+      EOT
+    }
+
+    precondition {
+      condition = (
+        var.object_storage_access_key_id == null ||
+        try(var.object_storage.cloud, null) == "aws"
+      )
+      error_message = <<-EOT
+        object_storage_access_key_id is set but object_storage.cloud is
+        "${try(var.object_storage.cloud, "null")}".
+
+        Static access keys are an S3 concept. GCS takes a service-account key and Azure a
+        storage-account key, and neither backend reads an access-key pair — set them through
+        additional_values instead.
+      EOT
+    }
   }
 
   depends_on = [
