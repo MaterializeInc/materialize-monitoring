@@ -103,6 +103,33 @@ Every E2E target names its cluster explicitly (`KIND_CONTEXT`) rather than
 inheriting the current kubeconfig context. Keep it that way: these targets
 install, restart, and delete.
 
+The assertions live in `packages/mz-monitoring-e2e`. One binary for every tier —
+it reads the release's coalesced Helm values (`helm get values --all`) to decide
+what applies, so there is no tier flag, and `make e2e-verify E2E_CONTEXT=<ctx>`
+points it at any cluster including a real one. It asserts only; it never
+installs.
+
+Transport defaults to a port-forward (`src/forward.rs`, no local listener). The
+API server's Service proxy is available with `--transport proxy` but is not the
+portable choice: it **strips `Authorization`** (so Grafana cannot authenticate
+over it, though custom headers like Loki's `X-Scope-OrgID` pass fine), and it
+needs control-plane-to-pod reachability — on EKS a proxied request to Thanos on
+9090 times out where a port-forward succeeds. Also use `encode_segment`, not
+`encode`, for path segments: routers match the raw path, so `mzmon%2Dloki` is a
+404 where `mzmon-loki` is not.
+
+Two rules when extending it:
+
+- **Values are intent, not description.** A component the values enable but the
+  cluster lacks is a *failure*. Only a genuinely-disabled component skips, and a
+  skip is an ignored test rather than an absent one — a suite whose list silently
+  shrinks looks exactly like one that passed.
+- **Assert query success everywhere, non-empty results only on self-monitoring
+  series.** Materialize scrapers stay off in these tiers, so the only data
+  guaranteed to exist is what the stack produces about itself. Backwards, this
+  yields either a suite that passes while blind or one that flakes on empty
+  Materialize series forever.
+
 ## Iterating without cutting a release
 
 The default loop makes you release the chart, release the module, and bump the

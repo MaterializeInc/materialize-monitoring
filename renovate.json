@@ -22,7 +22,7 @@
     "49001892+materialize-bot@users.noreply.github.com",
     "41898282+github-actions[bot]@users.noreply.github.com"
   ],
-  "minimumReleaseAge": "6 days",
+  "minimumReleaseAge": "3 days",
   "abandonmentThreshold": "1 year",
   "vulnerabilityAlerts": {
     "addLabels": ["security"],

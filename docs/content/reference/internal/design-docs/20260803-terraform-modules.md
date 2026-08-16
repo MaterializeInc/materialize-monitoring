@@ -663,9 +663,28 @@ The rule to encode: **assert query success everywhere; assert non-empty results 
 A fourth workspace member (`packages/mz-monitoring-e2e`), runnable against any variant with flags selecting target behavior.
 The Terraform repo's harness is also Rust, so the shape will be familiar, but the two should not share code initially — that one drives cloud lifecycle, this one asserts against a running stack.
 
+<!-- Amended as built. Two things landed differently from the plan below; the
+rest of the table stands. -->
+
+**Amended in implementation, twice.**
+
+*Transport is a port-forward after all — but not the one the plan meant, and the Service proxy is kept as an option.*
+The first implementation used the API server's Service proxy (`/api/v1/namespaces/<ns>/services/<svc>:<port>/proxy/<path>`), which reaches the same place over the client we already authenticate with no local listener, no port allocation and no teardown.
+Two measured limits sent it back to port-forwarding as the default:
+
+1. **The API server strips `Authorization` before proxying**, and correctly so — it must not hand a caller's cluster credentials to an arbitrary backend. Custom headers pass through untouched, which is why Loki's `X-Scope-OrgID` works over the proxy, but Grafana's basic auth cannot survive it and every authenticated endpoint answers `Unauthorized`.
+2. **The proxy needs control-plane-to-pod reachability on the target port.** On EKS the control plane sits in an AWS-managed VPC and the node security groups admit only a few ports: a proxied request to Thanos on 9090 times out, while a port-forward to the same pod answers immediately. The claim that the proxy "behaves identically on kind, EKS and GKE" was wrong.
+
+So the default is a port-forward, implemented over the forwarded stream directly rather than through a local listener — which keeps the port allocation, bind race and teardown out of it, and is what actually flakes about `kubectl port-forward`.
+The Service proxy stays available behind `--transport proxy` as a kind-and-similar optimisation.
+
+*There is no variant flag.*
+The suite reads the release's coalesced values (`helm get values --all`) and runs the assertions those imply, so the tier is a property of the cluster rather than of the invocation.
+Values are read as **intent**: a component the values enable but the cluster lacks is a failure, not a skip, and a genuine skip is reported as an ignored test rather than an absent one — a suite whose list silently shrinks is indistinguishable from one that passed.
+
 | Capability | Mechanism | What it actually proves |
 |---|---|---|
-| Cluster connectivity helpers | kubeconfig + port-forward, shared across variants | Reusable setup; port-forward is the pragmatic choice on kind |
+| Cluster connectivity helpers | kubeconfig + API-server Service proxy, shared across variants | Reusable setup; no port-forward lifecycle to get wrong, and the same transport works on a real cloud |
 | See dashboards | Grafana `/api/search`, `/api/dashboards/uid/<uid>` | grafana-operator really pushed them; UIDs and folder placement are stable |
 | Explore Thanos and Loki *through Grafana* | Grafana query API against datasource UIDs `mzmon-thanos` / `mzmon-loki` | Datasource provisioning **and** the tenant-header wiring — the `no org id` failure the chart already warns about surfaces exactly here |
 | Loki directly | `/ready`, `/loki/api/v1/labels`, `/loki/api/v1/query_range` | Full ingest → index → query round trip |

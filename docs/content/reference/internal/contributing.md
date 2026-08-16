@@ -84,6 +84,16 @@ make e2e-generic-cloud    # rustfs + CNPG substrate (tier-2 base)
 make e2e-cluster-down
 ```
 
+The assertions themselves live in `packages/mz-monitoring-e2e`, a Rust workspace member, and there is one binary for every tier.
+It reads the release's own coalesced Helm values to decide which assertions apply, so the tier is a property of the cluster rather than a flag — which means the same binary answers "is this stack healthy?" against a live cluster too:
+
+```sh
+make e2e-verify E2E_CONTEXT=<kube-context> E2E_NAMESPACE=monitoring
+cargo run -p mz-monitoring-e2e -- --context <kube-context> --list   # what applies there
+```
+
+It only asserts; it never installs. Lifecycle stays with `make`, Terraform, or you.
+
 See [`test/e2e/README.md`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/test/e2e/README.md) for what each tier covers and the traps worth knowing before extending them. Two are worth repeating here because they cost real debugging time:
 
 - **Alloy needs a restart after any config change.** Its config arrives through `envFrom` ConfigMaps, and environment variables are fixed at container start, so neither Helm nor Alloy's `/-/reload` picks up a change. `make e2e-tier1` does the rollout restart explicitly.

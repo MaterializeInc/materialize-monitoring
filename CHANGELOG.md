@@ -12,7 +12,7 @@ reference/internal/releasing.md.
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.16.2 (Unreleased)
 
 _Changes Pending_
 
