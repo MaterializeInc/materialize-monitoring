@@ -46,6 +46,22 @@ Later documents win, so anything here overrides the module's opinion.
 This is the supported way to reach chart settings the module does not model — including
 scheduling (node selectors, tolerations) and Grafana ingress, neither of which the module
 surfaces yet. See the README.
+
+Each element is one YAML document. `.tfvars` is HCL, so an indented heredoc is the readable way
+to write one — `<<-YAML` strips the common leading indent, and `${...}` escapes a literal `$`
+ahead of a brace. The marker is arbitrary; `YAML` rather than the usual `EOT` only because this
+description is itself a heredoc:
+
+```hcl
+additional_values = [
+  <<-YAML
+    grafana:
+      ingress:
+        enabled: true
+        hosts: ["grafana.example.com"]
+  YAML
+]
+```
 </td>
         <td class="tf-var-default"><code>[]</code></td>
     </tr>
@@ -77,6 +93,44 @@ the two cannot drift. Set it only to pin a chart version different from the modu
         <td class="tf-var-type"><code>bool</code></td>
       <td class="tf-var-desc">Whether this module creates the namespace. Defaults to false because the Materialize operator module already creates `monitoring` in the supported topology.</td>
         <td class="tf-var-default"><code>false</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="datadog_api_key" href="#datadog_api_key">datadog_<wbr>api_<wbr>key</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Datadog API key for `datadog_metrics`.
+
+Delivered as a Secret this module creates (`mzmon-alloy-gateway-env`), never through the Helm
+values — anything in `values` is readable with `helm get values` by anyone who can read the
+release Secret. The gateway reads it from the environment at startup.
+
+An app key is not needed and is not accepted here; the metrics intake authenticates with the API
+key alone.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="datadog_metrics" href="#datadog_metrics">datadog_<wbr>metrics</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Also export metrics to Datadog from the Alloy gateway. Null disables it; Thanos is unaffected
+either way. Pair it with `datadog_api_key`, which is what actually authenticates.
+
+`site` is your Datadog site — `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, and so on.
+Getting it wrong is a 403 from the intake, not a routing error.
+
+`min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
+`all` — and each tier includes the ones below it. This is a cost control, and a sharper one than
+for most backends: Datadog bills per custom metric, so `all` is rarely what you want.
+
+`metric_endpoint` and `logs_endpoint` override the intake URLs the exporter derives from `site`.
+Leave them null unless you are routing through a proxy or PrivateLink — a hand-written endpoint
+that disagrees with `site` fails at the intake rather than at plan time.
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    site            = optional(string, "datadoghq.com")
+    min_importance  = optional(string, "essential")
+    metric_endpoint = optional(string)
+    logs_endpoint   = optional(string)
+  })</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="enable_monitoring_crds" href="#enable_monitoring_crds">enable_<wbr>monitoring_<wbr>crds</a></td>
@@ -366,6 +420,62 @@ these are set — the chart's default puts the rendered config in a ConfigMap, w
 this value to anyone with read access to the namespace.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="otlp_auth_bearer_token" href="#otlp_auth_bearer_token">otlp_<wbr>auth_<wbr>bearer_<wbr>token</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Bearer token for `otlp_metrics`, for endpoints that take an `Authorization: Bearer` header
+rather than a vendor-specific one.
+
+Delivered as a Secret this module creates (`mzmon-alloy-gateway-env`) rather than through the
+Helm values. Cannot be combined with `otlp_auth_header_secrets` or `otlp_metrics.auth_headers`:
+the chart has one auth slot per OTLP destination.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="otlp_auth_header_secrets" href="#otlp_auth_header_secrets">otlp_<wbr>auth_<wbr>header_<wbr>secrets</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">Secret request headers for `otlp_metrics`, as header name to value — Honeycomb's
+`x-honeycomb-team`, for instance. This is the API-key-header case, which is how most OTLP
+vendors authenticate.
+
+Each value is delivered as a Secret this module creates (`mzmon-alloy-gateway-env`) rather than
+through the Helm values, and the gateway reads it from the environment at startup. The module
+derives the variable name from the header (`x-honeycomb-team` becomes
+`GATEWAY_OTEL_DEST_HEADER_X_HONEYCOMB_TEAM`); nothing else depends on it.
+
+Non-secret headers belong in `otlp_metrics.auth_headers`, which renders them inline. The two
+compose into one header set. Cannot be combined with `otlp_auth_bearer_token`: the chart has one
+auth slot per OTLP destination.
+</td>
+        <td class="tf-var-default"><code>map[]</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="otlp_metrics" href="#otlp_metrics">otlp_<wbr>metrics</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Also export metrics to a generic OTLP endpoint from the Alloy gateway — Honeycomb, Grafana
+Cloud, or your own OpenTelemetry Collector. Null disables it; Thanos is unaffected either way.
+
+`url` is a `host[:port]` with **no** scheme; `https://` in it fails at gateway start. `protocol`
+selects the exporter: `grpc` for OTLP/gRPC, `http` for OTLP/HTTP.
+
+`min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
+`all` — and each tier includes the ones below it. Metered backends are the reason it defaults
+below `all` here.
+
+`auth_headers` sets **non-secret** request headers, such as Honeycomb's `x-honeycomb-dataset`.
+They render into the gateway's pipeline ConfigMap as literals, so put credentials in
+`otlp_auth_header_secrets` or `otlp_auth_bearer_token` instead — those reach the gateway through
+a Secret.
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    url            = string
+    protocol       = optional(string, "grpc")
+    compression    = optional(string)
+    min_importance = optional(string, "recommended")
+    auth_headers   = optional(map(string), {})
+  })</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>

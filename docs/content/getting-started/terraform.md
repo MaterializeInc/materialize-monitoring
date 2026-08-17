@@ -150,6 +150,11 @@ See [Metrics > Storing](../../metrics/storing/) for what each tier contains.
 >   Authentication is ADC only — there is no key-file path.
 >   Without the Workload Identity binding the module creates, the exporter falls back to the node's service account, which works only if that account happens to hold `roles/monitoring.metricWriter`.
 
+**Datadog and generic OTLP** (Honeycomb, Grafana Cloud, your own collector) are inputs on the `materialize-monitoring` module itself — `datadog_metrics` / `datadog_api_key` and `otlp_metrics` / `otlp_auth_header_secrets` / `otlp_auth_bearer_token`.
+Neither needs cloud resources, so they are not surfaced as flat wrapper variables the way Google Cloud Monitoring is; set them on the wrapper's `monitoring` module block.
+Credentials reach the gateway through a Secret the module creates rather than through the Helm values, and rotating one rolls the gateway.
+See [Metrics > Storing](../../metrics/storing/#through-terraform) and the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations).
+
 ### Integration
 
 | Variable | Default | Notes |

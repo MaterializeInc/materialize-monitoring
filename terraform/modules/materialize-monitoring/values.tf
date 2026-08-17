@@ -381,6 +381,8 @@ locals {
     local.azure_identity_document,
     local.storage_class_document,
     local.google_cloud_metrics_document,
+    local.datadog_metrics_document,
+    local.otlp_metrics_document,
     local.scheduling_document,
     local.zone_spread_document,
   )

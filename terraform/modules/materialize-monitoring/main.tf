@@ -190,6 +190,46 @@ resource "helm_release" "monitoring" {
     }
 
     precondition {
+      condition = !(
+        var.otlp_auth_bearer_token != null &&
+        length(local.otlp_auth_header_entries) > 0
+      )
+      error_message = <<-EOT
+        otlp_auth_bearer_token cannot be combined with otlp_auth_header_secrets or
+        otlp_metrics.auth_headers.
+
+        The chart has one auth slot per OTLP destination (`otel.auth.authType`), so only one of
+        these can be rendered. Failing here is deliberate: the alternative is silently dropping the
+        other, which reaches the destination as an authentication failure at run time.
+      EOT
+    }
+
+    precondition {
+      condition = (
+        var.otlp_metrics != null ||
+        (var.otlp_auth_bearer_token == null && length(local.otlp_auth_header_entries) == 0)
+      )
+      error_message = <<-EOT
+        OTLP credentials are set but otlp_metrics is null, so no OTLP exporter is enabled and
+        nothing would read them.
+
+        Set otlp_metrics (at minimum its `url`), or drop the credentials.
+      EOT
+    }
+
+    precondition {
+      condition     = var.datadog_metrics == null || var.datadog_api_key != null
+      error_message = <<-EOT
+        datadog_metrics is set but datadog_api_key is null.
+
+        The Datadog exporter authenticates with the API key alone, and the gateway reads it from an
+        environment variable the module only writes when the key is given. Without it the exporter
+        starts, sends, and is rejected by the intake — `fail_on_invalid_key` reports it in the
+        gateway's logs and nowhere else.
+      EOT
+    }
+
+    precondition {
       condition = (
         var.object_storage_access_key_id == null ||
         try(var.object_storage.cloud, null) == "aws"
@@ -208,5 +248,9 @@ resource "helm_release" "monitoring" {
   depends_on = [
     helm_release.crds,
     kubernetes_secret.grafana_admin,
+    # The gateway's `envFrom` mount is optional, so a Secret that lands after the
+    # pod does is not an error anywhere — the gateway simply starts with empty
+    # credentials and every export is rejected until something restarts it.
+    kubernetes_secret.alloy_gateway_env,
   ]
 }

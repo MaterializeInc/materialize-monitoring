@@ -189,15 +189,27 @@ Reach for the denylist to shed a metric everywhere (cost, cardinality, noise); r
 
 ### Through Terraform
 
-The Terraform modules expose the Google Cloud Monitoring destination directly, since it needs cloud resources the chart cannot create:
+The `materialize-monitoring` module exposes three destinations directly, each taking the same `min_importance` tier documented above:
 
 ```hcl
-enable_google_cloud_metrics          = true
-google_cloud_metrics_min_importance  = "recommended"
+google_cloud_metrics = { min_importance = "recommended" }
+
+datadog_metrics = { site = "datadoghq.com", min_importance = "essential" }
+datadog_api_key = var.datadog_api_key
+
+otlp_metrics = {
+  url            = "api.honeycomb.io"
+  min_importance = "recommended"
+  auth_headers   = { "x-honeycomb-dataset" = "mzmon" }
+}
+otlp_auth_header_secrets = { "x-honeycomb-team" = var.honeycomb_api_key }
 ```
 
-That sets the same `minMetricImportance` documented above and provisions the service account and Workload Identity binding the exporter authenticates with.
-Every other destination is reachable through `additional_values`.
+Credentials do **not** go through the Helm values — the module puts them in the gateway Secret instead, and rolls the gateway when one changes.
+See the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations) for the environment variables each input becomes.
+
+The per-cloud wrappers in `materialize-terraform-self-managed` surface Google Cloud Monitoring under flatter names (`enable_google_cloud_metrics`, `google_cloud_metrics_min_importance`), because it is the one destination needing cloud resources the chart cannot create — a service account and the Workload Identity binding it authenticates with.
+Anything not modelled here is still reachable through `additional_values`.
 See [Getting Started > Terraform](../../getting-started/terraform/#extra-metrics-destinations).
 
 ### Operational notes

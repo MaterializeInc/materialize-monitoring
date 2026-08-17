@@ -414,6 +414,84 @@ PYEOF
         echo "    GCM exporter reached the gateway pipeline"
     fi
 
+    if grep -q '"datadogExporter"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
+        if ! grep -q 'GATEWAY_UNFILTERED_DATADOG_METRICS:' "${rendered}"; then
+            echo "  !! ${example}: datadogExporter is set but no Datadog metric filter rendered" >&2
+            status=1
+            continue
+        fi
+        echo "    Datadog exporter reached the gateway pipeline"
+    fi
+
+    if grep -q '"otlpExporter"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
+        if ! grep -q 'GATEWAY_UNFILTERED_OTLP_METRICS:' "${rendered}"; then
+            echo "  !! ${example}: otlpExporter is set but no OTLP metric filter rendered" >&2
+            status=1
+            continue
+        fi
+        echo "    OTLP exporter reached the gateway pipeline"
+    fi
+
+    # Destination credentials (DEP-204).
+    #
+    # These never appear in the Helm values — they reach the gateway through a
+    # Secret this module creates — so the coupling that can break is a *name*:
+    # the values say which environment variable the pipeline reads, the Secret
+    # says which one it sets, and for the OTLP header case the module derives
+    # both from the header name. Nothing errors when those drift. The gateway
+    # starts, `sys.env(...)` resolves empty, and the destination rejects every
+    # request.
+    #
+    # So: every key of the Secret must be read by the rendered pipeline. That
+    # catches a derived name changing on either side, and a Secret key nothing
+    # consumes. Read from the plan rather than from the rendered output, which
+    # never contains a Terraform-managed resource.
+    cred_keys="$(jq -r '
+        .planned_values.root_module.child_modules[].resources[]
+        | select(.type == "kubernetes_secret" and .name == "alloy_gateway_env")
+        | .values.data // {} | keys[]
+    ' "${plan_json}" 2>/dev/null || true)"
+
+    if [ -n "${cred_keys}" ]; then
+        unread=""
+        for key in ${cred_keys}; do
+            grep -q "sys.env(\"${key}\")" "${rendered}" || unread="${unread} ${key}"
+        done
+
+        if [ -n "${unread}" ]; then
+            echo "  !! ${example}: the gateway Secret sets variables the pipeline never reads:${unread}" >&2
+            echo "     The values and the Secret have to agree on the name. They do not, so the" >&2
+            echo "     destination authenticates with an empty credential at run time." >&2
+            status=1
+            continue
+        fi
+
+        # The security half, and the reason these are not passed as values at
+        # all: `values` is recoverable with `helm get values` by anyone who can
+        # read the release Secret. A credential that reached the rendered
+        # manifests got there through the values, which is the regression.
+        leaked_cred=""
+        for key in ${cred_keys}; do
+            value="$(jq -r --arg k "${key}" '
+                .planned_values.root_module.child_modules[].resources[]
+                | select(.type == "kubernetes_secret" and .name == "alloy_gateway_env")
+                | .values.data[$k] // empty
+            ' "${plan_json}" 2>/dev/null || true)"
+            [ -n "${value}" ] || continue
+            grep -qF -- "${value}" "${rendered}" && leaked_cred="${leaked_cred} ${key}"
+        done
+
+        if [ -n "${leaked_cred}" ]; then
+            echo "  !! ${example}: destination credentials reached the Helm release:${leaked_cred}" >&2
+            echo "     They belong in the module's Secret only — anything in values is readable" >&2
+            echo "     with 'helm get values' and is stored in the release Secret besides." >&2
+            status=1
+            continue
+        fi
+
+        echo "    gateway credentials are read by the pipeline and absent from the release"
+    fi
+
     # Grafana's state database. Three things have to land together and each is
     # written to a different subchart path, so any one of them missing is a
     # Grafana that comes up on SQLite — or crash-loops on a half-written config —

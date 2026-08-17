@@ -75,6 +75,36 @@ module "monitoring" {
     }
   }
 
+  # Both SaaS metric destinations, set here so the render check has something to
+  # assert against. Each fans out *in addition to* Thanos, and each proves a
+  # different half of the credential wiring: Datadog's key reaches an env var the
+  # chart names itself, while the OTLP header's variable name is derived by the
+  # module and has to match on both sides — the values say `valueEnv`, the Secret
+  # supplies it, and a mismatch is silent.
+  #
+  # The keys are placeholders. They are never sent anywhere: the example is only
+  # ever planned, never applied.
+  datadog_metrics = {
+    site           = "datadoghq.com"
+    min_importance = "essential"
+  }
+  datadog_api_key = "example-not-a-real-datadog-key"
+
+  otlp_metrics = {
+    url            = "api.honeycomb.io"
+    protocol       = "grpc"
+    min_importance = "recommended"
+
+    # Non-secret, so it renders inline rather than through the Secret.
+    auth_headers = {
+      "x-honeycomb-dataset" = "mzmon"
+    }
+  }
+
+  otlp_auth_header_secrets = {
+    "x-honeycomb-team" = "example-not-a-real-honeycomb-key"
+  }
+
   node_selector = { workload = "generic" }
 
   tolerations = [

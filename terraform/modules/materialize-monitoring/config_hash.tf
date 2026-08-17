@@ -28,6 +28,13 @@ locals {
     # so a chart bump can change the rendered config with no values change.
     chart_version = local.chart_version
 
+    # Destination credentials never appear in the documents below — they reach
+    # the gateway through a Secret instead — so without this a key rotation
+    # changes nothing Helm can see and the gateway keeps authenticating with the
+    # credential it started with. Already a hash when it arrives, and already
+    # unmarked; see gateway_credentials.tf.
+    credentials = local.gateway_env_credential_hash
+
     # Decoded and re-encoded so the hash ignores formatting — reindenting a
     # document in `additional_values` rolls nothing. `try` falls back to the raw
     # string for anything yamldecode rejects but Helm would accept.
