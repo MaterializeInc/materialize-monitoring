@@ -85,6 +85,59 @@ app.kubernetes.io/managed-by: {{ $.Release.Service }}
 {{- end }}
 
 {{- /*
+Image pull secrets for the workloads this chart renders itself.
+
+Both global spellings are read, because the subcharts do not agree on one and a
+consumer should not have to care which: Alloy reads `global.image.pullSecrets`
+and never `global.imagePullSecrets`, while Thanos, Grafana, kube-state-metrics
+and node-exporter read the latter and never the former. Merging them here is
+what makes `global.imagePullSecrets` mean what `values.yaml` says it means.
+
+Entries are accepted as `{name: x}` maps or as bare strings — some charts in the
+wild take the second form — and are normalized to the Kubernetes shape and
+deduplicated by name, so a consumer that sets both globals to the same Secret
+gets one entry rather than two.
+
+Returns the empty string when there is nothing to emit, so a caller can guard on
+it without rendering a line of trailing whitespace.
+
+Usage:
+
+  {{- $pullSecrets := include "mzmon.imagePullSecrets" (dict "root" $ "extra" $someList) }}
+  {{- if $pullSecrets }}
+  imagePullSecrets:
+    {{- $pullSecrets | nindent 4 }}
+  {{- end }}
+*/}}
+{{- define "mzmon.imagePullSecrets" -}}
+  {{- $global := .root.Values.global | default dict -}}
+  {{- $candidates := concat
+      ($global.imagePullSecrets | default list)
+      (($global.image | default dict).pullSecrets | default list)
+      (.extra | default list)
+  -}}
+  {{- $merged := list -}}
+  {{- $seen := dict -}}
+  {{- range $candidates -}}
+    {{- /*
+      An if/else rather than `ternary`, which evaluates both branches eagerly
+      and so would blow up on `.name` the moment an entry is a bare string.
+    */ -}}
+    {{- $name := . -}}
+    {{- if kindIs "map" . -}}
+      {{- $name = .name -}}
+    {{- end -}}
+    {{- if and $name (not (hasKey $seen $name)) -}}
+      {{- $seen = set $seen $name true -}}
+      {{- $merged = append $merged (dict "name" $name) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if $merged -}}
+    {{- toYaml $merged -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /*
 Validation collection.
 
 This is called twice:

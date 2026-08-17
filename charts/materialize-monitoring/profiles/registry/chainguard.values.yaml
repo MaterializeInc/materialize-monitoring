@@ -1,0 +1,190 @@
+# Overlay: Chainguard Images.
+#
+# Repoints every image the chart renders at the Chainguard equivalent. Compose
+# it after `pull-secret.values.yaml`, which names the Secret this registry needs:
+#
+#   helm upgrade --install mzmon materialize-monitoring/materialize-monitoring \
+#     -f profiles/registry/pull-secret.values.yaml \
+#     -f profiles/registry/chainguard.values.yaml \
+#     -f my-values.yaml
+#
+# Replace every `<ORG>` with your Chainguard organization. Chainguard serves
+# versioned tags out of your organization's private repository
+# (`cgr.dev/<ORG>/<image>`); the public `cgr.dev/chainguard/<image>` namespace
+# carries `:latest` only, which is not a thing to pin a production install to.
+#
+# Every repository named below was confirmed present in the Chainguard directory
+# (https://images.chainguard.dev/directory) at the time of writing. This is a
+# retag only — it changes no replica counts, no sizes, and no feature toggles,
+# so it layers over any sizing or cloud profile in either order.
+#
+# ---------------------------------------------------------------------------
+# Read this before rolling it out
+# ---------------------------------------------------------------------------
+# **Tags are inherited, not restated.** Where the chart resolves a tag from a
+# subchart's `appVersion` (Loki, Thanos, kube-state-metrics, grafana-operator,
+# Alertmanager, metrics-server) this profile leaves `tag` alone, so the version
+# stays pinned in exactly one place and Renovate keeps owning it. Chainguard
+# tracks upstream versions but does not always spell them identically —
+# a leading `v` is commonly dropped. Confirm before you install:
+#
+#   crane ls cgr.dev/<ORG>/thanos
+#
+# and add an explicit `tag:` here for any image whose string differs.
+#
+# **Check the UID each image expects.** This is the failure mode that bites,
+# because it renders and schedules cleanly and then crash-loops. Chainguard
+# images run as their own non-root UID, which is generally not the UID the
+# upstream chart writes into `securityContext` — Grafana's chart assumes 472,
+# Loki's assumes 10001. When they disagree the container cannot write its data
+# directory. Verify the image's UID and align `grafana.securityContext`,
+# `loki.<component>.podSecurityContext`, and `thanos.global.podSecurityContext`
+# to match before pointing this at anything with a PVC attached.
+#
+# **Grafana plugins stop working.** These images ship no shell and no package
+# manager, so the `grafana.plugins` list — which installs at container start —
+# silently gets you a Grafana without those plugins. Bake them into a derived
+# image instead. The same note is on `grafana.image` in `values.yaml`.
+#
+# ---------------------------------------------------------------------------
+# What is deliberately left on its upstream registry
+# ---------------------------------------------------------------------------
+#   * **Alloy** (`alloy-agent.image`, `alloy-gateway.image`) — Chainguard
+#     publishes `grafana-alloy`, but the chart runs `ghcr.io/materializeinc/
+#     mzmon-alloy`, a Materialize build carrying the custom components the
+#     pipelines are written against. A stock Alloy fails config validation at
+#     startup. Swapping it is a rebuild, not a retag.
+#   * **The Loki gateway's access-log exporter**
+#     (`loki.gateway.metrics.image`) — Chainguard publishes no equivalent.
+#     Inert unless `loki.gateway.enabled` is turned on.
+
+# --- Loki --------------------------------------------------------------------
+# `imagePullSecrets` for these pods comes from `pull-secret.values.yaml`; Loki
+# reads no global for it.
+loki:
+  loki:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/loki"
+  lokiCanary:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/loki-canary"
+  # `memcached.image` and `memcachedExporter.image` have no `registry` key of
+  # their own — the Loki helper only reads a global one — so the host goes in
+  # `repository`. Do not "fix" this by setting `global.imageRegistry`: that key
+  # outranks every per-component `registry` in the Loki chart and would drag the
+  # rest of the stack's images onto cgr.dev too.
+  memcached:
+    image:
+      repository: "cgr.dev/<ORG>/memcached"
+  memcachedExporter:
+    image:
+      repository: "cgr.dev/<ORG>/memcached-exporter"
+  # Inert unless `loki.gateway.enabled` is turned on. Chainguard publishes no
+  # `nginx-unprivileged` variant because its `nginx` already runs non-root.
+  gateway:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/nginx"
+  sidecar:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/k8s-sidecar"
+  defaults:
+    statefulSetRecreateJob:
+      image:
+        registry: "cgr.dev"
+        repository: "<ORG>/kubectl"
+
+# --- Thanos ------------------------------------------------------------------
+# One image drives every Thanos component; the chart exposes no per-component
+# override. `thanos.global` is the subchart's own globals block, not the
+# umbrella's, so this does not leak into the other subcharts.
+thanos:
+  global:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/thanos"
+  ruler:
+    autoImportPrometheusRules:
+      sidecar:
+        image:
+          registry: "cgr.dev"
+          repository: "<ORG>/kubectl"
+
+# --- Grafana -----------------------------------------------------------------
+grafana:
+  image:
+    registry: "cgr.dev"
+    repository: "<ORG>/grafana"
+    # The chart pins Grafana's tag explicitly rather than tracking the
+    # subchart's appVersion, so it carries over as-is. Confirm the tag exists in
+    # your org before install.
+  sidecar:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/k8s-sidecar"
+  initChownData:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/busybox"
+  downloadDashboardsImage:
+    registry: "cgr.dev"
+    repository: "<ORG>/curl"
+  # Inert unless `grafana.imageRenderer.enabled` is turned on.
+  imageRenderer:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/grafana-image-renderer"
+
+grafana-operator:
+  image:
+    registry: "cgr.dev"
+    repository: "<ORG>/grafana-operator"
+
+# --- Alertmanager ------------------------------------------------------------
+# This chart's `image.repository` carries the registry host inline — it has no
+# separate `registry` key.
+alertmanager:
+  image:
+    repository: "cgr.dev/<ORG>/prometheus-alertmanager"
+  configmapReload:
+    image:
+      repository: "cgr.dev/<ORG>/prometheus-config-reloader"
+
+# --- Cluster metrics ---------------------------------------------------------
+kube-state-metrics:
+  image:
+    registry: "cgr.dev"
+    repository: "<ORG>/kube-state-metrics"
+
+node-exporter:
+  image:
+    registry: "cgr.dev"
+    repository: "<ORG>/prometheus-node-exporter"
+    # `distroless: true` appends `-distroless` to the tag, which is a naming
+    # convention of the upstream quay.io repository and does not exist here.
+    # Leaving it on resolves to a tag that is not published.
+    distroless: false
+
+# Inert unless `tags.cluster-metrics` or `tags.metrics-server` is on. Like
+# Alertmanager, this chart's `repository` includes the host.
+metrics-server:
+  image:
+    repository: "cgr.dev/<ORG>/metrics-server"
+
+# --- The uninstall hook ------------------------------------------------------
+# The `pre-delete` Job that clears grafana-operator's finalizers. Its pull secret
+# comes from `pull-secret.values.yaml` like everything else, but the stakes here
+# are different: an image this Job cannot pull does not fail an install you can
+# retry, it hangs `helm uninstall` on the hook. Confirm this one is pullable
+# before you need it.
+#
+# Keep the tag within one minor of your API server, per Kubernetes' version-skew
+# policy — the same rule that governs the upstream default.
+cleanup:
+  grafanaOperator:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/kubectl"

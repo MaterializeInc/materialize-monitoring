@@ -6,6 +6,14 @@
   "helm.sh/hook-weight" "0"
   "helm.sh/hook-delete-policy" "before-hook-creation"
 }}
+{{- /*
+  This Job runs the agent's own image, so it inherits the agent's pull secrets
+  as well as the chart-wide ones. Without that, repointing `alloy-agent.image`
+  at a private registry gets you a DaemonSet that pulls and a pre-install hook
+  that does not — and the hook failing is what the user sees, before any of the
+  release exists.
+*/}}
+{{- $pullSecrets := include "mzmon.imagePullSecrets" (dict "root" $ "extra" $agentValues.image.pullSecrets) }}
 {{- if and ( include "mzmon.alloyAgent.enabled" $ ) $pipelineValues.preValidateJob.enabled }}
 kind: Job
 apiVersion: batch/v1
@@ -32,6 +40,10 @@ spec:
     spec:
       # serviceAccountName: {{ include "mzmon.alloyAgent.serviceAccountName" $ }}
       restartPolicy: Never
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- $pullSecrets | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml $pipelineValues.preValidateJob.podSecurityContext | nindent 8 }}
       containers:

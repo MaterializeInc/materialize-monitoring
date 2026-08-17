@@ -80,7 +80,20 @@ Values that are passed to all subcharts
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Image pull secrets applied to every workload in this chart and its subcharts.
+      <td class="helm-value-desc">Image pull secrets for this chart's own workloads and for the subcharts that read a global. Not all of them do.
+Reaches this chart's own workloads, plus Thanos, Grafana, kube-state-metrics
+and node-exporter. It does **not** reach every subchart on its own, because
+they do not agree on where to read it from:
+
+* Alloy reads `global.image.pullSecrets` and never this key. This chart
+  honors both spellings for the workloads it renders itself, but the Alloy
+  subchart only sees its own.
+* Loki, grafana-operator, Alertmanager and metrics-server read no global at
+  all and need their own `<chart>.imagePullSecrets`.
+
+`profiles/registry/pull-secret.values.yaml` sets every one of those paths
+from a single Secret name; prefer it over setting this key alone, which
+leaves Loki — the largest pod count in the release — pulling anonymously.
 </td>
     </tr>
   </tbody>
@@ -1896,6 +1909,7 @@ only once the finalizers have been processed, and Helm proceeds from there.
       <td class="helm-value-default"><pre>
 {
   "pullPolicy": "IfNotPresent",
+  "pullSecrets": [],
   "registry": "registry.k8s.io",
   "repository": "kubectl",
   "tag": "v1.35.6"
@@ -4183,18 +4197,24 @@ Renovate can bump the server on its own cadence instead of only when a new
 chart release happens to carry one.
 
 A hardened rebuild is a drop-in swap: point `registry`/`repository` at it and
-keep the tag. Published options, all of which track upstream Grafana versions:
+keep the tag. Two published options track upstream Grafana versions and keep
+its entrypoint and layout, so a values change is the whole change:
 
+  * Chainguard Images — https://images.chainguard.dev/directory/image/grafana/overview
   * Docker Hardened Images — https://docs.docker.com/dhi/ (subscription;
     images land in your own org namespace, so `registry` is yours)
-  * Chainguard Images — https://images.chainguard.dev/directory/image/grafana/overview
-  * Bitnami Secure Images — https://github.com/bitnami/containers/tree/main/bitnami/grafana
-    (the versioned, hardened tags moved behind a subscription; the free
-    `docker.io/bitnami` namespace is not the same thing)
 
-All of them ship no shell and no package manager, which is the point — and
-which also means `plugins` cannot work, since that installs at container
-start. Bake plugins into the image instead. See the note on `plugins` below.
+`profiles/registry/` does this for the whole stack rather than for Grafana
+alone, and carries the pull-secret wiring that goes with it.
+
+Both ship no shell and no package manager, which is the point — and which
+also means `plugins` cannot work, since that installs at container start.
+Bake plugins into the image instead. See the note on `plugins` below.
+
+Bitnami also publishes a hardened Grafana, but its images are built for
+Bitnami's own charts — Bitnami entrypoints, `/opt/bitnami` paths, UID 1001 —
+against an upstream subchart here, so it is a port rather than a swap. No
+profile ships for it.
 </td>
     </tr>
     <tr>

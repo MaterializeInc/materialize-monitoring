@@ -171,6 +171,74 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
 
+### Hardened images and private registries {#registry-profiles}
+
+`profiles/registry/` repoints the stack at a hardened-image vendor and wires up the pull secret that vendor's registry needs.
+
+| Profile | Use |
+|---|---|
+| `profiles/registry/pull-secret.values.yaml` | name a `dockerconfigjson` Secret on every workload. Compose it first; it sets no registries, so it works for a mirror as well as a vendor |
+| `profiles/registry/mirror.values.yaml` | a private mirror of the upstream images — same binaries, different host |
+| `profiles/registry/chainguard.values.yaml` | Chainguard Images — `cgr.dev/<ORG>/<image>` |
+| `profiles/registry/docker-hardened-images.values.yaml` | Docker Hardened Images — `docker.io/<ORG>/dhi-<image>` |
+
+Compose the pull secret first, then one of the others:
+
+```bash
+helm install mzmon . -f profiles/registry/pull-secret.values.yaml -f profiles/registry/mirror.values.yaml
+```
+
+#### Mirroring {#mirror-profile}
+
+A mirror changes where each image is pulled from and nothing about the image itself — same binary, same digest, same tag — so it is the least disruptive option here and the one most often mandated rather than chosen.
+It is also the only one that can carry the Alloy image, since that is a Materialize build rather than something a hardened-image vendor publishes.
+
+Check first whether you need chart values at all.
+Mirroring happens at two layers, and only one is a chart concern:
+
+- **At the node** — containerd's `registry.mirrors` / `hosts.toml`, or an `ImageDigestMirrorSet` on OpenShift — redirects pulls transparently while manifests keep naming the upstream registry. If you have this, change nothing. Rewriting references in values bypasses the indirection you set up and leaves the same mapping maintained in two places.
+- **In the manifest** — what `mirror.values.yaml` does. Needed when you cannot reach node configuration, which covers most managed control planes, or when policy requires the mirror to be visible in the manifest rather than inferred from cluster state.
+
+The profile assumes one project per upstream registry, the Harbor proxy-cache and Artifactory remote-repository shape, and this stack pulls from four: `docker.io`, `quay.io`, `registry.k8s.io`, and `ghcr.io`.
+Four anchors at the top carry those; if your mirror is flat and path-preserving instead, set all four to the same value.
+Four images spell their registry inside `image.repository` rather than taking a separate `registry` key, so anchors cannot reach them and they are written out in full — they are marked `HAND-EDIT` at the line, and missing one is the likely way to get this half-applied.
+
+The pull-secret overlay is a separate file because the subcharts do not agree on which global to read.
+Alloy reads `global.image.pullSecrets`; Thanos, Grafana, kube-state-metrics and node-exporter read `global.imagePullSecrets`; and Loki, grafana-operator, Alertmanager and metrics-server read neither and need their own key.
+Setting only `global.imagePullSecrets` leaves Loki — the largest pod count in the release — pulling anonymously, which surfaces as `ImagePullBackOff` on the ingesters long after `helm install` reports success.
+
+> [!WARNING]
+>   `global.imageRegistry` is not the one-line version of the mirror profile.
+>   It misses Alloy (which reads `global.image.registry`), Alertmanager and metrics-server (which carry the host inside `image.repository`), and Loki's memcached pair (which have no `registry` key) — each of which then keeps pulling from the internet rather than erroring.
+>   In the Loki chart it also outranks every per-component `image.registry`, so setting it alongside a profile silently overrides everything that profile chose.
+
+Each vendor profile's header lists what it deliberately leaves on an upstream registry.
+Common to both: the Alloy image is a Materialize build carrying the custom components the pipelines are written against, so it is a rebuild rather than a retag — which is why a mirror can carry it and a hardened rebuild cannot.
+
+The three Jobs this chart renders itself — the `pre-delete` cleanup hook and the two Alloy pre-install validators — read both globals directly, so the pull-secret overlay covers them with nothing extra to set.
+Confirm the cleanup hook's image is pullable before you rely on it: it runs at `pre-delete`, so an image it cannot pull hangs `helm uninstall` on the hook rather than failing an install you can retry.
+
+> [!WARNING]
+>   Hardened images run as their own non-root UID, which is generally not the UID the upstream chart writes into `securityContext` — Grafana's chart assumes 472, Loki's assumes 10001.
+>   A mismatch renders and schedules cleanly and then crash-loops on a volume the container cannot write.
+>   Check the UID before pointing one of these at a cluster that holds data.
+>
+>   These images also ship no package manager, so `grafana.plugins` — which installs at container start — silently gets you a Grafana without those plugins. Bake them into a derived image instead.
+
+#### Why there is no Bitnami profile {#no-bitnami-profile}
+
+Bitnami Secure Images publishes hardened builds of nearly everything in this stack, so its absence here is deliberate rather than an oversight.
+
+The two profiles above are retags: Chainguard and DHI rebuild the upstream image and keep its entrypoint, arguments, and filesystem layout, so a values change is the whole change.
+Bitnami's images are built for *Bitnami's own charts* — Bitnami entrypoint scripts, `/opt/bitnami` paths, UID 1001 — while the subcharts here are the upstream Grafana, Thanos, and prometheus-community ones, which pass their own arguments and mount config at upstream paths.
+Reconciling that is per-component work no values file can express, which is the part a profile could not have finished for you.
+
+Three concrete things sit on top of that, if you are weighing the port anyway:
+
+- Bitnami publishes no `loki-canary`, and the canary is **on by default** — so an otherwise-complete swap is broken until you also set `loki.lokiCanary.enabled: false`. There is likewise no `k8s-sidecar`, `prometheus-config-reloader`, or `access-log-exporter`, though all three are disabled by default here.
+- Bitnami tags carry a distro and revision suffix (`3.7.6-debian-12-r0`) rather than plain semver. The `prometheus-node-exporter` chart feeds its tag to `semverCompare`, so that suffix **fails the render outright** with `invalid semantic version` until you also set `node-exporter.version` to the upstream version the tag was built from.
+- The catalog is subscription-gated. The free `docker.io/bitnamisecure` namespace carries a small sampler that includes none of these applications, so there is no anonymous tag to pin against.
+
 ### Disabling a Component
 
 If you want further control of the managed components, you can selectively disable components in the `materialize-monitoring` Helm chart by setting the `enabled` field for that component to `false` in your `YOUR_VALUES.yaml` file or via `--set` in your `helm install`/`helm upgrade` command.

@@ -1,0 +1,350 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: registry profiles (hardened images + pull secrets)
+release:
+  name: t
+  namespace: test-monitoring
+# Enablement + required inputs shared by every case. Profiles are layered on
+# top per-test via `values:`.
+set:
+  tags.cluster-metrics: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy
+  loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
+  thanos.global.objstore.createSecret: false
+tests:
+  # ---------------------------------------------------------------------------
+  # pull-secret.values.yaml
+  #
+  # The subcharts disagree about which global they read, so the overlay names
+  # both spellings plus the four charts that read neither. Each case below is a
+  # chart that would silently pull anonymously if its line were dropped.
+  # ---------------------------------------------------------------------------
+  - it: pull secret reaches Loki, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches Alertmanager, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches grafana-operator, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/grafana-operator/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches metrics-server, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  # Alloy is the odd one out: it reads `global.image.pullSecrets` and never
+  # `global.imagePullSecrets`, so a values file carrying only the latter leaves
+  # the whole pipeline pulling anonymously.
+  - it: pull secret reaches Alloy via global.image.pullSecrets
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches Thanos via global.imagePullSecrets
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  # The overlay must not touch registries. `global.imageRegistry` in particular
+  # outranks every per-component `image.registry` in the Loki chart, so setting
+  # it here would quietly override whichever vendor profile is layered on top.
+  - it: pull secret overlay leaves image registries alone
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^docker\.io/grafana/loki:'
+
+  # The three Jobs this chart renders itself read both globals through
+  # `mzmon.imagePullSecrets`. The cleanup hook is the one that matters most:
+  # an image it cannot pull hangs `helm uninstall` rather than failing an
+  # install you can retry.
+  - it: pull secret reaches the pre-delete cleanup hook
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches both Alloy pre-install validator Jobs
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    templates:
+      - pipelines/validator/job-validate-agent.yaml
+      - pipelines/validator/job-validate-gateway.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  # The overlay names the same Secret under both globals, which is what a
+  # consumer will do. One entry, not two.
+  - it: the two global spellings deduplicate to one entry
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.imagePullSecrets
+          count: 1
+
+  # With no pull secret configured the key must be absent, not present-and-empty.
+  - it: no pull secret configured leaves the key off the Jobs entirely
+    templates:
+      - cleanup/job-grafana-operator.yaml
+      - pipelines/validator/job-validate-agent.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+
+  # Bare strings are accepted alongside the Kubernetes shape and normalized.
+  # `ternary` would have evaluated `.name` on a string and failed the render.
+  - it: bare-string pull secrets are normalized and merged with the local override
+    set:
+      global.imagePullSecrets[0].name: shared
+      global.image.pullSecrets[0]: shared
+      cleanup.grafanaOperator.image.pullSecrets[0].name: cleanup-only
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: shared
+            - name: cleanup-only
+
+  # The validator Jobs run the Alloy images, so they follow the Alloy pods'
+  # pull secrets rather than needing a key of their own.
+  - it: the agent validator Job inherits alloy-agent.image.pullSecrets
+    set:
+      alloy-agent.image.pullSecrets[0].name: alloy-only
+    template: pipelines/validator/job-validate-agent.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: alloy-only
+
+  # ---------------------------------------------------------------------------
+  # Vendor profiles
+  # ---------------------------------------------------------------------------
+  - it: chainguard profile repoints Loki
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/loki:'
+
+  # memcached's image block has no `registry` key, so the host has to ride along
+  # in `repository`. Renders as a bare `memcached:<tag>` if that is missed.
+  - it: chainguard profile repoints Loki's memcached, which has no registry key
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/chunks-cache/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/memcached:'
+
+  - it: chainguard profile repoints Thanos through the subchart's own globals
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/thanos:'
+
+  # This chart's `image.repository` carries the registry host inline.
+  - it: chainguard profile repoints Alertmanager, whose repository holds the host
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/prometheus-alertmanager:'
+
+  # `distroless: true` appends `-distroless` to the tag — an upstream quay.io
+  # naming convention that resolves to nothing at any of the three vendors.
+  - it: chainguard profile clears the node-exporter distroless tag suffix
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/prometheus-node-exporter:v[0-9.]+$'
+
+  - it: chainguard profile repoints the uninstall hook's kubectl
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/kubectl:'
+
+  - it: docker hardened images profile applies the dhi- mirror prefix
+    values:
+      - ../profiles/registry/docker-hardened-images.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^docker\.io/<ORG>/dhi-loki:'
+
+  # A vendor whose tags are not plain semver needs `node-exporter.version` set
+  # as well: the chart feeds `coalesce version image.tag Chart.AppVersion` to
+  # `semverCompare`, and a non-semver tag fails the render outright rather than
+  # misbehaving. Neither shipped profile needs it — both vendors keep upstream
+  # version strings — so this pins the escape hatch rather than a profile.
+  - it: a non-semver tag needs node-exporter.version to render at all
+    set:
+      node-exporter.version: "1.12.1"
+      node-exporter.image.registry: "example.test"
+      node-exporter.image.repository: "node-exporter"
+      node-exporter.image.tag: "1.12.1-not-semver-r0"
+      node-exporter.image.distroless: false
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "example.test/node-exporter:1.12.1-not-semver-r0"
+
+  # ---------------------------------------------------------------------------
+  # mirror.values.yaml
+  #
+  # A mirror preserves the image, so what these pin is that nothing *else*
+  # changed: same digest, same tag, same distroless suffix. The vendor profiles
+  # cannot make that promise and do not try to.
+  # ---------------------------------------------------------------------------
+  - it: mirror profile maps each upstream registry to its own project
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    templates:
+      - ../charts/loki/templates/ingester/workload.yaml
+      - ../charts/thanos/templates/receive/statefulset.yaml
+      - ../charts/kube-state-metrics/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/(dockerhub/grafana/loki|quay/thanos/thanos|registry-k8s-io/kube-state-metrics/kube-state-metrics):'
+
+  # The one thing a mirror can do that a hardened rebuild cannot: carry the
+  # Materialize Alloy build, digest intact.
+  - it: mirror profile moves Alloy and keeps its pinned digest
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/ghcr/materializeinc/mzmon-alloy@sha256:[0-9a-f]{64}$'
+
+  # Upstream's tags survive a mirror, so the `-distroless` suffix still resolves
+  # and stays on — the opposite of what the hardened-image profiles must do.
+  - it: mirror profile keeps the node-exporter distroless suffix
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "<REGISTRY>/quay/prometheus/node-exporter:v1.12.1-distroless"
+
+  # The four images whose host lives inside `repository`, which anchors cannot
+  # reach and which are the likely way to get this half-applied.
+  - it: mirror profile covers the images that carry the host in the repository
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    templates:
+      - ../charts/alertmanager/templates/statefulset.yaml
+      - ../charts/loki/templates/chunks-cache/statefulset.yaml
+      - ../charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/(quay/prometheus/alertmanager|dockerhub/library/memcached|registry-k8s-io/metrics-server/metrics-server):'
+
+  # ---------------------------------------------------------------------------
+  # Composition
+  # ---------------------------------------------------------------------------
+  - it: pull-secret and vendor profiles compose without tripping the validators
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/chainguard.values.yaml
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: composed profiles set both the registry and the pull secret on one pod
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/loki:'
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull-secret and mirror compose, and reach the uninstall hook together
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/mirror.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/registry-k8s-io/kubectl:'
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: the mirror profile passes our validators
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/mirror.values.yaml
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}

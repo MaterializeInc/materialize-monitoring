@@ -6,6 +6,11 @@
   "helm.sh/hook-weight" "0"
   "helm.sh/hook-delete-policy" "before-hook-creation"
 }}
+{{- /*
+  This Job runs the gateway's own image, so it inherits the gateway's pull
+  secrets as well as the chart-wide ones. See the note in job-validate-agent.yaml.
+*/}}
+{{- $pullSecrets := include "mzmon.imagePullSecrets" (dict "root" $ "extra" $gatewayValues.image.pullSecrets) }}
 {{- if and ( include "mzmon.alloyGateway.enabled" $ ) $pipelineValues.preValidateJob.enabled }}
 kind: Job
 apiVersion: batch/v1
@@ -32,6 +37,10 @@ spec:
     spec:
       # serviceAccountName: {{ include "mzmon.alloyGateway.serviceAccountName" $ }}
       restartPolicy: Never
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- $pullSecrets | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml $pipelineValues.preValidateJob.podSecurityContext | nindent 8 }}
       containers:

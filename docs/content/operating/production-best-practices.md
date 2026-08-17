@@ -104,6 +104,64 @@ Both sit well below `system-cluster-critical` (2000000000) and `system-node-crit
 - [x] `[chart]` The `scheduling` profile carries the whole fan-out — node selector, tolerations, and both class names — with every site aliased off four anchors, so a rename is a two-line edit rather than eleven `priorityClassName` keys across nine subcharts that can half-apply. See [Getting Started > Helm](../../getting-started/helm/#scheduling-profile).
 - [ ] `[operator]` If your platform already defines a priority scheme, point the subchart values at your own classes instead. `metrics-server` is left on the upstream `system-cluster-critical` deliberately: it backs the metrics API that HPAs and the Materialize Console read, so it is cluster plumbing rather than monitoring.
 
+## Images and registries {#images-and-registries}
+
+Every image in the stack is pinned by registry, repository, and tag — in this chart's `values.yaml` where it matters enough to own the cadence, in a subchart's defaults otherwise — so repointing at a mirror or a hardened rebuild is a values change rather than a fork.
+Four overlays under `profiles/registry/` do exactly that.
+`mirror` moves every image to a private mirror without changing any of them, which is the common case and the only one that can carry the Alloy build.
+`chainguard` and `docker-hardened-images` swap in a hardened rebuild — one per vendor that publishes the whole set *and* keeps the upstream entrypoint and layout ([Chainguard Images](https://images.chainguard.dev/directory), [Docker Hardened Images](https://docs.docker.com/dhi/)).
+`pull-secret` carries the credential half on its own and composes with any of them.
+
+Bitnami Secure Images is deliberately absent — it rebuilds around its own charts, so it is a port rather than a retag; see [Getting Started > Helm](../../getting-started/helm/#no-bitnami-profile) for what that costs.
+If your mirroring happens in containerd or via an `ImageDigestMirrorSet`, none of this applies: manifests keep naming the upstream registry and the redirect is invisible to Helm.
+See [Getting Started > Helm](../../getting-started/helm/#registry-profiles) for the composition order.
+
+### No single global reaches every subchart {#pull-secret-globals}
+
+This is the part that looks solved and is not.
+Helm propagates `global` into every subchart, but each subchart decides for itself whether to read it, and these do not agree:
+
+| Key | Reached by |
+|---|---|
+| `global.image.pullSecrets` | `alloy-agent`, `alloy-gateway` |
+| `global.imagePullSecrets` | `thanos`, `grafana`, `kube-state-metrics`, `node-exporter` |
+| *neither — needs its own key* | `loki`, `grafana-operator`, `alertmanager`, `metrics-server` |
+
+Setting only `global.imagePullSecrets` therefore leaves Loki — the largest pod count in the release — pulling anonymously.
+It does not fail the render or the install: it surfaces as `ImagePullBackOff` on the ingesters some minutes after `helm install` reports success.
+The `pull-secret` profile sets all three groups, which is the whole reason it exists as a file rather than as two `--set` flags.
+
+The matching trap on the registry side is `global.imageRegistry`.
+Loki's image helper coalesces it **ahead of** every per-component `image.registry`, so setting it to reach one mirror silently flattens all of Loki's images — memcached and the canary included — onto that host and overrides whatever else was configured.
+Set per-component registries instead.
+
+### Where a retag is not enough
+
+Hardened images keep the upstream binary and drop everything around it, which is the point and also the failure mode:
+
+- **The UID rarely matches the chart's.** Grafana's chart writes `runAsUser: 472` and Loki's `10001`, while a hardened rebuild runs as whatever the vendor chose. A mismatch renders and schedules cleanly, then crash-loops on a volume the container cannot write. Check the image's UID and align the relevant `securityContext` before pointing one at a cluster that holds data.
+- **No package manager means no start-time plugin installation.** See the Grafana section below.
+- **A vendor outside the two profiled here may not be a retag at all.** Both shipped profiles keep the upstream entrypoint, arguments, and layout, which is what makes them a values change. A vendor that rebuilds around its own charts is a port, and the render can fail before you get as far as the UID — a tag that is not plain semver breaks `prometheus-node-exporter` outright unless `node-exporter.version` is set alongside it.
+
+### The three hook Jobs {#image-pull-secret-gaps}
+
+The `pre-delete` cleanup hook and the two Alloy pre-install validator Jobs are workloads this chart renders itself rather than subchart pods, so they take their pull secrets from both globals directly and need nothing extra set.
+Each also accepts a local override appended to the globals — `cleanup.grafanaOperator.image.pullSecrets`, and for the validators the Alloy pods' own `alloy-{agent,gateway}.image.pullSecrets`, since they run those images.
+Names are deduplicated across all of them, so pointing every path at one Secret gives one entry.
+
+The cleanup hook is worth confirming by hand.
+It runs at `pre-delete`, so an image it cannot pull does not fail an install you can retry — it hangs `helm uninstall` on the hook, with the operator still up and the release half-removed.
+`helm uninstall --no-hooks` is the way out, and needing it is a worse day than checking first.
+
+- [x] `[chart]` Every image is **pinned by tag**, and the images whose cadence should not be tied to a chart release (Grafana, Alloy) are pinned in this chart's own `values.yaml` so Renovate owns them directly.
+- [x] `[chart]` The Alloy image is pinned **by digest as well as tag**, so the identity of the running pipeline binary is fixed rather than merely named.
+- [x] `[chart]` `profiles/registry/` ships the `mirror` overlay, the two hardened-vendor overlays, and the `pull-secret` overlay, with unit tests asserting the pull secret reaches each of the four subcharts that read no global.
+- [x] `[chart]` The `pre-delete` cleanup hook and both pre-install validator Jobs carry `imagePullSecrets`, merged from both global spellings and deduplicated by name, so an entirely-private-registry install is reachable.
+- [ ] `[consumer]` **Create the pull Secret in every namespace the stack renders into.** Helm does not create it, and a Secret is namespaced — a [split-namespace](#namespace-layout) install needs one copy per namespace, not one for the release.
+- [ ] `[operator]` **Verify the vendor's tag strings before install.** Both track upstream versions without always spelling them identically — a leading `v` is commonly dropped, and a DHI mirror carries only the tags you chose to mirror. The profiles inherit the chart's tags rather than restating them, so the version stays pinned in one place; add an explicit `tag` for any image whose string differs.
+- [ ] `[operator]` **Alloy is a rebuild, not a retag.** The chart runs a Materialize build of Alloy carrying the custom components the pipelines are written against; a stock vendor Alloy fails config validation at startup. A mirror carries it fine — the `mirror` profile moves it along with everything else, digest intact.
+- [ ] `[operator]` **Mirror at the node if you can.** A containerd `hosts.toml` or an `ImageDigestMirrorSet` redirects pulls without touching any chart value, which keeps one mapping in one place. Reach for `mirror.values.yaml` when you cannot configure nodes, or when policy wants the mirror named in the manifest.
+
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
@@ -922,7 +980,8 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 #### 5. Images & supply chain
 
 - [x] `[chart]` The Grafana image is **pinned explicitly in `values.yaml`** (registry, repository, tag) rather than tracking the subchart's `appVersion`, so Renovate bumps the server on its own cadence instead of only when a chart release happens to carry one.
-- [ ] `[operator]` **Hardened base images** are a drop-in swap: point `image.registry`/`image.repository` at one and keep the tag. Published options that track upstream Grafana versions are [Docker Hardened Images](https://docs.docker.com/dhi/) (subscription; images land in your own org namespace), [Chainguard Images](https://images.chainguard.dev/directory/image/grafana/overview), and [Bitnami Secure Images](https://github.com/bitnami/containers/tree/main/bitnami/grafana) — note the versioned hardened Bitnami tags moved behind a subscription, and the free `docker.io/bitnami` namespace is not the same thing. All of them ship no shell and no package manager, which is the point, and which means start-time plugin installation cannot work — bake plugins into the image instead.
+- [x] `[chart]` **Hardened base images** are a values change: the three overlays under `profiles/registry/` repoint Grafana along with the rest of the stack, so this is no longer a per-image swap to work out by hand. See [Images and registries](#images-and-registries) for the vendors, the pull-secret wiring, and the UID hazard that makes a swap crash-loop rather than fail cleanly.
+- [ ] `[operator]` **A hardened Grafana cannot install plugins at start.** These images ship no shell and no package manager — which is the point — so `grafana.plugins` silently gets you a Grafana without those plugins rather than an error. Bake them into a derived image instead.
 - [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
 - [x] `[chart]` **Image Renderer disabled**, and a validator warns when it is turned on. It is a headless Chromium that fetches URLs on Grafana's behalf — a large attack surface and a server-side request forgery pivot into the cluster network. It has no place in a production deployment.
 - [x] `[chart]` The subchart's `testFramework` hook is off; it pulls a `bats` image this chart does not otherwise use or pin.
