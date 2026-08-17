@@ -8,13 +8,35 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.4.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.16.2 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.16.2
 
-_Changes Pending_
+* DEP-231 Document and provide examples for DHI and Chainguard images
+    * [materialize-monitoring#245](https://github.com/MaterializeInc/materialize-monitoring/pull/245)
+* DEP-195 Proposal for TLS authentication
+    * [materialize-monitoring#244](https://github.com/MaterializeInc/materialize-monitoring/pull/244)
+* DEP-203 DEP-185 Run E2E tests against Tier 2 Terraform; support static s3 creds
+    * [materialize-monitoring#241](https://github.com/MaterializeInc/materialize-monitoring/pull/241)
+* DEP-230 Fix node logs on bottlerocket
+    * [materialize-monitoring#239](https://github.com/MaterializeInc/materialize-monitoring/pull/239)
+* DEP-185 Add an E2E test suite
+    * [materialize-monitoring#233](https://github.com/MaterializeInc/materialize-monitoring/pull/233)
+* DEP-230 Fixes for collecting node logs (journald)
+    * [materialize-monitoring#234](https://github.com/MaterializeInc/materialize-monitoring/pull/234)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.10.0..v0.11.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.16.1
 
