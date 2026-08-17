@@ -556,6 +556,8 @@ Usage:
     {{- tpl $otelDestValues.auth.basic.handler $ }}
   {{- else if eq $otelDestValues.auth.authType "bearer" }}
     {{- tpl $otelDestValues.auth.bearer.handler $ }}
+  {{- else if eq $otelDestValues.auth.authType "headers" }}
+    {{- tpl $otelDestValues.auth.headers.handler $ }}
   {{- else if or ( eq $otelDestValues.auth.authType "sigv4" ) ( eq $otelDestValues.auth.authType "awsSigv4" ) }}
     {{- tpl $otelDestValues.auth.awsSigv4.handler $ }}
   {{- else if eq $otelDestValues.auth.authType "custom" }}
@@ -577,6 +579,8 @@ Usage:
     {{- tpl $otelDestValues.auth.basic.config $ }}
   {{- else if eq $otelDestValues.auth.authType "bearer" }}
     {{- tpl $otelDestValues.auth.bearer.config $ }}
+  {{- else if eq $otelDestValues.auth.authType "headers" }}
+    {{- tpl $otelDestValues.auth.headers.config $ }}
   {{- else if or ( eq $otelDestValues.auth.authType "sigv4" ) ( eq $otelDestValues.auth.authType "awsSigv4" ) }}
     {{- tpl $otelDestValues.auth.awsSigv4.config $ }}
   {{- else if eq $otelDestValues.auth.authType "custom" }}
@@ -705,6 +709,12 @@ Usage:
           "enabled" $gw.metrics.gateway.destination.prometheusRemoteWrite.enabled ) | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
+      {{- $res := include "mzmon.alloy.validate.otelDestAuth" $ | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}
@@ -816,28 +826,112 @@ Usage:
             ( dict "field" "oauth2.tokenUrl" "value" $dest.oauth2.tokenUrl "env" $dest.oauth2.tokenUrlEnv ) }}
     {{- end }}
 
-    {{- $alloy := dig "alloy" dict ( index $ctx.Values $role | default dict ) }}
-    {{- $extraEnv := dig "extraEnv" list $alloy }}
-    {{- $envFrom := dig "envFrom" list $alloy }}
-    {{- $extraEnvNames := list }}
-    {{- range $extraEnv }}
-      {{- if .name }}
-        {{- $extraEnvNames = append $extraEnvNames .name }}
-      {{- end }}
-    {{- end }}
-
     {{- range $needed }}
       {{- $envName := .env | toString }}
+      {{- $source := include "mzmon.alloy.envSource" ( dict
+            "context" $ctx "role" $role "env" $envName ) | trim }}
       {{- if .value }}
         {{- if .secret }}
           {{- $warnings = append $warnings ( printf "%s.%s is set inline, so it renders into the pipeline env ConfigMap in plaintext — not a Secret. Prefer leaving it empty and supplying %s through %s.alloy.envFrom (a secretRef) or .extraEnv." $path .field $envName $role ) }}
         {{- end }}
-      {{- else if has $envName $extraEnvNames }}
+      {{- else if eq $source "extraEnv" }}
         {{- /* explicitly provided */}}
-      {{- else if $envFrom }}
+      {{- else if eq $source "envFrom" }}
         {{- $warnings = append $warnings ( printf "%s.authType is %q but %s.%s is empty, so %s must come from %s.alloy.envFrom. That cannot be verified at render time; if the source does not set it, the credential resolves empty and authentication fails at run time." $path $authType $path .field $envName $role ) }}
       {{- else }}
         {{- $errors = append $errors ( printf "%s.authType is %q but %s.%s is empty and %s is set by neither %s.alloy.extraEnv nor .envFrom. The rendered pipeline reads sys.env(%q), which would resolve empty." $path $authType $path .field $envName $role $envName ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Where an Alloy role could get a given environment variable from.
+
+Returns "extraEnv" when the role's `alloy.extraEnv` names it outright,
+"envFrom" when the role has any `alloy.envFrom` source — those are ConfigMap and
+Secret references whose contents are not readable at render time, so the most
+that can be said is that something *might* supply it — and "" when neither
+could.
+
+Usage:
+  {{- $source := include "mzmon.alloy.envSource" ( dict
+        "context" $ "role" "alloy-gateway" "env" "GATEWAY_OTEL_DEST_..." ) | trim }}
+*/}}
+{{- define "mzmon.alloy.envSource" }}
+  {{- $ctx := .context | required ".context must be specified" }}
+  {{- $role := .role | required ".role must be specified" }}
+  {{- $envName := .env | required ".env must be specified" | toString }}
+
+  {{- $alloy := dig "alloy" dict ( index $ctx.Values $role | default dict ) }}
+  {{- $extraEnvNames := list }}
+  {{- range dig "extraEnv" list $alloy }}
+    {{- if .name }}
+      {{- $extraEnvNames = append $extraEnvNames ( .name | toString ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- if has $envName $extraEnvNames }}
+    {{- "extraEnv" }}
+  {{- else if dig "envFrom" list $alloy }}
+    {{- "envFrom" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate the gateway's OTLP destination auth.
+
+This block is shaped differently from the Loki and Prometheus destinations —
+one `auth` stanza shared by every OTLP exporter, selected by `authType` — so it
+is checked here rather than through `mzmon.alloy.validate.destAuth`.
+
+Only `headers` is checked structurally. The other types render a fixed config
+whose env var names are fixed too, and `custom` is a raw escape hatch with
+nothing to check. `headers` is caller-built, so it can be built wrong: an empty
+list renders an `otelcol.auth.headers` block that attaches nothing, and a header
+with neither `value` nor `valueEnv` sends an empty string. Both are accepted by
+Alloy and rejected by the backend, at run time, as an authentication failure
+that names nothing.
+
+Usage:
+  {{- $res := include "mzmon.alloy.validate.otelDestAuth" $ | fromYaml }}
+*/}}
+{{- define "mzmon.alloy.validate.otelDestAuth" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $path := "pipeline.metrics.gateway.destination.otel.auth" }}
+  {{- $auth := $.Values.pipeline.metrics.gateway.destination.otel.auth }}
+
+  {{- if eq ( $auth.authType | toString ) "headers" }}
+    {{- $headers := dig "headers" "headers" list $auth }}
+    {{- if not $headers }}
+      {{- $errors = append $errors ( printf "%s.authType is \"headers\" but %s.headers.headers is empty, so the rendered otelcol.auth.headers block would attach no headers at all." $path $path ) }}
+    {{- end }}
+
+    {{- range $i, $h := $headers }}
+      {{- $at := printf "%s.headers.headers[%d]" $path $i }}
+      {{- if not $h.key }}
+        {{- $errors = append $errors ( printf "%s.key is empty; every header needs a name." $at ) }}
+      {{- end }}
+
+      {{- if and $h.value $h.valueEnv }}
+        {{- $errors = append $errors ( printf "%s sets both .value and .valueEnv. Set exactly one — .value renders the header inline, .valueEnv reads it from the environment — because the rendered config can only use one and silently prefers .valueEnv." $at ) }}
+      {{- else if not ( or $h.value $h.valueEnv ) }}
+        {{- $errors = append $errors ( printf "%s sets neither .value nor .valueEnv, so header %q would be sent with an empty value." $at ( $h.key | toString ) ) }}
+      {{- else if $h.valueEnv }}
+        {{- $envName := $h.valueEnv | toString }}
+        {{- $source := include "mzmon.alloy.envSource" ( dict
+              "context" $ "role" "alloy-gateway" "env" $envName ) | trim }}
+        {{- if eq $source "extraEnv" }}
+          {{- /* explicitly provided */}}
+        {{- else if eq $source "envFrom" }}
+          {{- $warnings = append $warnings ( printf "%s.valueEnv is %q, so header %q must come from alloy-gateway.alloy.envFrom. That cannot be verified at render time; if the source does not set it, the header is sent empty and the destination rejects the request." $at $envName ( $h.key | toString ) ) }}
+        {{- else }}
+          {{- $errors = append $errors ( printf "%s.valueEnv is %q, but that variable is set by neither alloy-gateway.alloy.extraEnv nor .envFrom. The rendered config reads sys.env(%q), which would resolve empty." $at $envName $envName ) }}
+        {{- end }}
       {{- end }}
     {{- end }}
   {{- end }}

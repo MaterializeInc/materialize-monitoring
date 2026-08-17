@@ -95,3 +95,66 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'endpoint \{[^}]*authorization \{'
+
+  # --- otel: headers auth ---------------------------------------------------
+  #
+  # The `headers` authType exists so an API-key header does not need the
+  # `custom` raw-config escape hatch. Two things it has to get right: the
+  # handler reaches the exporter's `auth` argument, and a `valueEnv` header
+  # renders as a `sys.env` lookup rather than the literal name.
+  - it: "otel: headers auth renders a header block and wires the handler in"
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+        - key: x-honeycomb-dataset
+          value: mzmon
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.headers "oteldest" \{'
+      # A secret header reads the environment; it must not render the variable
+      # name as the literal header value.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'key   = "x-honeycomb-team"\n\s+value = sys\.env\("GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY"\)'
+      # A non-secret header renders inline.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'key   = "x-honeycomb-dataset"\n\s+value = "mzmon"'
+      # The handler has to reach the exporter, or the headers are built and
+      # never attached to a request.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'auth = otelcol\.auth\.headers\.oteldest\.handler'
+
+  - it: "otel: headers auth is a handled authType in the env configMap (renders, no fail)"
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "otel: the honeycomb profile renders end to end"
+    values:
+      - ../profiles/otlp-metrics-honeycomb.values.yaml
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'value = sys\.env\("GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'auth = otelcol\.auth\.headers\.oteldest\.handler'

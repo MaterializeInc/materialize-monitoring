@@ -4,17 +4,17 @@
 # Combine with your platform profile (e.g. gcp-example / aws-example) as needed.
 #
 # Honeycomb authenticates with an `x-honeycomb-team` API-key header rather than a
-# bearer token, so this uses the `custom` auth escape hatch with
-# `otelcol.auth.headers`. The key is read at runtime from the
-# GATEWAY_OTEL_DEST_BEARER_TOKEN environment variable, which you supply through
-# the gateway Secret (the chart does NOT create it):
+# bearer token, so this uses `authType: headers`. The key is read at runtime from
+# the GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY environment variable, which you supply
+# through the gateway Secret (the chart does NOT create it):
 #
 #   kubectl create secret generic mzmon-alloy-gateway-env \
 #     --namespace monitoring \
-#     --from-literal=GATEWAY_OTEL_DEST_BEARER_TOKEN='<honeycomb-api-key>'
+#     --from-literal=GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY='<honeycomb-api-key>'
 #
 # The Secret name must match <fullnameOverride>-alloy-gateway-env (mzmon by
-# default) and live in the gateway's namespace.
+# default) and live in the gateway's namespace. The variable name is not special
+# — pick whatever you like and name it in `valueEnv` below.
 
 pipeline:
   metrics:
@@ -42,20 +42,14 @@ pipeline:
             minMetricImportance: recommended
 
           auth:
-            # `custom` is the escape hatch for auth the built-in types don't cover
-            # (here, Honeycomb's API-key header).
-            authType: custom
-            custom:
-              handler: otelcol.auth.headers.oteldest.handler
-              config: |
-                otelcol.auth.headers "oteldest" {
-                  header {
-                    key   = "x-honeycomb-team"
-                    value = sys.env("GATEWAY_OTEL_DEST_BEARER_TOKEN")
-                  }
-                  header {
-                    # The target Honeycomb dataset for these metrics.
-                    key   = "x-honeycomb-dataset"
-                    value = "mzmon"
-                  }
-                }
+            authType: headers
+            headers:
+              headers:
+                # The API key. `valueEnv` keeps it out of the rendered pipeline
+                # ConfigMap — it is read from the gateway's environment instead.
+                - key: x-honeycomb-team
+                  valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+                # The target Honeycomb dataset for these metrics. Not a secret, so
+                # it is set inline.
+                - key: x-honeycomb-dataset
+                  value: mzmon

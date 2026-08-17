@@ -96,6 +96,94 @@ tests:
           pattern: "prometheusRemoteWrite.*set by neither"
         not: true
 
+  # --- otel headers auth ----------------------------------------------------
+  #
+  # `headers` is the one otel authType whose config the caller builds, so it is
+  # the one that can be built wrong. Alloy accepts every shape below; the
+  # backend rejects them, at run time, as an authentication failure that names
+  # nothing.
+
+  - it: errors when the headers list is empty
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+    asserts:
+      - failedTemplate:
+          errorPattern: "headers.headers is empty"
+
+  - it: errors when a header sets neither value nor valueEnv
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-team
+    asserts:
+      - failedTemplate:
+          errorPattern: 'sets neither .value nor .valueEnv'
+
+  - it: errors when a header sets both value and valueEnv
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-team
+          value: inline
+          valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+    asserts:
+      - failedTemplate:
+          errorPattern: 'sets both .value and .valueEnv'
+
+  - it: errors when a header valueEnv can come from nowhere
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+      alloy-gateway.alloy.envFrom: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY.*set by neither"
+
+  - it: warns when a header valueEnv must come from an envFrom source
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'x-honeycomb-team" must come from alloy-gateway.alloy.envFrom'
+
+  # An inline header is the documented way to send a non-secret routing header,
+  # so it must not trip the env-source check.
+  - it: stays quiet about a header set inline
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: api.honeycomb.io
+      pipeline.metrics.gateway.destination.otel.auth.authType: headers
+      pipeline.metrics.gateway.destination.otel.auth.headers.headers:
+        - key: x-honeycomb-dataset
+          value: mzmon
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "x-honeycomb-dataset"
+        not: true
+
   # --- reachability ---------------------------------------------------------
 
   - it: errors when the agent writes to a gateway that is not deployed

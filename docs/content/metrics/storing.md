@@ -58,7 +58,7 @@ Set `authType` and fill in the matching block:
 - **`oauth2`** — OAuth2 client credentials from env.
 - **`sigv4`** — AWS SigV4 signing, derived from IRSA (see [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa) below).
 
-The OpenTelemetry destinations have their own auth block, `destination.otel.auth`, whose `authType` is one of `none`, `basic`, `bearer`, `awsSigv4`, or `custom`.
+The OpenTelemetry destinations have their own auth block, `destination.otel.auth`, whose `authType` is one of `none`, `basic`, `bearer`, `headers`, `awsSigv4`, or `custom`.
 
 Whichever destination and method you choose, the gateway reads the actual secret from an environment variable at runtime (`sys.env(...)`).
 There are two ways to populate that variable:
@@ -106,6 +106,7 @@ Populate only the rows for the destinations and auth methods you enable:
 | Prometheus remote-write · client TLS | `…prometheusRemoteWrite.tls` | `GATEWAY_PROMETHEUS_DEST_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
 | OTLP · `basic` | `…otel.auth.basic` | `GATEWAY_OTEL_DEST_USERNAME`, `GATEWAY_OTEL_DEST_PASSWORD` |
 | OTLP · `bearer` | `…otel.auth.bearer` | `GATEWAY_OTEL_DEST_BEARER_TOKEN` |
+| OTLP · `headers` | `…otel.auth.headers` | whatever each header's `valueEnv` names — you choose |
 | Datadog | `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_DATADOG_API_KEY` |
 | SigV4 — AMP or OTLP `awsSigv4` | `…prometheusRemoteWrite.sigv4` / `…otel.auth.awsSigv4` | — none; uses the pod's IRSA identity |
 
@@ -420,14 +421,36 @@ pipeline:
             protocol: grpc          # grpc → otlp, http → otlphttp
             compression: gzip       # gzip for compatibility, snappy for speed
           auth:
-            authType: bearer        # none | basic | bearer | awsSigv4 | custom
+            authType: bearer        # none | basic | bearer | headers | awsSigv4 | custom
 ```
 
 `url` takes a `host[:port]` with no scheme; `protocol: grpc` selects the OTLP/gRPC exporter and `protocol: http` selects OTLP/HTTP.
 Authentication is configured once under `otel.auth` (shared by the OTLP exporter): pick `authType` and fill the matching block.
 The credential values themselves come from the gateway Secret — see [Supplying credentials](#supplying-credentials-the-gateway-secret) for the env-var keys.
 
-For a ready-made starting point — generic OTLP to Honeycomb, including the header-auth block above — copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
+#### API-key headers {#otlp-headers}
+
+Several OTLP vendors authenticate with a custom request header rather than a bearer token — Honeycomb's `x-honeycomb-team`, for one.
+`authType: headers` covers that case without dropping to raw Alloy config:
+
+```yaml
+          auth:
+            authType: headers
+            headers:
+              headers:
+                - key: x-honeycomb-team
+                  valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+                - key: x-honeycomb-dataset
+                  value: mzmon
+```
+
+Each header sets exactly one of `value` or `valueEnv`.
+`value` renders into the gateway's pipeline ConfigMap in plaintext, so keep it for non-secret routing headers such as a dataset or tenant name; `valueEnv` names an environment variable the gateway reads at startup, which is where a credential belongs.
+The variable name is yours to pick — nothing else in the chart depends on it — so name it after the backend rather than reusing another destination's key.
+
+The chart checks the shape at render time: an empty header list, a header missing its `key`, a header setting both `value` and `valueEnv` or neither, and a `valueEnv` no `extraEnv` or `envFrom` source could supply all fail the install rather than authenticating with an empty header at run time.
+
+For a ready-made starting point — generic OTLP to Honeycomb, including the header auth above — copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
 
 ### Google Cloud Monitoring (GCM) {#gcm}
 
