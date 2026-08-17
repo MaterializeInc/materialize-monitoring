@@ -288,6 +288,147 @@ variable "google_cloud_metrics" {
   }
 }
 
+# Keep this type expression free of blank lines and comments: terraform-docs
+# publishes it verbatim, and the docsite renders it inside a raw HTML block that
+# a blank line would terminate.
+variable "datadog_metrics" {
+  description = <<-EOT
+    Also export metrics to Datadog from the Alloy gateway. Null disables it; Thanos is unaffected
+    either way. Pair it with `datadog_api_key`, which is what actually authenticates.
+
+    `site` is your Datadog site — `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, and so on.
+    Getting it wrong is a 403 from the intake, not a routing error.
+
+    `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
+    `all` — and each tier includes the ones below it. This is a cost control, and a sharper one than
+    for most backends: Datadog bills per custom metric, so `all` is rarely what you want.
+
+    `metric_endpoint` and `logs_endpoint` override the intake URLs the exporter derives from `site`.
+    Leave them null unless you are routing through a proxy or PrivateLink — a hand-written endpoint
+    that disagrees with `site` fails at the intake rather than at plan time.
+  EOT
+  type = object({
+    site            = optional(string, "datadoghq.com")
+    min_importance  = optional(string, "essential")
+    metric_endpoint = optional(string)
+    logs_endpoint   = optional(string)
+  })
+  default = null
+
+  validation {
+    condition = var.datadog_metrics == null || contains(
+      ["essential", "recommended", "extended", "diagnostic", "all"],
+      try(var.datadog_metrics.min_importance, ""),
+    )
+    error_message = "datadog_metrics.min_importance must be one of: essential, recommended, extended, diagnostic, all."
+  }
+}
+
+variable "datadog_api_key" {
+  description = <<-EOT
+    Datadog API key for `datadog_metrics`.
+
+    Delivered as a Secret this module creates (`mzmon-alloy-gateway-env`), never through the Helm
+    values — anything in `values` is readable with `helm get values` by anyone who can read the
+    release Secret. The gateway reads it from the environment at startup.
+
+    An app key is not needed and is not accepted here; the metrics intake authenticates with the API
+    key alone.
+  EOT
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+# Keep this type expression free of blank lines and comments: terraform-docs
+# publishes it verbatim, and the docsite renders it inside a raw HTML block that
+# a blank line would terminate.
+variable "otlp_metrics" {
+  description = <<-EOT
+    Also export metrics to a generic OTLP endpoint from the Alloy gateway — Honeycomb, Grafana
+    Cloud, or your own OpenTelemetry Collector. Null disables it; Thanos is unaffected either way.
+
+    `url` is a `host[:port]` with **no** scheme; `https://` in it fails at gateway start. `protocol`
+    selects the exporter: `grpc` for OTLP/gRPC, `http` for OTLP/HTTP.
+
+    `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
+    `all` — and each tier includes the ones below it. Metered backends are the reason it defaults
+    below `all` here.
+
+    `auth_headers` sets **non-secret** request headers, such as Honeycomb's `x-honeycomb-dataset`.
+    They render into the gateway's pipeline ConfigMap as literals, so put credentials in
+    `otlp_auth_header_secrets` or `otlp_auth_bearer_token` instead — those reach the gateway through
+    a Secret.
+  EOT
+  type = object({
+    url            = string
+    protocol       = optional(string, "grpc")
+    compression    = optional(string)
+    min_importance = optional(string, "recommended")
+    auth_headers   = optional(map(string), {})
+  })
+  default = null
+
+  validation {
+    condition = var.otlp_metrics == null || contains(
+      ["essential", "recommended", "extended", "diagnostic", "all"],
+      try(var.otlp_metrics.min_importance, ""),
+    )
+    error_message = "otlp_metrics.min_importance must be one of: essential, recommended, extended, diagnostic, all."
+  }
+
+  validation {
+    condition     = var.otlp_metrics == null || contains(["grpc", "http"], try(var.otlp_metrics.protocol, ""))
+    error_message = "otlp_metrics.protocol must be grpc or http."
+  }
+
+  validation {
+    condition     = var.otlp_metrics == null || !can(regex("://", try(var.otlp_metrics.url, "")))
+    error_message = <<-EOT
+      otlp_metrics.url must be a host[:port] with no scheme — "api.honeycomb.io", not
+      "https://api.honeycomb.io".
+
+      The exporter takes a bare endpoint and selects its transport from `protocol`. A scheme here is
+      not rejected at render time; the gateway fails to dial the destination at startup.
+    EOT
+  }
+}
+
+variable "otlp_auth_header_secrets" {
+  description = <<-EOT
+    Secret request headers for `otlp_metrics`, as header name to value — Honeycomb's
+    `x-honeycomb-team`, for instance. This is the API-key-header case, which is how most OTLP
+    vendors authenticate.
+
+    Each value is delivered as a Secret this module creates (`mzmon-alloy-gateway-env`) rather than
+    through the Helm values, and the gateway reads it from the environment at startup. The module
+    derives the variable name from the header (`x-honeycomb-team` becomes
+    `GATEWAY_OTEL_DEST_HEADER_X_HONEYCOMB_TEAM`); nothing else depends on it.
+
+    Non-secret headers belong in `otlp_metrics.auth_headers`, which renders them inline. The two
+    compose into one header set. Cannot be combined with `otlp_auth_bearer_token`: the chart has one
+    auth slot per OTLP destination.
+  EOT
+  type        = map(string)
+  default     = {}
+  nullable    = false
+  sensitive   = true
+}
+
+variable "otlp_auth_bearer_token" {
+  description = <<-EOT
+    Bearer token for `otlp_metrics`, for endpoints that take an `Authorization: Bearer` header
+    rather than a vendor-specific one.
+
+    Delivered as a Secret this module creates (`mzmon-alloy-gateway-env`) rather than through the
+    Helm values. Cannot be combined with `otlp_auth_header_secrets` or `otlp_metrics.auth_headers`:
+    the chart has one auth slot per OTLP destination.
+  EOT
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 # ==============================================================================
 # Grafana
 # ==============================================================================
@@ -510,8 +651,39 @@ variable "additional_values" {
     This is the supported way to reach chart settings the module does not model — including
     scheduling (node selectors, tolerations) and Grafana ingress, neither of which the module
     surfaces yet. See the README.
+
+    Each element is one YAML document. `.tfvars` is HCL, so an indented heredoc is the readable way
+    to write one — `<<-YAML` strips the common leading indent, and `$${...}` escapes a literal `$`
+    ahead of a brace. The marker is arbitrary; `YAML` rather than the usual `EOT` only because this
+    description is itself a heredoc:
+
+    ```hcl
+    additional_values = [
+      <<-YAML
+        grafana:
+          ingress:
+            enabled: true
+            hosts: ["grafana.example.com"]
+      YAML
+    ]
+    ```
   EOT
   type        = list(string)
   default     = []
   nullable    = false
+
+  # Caught here rather than at `helm install`, which reports a parse failure
+  # against the merged result and names neither the document nor the caller. The
+  # module already parses these in config_hash.tf, where a malformed one falls
+  # back to hashing the raw string — so without this check a mis-indented
+  # document is accepted all the way to the cluster.
+  validation {
+    condition = alltrue([for doc in var.additional_values : can(yamldecode(doc))])
+    error_message = format(
+      "additional_values must contain valid YAML. Could not parse element(s): %s.",
+      join(", ", [
+        for i, doc in var.additional_values : tostring(i) if !can(yamldecode(doc))
+      ]),
+    )
+  }
 }

@@ -1330,7 +1330,7 @@ Configuration for OpenTelemetry/OTLP destinations. This is only needed for desti
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.authType</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the OpenTelemetry destination. Valid values are: `none`, `basic`, `bearer`, `awsSigv4`, and `custom`.
+      <td class="helm-value-desc">Type of authentication to use with the OpenTelemetry destination. Valid values are: `none`, `basic`, `bearer`, `headers`, `awsSigv4`, and `custom`.
 </td>
     </tr>
     <tr>
@@ -1345,6 +1345,45 @@ Configuration for OpenTelemetry/OTLP destinations. This is only needed for desti
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>An `otelcol.auth.bearer.oteldest` definition.</code></td>
       <td class="helm-value-desc">Raw configuration for an otelcol.auth.bearer block. This uses the GATEWAY_OTEL_DEST_BEARER_TOKEN env var.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.headers<wbr>.headers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Headers attached to every request to the OpenTelemetry destination.
+
+For backends that authenticate with an API-key header rather than a
+bearer token — Honeycomb's `x-honeycomb-team`, for instance. Before
+this existed the only way to send one was `authType: custom` and a
+hand-written `otelcol.auth.headers` block, which no validator could
+check.
+
+Each entry names a header with `key` and sets **exactly one** of:
+
+- `value` — a literal. It renders into the gateway's pipeline
+  ConfigMap in plaintext, so use it only for non-secret routing
+  headers such as a dataset or tenant name.
+- `valueEnv` — the name of an environment variable, read with
+  `sys.env()` when the gateway starts. Use it for anything secret and
+  supply the variable through `alloy-gateway.alloy.envFrom` (a
+  secretRef). The name is yours to choose; nothing else in the chart
+  depends on it.
+
+Unlike the Loki and Prometheus destinations, there is no
+`value`/`valueEnv` pair per header where the value is copied into the
+env ConfigMap. A header is either a literal or a lookup, and routing
+a literal through the env ConfigMap would only move it from one
+plaintext ConfigMap into another.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.auth<wbr>.headers<wbr>.config</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>An `otelcol.auth.headers.oteldest` definition built from `headers`.</code></td>
+      <td class="helm-value-desc">Raw configuration for an otelcol.auth.headers block.
 </td>
     </tr>
     <tr>
