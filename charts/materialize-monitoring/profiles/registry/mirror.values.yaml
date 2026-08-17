@@ -1,0 +1,196 @@
+# Overlay: a private mirror of the upstream images.
+#
+# Unlike the hardened-image profiles beside it, this changes *where* each image
+# is pulled from and nothing about the image itself — same binary, same digest,
+# same tag. That makes it the least disruptive thing in this directory and the
+# one most likely to be mandated by policy rather than chosen.
+#
+# Compose it after `pull-secret.values.yaml` if the mirror needs credentials:
+#
+#   helm upgrade --install mzmon materialize-monitoring/materialize-monitoring \
+#     -f profiles/registry/pull-secret.values.yaml \
+#     -f profiles/registry/mirror.values.yaml \
+#     -f my-values.yaml
+#
+# Replace `<REGISTRY>` throughout, and rename the four project segments in the
+# anchors block to match your mirror's layout.
+#
+# ---------------------------------------------------------------------------
+# First: check whether you need this file at all
+# ---------------------------------------------------------------------------
+# Mirroring can happen at two layers, and only one of them is a chart concern.
+#
+# **At the node.** containerd's `registry.mirrors` / `hosts.toml`, or an
+# `ImageDigestMirrorSet` / `ImageTagMirrorSet` on OpenShift, redirects pulls
+# transparently. Manifests keep naming the upstream registry and the kubelet
+# fetches from the mirror. If you have this, **change nothing** — an image
+# reference rewritten in values would bypass the very indirection you set up,
+# and you would be maintaining the same mapping in two places.
+#
+# **In the manifest.** Rewrite the references so the pod spec names the mirror
+# directly. Needed when you cannot reach node configuration (most managed
+# control planes), or when policy requires the mirror to be visible in the
+# manifest rather than inferred from cluster state. That is what this file does.
+#
+# ---------------------------------------------------------------------------
+# Why `global.imageRegistry` is not the one-line version of this
+# ---------------------------------------------------------------------------
+# It looks like it should be, and for a *flat* mirror — one that serves every
+# upstream under a single path-preserving namespace — it gets you most of the
+# way. It still misses four things, and each one fails by pulling from the
+# internet rather than by erroring:
+#
+#   * **Alloy** reads `global.image.registry`, not `global.imageRegistry`.
+#   * **Alertmanager** and **metrics-server** carry the host inside
+#     `image.repository` and have no `registry` key to override.
+#   * **Loki's memcached and memcached-exporter** have no `registry` key either.
+#
+# It is also actively wrong for the far more common shape, one project per
+# upstream registry: this stack pulls from four of them, so a single value
+# cannot express the mapping. In the Loki chart specifically,
+# `global.imageRegistry` outranks every per-component `image.registry`, so
+# setting it alongside this file silently overrides everything below.
+#
+# ---------------------------------------------------------------------------
+# The four upstreams, and the two shapes of key
+# ---------------------------------------------------------------------------
+# Anchors cover every key that takes a bare `registry`. Four images spell the
+# host inside `repository` instead, and YAML cannot concatenate, so those four
+# are written out in full and must be edited by hand — they are marked at the
+# line. Missing one is the likely way to get this half-applied.
+#
+# Note that `node-exporter.image.distroless` stays `true` here, unlike in the
+# hardened-image profiles. A mirror preserves upstream tags, so the
+# `-distroless` suffix it appends still resolves.
+
+# Inert holder for the anchors. The umbrella chart ships no `values.schema.json`,
+# so an unrecognised top-level key is ignored rather than rejected.
+_mirror:
+  # -- One project per upstream registry — the Harbor proxy-cache and Artifactory
+  # remote-repository shape. If your mirror is flat and path-preserving instead,
+  # set all four to the same value.
+  dockerHub: &dockerHub "<REGISTRY>/dockerhub"
+  quay: &quay "<REGISTRY>/quay"
+  registryK8s: &registryK8s "<REGISTRY>/registry-k8s-io"
+  ghcr: &ghcr "<REGISTRY>/ghcr"
+
+# --- Alloy -------------------------------------------------------------------
+# Mirrored rather than skipped, which is the one place this profile differs from
+# the hardened-image ones: those cannot substitute a vendor's Alloy, because the
+# chart runs a Materialize build carrying the custom components the pipelines are
+# written against. A mirror serves that same image, so there is nothing to work
+# around. The pinned digest carries over and is what makes it verifiable.
+alloy-agent:
+  image:
+    registry: *ghcr
+
+alloy-gateway:
+  image:
+    registry: *ghcr
+
+# --- Loki --------------------------------------------------------------------
+loki:
+  loki:
+    image:
+      registry: *dockerHub
+  lokiCanary:
+    image:
+      registry: *dockerHub
+  # HAND-EDIT: no `registry` key — the host lives in `repository`.
+  # `memcached` is a Docker Official Image, so a proxy cache usually exposes it
+  # under `library/`, matching how the upstream registry namespaces it.
+  memcached:
+    image:
+      repository: "<REGISTRY>/dockerhub/library/memcached"
+  # HAND-EDIT: same shape as memcached above.
+  memcachedExporter:
+    image:
+      repository: "<REGISTRY>/dockerhub/prom/memcached-exporter"
+  # Inert unless `loki.gateway.enabled` is turned on.
+  gateway:
+    image:
+      registry: *dockerHub
+    metrics:
+      image:
+        registry: *ghcr
+  sidecar:
+    image:
+      registry: *dockerHub
+  defaults:
+    statefulSetRecreateJob:
+      image:
+        registry: *registryK8s
+
+# --- Thanos ------------------------------------------------------------------
+# `thanos.global` is the subchart's own globals block, not the umbrella's, so
+# this does not leak into the other subcharts.
+thanos:
+  global:
+    image:
+      registry: *quay
+  ruler:
+    autoImportPrometheusRules:
+      sidecar:
+        image:
+          registry: *dockerHub
+
+# --- Grafana -----------------------------------------------------------------
+grafana:
+  image:
+    registry: *dockerHub
+  # Grafana's sidecar comes from quay.io while Loki's comes from docker.io, for
+  # the same `kiwigrid/k8s-sidecar` image. Not a typo — the two subcharts picked
+  # different upstreams, and a per-registry mirror has to follow each.
+  sidecar:
+    image:
+      registry: *quay
+  initChownData:
+    image:
+      registry: *dockerHub
+  downloadDashboardsImage:
+    registry: *dockerHub
+  # Inert unless `grafana.imageRenderer.enabled` is turned on.
+  imageRenderer:
+    image:
+      registry: *dockerHub
+
+grafana-operator:
+  image:
+    registry: *ghcr
+
+# --- Alertmanager ------------------------------------------------------------
+# HAND-EDIT, both: this chart's `image.repository` carries the registry host
+# inline and it has no `registry` key.
+alertmanager:
+  image:
+    repository: "<REGISTRY>/quay/prometheus/alertmanager"
+  configmapReload:
+    image:
+      repository: "<REGISTRY>/quay/prometheus-operator/prometheus-config-reloader"
+
+# --- Cluster metrics ---------------------------------------------------------
+kube-state-metrics:
+  image:
+    registry: *registryK8s
+
+node-exporter:
+  image:
+    registry: *quay
+    # Left at the chart default, unlike in the hardened-image profiles: the
+    # mirror carries upstream's tags, so `v1.12.1-distroless` resolves.
+    distroless: true
+
+# HAND-EDIT: like Alertmanager, this chart's `repository` includes the host.
+# Inert unless `tags.cluster-metrics` or `tags.metrics-server` is on.
+metrics-server:
+  image:
+    repository: "<REGISTRY>/registry-k8s-io/metrics-server/metrics-server"
+
+# --- The uninstall hook ------------------------------------------------------
+# The `pre-delete` Job that clears grafana-operator's finalizers. Worth
+# confirming by hand: it runs at `pre-delete`, so an image it cannot pull does
+# not fail an install you can retry — it hangs `helm uninstall` on the hook.
+cleanup:
+  grafanaOperator:
+    image:
+      registry: *registryK8s

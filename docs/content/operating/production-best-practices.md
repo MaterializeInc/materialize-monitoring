@@ -107,9 +107,13 @@ Both sit well below `system-cluster-critical` (2000000000) and `system-node-crit
 ## Images and registries {#images-and-registries}
 
 Every image in the stack is pinned by registry, repository, and tag — in this chart's `values.yaml` where it matters enough to own the cadence, in a subchart's defaults otherwise — so repointing at a mirror or a hardened rebuild is a values change rather than a fork.
-Two overlays under `profiles/registry/` do exactly that, one per vendor that publishes the whole set *and* keeps the upstream entrypoint and layout: [Chainguard Images](https://images.chainguard.dev/directory) and [Docker Hardened Images](https://docs.docker.com/dhi/).
-A third, `pull-secret`, carries the credential half on its own.
-Bitnami Secure Images is deliberately not among them — it rebuilds around its own charts, so it is a port rather than a retag; see [Getting Started > Helm](../../getting-started/helm/#no-bitnami-profile) for what that costs.
+Four overlays under `profiles/registry/` do exactly that.
+`mirror` moves every image to a private mirror without changing any of them, which is the common case and the only one that can carry the Alloy build.
+`chainguard` and `docker-hardened-images` swap in a hardened rebuild — one per vendor that publishes the whole set *and* keeps the upstream entrypoint and layout ([Chainguard Images](https://images.chainguard.dev/directory), [Docker Hardened Images](https://docs.docker.com/dhi/)).
+`pull-secret` carries the credential half on its own and composes with any of them.
+
+Bitnami Secure Images is deliberately absent — it rebuilds around its own charts, so it is a port rather than a retag; see [Getting Started > Helm](../../getting-started/helm/#no-bitnami-profile) for what that costs.
+If your mirroring happens in containerd or via an `ImageDigestMirrorSet`, none of this applies: manifests keep naming the upstream registry and the redirect is invisible to Helm.
 See [Getting Started > Helm](../../getting-started/helm/#registry-profiles) for the composition order.
 
 ### No single global reaches every subchart {#pull-secret-globals}
@@ -151,11 +155,12 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 
 - [x] `[chart]` Every image is **pinned by tag**, and the images whose cadence should not be tied to a chart release (Grafana, Alloy) are pinned in this chart's own `values.yaml` so Renovate owns them directly.
 - [x] `[chart]` The Alloy image is pinned **by digest as well as tag**, so the identity of the running pipeline binary is fixed rather than merely named.
-- [x] `[chart]` `profiles/registry/` ships the two vendor overlays and the `pull-secret` overlay, with unit tests asserting the pull secret reaches each of the four subcharts that read no global.
+- [x] `[chart]` `profiles/registry/` ships the `mirror` overlay, the two hardened-vendor overlays, and the `pull-secret` overlay, with unit tests asserting the pull secret reaches each of the four subcharts that read no global.
 - [x] `[chart]` The `pre-delete` cleanup hook and both pre-install validator Jobs carry `imagePullSecrets`, merged from both global spellings and deduplicated by name, so an entirely-private-registry install is reachable.
 - [ ] `[consumer]` **Create the pull Secret in every namespace the stack renders into.** Helm does not create it, and a Secret is namespaced — a [split-namespace](#namespace-layout) install needs one copy per namespace, not one for the release.
 - [ ] `[operator]` **Verify the vendor's tag strings before install.** Both track upstream versions without always spelling them identically — a leading `v` is commonly dropped, and a DHI mirror carries only the tags you chose to mirror. The profiles inherit the chart's tags rather than restating them, so the version stays pinned in one place; add an explicit `tag` for any image whose string differs.
-- [ ] `[operator]` **Alloy is a rebuild, not a retag.** The chart runs a Materialize build of Alloy carrying the custom components the pipelines are written against; a stock vendor Alloy fails config validation at startup.
+- [ ] `[operator]` **Alloy is a rebuild, not a retag.** The chart runs a Materialize build of Alloy carrying the custom components the pipelines are written against; a stock vendor Alloy fails config validation at startup. A mirror carries it fine — the `mirror` profile moves it along with everything else, digest intact.
+- [ ] `[operator]` **Mirror at the node if you can.** A containerd `hosts.toml` or an `ImageDigestMirrorSet` redirects pulls without touching any chart value, which keeps one mapping in one place. Reach for `mirror.values.yaml` when you cannot configure nodes, or when policy wants the mirror named in the manifest.
 
 ## Collection (Alloy)
 

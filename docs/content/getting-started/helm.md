@@ -177,27 +177,43 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 
 | Profile | Use |
 |---|---|
-| `profiles/registry/pull-secret.values.yaml` | name a `dockerconfigjson` Secret on every workload. Compose it first; it sets no registries, so it works for a plain mirror too |
+| `profiles/registry/pull-secret.values.yaml` | name a `dockerconfigjson` Secret on every workload. Compose it first; it sets no registries, so it works for a mirror as well as a vendor |
+| `profiles/registry/mirror.values.yaml` | a private mirror of the upstream images — same binaries, different host |
 | `profiles/registry/chainguard.values.yaml` | Chainguard Images — `cgr.dev/<ORG>/<image>` |
 | `profiles/registry/docker-hardened-images.values.yaml` | Docker Hardened Images — `docker.io/<ORG>/dhi-<image>` |
 
-Compose the pull secret first, then one vendor:
+Compose the pull secret first, then one of the others:
 
 ```bash
-helm install mzmon . -f profiles/registry/pull-secret.values.yaml -f profiles/registry/chainguard.values.yaml
+helm install mzmon . -f profiles/registry/pull-secret.values.yaml -f profiles/registry/mirror.values.yaml
 ```
+
+#### Mirroring {#mirror-profile}
+
+A mirror changes where each image is pulled from and nothing about the image itself — same binary, same digest, same tag — so it is the least disruptive option here and the one most often mandated rather than chosen.
+It is also the only one that can carry the Alloy image, since that is a Materialize build rather than something a hardened-image vendor publishes.
+
+Check first whether you need chart values at all.
+Mirroring happens at two layers, and only one is a chart concern:
+
+- **At the node** — containerd's `registry.mirrors` / `hosts.toml`, or an `ImageDigestMirrorSet` on OpenShift — redirects pulls transparently while manifests keep naming the upstream registry. If you have this, change nothing. Rewriting references in values bypasses the indirection you set up and leaves the same mapping maintained in two places.
+- **In the manifest** — what `mirror.values.yaml` does. Needed when you cannot reach node configuration, which covers most managed control planes, or when policy requires the mirror to be visible in the manifest rather than inferred from cluster state.
+
+The profile assumes one project per upstream registry, the Harbor proxy-cache and Artifactory remote-repository shape, and this stack pulls from four: `docker.io`, `quay.io`, `registry.k8s.io`, and `ghcr.io`.
+Four anchors at the top carry those; if your mirror is flat and path-preserving instead, set all four to the same value.
+Four images spell their registry inside `image.repository` rather than taking a separate `registry` key, so anchors cannot reach them and they are written out in full — they are marked `HAND-EDIT` at the line, and missing one is the likely way to get this half-applied.
 
 The pull-secret overlay is a separate file because the subcharts do not agree on which global to read.
 Alloy reads `global.image.pullSecrets`; Thanos, Grafana, kube-state-metrics and node-exporter read `global.imagePullSecrets`; and Loki, grafana-operator, Alertmanager and metrics-server read neither and need their own key.
 Setting only `global.imagePullSecrets` leaves Loki — the largest pod count in the release — pulling anonymously, which surfaces as `ImagePullBackOff` on the ingesters long after `helm install` reports success.
 
 > [!WARNING]
->   Do not set `global.imageRegistry` to reach a mirror.
->   Loki's image helper coalesces it ahead of every per-component `image.registry`, so it flattens Loki's images — memcached and the canary included — onto one host and overrides whatever a vendor profile chose.
->   Set the per-component registries the profiles use instead.
+>   `global.imageRegistry` is not the one-line version of the mirror profile.
+>   It misses Alloy (which reads `global.image.registry`), Alertmanager and metrics-server (which carry the host inside `image.repository`), and Loki's memcached pair (which have no `registry` key) — each of which then keeps pulling from the internet rather than erroring.
+>   In the Loki chart it also outranks every per-component `image.registry`, so setting it alongside a profile silently overrides everything that profile chose.
 
 Each vendor profile's header lists what it deliberately leaves on an upstream registry.
-Common to all three: the Alloy image is a Materialize build carrying the custom components the pipelines are written against, so it is a rebuild rather than a retag.
+Common to both: the Alloy image is a Materialize build carrying the custom components the pipelines are written against, so it is a rebuild rather than a retag — which is why a mirror can carry it and a hardened rebuild cannot.
 
 The three Jobs this chart renders itself — the `pre-delete` cleanup hook and the two Alloy pre-install validators — read both globals directly, so the pull-secret overlay covers them with nothing extra to set.
 Confirm the cleanup hook's image is pullable before you rely on it: it runs at `pre-delete`, so an image it cannot pull hangs `helm uninstall` on the hook rather than failing an install you can retry.

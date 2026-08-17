@@ -250,6 +250,61 @@ tests:
           value: "example.test/node-exporter:1.12.1-not-semver-r0"
 
   # ---------------------------------------------------------------------------
+  # mirror.values.yaml
+  #
+  # A mirror preserves the image, so what these pin is that nothing *else*
+  # changed: same digest, same tag, same distroless suffix. The vendor profiles
+  # cannot make that promise and do not try to.
+  # ---------------------------------------------------------------------------
+  - it: mirror profile maps each upstream registry to its own project
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    templates:
+      - ../charts/loki/templates/ingester/workload.yaml
+      - ../charts/thanos/templates/receive/statefulset.yaml
+      - ../charts/kube-state-metrics/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/(dockerhub/grafana/loki|quay/thanos/thanos|registry-k8s-io/kube-state-metrics/kube-state-metrics):'
+
+  # The one thing a mirror can do that a hardened rebuild cannot: carry the
+  # Materialize Alloy build, digest intact.
+  - it: mirror profile moves Alloy and keeps its pinned digest
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/ghcr/materializeinc/mzmon-alloy@sha256:[0-9a-f]{64}$'
+
+  # Upstream's tags survive a mirror, so the `-distroless` suffix still resolves
+  # and stays on — the opposite of what the hardened-image profiles must do.
+  - it: mirror profile keeps the node-exporter distroless suffix
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "<REGISTRY>/quay/prometheus/node-exporter:v1.12.1-distroless"
+
+  # The four images whose host lives inside `repository`, which anchors cannot
+  # reach and which are the likely way to get this half-applied.
+  - it: mirror profile covers the images that carry the host in the repository
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    templates:
+      - ../charts/alertmanager/templates/statefulset.yaml
+      - ../charts/loki/templates/chunks-cache/statefulset.yaml
+      - ../charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/(quay/prometheus/alertmanager|dockerhub/library/memcached|registry-k8s-io/metrics-server/metrics-server):'
+
+  # ---------------------------------------------------------------------------
   # Composition
   # ---------------------------------------------------------------------------
   - it: pull-secret and vendor profiles compose without tripping the validators
@@ -272,3 +327,24 @@ tests:
       - equal:
           path: spec.template.spec.imagePullSecrets[0].name
           value: "<REPLACE-ME>"
+
+  - it: pull-secret and mirror compose, and reach the uninstall hook together
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/mirror.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/registry-k8s-io/kubectl:'
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: the mirror profile passes our validators
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/mirror.values.yaml
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
