@@ -32,8 +32,11 @@ GO ?= go
 PY_RUN := uv run
 
 # Invoke hugo as a tool (you can use HUGO_BIN=hugo to use brew)
-# By default, we get the one from go.mod
-HUGO_BIN ?= GOFLAGS=-tags=extended $(GO) tool hugo
+# By default, we get the one from go.mod.
+# This is `go run`, not `go tool`, because the book theme needs the extended
+# edition (libsass) and `go tool` silently ignores `-tags` — it only accepts
+# -C, -overlay, -modcacherw, and -modfile.
+HUGO_BIN ?= $(GO) run -tags extended github.com/gohugoio/hugo
 
 # Invoke helm-docs as a tool (set HELM_DOCS=helm-docs to use brew)
 HELM_DOCS ?= $(GO) tool helm-docs

@@ -105,6 +105,17 @@
       "description": "helm-docs is pinned to a commit pseudo-version; do not flag it as abandoned",
       "matchPackageNames": ["github.com/norwoodj/helm-docs"],
       "abandonmentThreshold": null
+    },
+    {
+      "description": "Hugo is pinned twice: as a `tool` in go.mod, which is what the Makefile builds with `go run -tags extended`, and as `hugo-version` in the docs workflow, which installs a prebuilt binary. Group them so both move in a single PR. A split bump lets CI and local builds render with different Hugo versions, and that divergence is what let a non-extended local build hide behind a stale resource cache until an upgrade invalidated it.",
+      "groupName": "Hugo",
+      "matchPackageNames": ["github.com/gohugoio/hugo", "gohugoio/hugo"]
+    },
+    {
+      "description": "peaceiris/actions-hugo wants a bare `0.165.0`, but the GitHub releases are tagged `v0.165.0`. Strip the prefix so the workflow keeps the form the action accepts. Scoped to hugo so the `v`-prefixed annotations elsewhere (kind, alloy) are untouched.",
+      "matchDatasources": ["github-releases"],
+      "matchPackageNames": ["gohugoio/hugo"],
+      "extractVersion": "^v(?<version>.+)$"
     }
   ],
   "customManagers": [
@@ -119,10 +130,10 @@
     },
     {
       "customType": "regex",
-      "description": "Update renovate-annotated version env vars in GitHub workflows",
+      "description": "Update renovate-annotated versions in GitHub workflows. The key pattern allows digits and hyphens so this covers `with:` inputs (`hugo-version:`) as well as env vars (`KIND_VERSION:`) — an unhyphenated class silently skipped every action input, which reads as 'nothing to update' rather than as a broken manager.",
       "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": [
-        "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z_]+:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+        "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z_][A-Za-z0-9_-]*:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
     },
