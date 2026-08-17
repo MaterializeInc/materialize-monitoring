@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.17.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.18.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.17.0
+
+* DEP-204 Expose OTLP and Datadog configs to Terraform
+    * [materialize-monitoring#247](https://github.com/MaterializeInc/materialize-monitoring/pull/247)
 
 ## Container Images v0.4.0 (Unreleased)
 
