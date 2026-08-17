@@ -84,4 +84,24 @@ module "monitoring" {
   # metrics-server is not part of what tier 2 is testing, and a second one fights
   # the cluster's own over the same APIService.
   install_metrics_server = false
+
+  # kind signs kubelet serving certificates with a CA the pods do not trust, so
+  # the gateway's cAdvisor scrape fails TLS verification and every `container_*`
+  # series is silently absent — `up{job="cadvisor"} == 0` with nothing erroring
+  # at install. The chart documents this as the case for a new distribution.
+  #
+  # Scoped to this test root on purpose: it is a property of kind, not advice for
+  # a real cluster, where leaving verification on is correct (EKS and GKE both
+  # scrape cAdvisor fine as shipped).
+  additional_values = [
+    yamlencode({
+      pipeline = {
+        metrics = {
+          kubelet = {
+            tlsInsecureSkipVerify = true
+          }
+        }
+      }
+    })
+  ]
 }
