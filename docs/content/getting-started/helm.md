@@ -198,7 +198,10 @@ Setting only `global.imagePullSecrets` leaves Loki — the largest pod count in 
 >   Set the per-component registries the profiles use instead.
 
 Each vendor profile's header lists what it deliberately leaves on an upstream registry.
-Common to all three: the Alloy image is a Materialize build carrying the custom components the pipelines are written against, so it is a rebuild rather than a retag; and the `helm uninstall` cleanup hook has no `imagePullSecrets` support, so its image stays on an anonymously pullable registry.
+Common to all three: the Alloy image is a Materialize build carrying the custom components the pipelines are written against, so it is a rebuild rather than a retag.
+
+The three Jobs this chart renders itself — the `pre-delete` cleanup hook and the two Alloy pre-install validators — read both globals directly, so the pull-secret overlay covers them with nothing extra to set.
+Confirm the cleanup hook's image is pullable before you rely on it: it runs at `pre-delete`, so an image it cannot pull hangs `helm uninstall` on the hook rather than failing an install you can retry.
 
 > [!WARNING]
 >   Hardened images run as their own non-root UID, which is generally not the UID the upstream chart writes into `securityContext` — Grafana's chart assumes 472, Loki's assumes 10001.

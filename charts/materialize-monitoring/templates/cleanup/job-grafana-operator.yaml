@@ -26,6 +26,14 @@ entrypoint alone rather than reaching for a shell to hold a pipeline together.
   "helm.sh/hook-weight" "0"
   "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded"
 }}
+{{- /*
+  Pull secrets matter more here than on an ordinary workload: this runs at
+  `pre-delete`, so an image it cannot pull does not fail an install you can
+  retry — it hangs `helm uninstall` on the hook, with the operator still up and
+  the release half-removed. `helm uninstall --no-hooks` is the way out, and
+  needing it is a worse day than setting this.
+*/}}
+{{- $pullSecrets := include "mzmon.imagePullSecrets" (dict "root" $ "extra" $cleanup.image.pullSecrets) }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -52,6 +60,10 @@ spec:
     spec:
       serviceAccountName: {{ $name }}
       restartPolicy: Never
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- $pullSecrets | nindent 8 }}
+      {{- end }}
       {{- with $cleanup.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -59,11 +59,10 @@
 #     Materialize build carrying the custom components the pipelines are written
 #     against. A stock Alloy fails config validation at startup. Swapping it is a
 #     rebuild, not a retag.
-#   * **The cleanup hook** (`cleanup.grafanaOperator.image`) — the pre-delete
-#     Job has no `imagePullSecrets` support, so an authenticated registry would
-#     make `helm uninstall` hang on the hook. See the gaps section in
-#     `pull-secret.values.yaml`. The free `dhi.io/kubectl` is anonymously
-#     pullable and is a safe swap here if you want one.
+#   * **The Loki gateway's access-log exporter**
+#     (`loki.gateway.metrics.image`) — DHI is the only one of the three vendors
+#     that publishes this one, so it *is* retagged below. Noted here only
+#     because the other two profiles cannot.
 
 # --- Loki --------------------------------------------------------------------
 # `imagePullSecrets` for these pods comes from `pull-secret.values.yaml`; Loki
@@ -186,3 +185,19 @@ node-exporter:
 metrics-server:
   image:
     repository: "docker.io/<ORG>/dhi-metrics-server"
+
+# --- The uninstall hook ------------------------------------------------------
+# The `pre-delete` Job that clears grafana-operator's finalizers. Its pull secret
+# comes from `pull-secret.values.yaml` like everything else, but the stakes here
+# are different: an image this Job cannot pull does not fail an install you can
+# retry, it hangs `helm uninstall` on the hook. Confirm this one is in your
+# mirror before you need it — or point it at the anonymously pullable free-tier
+# `dhi.io/kubectl` and take the pull secret out of the path entirely.
+#
+# Keep the tag within one minor of your API server, per Kubernetes' version-skew
+# policy — the same rule that governs the upstream default.
+cleanup:
+  grafanaOperator:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-kubectl"

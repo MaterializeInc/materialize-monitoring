@@ -89,6 +89,76 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: '^docker\.io/grafana/loki:'
 
+  # The three Jobs this chart renders itself read both globals through
+  # `mzmon.imagePullSecrets`. The cleanup hook is the one that matters most:
+  # an image it cannot pull hangs `helm uninstall` rather than failing an
+  # install you can retry.
+  - it: pull secret reaches the pre-delete cleanup hook
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches both Alloy pre-install validator Jobs
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    templates:
+      - pipelines/validator/job-validate-agent.yaml
+      - pipelines/validator/job-validate-gateway.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  # The overlay names the same Secret under both globals, which is what a
+  # consumer will do. One entry, not two.
+  - it: the two global spellings deduplicate to one entry
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.imagePullSecrets
+          count: 1
+
+  # With no pull secret configured the key must be absent, not present-and-empty.
+  - it: no pull secret configured leaves the key off the Jobs entirely
+    templates:
+      - cleanup/job-grafana-operator.yaml
+      - pipelines/validator/job-validate-agent.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+
+  # Bare strings are accepted alongside the Kubernetes shape and normalized.
+  # `ternary` would have evaluated `.name` on a string and failed the render.
+  - it: bare-string pull secrets are normalized and merged with the local override
+    set:
+      global.imagePullSecrets[0].name: shared
+      global.image.pullSecrets[0]: shared
+      cleanup.grafanaOperator.image.pullSecrets[0].name: cleanup-only
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: shared
+            - name: cleanup-only
+
+  # The validator Jobs run the Alloy images, so they follow the Alloy pods'
+  # pull secrets rather than needing a key of their own.
+  - it: the agent validator Job inherits alloy-agent.image.pullSecrets
+    set:
+      alloy-agent.image.pullSecrets[0].name: alloy-only
+    template: pipelines/validator/job-validate-agent.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: alloy-only
+
   # ---------------------------------------------------------------------------
   # Vendor profiles
   # ---------------------------------------------------------------------------
@@ -141,6 +211,15 @@ tests:
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: '^cgr\.dev/<ORG>/prometheus-node-exporter:v[0-9.]+$'
+
+  - it: chainguard profile repoints the uninstall hook's kubectl
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/kubectl:'
 
   - it: docker hardened images profile applies the dhi- mirror prefix
     values:

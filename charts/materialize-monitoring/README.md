@@ -80,7 +80,20 @@ Values that are passed to all subcharts
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Image pull secrets applied to every workload in this chart and its subcharts.
+      <td class="helm-value-desc">Image pull secrets for this chart's own workloads and for the subcharts that read a global. Not all of them do.
+Reaches this chart's own workloads, plus Thanos, Grafana, kube-state-metrics
+and node-exporter. It does **not** reach every subchart on its own, because
+they do not agree on where to read it from:
+
+* Alloy reads `global.image.pullSecrets` and never this key. This chart
+  honors both spellings for the workloads it renders itself, but the Alloy
+  subchart only sees its own.
+* Loki, grafana-operator, Alertmanager and metrics-server read no global at
+  all and need their own `<chart>.imagePullSecrets`.
+
+`profiles/registry/pull-secret.values.yaml` sets every one of those paths
+from a single Secret name; prefer it over setting this key alone, which
+leaves Loki — the largest pod count in the release — pulling anonymously.
 </td>
     </tr>
   </tbody>
@@ -1896,6 +1909,7 @@ only once the finalizers have been processed, and Helm proceeds from there.
       <td class="helm-value-default"><pre>
 {
   "pullPolicy": "IfNotPresent",
+  "pullSecrets": [],
   "registry": "registry.k8s.io",
   "repository": "kubectl",
   "tag": "v1.35.6"

@@ -54,10 +54,6 @@
 #     mzmon-alloy`, a Materialize build carrying the custom components the
 #     pipelines are written against. A stock Alloy fails config validation at
 #     startup. Swapping it is a rebuild, not a retag.
-#   * **The cleanup hook** (`cleanup.grafanaOperator.image`) — the pre-delete
-#     Job has no `imagePullSecrets` support, so an authenticated registry would
-#     make `helm uninstall` hang on the hook. See the gaps section in
-#     `pull-secret.values.yaml`.
 #   * **The Loki gateway's access-log exporter**
 #     (`loki.gateway.metrics.image`) — Chainguard publishes no equivalent.
 #     Inert unless `loki.gateway.enabled` is turned on.
@@ -177,3 +173,18 @@ node-exporter:
 metrics-server:
   image:
     repository: "cgr.dev/<ORG>/metrics-server"
+
+# --- The uninstall hook ------------------------------------------------------
+# The `pre-delete` Job that clears grafana-operator's finalizers. Its pull secret
+# comes from `pull-secret.values.yaml` like everything else, but the stakes here
+# are different: an image this Job cannot pull does not fail an install you can
+# retry, it hangs `helm uninstall` on the hook. Confirm this one is pullable
+# before you need it.
+#
+# Keep the tag within one minor of your API server, per Kubernetes' version-skew
+# policy — the same rule that governs the upstream default.
+cleanup:
+  grafanaOperator:
+    image:
+      registry: "cgr.dev"
+      repository: "<ORG>/kubectl"
