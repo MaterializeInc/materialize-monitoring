@@ -107,8 +107,9 @@ Both sit well below `system-cluster-critical` (2000000000) and `system-node-crit
 ## Images and registries {#images-and-registries}
 
 Every image in the stack is pinned by registry, repository, and tag — in this chart's `values.yaml` where it matters enough to own the cadence, in a subchart's defaults otherwise — so repointing at a mirror or a hardened rebuild is a values change rather than a fork.
-Three overlays under `profiles/registry/` do exactly that, one per vendor that publishes the whole set: [Chainguard Images](https://images.chainguard.dev/directory), [Docker Hardened Images](https://docs.docker.com/dhi/), and [Bitnami Secure Images](https://techdocs.broadcom.com/us/en/vmware-tanzu/bitnami-secure-images/bitnami-secure-images/services/bsi-doc/get-started-index.html).
-A fourth, `pull-secret`, carries the credential half on its own.
+Two overlays under `profiles/registry/` do exactly that, one per vendor that publishes the whole set *and* keeps the upstream entrypoint and layout: [Chainguard Images](https://images.chainguard.dev/directory) and [Docker Hardened Images](https://docs.docker.com/dhi/).
+A third, `pull-secret`, carries the credential half on its own.
+Bitnami Secure Images is deliberately not among them — it rebuilds around its own charts, so it is a port rather than a retag; see [Getting Started > Helm](../../getting-started/helm/#no-bitnami-profile) for what that costs.
 See [Getting Started > Helm](../../getting-started/helm/#registry-profiles) for the composition order.
 
 ### No single global reaches every subchart {#pull-secret-globals}
@@ -136,7 +137,7 @@ Hardened images keep the upstream binary and drop everything around it, which is
 
 - **The UID rarely matches the chart's.** Grafana's chart writes `runAsUser: 472` and Loki's `10001`, while a hardened rebuild runs as whatever the vendor chose. A mismatch renders and schedules cleanly, then crash-loops on a volume the container cannot write. Check the image's UID and align the relevant `securityContext` before pointing one at a cluster that holds data.
 - **No package manager means no start-time plugin installation.** See the Grafana section below.
-- **Bitnami is not a drop-in.** Its images are built for Bitnami's own charts and carry Bitnami entrypoints, `/opt/bitnami` paths, and UID 1001, while the subcharts here are the upstream ones. Expect to reconcile entrypoints and args. Chainguard and DHI keep upstream layouts and are materially less disruptive.
+- **A vendor outside the two profiled here may not be a retag at all.** Both shipped profiles keep the upstream entrypoint, arguments, and layout, which is what makes them a values change. A vendor that rebuilds around its own charts is a port, and the render can fail before you get as far as the UID — a tag that is not plain semver breaks `prometheus-node-exporter` outright unless `node-exporter.version` is set alongside it.
 
 ### The three hook Jobs {#image-pull-secret-gaps}
 
@@ -150,10 +151,10 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 
 - [x] `[chart]` Every image is **pinned by tag**, and the images whose cadence should not be tied to a chart release (Grafana, Alloy) are pinned in this chart's own `values.yaml` so Renovate owns them directly.
 - [x] `[chart]` The Alloy image is pinned **by digest as well as tag**, so the identity of the running pipeline binary is fixed rather than merely named.
-- [x] `[chart]` `profiles/registry/` ships the three vendor overlays and the `pull-secret` overlay, with unit tests asserting the pull secret reaches each of the four subcharts that read no global.
+- [x] `[chart]` `profiles/registry/` ships the two vendor overlays and the `pull-secret` overlay, with unit tests asserting the pull secret reaches each of the four subcharts that read no global.
 - [x] `[chart]` The `pre-delete` cleanup hook and both pre-install validator Jobs carry `imagePullSecrets`, merged from both global spellings and deduplicated by name, so an entirely-private-registry install is reachable.
 - [ ] `[consumer]` **Create the pull Secret in every namespace the stack renders into.** Helm does not create it, and a Secret is namespaced — a [split-namespace](#namespace-layout) install needs one copy per namespace, not one for the release.
-- [ ] `[operator]` **Verify the vendor's tag strings before install.** All three track upstream versions without always spelling them identically: a leading `v` is commonly dropped, DHI mirrors carry only the tags you chose to mirror, and Bitnami appends a distro and revision suffix that is not semver at all. The profiles inherit the chart's tags where they can and mark the rest.
+- [ ] `[operator]` **Verify the vendor's tag strings before install.** Both track upstream versions without always spelling them identically — a leading `v` is commonly dropped, and a DHI mirror carries only the tags you chose to mirror. The profiles inherit the chart's tags rather than restating them, so the version stays pinned in one place; add an explicit `tag` for any image whose string differs.
 - [ ] `[operator]` **Alloy is a rebuild, not a retag.** The chart runs a Materialize build of Alloy carrying the custom components the pipelines are written against; a stock vendor Alloy fails config validation at startup.
 
 ## Collection (Alloy)

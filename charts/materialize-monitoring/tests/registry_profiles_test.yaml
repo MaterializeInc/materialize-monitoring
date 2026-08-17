@@ -230,27 +230,24 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: '^docker\.io/<ORG>/dhi-loki:'
 
-  - it: bitnami profile repoints Loki
-    values:
-      - ../profiles/registry/bitnami-secure-images.values.yaml
-    template: ../charts/loki/templates/ingester/workload.yaml
-    asserts:
-      - matchRegex:
-          path: spec.template.spec.containers[0].image
-          pattern: '^<REGISTRY>/bitnami/grafana-loki:'
-
-  # A Bitnami tag is never plain semver, and the node-exporter chart feeds
-  # `coalesce version image.tag Chart.AppVersion` to `semverCompare`. Without
-  # the `version` override the render fails outright rather than misbehaving.
-  - it: bitnami profile sets node-exporter.version so semverCompare survives
-    values:
-      - ../profiles/registry/bitnami-secure-images.values.yaml
+  # A vendor whose tags are not plain semver needs `node-exporter.version` set
+  # as well: the chart feeds `coalesce version image.tag Chart.AppVersion` to
+  # `semverCompare`, and a non-semver tag fails the render outright rather than
+  # misbehaving. Neither shipped profile needs it — both vendors keep upstream
+  # version strings — so this pins the escape hatch rather than a profile.
+  - it: a non-semver tag needs node-exporter.version to render at all
+    set:
+      node-exporter.version: "1.12.1"
+      node-exporter.image.registry: "example.test"
+      node-exporter.image.repository: "node-exporter"
+      node-exporter.image.tag: "1.12.1-not-semver-r0"
+      node-exporter.image.distroless: false
     template: ../charts/node-exporter/templates/daemonset.yaml
     asserts:
       - notFailedTemplate: {}
-      - matchRegex:
+      - equal:
           path: spec.template.spec.containers[0].image
-          pattern: '^<REGISTRY>/bitnami/node-exporter:'
+          value: "example.test/node-exporter:1.12.1-not-semver-r0"
 
   # ---------------------------------------------------------------------------
   # Composition

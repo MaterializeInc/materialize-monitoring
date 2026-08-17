@@ -180,7 +180,6 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/registry/pull-secret.values.yaml` | name a `dockerconfigjson` Secret on every workload. Compose it first; it sets no registries, so it works for a plain mirror too |
 | `profiles/registry/chainguard.values.yaml` | Chainguard Images — `cgr.dev/<ORG>/<image>` |
 | `profiles/registry/docker-hardened-images.values.yaml` | Docker Hardened Images — `docker.io/<ORG>/dhi-<image>` |
-| `profiles/registry/bitnami-secure-images.values.yaml` | Bitnami Secure Images — `<REGISTRY>/bitnami/<image>` |
 
 Compose the pull secret first, then one vendor:
 
@@ -209,6 +208,20 @@ Confirm the cleanup hook's image is pullable before you rely on it: it runs at `
 >   Check the UID before pointing one of these at a cluster that holds data.
 >
 >   These images also ship no package manager, so `grafana.plugins` — which installs at container start — silently gets you a Grafana without those plugins. Bake them into a derived image instead.
+
+#### Why there is no Bitnami profile {#no-bitnami-profile}
+
+Bitnami Secure Images publishes hardened builds of nearly everything in this stack, so its absence here is deliberate rather than an oversight.
+
+The two profiles above are retags: Chainguard and DHI rebuild the upstream image and keep its entrypoint, arguments, and filesystem layout, so a values change is the whole change.
+Bitnami's images are built for *Bitnami's own charts* — Bitnami entrypoint scripts, `/opt/bitnami` paths, UID 1001 — while the subcharts here are the upstream Grafana, Thanos, and prometheus-community ones, which pass their own arguments and mount config at upstream paths.
+Reconciling that is per-component work no values file can express, which is the part a profile could not have finished for you.
+
+Three concrete things sit on top of that, if you are weighing the port anyway:
+
+- Bitnami publishes no `loki-canary`, and the canary is **on by default** — so an otherwise-complete swap is broken until you also set `loki.lokiCanary.enabled: false`. There is likewise no `k8s-sidecar`, `prometheus-config-reloader`, or `access-log-exporter`, though all three are disabled by default here.
+- Bitnami tags carry a distro and revision suffix (`3.7.6-debian-12-r0`) rather than plain semver. The `prometheus-node-exporter` chart feeds its tag to `semverCompare`, so that suffix **fails the render outright** with `invalid semantic version` until you also set `node-exporter.version` to the upstream version the tag was built from.
+- The catalog is subscription-gated. The free `docker.io/bitnamisecure` namespace carries a small sampler that includes none of these applications, so there is no anonymous tag to pin against.
 
 ### Disabling a Component
 
