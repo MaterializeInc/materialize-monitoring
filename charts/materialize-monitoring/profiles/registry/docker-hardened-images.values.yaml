@@ -1,0 +1,188 @@
+# Overlay: Docker Hardened Images (DHI).
+#
+# Repoints every image the chart renders at the DHI equivalent. Compose it after
+# `pull-secret.values.yaml`, which names the Secret this registry needs:
+#
+#   helm upgrade --install mzmon materialize-monitoring/materialize-monitoring \
+#     -f profiles/registry/pull-secret.values.yaml \
+#     -f profiles/registry/docker-hardened-images.values.yaml \
+#     -f my-values.yaml
+#
+# Replace every `<ORG>` with your Docker Hub organization. DHI Select and
+# Enterprise images are *mirrored* into your own namespace, and the mirror adds a
+# `dhi-` prefix to the repository name — a mirror of the catalog's `loki` lands
+# at `docker.io/<ORG>/dhi-loki`, which is why every repository below is spelled
+# that way. Free-tier images instead pull anonymously from `dhi.io/<image>`; on
+# that tier drop the `registry`/`repository` split to a single
+# `registry: "dhi.io"` plus the unprefixed name, and skip the pull-secret
+# profile entirely.
+#
+# Every repository named below was confirmed present in the DHI catalog
+# (https://github.com/docker-hardened-images/catalog) at the time of writing.
+# This is a retag only — it changes no replica counts, no sizes, and no feature
+# toggles, so it layers over any sizing or cloud profile in either order.
+#
+# ---------------------------------------------------------------------------
+# Read this before rolling it out
+# ---------------------------------------------------------------------------
+# **Tags are inherited, not restated.** Where the chart resolves a tag from a
+# subchart's `appVersion` (Loki, Thanos, kube-state-metrics, grafana-operator,
+# Alertmanager, metrics-server) this profile leaves `tag` alone, so the version
+# stays pinned in exactly one place and Renovate keeps owning it. A mirror only
+# carries the tags you chose to mirror, and DHI publishes variant tags
+# (`<version>-<distro>`, `-dev`, `-fips`) alongside the plain ones. Confirm what
+# your mirror actually holds before you install:
+#
+#   docker buildx imagetools inspect docker.io/<ORG>/dhi-thanos:<tag>
+#
+# and add an explicit `tag:` here for any image whose string differs.
+#
+# **Check the UID each image expects.** This is the failure mode that bites,
+# because it renders and schedules cleanly and then crash-loops. DHI runs as a
+# non-root UID, which is generally not the UID the upstream chart writes into
+# `securityContext` — Grafana's chart assumes 472, Loki's assumes 10001. When
+# they disagree the container cannot write its data directory. Verify the
+# image's UID and align `grafana.securityContext`,
+# `loki.<component>.podSecurityContext`, and `thanos.global.podSecurityContext`
+# to match before pointing this at anything with a PVC attached.
+#
+# **Grafana plugins stop working.** These images ship no shell and no package
+# manager, so the `grafana.plugins` list — which installs at container start —
+# silently gets you a Grafana without those plugins. Bake them into a derived
+# image instead. The same note is on `grafana.image` in `values.yaml`.
+#
+# ---------------------------------------------------------------------------
+# What is deliberately left on its upstream registry
+# ---------------------------------------------------------------------------
+#   * **Alloy** (`alloy-agent.image`, `alloy-gateway.image`) — DHI publishes
+#     `alloy`, but the chart runs `ghcr.io/materializeinc/mzmon-alloy`, a
+#     Materialize build carrying the custom components the pipelines are written
+#     against. A stock Alloy fails config validation at startup. Swapping it is a
+#     rebuild, not a retag.
+#   * **The cleanup hook** (`cleanup.grafanaOperator.image`) — the pre-delete
+#     Job has no `imagePullSecrets` support, so an authenticated registry would
+#     make `helm uninstall` hang on the hook. See the gaps section in
+#     `pull-secret.values.yaml`. The free `dhi.io/kubectl` is anonymously
+#     pullable and is a safe swap here if you want one.
+
+# --- Loki --------------------------------------------------------------------
+# `imagePullSecrets` for these pods comes from `pull-secret.values.yaml`; Loki
+# reads no global for it.
+loki:
+  loki:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-loki"
+  lokiCanary:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-loki-canary"
+  # `memcached.image` and `memcachedExporter.image` have no `registry` key of
+  # their own — the Loki helper only reads a global one — so the host goes in
+  # `repository`. Do not "fix" this by setting `global.imageRegistry`: that key
+  # outranks every per-component `registry` in the Loki chart and would drag the
+  # rest of the stack's images onto docker.io too.
+  memcached:
+    image:
+      repository: "docker.io/<ORG>/dhi-memcached"
+  memcachedExporter:
+    image:
+      repository: "docker.io/<ORG>/dhi-memcached-exporter"
+  # Inert unless `loki.gateway.enabled` is turned on. DHI publishes no
+  # `nginx-unprivileged` variant because its `nginx` already runs non-root.
+  gateway:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-nginx"
+    # The gateway's access-log exporter sidecar. DHI is the only one of the
+    # three vendors that publishes this one.
+    metrics:
+      image:
+        registry: "docker.io"
+        repository: "<ORG>/dhi-access-log-exporter"
+  sidecar:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-k8s-sidecar"
+  defaults:
+    statefulSetRecreateJob:
+      image:
+        registry: "docker.io"
+        repository: "<ORG>/dhi-kubectl"
+
+# --- Thanos ------------------------------------------------------------------
+# One image drives every Thanos component; the chart exposes no per-component
+# override. `thanos.global` is the subchart's own globals block, not the
+# umbrella's, so this does not leak into the other subcharts.
+thanos:
+  global:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-thanos"
+  ruler:
+    autoImportPrometheusRules:
+      sidecar:
+        image:
+          registry: "docker.io"
+          repository: "<ORG>/dhi-kubectl"
+
+# --- Grafana -----------------------------------------------------------------
+grafana:
+  image:
+    registry: "docker.io"
+    repository: "<ORG>/dhi-grafana"
+    # The chart pins Grafana's tag explicitly rather than tracking the
+    # subchart's appVersion, so it carries over as-is. Confirm the tag is in
+    # your mirror before install.
+  sidecar:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-k8s-sidecar"
+  initChownData:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-busybox"
+  downloadDashboardsImage:
+    registry: "docker.io"
+    repository: "<ORG>/dhi-curl"
+  # Inert unless `grafana.imageRenderer.enabled` is turned on.
+  imageRenderer:
+    image:
+      registry: "docker.io"
+      repository: "<ORG>/dhi-grafana-image-renderer"
+
+grafana-operator:
+  image:
+    registry: "docker.io"
+    repository: "<ORG>/dhi-grafana-operator"
+
+# --- Alertmanager ------------------------------------------------------------
+# This chart's `image.repository` carries the registry host inline — it has no
+# separate `registry` key.
+alertmanager:
+  image:
+    repository: "docker.io/<ORG>/dhi-alertmanager"
+  configmapReload:
+    image:
+      repository: "docker.io/<ORG>/dhi-prometheus-config-reloader"
+
+# --- Cluster metrics ---------------------------------------------------------
+kube-state-metrics:
+  image:
+    registry: "docker.io"
+    repository: "<ORG>/dhi-kube-state-metrics"
+
+node-exporter:
+  image:
+    registry: "docker.io"
+    repository: "<ORG>/dhi-node-exporter"
+    # `distroless: true` appends `-distroless` to the tag, which is a naming
+    # convention of the upstream quay.io repository and does not exist here.
+    # Leaving it on resolves to a tag that is not published.
+    distroless: false
+
+# Inert unless `tags.cluster-metrics` or `tags.metrics-server` is on. Like
+# Alertmanager, this chart's `repository` includes the host.
+metrics-server:
+  image:
+    repository: "docker.io/<ORG>/dhi-metrics-server"

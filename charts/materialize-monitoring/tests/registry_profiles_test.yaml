@@ -1,0 +1,198 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: registry profiles (hardened images + pull secrets)
+release:
+  name: t
+  namespace: test-monitoring
+# Enablement + required inputs shared by every case. Profiles are layered on
+# top per-test via `values:`.
+set:
+  tags.cluster-metrics: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy
+  loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
+  thanos.global.objstore.createSecret: false
+tests:
+  # ---------------------------------------------------------------------------
+  # pull-secret.values.yaml
+  #
+  # The subcharts disagree about which global they read, so the overlay names
+  # both spellings plus the four charts that read neither. Each case below is a
+  # chart that would silently pull anonymously if its line were dropped.
+  # ---------------------------------------------------------------------------
+  - it: pull secret reaches Loki, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches Alertmanager, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches grafana-operator, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/grafana-operator/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches metrics-server, which reads no global for it
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  # Alloy is the odd one out: it reads `global.image.pullSecrets` and never
+  # `global.imagePullSecrets`, so a values file carrying only the latter leaves
+  # the whole pipeline pulling anonymously.
+  - it: pull secret reaches Alloy via global.image.pullSecrets
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  - it: pull secret reaches Thanos via global.imagePullSecrets
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"
+
+  # The overlay must not touch registries. `global.imageRegistry` in particular
+  # outranks every per-component `image.registry` in the Loki chart, so setting
+  # it here would quietly override whichever vendor profile is layered on top.
+  - it: pull secret overlay leaves image registries alone
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^docker\.io/grafana/loki:'
+
+  # ---------------------------------------------------------------------------
+  # Vendor profiles
+  # ---------------------------------------------------------------------------
+  - it: chainguard profile repoints Loki
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/loki:'
+
+  # memcached's image block has no `registry` key, so the host has to ride along
+  # in `repository`. Renders as a bare `memcached:<tag>` if that is missed.
+  - it: chainguard profile repoints Loki's memcached, which has no registry key
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/chunks-cache/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/memcached:'
+
+  - it: chainguard profile repoints Thanos through the subchart's own globals
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/thanos:'
+
+  # This chart's `image.repository` carries the registry host inline.
+  - it: chainguard profile repoints Alertmanager, whose repository holds the host
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/prometheus-alertmanager:'
+
+  # `distroless: true` appends `-distroless` to the tag — an upstream quay.io
+  # naming convention that resolves to nothing at any of the three vendors.
+  - it: chainguard profile clears the node-exporter distroless tag suffix
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/prometheus-node-exporter:v[0-9.]+$'
+
+  - it: docker hardened images profile applies the dhi- mirror prefix
+    values:
+      - ../profiles/registry/docker-hardened-images.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^docker\.io/<ORG>/dhi-loki:'
+
+  - it: bitnami profile repoints Loki
+    values:
+      - ../profiles/registry/bitnami-secure-images.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/bitnami/grafana-loki:'
+
+  # A Bitnami tag is never plain semver, and the node-exporter chart feeds
+  # `coalesce version image.tag Chart.AppVersion` to `semverCompare`. Without
+  # the `version` override the render fails outright rather than misbehaving.
+  - it: bitnami profile sets node-exporter.version so semverCompare survives
+    values:
+      - ../profiles/registry/bitnami-secure-images.values.yaml
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^<REGISTRY>/bitnami/node-exporter:'
+
+  # ---------------------------------------------------------------------------
+  # Composition
+  # ---------------------------------------------------------------------------
+  - it: pull-secret and vendor profiles compose without tripping the validators
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/chainguard.values.yaml
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: composed profiles set both the registry and the pull secret on one pod
+    values:
+      - ../profiles/registry/pull-secret.values.yaml
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/ingester/workload.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/loki:'
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: "<REPLACE-ME>"

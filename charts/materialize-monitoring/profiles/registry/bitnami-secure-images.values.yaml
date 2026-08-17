@@ -1,0 +1,211 @@
+# Overlay: Bitnami Secure Images (BSI).
+#
+# Repoints every image the chart renders at the BSI equivalent. Compose it after
+# `pull-secret.values.yaml`, which names the Secret this registry needs:
+#
+#   helm upgrade --install mzmon materialize-monitoring/materialize-monitoring \
+#     -f profiles/registry/pull-secret.values.yaml \
+#     -f profiles/registry/bitnami-secure-images.values.yaml \
+#     -f my-values.yaml
+#
+# Replace every `<REGISTRY>` with your BSI registry host — `docker.io` for the
+# Docker Hub–hosted catalog, or the host Broadcom issued with your subscription.
+# The repository names stay `bitnami/<app>` in either case.
+#
+# Every repository named below was confirmed present in the Bitnami catalog at
+# the time of writing. This is a retag only — it changes no replica counts, no
+# sizes, and no feature toggles — but see the compatibility warning below, which
+# is the reason this profile is the most involved of the three.
+#
+# ---------------------------------------------------------------------------
+# Read this first: BSI is not a drop-in retag
+# ---------------------------------------------------------------------------
+# Chainguard and DHI rebuild the upstream image and keep its entrypoint and
+# layout. Bitnami does not: its images are built for *Bitnami's own charts*, so
+# they carry Bitnami entrypoint scripts, `/opt/bitnami/...` paths, and UID 1001.
+# The subcharts here are the upstream Grafana, Thanos, and Prometheus-community
+# charts, which pass their own `args` and mount config at upstream paths. Expect
+# to reconcile at least:
+#
+#   * **Entrypoint and args.** Bitnami entrypoints wrap a `run.sh` that may
+#     ignore or reorder the `-config.file=...` style args the upstream charts
+#     pass. Where that happens, set the component's `extraArgs` or override
+#     `command` so the binary is invoked directly.
+#   * **UID and data directories.** Bitnami runs as 1001 while Grafana's chart
+#     assumes 472 and Loki's assumes 10001. A mismatch renders and schedules
+#     cleanly and then crash-loops on a PVC the container cannot write. Align
+#     `grafana.securityContext`, `loki.<component>.podSecurityContext`, and
+#     `thanos.global.podSecurityContext` before attaching storage.
+#
+# Stage this against a scratch namespace before a cluster that holds data. If
+# reconciling the above is more work than it is worth, the Chainguard and DHI
+# profiles in this directory keep upstream layouts and are materially less
+# disruptive.
+#
+# **Tags must be set, not inherited.** This is the one profile where leaving
+# `tag` alone does not work: Bitnami tags carry a distro and revision suffix
+# (`3.7.6-debian-12-r0`), so the `appVersion` the charts fall back to resolves to
+# a tag that does not exist. Every `tag` below is `<REPLACE-ME>`. List what your
+# subscription actually carries and pin each one:
+#
+#   crane ls <REGISTRY>/bitnami/grafana-loki
+#
+# **Grafana plugins stop working.** Hardened images ship no package manager, so
+# the `grafana.plugins` list — which installs at container start — silently gets
+# you a Grafana without those plugins. Bake them into a derived image instead.
+# The same note is on `grafana.image` in `values.yaml`.
+#
+# ---------------------------------------------------------------------------
+# What is deliberately left on its upstream registry
+# ---------------------------------------------------------------------------
+#   * **Alloy** (`alloy-agent.image`, `alloy-gateway.image`) — Bitnami publishes
+#     `grafana-alloy`, but the chart runs `ghcr.io/materializeinc/mzmon-alloy`, a
+#     Materialize build carrying the custom components the pipelines are written
+#     against. A stock Alloy fails config validation at startup. Swapping it is a
+#     rebuild, not a retag.
+#   * **The cleanup hook** (`cleanup.grafanaOperator.image`) — the pre-delete Job
+#     has no `imagePullSecrets` support, so an authenticated registry would make
+#     `helm uninstall` hang on the hook. See the gaps section in
+#     `pull-secret.values.yaml`.
+#   * **The Loki canary** (`loki.lokiCanary.image`) — Bitnami publishes no canary
+#     image. It is on by default, so it is left upstream here rather than
+#     silently pointed at something that does not exist. Set
+#     `loki.lokiCanary.enabled: false` if an all-BSI install matters more than
+#     the canary's write-then-read probe.
+#   * **The k8s-sidecar images** (`loki.sidecar.image`, `grafana.sidecar.image`)
+#     — Bitnami publishes no equivalent. Both sidecars are disabled by default in
+#     this chart, so nothing renders them; if you enable one, it pulls from
+#     upstream.
+#   * **The Alertmanager config reloader**
+#     (`alertmanager.configmapReload.image`) — Bitnami publishes no
+#     `prometheus-config-reloader`.
+#   * **The Loki gateway's access-log exporter**
+#     (`loki.gateway.metrics.image`) — no Bitnami equivalent. Inert unless
+#     `loki.gateway.enabled` is turned on.
+
+# --- Loki --------------------------------------------------------------------
+# `imagePullSecrets` for these pods comes from `pull-secret.values.yaml`; Loki
+# reads no global for it.
+loki:
+  loki:
+    image:
+      registry: "<REGISTRY>"
+      repository: "bitnami/grafana-loki"
+      tag: "<REPLACE-ME>"
+  # `memcached.image` and `memcachedExporter.image` have no `registry` key of
+  # their own — the Loki helper only reads a global one — so the host goes in
+  # `repository`. Do not "fix" this by setting `global.imageRegistry`: that key
+  # outranks every per-component `registry` in the Loki chart and would drag the
+  # rest of the stack's images onto <REGISTRY> too.
+  memcached:
+    image:
+      repository: "<REGISTRY>/bitnami/memcached"
+      tag: "<REPLACE-ME>"
+  memcachedExporter:
+    image:
+      repository: "<REGISTRY>/bitnami/memcached-exporter"
+      tag: "<REPLACE-ME>"
+  # Inert unless `loki.gateway.enabled` is turned on. Bitnami publishes no
+  # `nginx-unprivileged` variant because its `nginx` already runs non-root.
+  gateway:
+    image:
+      registry: "<REGISTRY>"
+      repository: "bitnami/nginx"
+      tag: "<REPLACE-ME>"
+  defaults:
+    statefulSetRecreateJob:
+      image:
+        registry: "<REGISTRY>"
+        repository: "bitnami/kubectl"
+        tag: "<REPLACE-ME>"
+
+# --- Thanos ------------------------------------------------------------------
+# One image drives every Thanos component; the chart exposes no per-component
+# override. `thanos.global` is the subchart's own globals block, not the
+# umbrella's, so this does not leak into the other subcharts.
+thanos:
+  global:
+    image:
+      registry: "<REGISTRY>"
+      repository: "bitnami/thanos"
+      tag: "<REPLACE-ME>"
+  ruler:
+    autoImportPrometheusRules:
+      sidecar:
+        image:
+          registry: "<REGISTRY>"
+          repository: "bitnami/kubectl"
+          tag: "<REPLACE-ME>"
+
+# --- Grafana -----------------------------------------------------------------
+grafana:
+  image:
+    registry: "<REGISTRY>"
+    repository: "bitnami/grafana"
+    tag: "<REPLACE-ME>"
+  # `initChownData` runs `chown` on the data directory, so it needs a shell —
+  # `os-shell` is Bitnami's minimal one. Inert when `grafana.persistence` is off.
+  initChownData:
+    image:
+      registry: "<REGISTRY>"
+      repository: "bitnami/os-shell"
+      tag: "<REPLACE-ME>"
+  # Inert unless `grafana.dashboards` carries URL-sourced entries — this chart
+  # delivers dashboards as grafana-operator CRs instead. `os-shell` stands in
+  # because Bitnami publishes no `curl` image; confirm curl is on its PATH
+  # before enabling anything that uses this.
+  downloadDashboardsImage:
+    registry: "<REGISTRY>"
+    repository: "bitnami/os-shell"
+    tag: "<REPLACE-ME>"
+  # Inert unless `grafana.imageRenderer.enabled` is turned on.
+  imageRenderer:
+    image:
+      registry: "<REGISTRY>"
+      repository: "bitnami/grafana-image-renderer"
+      tag: "<REPLACE-ME>"
+
+grafana-operator:
+  image:
+    registry: "<REGISTRY>"
+    repository: "bitnami/grafana-operator"
+    tag: "<REPLACE-ME>"
+
+# --- Alertmanager ------------------------------------------------------------
+# This chart's `image.repository` carries the registry host inline — it has no
+# separate `registry` key.
+alertmanager:
+  image:
+    repository: "<REGISTRY>/bitnami/alertmanager"
+    tag: "<REPLACE-ME>"
+
+# --- Cluster metrics ---------------------------------------------------------
+kube-state-metrics:
+  image:
+    registry: "<REGISTRY>"
+    repository: "bitnami/kube-state-metrics"
+    tag: "<REPLACE-ME>"
+
+node-exporter:
+  # Required whenever `image.tag` is not plain semver, which a Bitnami tag never
+  # is. The chart feeds `coalesce version image.tag Chart.AppVersion` to
+  # `semverCompare` to gate a flag, so a `-debian-12-rN` suffix makes the render
+  # fail outright with "invalid semantic version". This key exists for exactly
+  # that; it feeds the comparison only and never reaches the image reference.
+  # Keep it matching the upstream version your Bitnami tag is built from.
+  version: "1.12.1"
+  image:
+    registry: "<REGISTRY>"
+    repository: "bitnami/node-exporter"
+    tag: "<REPLACE-ME>"
+    # `distroless: true` appends `-distroless` to the tag, which is a naming
+    # convention of the upstream quay.io repository and does not exist here.
+    # Leaving it on resolves to a tag that is not published.
+    distroless: false
+
+# Inert unless `tags.cluster-metrics` or `tags.metrics-server` is on. Like
+# Alertmanager, this chart's `repository` includes the host.
+metrics-server:
+  image:
+    repository: "<REGISTRY>/bitnami/metrics-server"
+    tag: "<REPLACE-ME>"

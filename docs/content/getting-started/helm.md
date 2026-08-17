@@ -171,6 +171,42 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
 
+### Hardened images and private registries {#registry-profiles}
+
+`profiles/registry/` repoints the stack at a hardened-image vendor and wires up the pull secret that vendor's registry needs.
+
+| Profile | Use |
+|---|---|
+| `profiles/registry/pull-secret.values.yaml` | name a `dockerconfigjson` Secret on every workload. Compose it first; it sets no registries, so it works for a plain mirror too |
+| `profiles/registry/chainguard.values.yaml` | Chainguard Images — `cgr.dev/<ORG>/<image>` |
+| `profiles/registry/docker-hardened-images.values.yaml` | Docker Hardened Images — `docker.io/<ORG>/dhi-<image>` |
+| `profiles/registry/bitnami-secure-images.values.yaml` | Bitnami Secure Images — `<REGISTRY>/bitnami/<image>` |
+
+Compose the pull secret first, then one vendor:
+
+```bash
+helm install mzmon . -f profiles/registry/pull-secret.values.yaml -f profiles/registry/chainguard.values.yaml
+```
+
+The pull-secret overlay is a separate file because the subcharts do not agree on which global to read.
+Alloy reads `global.image.pullSecrets`; Thanos, Grafana, kube-state-metrics and node-exporter read `global.imagePullSecrets`; and Loki, grafana-operator, Alertmanager and metrics-server read neither and need their own key.
+Setting only `global.imagePullSecrets` leaves Loki — the largest pod count in the release — pulling anonymously, which surfaces as `ImagePullBackOff` on the ingesters long after `helm install` reports success.
+
+> [!WARNING]
+>   Do not set `global.imageRegistry` to reach a mirror.
+>   Loki's image helper coalesces it ahead of every per-component `image.registry`, so it flattens Loki's images — memcached and the canary included — onto one host and overrides whatever a vendor profile chose.
+>   Set the per-component registries the profiles use instead.
+
+Each vendor profile's header lists what it deliberately leaves on an upstream registry.
+Common to all three: the Alloy image is a Materialize build carrying the custom components the pipelines are written against, so it is a rebuild rather than a retag; and the `helm uninstall` cleanup hook has no `imagePullSecrets` support, so its image stays on an anonymously pullable registry.
+
+> [!WARNING]
+>   Hardened images run as their own non-root UID, which is generally not the UID the upstream chart writes into `securityContext` — Grafana's chart assumes 472, Loki's assumes 10001.
+>   A mismatch renders and schedules cleanly and then crash-loops on a volume the container cannot write.
+>   Check the UID before pointing one of these at a cluster that holds data.
+>
+>   These images also ship no package manager, so `grafana.plugins` — which installs at container start — silently gets you a Grafana without those plugins. Bake them into a derived image instead.
+
 ### Disabling a Component
 
 If you want further control of the managed components, you can selectively disable components in the `materialize-monitoring` Helm chart by setting the `enabled` field for that component to `false` in your `YOUR_VALUES.yaml` file or via `--set` in your `helm install`/`helm upgrade` command.
