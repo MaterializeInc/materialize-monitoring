@@ -335,13 +335,22 @@ $defs:
           - promQL
       - type: object
         properties:
-          datadogSQL:
-            $ref: "#/$defs/templateString"
-            description: The Datadog SQL (DDSQL) query.
+          datadogQuery:
+            oneOf:
+              - $ref: "#/$defs/templateString"
+                description: |
+                  The Datadog metric query, in the syntax used by Datadog
+                  dashboard widgets and monitors (not DDSQL).
+              - type: array
+                items:
+                  $ref: "#/$defs/templateString"
+                description: |
+                  A group of Datadog metric queries.
+                  These are generally shown as distinct series.
             examples:
-              - "SELECT avg(latency) FROM compute_peek_latency WHERE $__timeFilter(timestamp)"
+              - "p99:compute_peek_latency_seconds{$env} by {cluster_id}"
         required:
-          - datadogSQL
+          - datadogQuery
       - type: object
         properties:
           honeycombSQL:

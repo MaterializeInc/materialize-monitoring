@@ -60,6 +60,8 @@ queries:
           rate(node_cpu_seconds_total{mode="idle", instance=~"$node"}%%{interval})
         )
       )
+    datadogQuery: |
+      1 - avg:node_cpu_seconds_total{mode:idle, instance:$node} by {instance}.as_rate()
   - id: node.load.normalized
     stability: canonical
     description:
@@ -80,6 +82,11 @@ queries:
           count by (instance, job, cpu) (node_cpu_seconds_total{instance=~"$node"})
         )
       )
+    # Datadog cannot aggregate twice, so the core count comes straight from the
+    # number of per-cpu series — scope to one node for a meaningful ratio.
+    datadogQuery: |
+      max:node_load1{instance:$node} by {instance}
+        / count_not_null(avg:node_cpu_seconds_total{mode:idle, instance:$node} by {cpu})
   - id: node.cpu.pressure
     stability: canonical
     description:
@@ -99,6 +106,8 @@ queries:
       max by (instance) (
         rate(node_pressure_cpu_waiting_seconds_total{instance=~"$node"}%%{interval})
       )
+    datadogQuery: |
+      max:node_pressure_cpu_waiting_seconds_total{instance:$node} by {instance}.as_rate()
 
   # --- memory and swap -----------------------------------------------------
   #
@@ -127,6 +136,9 @@ queries:
       max by (instance) (
         node_memory_MemTotal_bytes{instance=~"$node"}
       )
+    datadogQuery: |
+      min:node_memory_MemAvailable_bytes{instance:$node} by {instance}
+        / max:node_memory_MemTotal_bytes{instance:$node} by {instance}
   - id: node.memory.pressure
     stability: canonical
     description:
@@ -151,6 +163,11 @@ queries:
         max by (instance) (
           rate(node_pressure_memory_stalled_seconds_total{instance=~"$node"}%%{interval})
         )
+    datadogQuery:
+      - |
+        max:node_pressure_memory_waiting_seconds_total{instance:$node} by {instance}.as_rate()
+      - |
+        max:node_pressure_memory_stalled_seconds_total{instance:$node} by {instance}.as_rate()
   - id: node.swap.used.ratio
     stability: canonical
     description:
@@ -178,6 +195,14 @@ queries:
         /
         max by (instance) (node_memory_SwapTotal_bytes{instance=~"$node"})
       )
+    # The `> bool 0` guard is dropped: a swapless node divides by zero and
+    # drops out rather than reading 0.
+    datadogQuery: |
+      (
+        max:node_memory_SwapTotal_bytes{instance:$node} by {instance}
+          - min:node_memory_SwapFree_bytes{instance:$node} by {instance}
+      )
+        / max:node_memory_SwapTotal_bytes{instance:$node} by {instance}
   - id: node.swap.activity
     stability: canonical
     description:
@@ -201,6 +226,11 @@ queries:
         max by (instance) (
           rate(node_vmstat_pswpout{instance=~"$node"}%%{interval})
         )
+    datadogQuery:
+      - |
+        max:node_vmstat_pswpin{instance:$node} by {instance}.as_rate()
+      - |
+        max:node_vmstat_pswpout{instance:$node} by {instance}.as_rate()
   - id: node.memory.oom_kills
     stability: canonical
     description:
@@ -214,6 +244,8 @@ queries:
       max by (instance) (
         rate(node_vmstat_oom_kill{instance=~"$node"}%%{interval})
       )
+    datadogQuery: |
+      max:node_vmstat_oom_kill{instance:$node} by {instance}.as_rate()
 
   # --- storage -------------------------------------------------------------
   - id: node.filesystem.available.ratio
@@ -239,6 +271,9 @@ queries:
       max by (instance, mountpoint) (
         node_filesystem_size_bytes{instance=~"$node", fstype!="rootfs"}
       )
+    datadogQuery: |
+      min:node_filesystem_avail_bytes{instance:$node, !fstype:rootfs} by {instance,mountpoint}
+        / max:node_filesystem_size_bytes{instance:$node, !fstype:rootfs} by {instance,mountpoint}
   - id: node.filesystem.readonly
     stability: canonical
     description:
@@ -253,6 +288,8 @@ queries:
       max by (instance, mountpoint) (
         node_filesystem_readonly{instance=~"$node", fstype!="rootfs"}
       )
+    datadogQuery: |
+      max:node_filesystem_readonly{instance:$node, !fstype:rootfs} by {instance,mountpoint}
   - id: node.disk.io_utilization
     stability: canonical
     description:
@@ -270,6 +307,8 @@ queries:
       max by (instance, device) (
         rate(node_disk_io_time_seconds_total{instance=~"$node"}%%{interval})
       )
+    datadogQuery: |
+      max:node_disk_io_time_seconds_total{instance:$node} by {instance,device}.as_rate()
   - id: node.filefd.utilization
     stability: canonical
     description:
@@ -285,6 +324,9 @@ queries:
       max by (instance) (node_filefd_allocated{instance=~"$node"})
       /
       max by (instance) (node_filefd_maximum{instance=~"$node"})
+    datadogQuery: |
+      max:node_filefd_allocated{instance:$node} by {instance}
+        / max:node_filefd_maximum{instance:$node} by {instance}
 
   # --- network -------------------------------------------------------------
   - id: node.network.errors
@@ -309,6 +351,11 @@ queries:
         max by (instance, device) (
           rate(node_network_transmit_errs_total{instance=~"$node"}%%{interval})
         )
+    datadogQuery:
+      - |
+        max:node_network_receive_errs_total{instance:$node} by {instance,device}.as_rate()
+      - |
+        max:node_network_transmit_errs_total{instance:$node} by {instance,device}.as_rate()
   - id: node.network.drops
     stability: canonical
     description:
@@ -329,6 +376,11 @@ queries:
         max by (instance, device) (
           rate(node_network_transmit_drop_total{instance=~"$node"}%%{interval})
         )
+    datadogQuery:
+      - |
+        max:node_network_receive_drop_total{instance:$node} by {instance,device}.as_rate()
+      - |
+        max:node_network_transmit_drop_total{instance:$node} by {instance,device}.as_rate()
   - id: node.conntrack.utilization
     stability: canonical
     description:
@@ -348,6 +400,9 @@ queries:
       max by (instance) (node_nf_conntrack_entries{instance=~"$node"})
       /
       max by (instance) (node_nf_conntrack_entries_limit{instance=~"$node"})
+    datadogQuery: |
+      max:node_nf_conntrack_entries{instance:$node} by {instance}
+        / max:node_nf_conntrack_entries_limit{instance:$node} by {instance}
 
   # --- node and exporter liveness -----------------------------------------
   - id: node.uptime
@@ -365,6 +420,9 @@ queries:
       min by (instance) (
         node_time_seconds{instance=~"$node"} - node_boot_time_seconds{instance=~"$node"}
       )
+    datadogQuery: |
+      min:node_time_seconds{instance:$node} by {instance}
+        - max:node_boot_time_seconds{instance:$node} by {instance}
   - id: node.collector.success
     stability: canonical
     description:
@@ -385,3 +443,5 @@ queries:
       min by (instance, collector) (
         node_scrape_collector_success{instance=~"$node"}
       )
+    datadogQuery: |
+      min:node_scrape_collector_success{instance:$node} by {instance,collector}

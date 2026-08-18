@@ -137,8 +137,8 @@ pub struct Query {
 
     /// PromQL template(s) for this query (one, or several distinct series).
     pub promql: Vec<TemplateExpr>,
-    /// Datadog SQL template(s) for this query.
-    pub datadog_sql: Vec<TemplateExpr>,
+    /// Datadog metric-query template(s) for this query.
+    pub datadog_query: Vec<TemplateExpr>,
     /// Honeycomb SQL template(s) for this query.
     pub honeycomb_sql: Vec<TemplateExpr>,
     /// LogQL template(s) for this query.
@@ -151,7 +151,7 @@ impl Query {
     /// True if this query has any metric (PromQL / Datadog / Honeycomb)
     /// definition.
     pub fn is_metric_query(&self) -> bool {
-        !self.promql.is_empty() || !self.datadog_sql.is_empty() || !self.honeycomb_sql.is_empty()
+        !self.promql.is_empty() || !self.datadog_query.is_empty() || !self.honeycomb_sql.is_empty()
     }
 
     /// True if this query has a LogQL definition.
@@ -163,7 +163,7 @@ impl Query {
     pub fn value_for_engine(&self, engine: QueryEngine) -> &[TemplateExpr] {
         match engine {
             QueryEngine::PromQl => &self.promql,
-            QueryEngine::Datadog => &self.datadog_sql,
+            QueryEngine::Datadog => &self.datadog_query,
             QueryEngine::Honeycomb => &self.honeycomb_sql,
             QueryEngine::LogQl => &self.logql,
         }

@@ -36,6 +36,11 @@ queries:
         container_spec_cpu_quota{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
         / container_spec_cpu_period{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
       )
+    # container_spec_cpu_period is the CFS default (100000us) in every
+    # Materialize deployment, so the per-series divide collapses to a constant
+    # — Datadog cannot divide before aggregating.
+    datadogQuery: |
+      sum:container_spec_cpu_quota{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {container} / 100000
   - id: materialize.kubernetes.memory.capacity
     stability: best-effort
     description:
@@ -49,6 +54,8 @@ queries:
       sum by (container) (
         container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
       )
+    datadogQuery: |
+      sum:container_spec_memory_limit_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {container}
 
   # --- current usage (Summary) — percent-of-limit + absolute siblings ------
   - id: materialize.kubernetes.cpu.usage.percent
@@ -69,6 +76,9 @@ queries:
       ) / sum by (namespace, container) (
         kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}"}
       )
+    datadogQuery: |
+      sum:container_cpu_usage_seconds_total{%%{cAdvisorFilter}} by {namespace,container}.as_rate()
+        / sum:kube_pod_container_resource_limits{resource:cpu, namespace:%%{mzNamespaceList}} by {namespace,container}
     instant: true
   - id: materialize.kubernetes.cpu.usage.absolute
     stability: best-effort
@@ -84,6 +94,8 @@ queries:
       sum by (namespace, container) (
         rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}}[5m])
       )
+    datadogQuery: |
+      sum:container_cpu_usage_seconds_total{%%{cAdvisorFilter}} by {namespace,container}.as_rate()
   - id: materialize.kubernetes.memory.usage.percent
     stability: best-effort
     description:
@@ -108,6 +120,9 @@ queries:
           container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
         )
       )
+    datadogQuery: |
+      sum:container_memory_working_set_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {namespace,container}
+        / sum:container_spec_memory_limit_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {namespace,container}
     instant: true
   - id: materialize.kubernetes.memory.usage.absolute
     stability: best-effort
@@ -125,6 +140,8 @@ queries:
       sum by (namespace, container) (
         container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
       )
+    datadogQuery: |
+      sum:container_memory_working_set_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {namespace,container}
 
   # --- last restart (Summary) ----------------------------------------------
   - id: materialize.kubernetes.last_restart
@@ -142,6 +159,13 @@ queries:
       - topk(1,
           container_start_time_seconds{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
         )
+    # Datadog has no `time()`, so this is the raw start timestamp of the newest
+    # container rather than the age derived from it.
+    datadogQuery: |
+      top(
+        max:container_start_time_seconds{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {namespace,pod,container},
+        1, 'max', 'desc'
+      )
     instant: true
 
   # --- workload readiness --------------------------------------------------
@@ -162,6 +186,10 @@ queries:
           kube_pod_status_phase{namespace=~"%%{mzNamespaceList}"}
         )
       )
+    # The inner sum-then-max that deduplicates across kube-state-metrics
+    # replicas is a nested aggregation; a second KSM replica would double this.
+    datadogQuery: |
+      sum:kube_pod_status_phase{namespace:%%{mzNamespaceList}} by {phase,namespace}
     instant: true
   - id: materialize.kubernetes.statefulsets.ready
     stability: best-effort
@@ -178,6 +206,8 @@ queries:
           kube_statefulset_status_replicas_ready{namespace=~"%%{mzNamespaceList}"}
         )
       )
+    datadogQuery: |
+      sum:kube_statefulset_status_replicas_ready{namespace:%%{mzNamespaceList}} by {namespace}
     instant: true
   - id: materialize.kubernetes.deployments.readiness
     stability: best-effort
@@ -201,6 +231,11 @@ queries:
             kube_deployment_status_replicas_unavailable{namespace=~"%%{mzNamespaceList}"}
           )
         )
+    datadogQuery:
+      - |
+        sum:kube_deployment_status_replicas_ready{namespace:%%{mzNamespaceList}} by {namespace}
+      - |
+        sum:kube_deployment_status_replicas_unavailable{namespace:%%{mzNamespaceList}} by {namespace}
     instant: true
 
   # --- pod resource usage (per-pod timeseries) -----------------------------
@@ -230,6 +265,13 @@ queries:
         ) / sum by (namespace, pod, container) (
           kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}
         )
+    datadogQuery:
+      - |
+        sum:container_cpu_usage_seconds_total{%%{cAdvisorFilter}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod,container}.as_rate()
+          / sum:kube_pod_container_resource_limits{resource:cpu, namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod,container}
+      - |
+        sum:container_cpu_usage_seconds_total{%%{cAdvisorFilter}, !pod:*-cluster-*-replica-*} by {namespace,pod,container}.as_rate()
+          / sum:kube_pod_container_resource_limits{resource:cpu, namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod,container}
   - id: materialize.kubernetes.pods.memory_usage
     stability: best-effort
     description:
@@ -255,6 +297,13 @@ queries:
         ) / avg by (namespace, pod, container) (
           container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod!~".*-cluster-.*-replica-.*"}
         )
+    datadogQuery:
+      - |
+        avg:container_memory_working_set_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod,container}
+          / avg:container_spec_memory_limit_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod,container}
+      - |
+        avg:container_memory_working_set_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter, !pod:*-cluster-*-replica-*} by {namespace,pod,container}
+          / avg:container_spec_memory_limit_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter, !pod:*-cluster-*-replica-*} by {namespace,pod,container}
 
   # --- pod networking ------------------------------------------------------
   - id: materialize.kubernetes.pods.network_rx
@@ -274,6 +323,11 @@ queries:
         sum by (namespace, pod) (
           rate(container_network_receive_bytes_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
         )
+    datadogQuery:
+      - |
+        sum:container_network_receive_bytes_total{namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_receive_bytes_total{namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod}.as_rate()
   - id: materialize.kubernetes.pods.network_tx
     stability: best-effort
     description:
@@ -291,6 +345,11 @@ queries:
         sum by (namespace, pod) (
           rate(container_network_transmit_bytes_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
         )
+    datadogQuery:
+      - |
+        sum:container_network_transmit_bytes_total{namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_transmit_bytes_total{namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod}.as_rate()
   - id: materialize.kubernetes.pods.network_errors
     stability: best-effort
     description:
@@ -320,6 +379,15 @@ queries:
         sum by (namespace, pod) (
           rate(container_network_transmit_errors_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
         )
+    datadogQuery:
+      - |
+        sum:container_network_receive_errors_total{namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_receive_errors_total{namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_transmit_errors_total{namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_transmit_errors_total{namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod}.as_rate()
   - id: materialize.kubernetes.pods.network_drops
     stability: best-effort
     description:
@@ -349,3 +417,12 @@ queries:
         sum by (namespace, pod) (
           rate(container_network_transmit_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod!~".*-cluster-.*-replica-.*"}%%{interval})
         )
+    datadogQuery:
+      - |
+        sum:container_network_receive_packets_dropped_total{namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_receive_packets_dropped_total{namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_transmit_packets_dropped_total{namespace:%%{mzNamespaceList}, pod:*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-*} by {namespace,pod}.as_rate()
+      - |
+        sum:container_network_transmit_packets_dropped_total{namespace:%%{mzNamespaceList}, !pod:*-cluster-*-replica-*} by {namespace,pod}.as_rate()

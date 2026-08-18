@@ -33,6 +33,15 @@ queries:
             %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_cluster_id=~"^s.*"}
           )
         )
+    datadogQuery:
+      - |
+        count_not_null(
+          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}} by {compute_cluster_id}
+        )
+      - |
+        count_not_null(
+          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_cluster_id:s*} by {compute_cluster_id}
+        )
   - id: materialize.clusters.replicas.count
     stability: best-effort
     description:
@@ -60,6 +69,17 @@ queries:
           )
         functions:
           - name: orZero
+    datadogQuery:
+      - |
+        count_not_null(
+          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}} by {compute_cluster_id,compute_replica_id}
+        )
+      - |
+        default_zero(
+          count_not_null(
+            avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}, !compute_replica_name:r1} by {compute_cluster_id,compute_replica_id}
+          )
+        )
   - id: materialize.clusters.replicas.sizes
     stability: best-effort
     description:
@@ -72,6 +92,11 @@ queries:
       count by (size) (
         %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
       )
+    # Datadog aggregates once, so the count-within-a-grouping has no direct
+    # form. This sums the 0/1 gauge instead, which counts *ready* replicas per
+    # size.
+    datadogQuery: |
+      sum:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}} by {size}
     instant: true
   - id: materialize.clusters.info
     stability: best-effort
@@ -87,4 +112,7 @@ queries:
         into table columns; this query just selects the underlying series.
     promQL: |
       %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
+    datadogQuery: |
+      avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}}
+        by {compute_cluster_id,compute_cluster_name,compute_replica_id,compute_replica_name,size,mz_version}
     instant: true

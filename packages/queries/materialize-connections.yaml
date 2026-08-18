@@ -22,6 +22,8 @@ queries:
       notes: Environment-scoped — the cluster/replica selectors don't narrow it.
     promQL: |
       sum by (session_type) (mz_active_sessions{%%{mzEnvironmentFilter}})
+    datadogQuery: |
+      sum:mz_active_sessions{%%{mzEnvironmentFilter}} by {session_type}
   - id: materialize.connections.queries.rate
     stability: best-effort
     description:
@@ -32,6 +34,8 @@ queries:
       notes: Environment-scoped.
     promQL: |
       sum by (session_type) (rate(mz_query_total{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery: |
+      sum:mz_query_total{%%{mzEnvironmentFilter}} by {session_type}.as_rate()
   - id: materialize.connections.adapter.command_rate
     stability: best-effort
     description:
@@ -46,6 +50,8 @@ queries:
       notes: Environment-scoped.
     promQL: |
       sum(rate(mz_adapter_commands{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery: |
+      sum:mz_adapter_commands{%%{mzEnvironmentFilter}}.as_rate()
   - id: materialize.connections.queries.distribution
     stability: best-effort
     description:
@@ -59,6 +65,8 @@ queries:
         Idle statement types are filtered out. Environment-scoped.
     promQL: |
       sum by (statement_type) (increase(mz_query_total{%%{mzEnvironmentFilter}}%%{range})) > 0
+    datadogQuery: |
+      sum:mz_query_total{%%{mzEnvironmentFilter}} by {statement_type}.as_count()
     instant: true
   - id: materialize.connections.queries.rate_by_statement
     stability: best-effort
@@ -72,6 +80,8 @@ queries:
         Idle (statement, session) tuples are filtered out. Environment-scoped.
     promQL: |
       sum by (statement_type, session_type) (rate(mz_query_total{%%{mzEnvironmentFilter}}%%{interval})) > 0
+    datadogQuery: |
+      sum:mz_query_total{%%{mzEnvironmentFilter}} by {statement_type,session_type}.as_rate()
   - id: materialize.connections.peek_latency.p50
     stability: best-effort
     description:
@@ -96,6 +106,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
+    datadogQuery: |
+      p50:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}}
+        by {instance_id}
   - id: materialize.connections.peek_latency.p90
     stability: best-effort
     description:
@@ -117,6 +130,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
+    datadogQuery: |
+      p90:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}}
+        by {instance_id}
   - id: materialize.connections.peek_latency.p99
     stability: best-effort
     description:
@@ -141,6 +157,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
+    datadogQuery: |
+      p99:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}}
+        by {instance_id}
   - id: materialize.connections.adapter.commands_by_application
     stability: best-effort
     description:
@@ -158,4 +177,6 @@ queries:
         columns. Environment-scoped.
     promQL: |
       sum by (application_name, status) (increase(mz_adapter_commands{%%{mzEnvironmentFilter}}%%{range}))
+    datadogQuery: |
+      sum:mz_adapter_commands{%%{mzEnvironmentFilter}} by {application_name,status}.as_count()
     instant: true

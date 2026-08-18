@@ -23,6 +23,8 @@ queries:
         Steps on CREATE/DROP MATERIALIZED VIEW; steady otherwise.
     promQL: |
       max(%%{mzSqlPrefix}mzd_views_count{%%{mzEnvironmentFilter}})
+    datadogQuery: |
+      max:%%{mzSqlPrefix}mzd_views_count{%%{mzEnvironmentFilter}}
   - id: materialize.compute.indexes.count
     stability: best-effort
     description:
@@ -38,6 +40,8 @@ queries:
         max(sum by (instance) (%%{mzSqlPrefix}indexes_count{%%{mzEnvironmentFilter}}))
       functions:
         - name: orZero
+    datadogQuery: |
+      default_zero(sum:%%{mzSqlPrefix}indexes_count{%%{mzEnvironmentFilter}} by {instance})
   - id: materialize.compute.views.count
     stability: best-effort
     description:
@@ -48,6 +52,8 @@ queries:
       notes: Environment-scoped.
     promQL: |
       max(%%{mzSqlPrefix}views_count{%%{mzEnvironmentFilter}})
+    datadogQuery: |
+      max:%%{mzSqlPrefix}views_count{%%{mzEnvironmentFilter}}
   - id: materialize.compute.subscribes.active
     stability: best-effort
     description:
@@ -59,6 +65,8 @@ queries:
       notes: Environment-scoped.
     promQL: |
       sum by (session_type) (mz_active_subscribes{%%{mzEnvironmentFilter}})
+    datadogQuery: |
+      sum:mz_active_subscribes{%%{mzEnvironmentFilter}} by {session_type}
     instant: true
   - id: materialize.compute.indexes.by_type
     stability: best-effort
@@ -71,6 +79,8 @@ queries:
       notes: Environment-scoped.
     promQL: |
       sum by (relation_type) (%%{mzSqlPrefix}indexes_count{%%{mzEnvironmentFilter}})
+    datadogQuery: |
+      sum:%%{mzSqlPrefix}indexes_count{%%{mzEnvironmentFilter}} by {relation_type}
     instant: true
 
   # --- hydration -----------------------------------------------------------
@@ -104,6 +114,14 @@ queries:
         )
       functions:
         - name: orZero
+    # Datadog has no value filter, so the sentinel (> 1e15) collections cannot
+    # be singled out — this counts every collection reporting a lag.
+    datadogQuery: |
+      default_zero(
+        count_not_null(
+          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, quantile:1} by {instance_id,collection_id}
+        )
+      )
   - id: materialize.compute.hydration.queue_size
     stability: best-effort
     description:
@@ -123,6 +141,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
+    datadogQuery: |
+      sum:mz_compute_controller_hydration_queue_size{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}}
+        by {instance_id,replica_id}
   - id: materialize.compute.hydration.slowest_collections
     stability: experimental
     description:
@@ -146,6 +167,11 @@ queries:
           args: ["collection_id"]
         - name: mzClusterName
           args: ["instance_id"]
+    datadogQuery: |
+      top(
+        max:%%{mzSqlPrefix}compute_hydration_time_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}, hydrated:1} by {instance_id,collection_id},
+        15, 'max', 'desc'
+      )
     instant: true
 
   # --- freshness (frontier lag vs real time) -------------------------------
@@ -176,6 +202,10 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
+    # The `< 1e9` sentinel exclusion is a value filter Datadog cannot express,
+    # so not-yet-hydrated collections are included here.
+    datadogQuery: |
+      max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, quantile:1} by {instance_id}
   - id: materialize.compute.freshness.top_collections
     stability: best-effort
     description:
@@ -200,6 +230,12 @@ queries:
           args: ["collection_id"]
         - name: mzClusterName
           args: ["instance_id"]
+    # As above: the `< 1e9` sentinel exclusion is dropped.
+    datadogQuery: |
+      top(
+        max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}, quantile:1} by {instance_id,collection_id},
+        15, 'max', 'desc'
+      )
     instant: true
 
   # --- dataflows -----------------------------------------------------------
@@ -222,6 +258,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      max:mz_compute_replica_history_dataflow_count{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
+        by {cluster_environmentd_materialize_cloud_cluster_id,cluster_environmentd_materialize_cloud_replica_id}
   - id: materialize.compute.dataflows.count_by_worker
     stability: best-effort
     description:
@@ -241,6 +280,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      max:mz_compute_replica_history_dataflow_count{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
+        by {cluster_environmentd_materialize_cloud_cluster_id,cluster_environmentd_materialize_cloud_replica_id,worker_id}
   - id: materialize.compute.dataflows.elapsed_rate
     stability: best-effort
     description:
@@ -267,6 +309,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
+    datadogQuery: |
+      sum:%%{mzSqlPrefix}dataflow_elapsed_seconds_total{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}}
+        by {instance_id}.as_rate()
 
   # --- arrangements --------------------------------------------------------
   - id: materialize.compute.arrangements.maintenance_rate
@@ -294,6 +339,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      sum:mz_arrangement_maintenance_seconds_total{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
+        by {cluster_environmentd_materialize_cloud_cluster_id,cluster_environmentd_materialize_cloud_replica_id}.as_rate()
   - id: materialize.compute.arrangements.maintenance_rate_by_worker
     stability: best-effort
     description:
@@ -315,6 +363,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      sum:mz_arrangement_maintenance_seconds_total{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
+        by {cluster_environmentd_materialize_cloud_cluster_id,cluster_environmentd_materialize_cloud_replica_id,worker_id}.as_rate()
   - id: materialize.compute.arrangements.records.system
     stability: best-effort
     description:
@@ -327,6 +378,9 @@ queries:
       max by (collection_id) (
         %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"s.*"}
       )
+    datadogQuery: |
+      max:%%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}, collection_id:s*}
+        by {collection_id}
     instant: true
   - id: materialize.compute.arrangements.records.user
     stability: best-effort
@@ -344,6 +398,9 @@ queries:
       functions:
         - name: mzObjectName
           args: ["collection_id"]
+    datadogQuery: |
+      max:%%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}, collection_id:u*}
+        by {collection_id}
     instant: true
   - id: materialize.compute.arrangements.records.transient
     stability: best-effort
@@ -359,4 +416,7 @@ queries:
       max by (collection_id) (
         %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"t.*|none"}
       )
+    datadogQuery: |
+      max:%%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}, (collection_id:t* OR collection_id:none)}
+        by {collection_id}
     instant: true
