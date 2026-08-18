@@ -217,6 +217,7 @@ The pages under this section are the authoritative reference for their respectiv
 
 - [Repo Layout](../repo-layout/) — where everything lives and why
 - [Dashboard development](../dashboard/) — Grafana dashboards-as-code (SDKs, generating/pushing, style guidelines, testing)
+- [Queries](../queries/) — the query registry under `packages/queries/`, templating, and the per-engine translations
 - [Pipelines](../pipelines/) — alloy logging and metrics pipelines
 - [Helm](../helm/) — chart conventions (in progress)
 - [Skills](../skills/) — overview of the `.claude/skills/` system used for AI-agent context (in progress)
