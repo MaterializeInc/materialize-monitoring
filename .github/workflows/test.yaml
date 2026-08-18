@@ -76,7 +76,7 @@ jobs:
           terraform_wrapper: false
       # The render check's scheduling assertion needs a YAML parser, which jq
       # cannot provide, so it runs `uv run python` (the Makefile's PY_RUN).
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       # fmt, validate, and — via the terraform-render prerequisite — a plan of
       # every example with the chart rendered against the values it composes.
       # helm and jq are preinstalled on the runner image. No cluster needed: the
