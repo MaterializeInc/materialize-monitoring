@@ -13,7 +13,7 @@ dependencies:
   version: 0.30.0
 - name: grafana
   repository: oci://ghcr.io/grafana-community/helm-charts
-  version: 12.10.4
+  version: 12.11.0
 - name: grafana-operator
   repository: oci://ghcr.io/grafana/helm-charts
   version: 5.24.0
@@ -22,12 +22,12 @@ dependencies:
   version: 1.42.0
 - name: kube-state-metrics
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 8.3.1
+  version: 8.4.0
 - name: prometheus-node-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 4.56.1
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.13.1
-digest: sha256:6766fdaff4b8c9c94cf5cb797c9db6eb5a23c43692a4c074fba7ef5870b72a6b
-generated: "2026-08-17T23:16:28.171610181Z"
+digest: sha256:a6f4621a44218e411fc9c54b01ac92fffba822c5423517456b5f1f02403b6da2
+generated: "2026-08-18T20:10:20.280264597Z"
