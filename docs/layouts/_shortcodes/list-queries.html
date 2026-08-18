@@ -24,6 +24,10 @@
   <a class="anchor" href="#{{ .id }}">#</a>
 </h4>
 {{ .description.summary | markdownify }}
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="{{ .id }}-tabs" id="{{ .id }}-tab-0" checked>
+  <label for="{{ .id }}-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
         {{- $promQL := slice }}
         {{- if reflect.IsSlice .promQL }}
           {{- $promQL = .promQL }}
@@ -33,20 +37,80 @@
         {{- range $promQL }}
           {{ $query := . }}
           {{- if reflect.IsMap $query }}
-            {{- $query = $query.template}}
+            {{- $query = $query.template }}
           {{- end }}
+          {{- /* HACK(Heather): I AM SO SORRY FOR THIS MAINTENANCE NIGHTMARE */}}
           {{- $query = $query | replaceRE "%%\\{([^}]+)\\}" "$${$1}"}}
+          {{- $query = replace $query "${mzSqlPrefix}" "${mzSqlPrefix=mz_}" }}
+          {{- $query = replace $query "${range}" "${range=[1h]}" }}
+          {{- $query = replace $query "${interval}" "${interval=[5m]}" }}
+          {{- $query = replace $query "${mzNamespaceList}" "${mzNamespaceList=materialize-environment}" }}
+          {{- $query = replace $query "${mzClusterList}" "${mzClusterList=.*}" }}
+          {{- $query = replace $query "${mzReplicaList}" "${mzReplicaList=.*}" }}
           {{- $highlight := transform.Highlight $query "promql" }}
           {{- $highlight3 := $highlight | replaceRE
+            `<span[^>]+>\$\{mzEnvironmentFilter</span>\}`
+            "<span class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~\".*\"</span>"
+            | replaceRE
+            `<span[^>]+>\$\{cAdvisorFilter</span>\}`
+            "<span class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!=\"POD\", container!=\"\"</span>"
+            | replaceRE
+            `<span[^>]+>\$\{mzEnvironmentNamespaceFilter</span>\}`
+            "<span class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~\"materialize-environment\"</span>"
+            | replaceRE
+            `<span[^>]+>\$\{mzOperatorNamespaceFilter</span>\}`
+            "<span class='replaceable' data-replace='mzOperatorNamespaceFilter' title='mzOperatorNamespaceFilter'>namespace=~\"materialize\"</span>"
+            | replaceRE
+            `<span[^>]+>\$\{excludeEnvironmentFilter</span>\}`
+            "<span class='replaceable' data-replace='excludeEnvironmentFilter' title='excludeEnvironmentFilter'></span>"
+            | replaceRE
+            `<span[^>]+>\$\{([^<}]+)=([^<}]+)</span>\}`
+            "<span class='replaceable' data-replace='$1' title='$1'>$2</span>"
+            | replaceRE
+            `<span[^>]+>\$\{([^<}]+)=([^<}]+)\}</span>`
+            "<span class='replaceable' data-replace='$1' title='$1'>$2</span>"
+            | replaceRE
+            `\$</span>\{<span[^>]+>([^<}]+)=([^<}]+)</span>\}`
+            "</span><span class='replaceable' data-replace='$1' title='$1'>$2</span>"
+            | replaceRE
             `<span[^>]+>([^<&]*)&lt;&lt;</span>([^>+<]+)<span[^>]+>&gt;&gt;</span>`
-            "$1<span class='replaceable' data-replace='$2'>$${$2}</span>"
+            "$1<span class='replaceable' data-replace='$2' title='$2'>$${$2}</span>"
             | replaceRE
             `<span[^>]+>&lt;&lt;([^>+<]+)&gt;&gt;</span>`
-            "<span class='replaceable' data-replace='$1'>$${$1}</span>"
+            "<span class='replaceable' data-replace='$1' title='$1'>$${$1}</span>"
           }}
-{{ $highlight | safe.HTML }}
+{{ $highlight3 | safe.HTML }}
         {{- end }}
+        {{- /* end range promQL */}}
+  </div>
+        {{- if .datadogQuery }}
+  <input type="radio" class="toggle" name="{{ .id }}-tabs" id="{{ .id }}-tab-1">
+  <label for="{{ .id }}-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+          {{- $datadogQueries := slice }}
+          {{- if reflect.IsSlice .datadogQuery }}
+            {{- $datadogQueries = .datadogQuery }}
+          {{- else }}
+            {{- $datadogQueries = slice .datadogQuery }}
+          {{- end }}
+          {{- range $datadogQueries }}
+            {{ $query := . }}
+            {{- if reflect.IsMap $query }}
+              {{- $query = $query.template }}
+            {{- end }}
+            {{- /* no theme for datadog */}}
+            {{- $highlight := transform.Highlight $query "promql" }}
+{{ $highlight | safe.HTML }}
+          {{- end }}
+          {{- /* end range datadogQueries */}}
+  </div>
+        {{- end }}
+        {{- /* end if datadogQuery */}}
+</div>
       {{- end }}
+      {{- /* end range queries */}}
     {{- end }}
+    {{- /* end if queries */}}
   {{- end }}
+  {{- /* end range found */}}
 {{- end }}

@@ -246,7 +246,7 @@ class QueryDef(typing.TypedDict):
     dependencies: typing.NotRequired[list[_DEPENDENCY_DEF]]
     # Raw (unparsed) template values: str | {template|queryId, functions} | list.
     promQL: typing.NotRequired[typing.Any]
-    datadogSQL: typing.NotRequired[typing.Any]
+    datadogQuery: typing.NotRequired[typing.Any]
     honeycombSQL: typing.NotRequired[typing.Any]
     logQL: typing.NotRequired[typing.Any]
     instant: typing.NotRequired[bool]
@@ -399,8 +399,8 @@ class Query:
 
     promql: list[TemplateExpr] = dataclasses.field(default_factory=list)
     """PromQL template(s) for this query (one, or several distinct series)."""
-    datadog_sql: list[TemplateExpr] = dataclasses.field(default_factory=list)
-    """Datadog SQL template for this query."""
+    datadog_query: list[TemplateExpr] = dataclasses.field(default_factory=list)
+    """Datadog metric-query template for this query."""
     honeycomb_sql: list[TemplateExpr] = dataclasses.field(default_factory=list)
     """Honeycomb SQL template for this query."""
     logql: list[TemplateExpr] = dataclasses.field(default_factory=list)
@@ -410,7 +410,7 @@ class Query:
 
     def is_metric_query(self) -> bool:
         """Check if this query has a metric definition."""
-        return any([self.promql, self.datadog_sql, self.honeycomb_sql])
+        return any([self.promql, self.datadog_query, self.honeycomb_sql])
 
     def is_log_query(self) -> bool:
         """Check if this query has a LogQL definition."""
@@ -420,7 +420,7 @@ class Query:
         """Return the (unrendered) template value for `engine`, if any."""
         return {
             QueryEngine.PROMQL: self.promql,
-            QueryEngine.DATADOG: self.datadog_sql,
+            QueryEngine.DATADOG: self.datadog_query,
             QueryEngine.HONEYCOMB: self.honeycomb_sql,
             QueryEngine.LOGQL: self.logql,
         }[engine]
@@ -613,7 +613,7 @@ class QueryRegistry:
             stability=query_def["stability"],
             dependencies=deps,
             promql=TemplateExpr.from_entry(query_def.get("promQL")),
-            datadog_sql=TemplateExpr.from_entry(query_def.get("datadogSQL")),
+            datadog_query=TemplateExpr.from_entry(query_def.get("datadogQuery")),
             honeycomb_sql=TemplateExpr.from_entry(query_def.get("honeycombSQL")),
             logql=TemplateExpr.from_entry(query_def.get("logQL")),
             instant=query_def.get("instant"),

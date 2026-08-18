@@ -9,7 +9,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-chunks-cache
       namespace: loki
     spec:
@@ -36,7 +36,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-compactor
       namespace: loki
     spec:
@@ -69,7 +69,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-compactor-headless
@@ -105,7 +105,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-distributor
       namespace: loki
     spec:
@@ -138,7 +138,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-distributor-headless
@@ -174,7 +174,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-index-gateway
       namespace: loki
     spec:
@@ -207,7 +207,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-index-gateway-headless
@@ -243,7 +243,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-ingester
       namespace: loki
     spec:
@@ -276,7 +276,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-ingester-headless
@@ -311,7 +311,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-canary
       namespace: loki
     spec:
@@ -335,7 +335,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-querier
       namespace: loki
     spec:
@@ -368,7 +368,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-querier-headless
@@ -404,7 +404,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-query-frontend
       namespace: loki
     spec:
@@ -437,7 +437,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-query-frontend-headless
@@ -473,7 +473,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-query-scheduler
       namespace: loki
     spec:
@@ -506,7 +506,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-query-scheduler-headless
@@ -542,7 +542,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-results-cache
       namespace: loki
     spec:
@@ -569,7 +569,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-ruler
       namespace: loki
     spec:
@@ -602,7 +602,7 @@ large services:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         prometheus.io/service-monitor: "false"
         variant: headless
       name: loki-ruler-headless
@@ -639,7 +639,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         name: memcached-chunks-cache
       name: loki-chunks-cache
       namespace: loki
@@ -711,7 +711,7 @@ large workloads:
             - args:
                 - --memcached.address=localhost:11211
                 - --web.listen-address=0.0.0.0:9150
-              image: prom/memcached-exporter:v0.16.0
+              image: prom/memcached-exporter:v0.17.0
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 3
@@ -773,7 +773,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-compactor
       namespace: loki
     spec:
@@ -797,7 +797,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:
@@ -911,7 +911,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-distributor
       namespace: loki
     spec:
@@ -936,7 +936,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:
@@ -1047,7 +1047,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-index-gateway
       namespace: loki
     spec:
@@ -1070,7 +1070,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:
@@ -1183,7 +1183,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-ingester
       namespace: loki
     spec:
@@ -1207,7 +1207,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity: {}
@@ -1337,7 +1337,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-canary
       namespace: loki
     spec:
@@ -1419,7 +1419,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-querier
       namespace: loki
     spec:
@@ -1445,7 +1445,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:
@@ -1565,7 +1565,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-query-frontend
       namespace: loki
     spec:
@@ -1591,7 +1591,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:
@@ -1702,7 +1702,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-query-scheduler
       namespace: loki
     spec:
@@ -1729,7 +1729,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:
@@ -1841,7 +1841,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
         name: memcached-results-cache
       name: loki-results-cache
       namespace: loki
@@ -1913,7 +1913,7 @@ large workloads:
             - args:
                 - --memcached.address=localhost:11211
                 - --web.listen-address=0.0.0.0:9150
-              image: prom/memcached-exporter:v0.16.0
+              image: prom/memcached-exporter:v0.17.0
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 3
@@ -1972,7 +1972,7 @@ large workloads:
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
-        helm.sh/chart: loki-18.8.0
+        helm.sh/chart: loki-18.9.0
       name: loki-ruler
       namespace: loki
     spec:
@@ -1995,7 +1995,7 @@ large workloads:
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
             app.kubernetes.io/version: 3.7.6
-            helm.sh/chart: loki-18.8.0
+            helm.sh/chart: loki-18.9.0
         spec:
           affinity:
             podAntiAffinity:

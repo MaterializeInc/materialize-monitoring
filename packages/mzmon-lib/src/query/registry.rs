@@ -254,7 +254,7 @@ impl QueryRegistry {
             importance,
             dependencies,
             promql: template_exprs_from_value(def.promql.as_ref())?,
-            datadog_sql: template_exprs_from_value(def.datadog_sql.as_ref())?,
+            datadog_query: template_exprs_from_value(def.datadog_query.as_ref())?,
             honeycomb_sql: template_exprs_from_value(def.honeycomb_sql.as_ref())?,
             logql: template_exprs_from_value(def.logql.as_ref())?,
             instant: def.instant,

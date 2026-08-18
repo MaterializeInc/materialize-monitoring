@@ -32,6 +32,8 @@ queries:
         count(group by (id) (%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="source"}))
       functions:
         - name: orZero
+    datadogQuery: |
+      default_zero(count_not_null(avg:%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type:source} by {id}))
   - id: materialize.storage.sinks.count
     stability: best-effort
     description:
@@ -45,6 +47,8 @@ queries:
         count(group by (id) (%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="sink"}))
       functions:
         - name: orZero
+    datadogQuery: |
+      default_zero(count_not_null(avg:%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type:sink} by {id}))
   - id: materialize.storage.tables.count
     stability: best-effort
     description:
@@ -58,6 +62,8 @@ queries:
         max(sum by (instance) (%%{mzSqlPrefix}tables_count{%%{mzEnvironmentFilter}}))
       functions:
         - name: orZero
+    datadogQuery: |
+      default_zero(sum:%%{mzSqlPrefix}tables_count{%%{mzEnvironmentFilter}} by {instance})
 
   # --- sources -------------------------------------------------------------
   - id: materialize.storage.sources.by_type
@@ -74,6 +80,10 @@ queries:
           %%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="source"}
         )
       ) > 0
+    # No nested aggregation in Datadog; this sums the 0/1 gauge by connector
+    # type rather than counting distinct source ids.
+    datadogQuery: |
+      sum:%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type:source} by {object_type}
     instant: true
   - id: materialize.storage.sources.catalog
     stability: best-effort
@@ -96,6 +106,9 @@ queries:
       functions:
         - name: mzObjectName
           args: ["id"]
+    datadogQuery: |
+      avg:%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type:source}
+        by {id,object_type,connection_type,envelope_type,cluster_id}
     instant: true
   - id: materialize.storage.sources.bytes_received
     stability: best-effort
@@ -114,6 +127,8 @@ queries:
       functions:
         - name: mzObjectName
           args: ["parent_source_id"]
+    datadogQuery: |
+      sum:mz_source_bytes_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {parent_source_id}.as_rate()
   - id: materialize.storage.sources.ingestion_by_replica
     stability: best-effort
     description:
@@ -136,6 +151,8 @@ queries:
       functions:
         - name: mzObjectName
           args: ["parent_source_id"]
+    datadogQuery: |
+      sum:mz_source_messages_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {parent_source_id,cluster_environmentd_materialize_cloud_replica_id}.as_rate()
   - id: materialize.storage.sources.upstream_errors
     stability: best-effort
     description:
@@ -166,6 +183,14 @@ queries:
           max by (source_id) (mz_source_offset_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
           > bool max by (source_id) (mz_source_offset_known{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
         ) > 0
+    # The second series has no `> bool` equivalent: a positive difference is
+    # the disconnected case the PromQL encodes as 1.
+    datadogQuery:
+      - |
+        sum:mz_source_offset_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {source_id}.as_rate()
+      - |
+        max:mz_source_offset_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {source_id}
+          - max:mz_source_offset_known{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {source_id}
 
   # --- sinks ---------------------------------------------------------------
   - id: materialize.storage.sinks.by_type
@@ -183,6 +208,9 @@ queries:
           %%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type="sink"}
         )
       ) > 0
+    # As above: sums the 0/1 gauge rather than counting distinct sink ids.
+    datadogQuery: |
+      sum:%%{mzSqlPrefix}storage_objects{%%{mzEnvironmentFilter}, type:sink} by {object_type,envelope_type}
     instant: true
   - id: materialize.storage.sinks.throughput
     stability: best-effort
@@ -200,6 +228,8 @@ queries:
       functions:
         - name: mzObjectName
           args: ["sink_id"]
+    datadogQuery: |
+      sum:mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
   - id: materialize.storage.sinks.lag
     stability: best-effort
     description:
@@ -224,6 +254,12 @@ queries:
       functions:
         - name: mzObjectName
           args: ["sink_id"]
+    datadogQuery: |
+      clamp_min(
+        sum:mz_sink_bytes_staged{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}
+          - sum:mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id},
+        0
+      )
 
   # --- iceberg sinks -------------------------------------------------------
   - id: materialize.storage.sinks.iceberg.commit_latency
@@ -246,6 +282,13 @@ queries:
         histogram_quantile(0.90, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
       - |
         histogram_quantile(0.99, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+    datadogQuery:
+      - |
+        p50:mz_sink_iceberg_commit_duration_seconds{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
+      - |
+        p90:mz_sink_iceberg_commit_duration_seconds{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
+      - |
+        p99:mz_sink_iceberg_commit_duration_seconds{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
   - id: materialize.storage.sinks.iceberg.commit_failures
     stability: best-effort
     description:
@@ -270,6 +313,11 @@ queries:
         functions:
           - name: mzObjectName
             args: ["sink_id"]
+    datadogQuery:
+      - |
+        sum:mz_sink_iceberg_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
+      - |
+        sum:mz_sink_iceberg_commit_conflicts{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
   - id: materialize.storage.sinks.iceberg.file_rate
     stability: best-effort
     description:
@@ -297,6 +345,13 @@ queries:
         functions:
           - name: mzObjectName
             args: ["sink_id"]
+    datadogQuery:
+      - |
+        sum:mz_sink_iceberg_data_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
+      - |
+        sum:mz_sink_iceberg_delete_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
+      - |
+        sum:mz_sink_iceberg_snapshots_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
 
   # --- kafka sinks ---------------------------------------------------------
   - id: materialize.storage.sinks.kafka.tx_errors
@@ -316,6 +371,8 @@ queries:
       functions:
         - name: mzObjectName
           args: ["sink_id"]
+    datadogQuery: |
+      sum:mz_sink_rdkafka_txerrs{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
   - id: materialize.storage.sinks.kafka.output_buffer
     stability: best-effort
     description:
@@ -333,6 +390,8 @@ queries:
       functions:
         - name: mzObjectName
           args: ["sink_id"]
+    datadogQuery: |
+      sum:mz_sink_rdkafka_outbuf_msg_cnt{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}
   - id: materialize.storage.sinks.kafka.connect_rate
     stability: best-effort
     description:
@@ -356,3 +415,8 @@ queries:
         functions:
           - name: mzObjectName
             args: ["sink_id"]
+    datadogQuery:
+      - |
+        sum:mz_sink_rdkafka_connects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()
+      - |
+        sum:mz_sink_rdkafka_disconnects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}} by {sink_id}.as_rate()

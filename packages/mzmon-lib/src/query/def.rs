@@ -16,7 +16,7 @@
 //! the schema validator's job ([`crate::query::validate`]), matching the Python
 //! split where `ajv` validates and the registry merely loads.
 //!
-//! The four template fields (`promQL`, `datadogSQL`, `honeycombSQL`, `logQL`)
+//! The four template fields (`promQL`, `datadogQuery`, `honeycombSQL`, `logQL`)
 //! are kept as untyped [`serde_json::Value`] and lowered by
 //! [`template_exprs_from_value`], a direct port of
 //! `TemplateExpr.from_entry` / `TemplateFunction.from_entry`. That value can be
@@ -97,7 +97,7 @@ impl From<DescriptionDef> for Description {
     }
 }
 
-/// A single query definition. The irregular `promQL` / `datadogSQL` /
+/// A single query definition. The irregular `promQL` / `datadogQuery` /
 /// `honeycombSQL` / `logQL` key casings are renamed explicitly (a blanket
 /// `rename_all` can't produce them).
 #[derive(Debug, Clone, Deserialize)]
@@ -109,8 +109,8 @@ pub struct QueryDef {
     pub dependencies: Vec<DependencyDef>,
     #[serde(default, rename = "promQL")]
     pub promql: Option<Value>,
-    #[serde(default, rename = "datadogSQL")]
-    pub datadog_sql: Option<Value>,
+    #[serde(default, rename = "datadogQuery")]
+    pub datadog_query: Option<Value>,
     #[serde(default, rename = "honeycombSQL")]
     pub honeycomb_sql: Option<Value>,
     #[serde(default, rename = "logQL")]

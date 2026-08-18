@@ -21,19 +21,41 @@ def doc_context(
     resolve_query: collections.abc.Callable[[query_sdk.QueryId], query_sdk.Query]
     | None = None,
 ) -> query_sdk.TemplateContext:
-    """Build a documentation :class:`TemplateContext` from parameter values."""
-    params = {
-        "interval": "[51m]",
-        "range": "[42m]",
-        "mzSqlPrefix": "v2_mz_",
-        "mzEnvironmentFilter": 'materialize_cloud_organization_name=~"your-env-name"',
-        "mzEnvironmentNamespaceFilter": 'namespace=~"materialize-environment"',
-        "mzOperatorNamespaceFilter": 'namespace=~"materialize"',
-        "mzClusterList": ".+",
-        "mzReplicaList": ".+",
-        "mzNamespaceList": "materialize-environment",
-        "cAdvisorFilter": 'container!="POD", container!="", namespace=~"materialize-environment"',
-    }
+    """Build a documentation :class:`TemplateContext` from parameter values.
+
+    Datadog scopes are tag matchers (`key:value`, globs, `!key:value`) rather
+    than PromQL label matchers, and its rollup windows are bare seconds rather
+    than bracketed ranges — so the parameter values differ per engine even
+    though the parameter names do not.
+    """
+    if engine is query_sdk.QueryEngine.DATADOG:
+        params = {
+            "interval": "60",
+            "range": "3600",
+            "mzSqlPrefix": "v2_mz_",
+            "mzEnvironmentFilter": "materialize_cloud_organization_name:your-env-name",
+            "mzEnvironmentNamespaceFilter": "namespace:materialize-environment",
+            "mzOperatorNamespaceFilter": "namespace:materialize",
+            "mzSystemNamespaceFilter": "namespace:materialize-system",
+            "excludeEnvironmentFilter": "*",
+            "mzClusterList": "*",
+            "mzReplicaList": "*",
+            "mzNamespaceList": "materialize-environment",
+            "cAdvisorFilter": "!container:POD, namespace:materialize-environment",
+        }
+    else:
+        params = {
+            "interval": "[51m]",
+            "range": "[42m]",
+            "mzSqlPrefix": "v2_mz_",
+            "mzEnvironmentFilter": 'materialize_cloud_organization_name=~"your-env-name"',
+            "mzEnvironmentNamespaceFilter": 'namespace=~"materialize-environment"',
+            "mzOperatorNamespaceFilter": 'namespace=~"materialize"',
+            "mzClusterList": ".+",
+            "mzReplicaList": ".+",
+            "mzNamespaceList": "materialize-environment",
+            "cAdvisorFilter": 'container!="POD", container!="", namespace=~"materialize-environment"',
+        }
 
     def identity(base: str, *args: str) -> str:
         """Identity function for documentation context."""
