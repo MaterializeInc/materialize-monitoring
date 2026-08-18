@@ -7,7 +7,7 @@ terraform {
       source = "hashicorp/helm"
       # Matches the constraint used across materialize-terraform-self-managed,
       # so a wrapper module there can compose with this one without a conflict.
-      version = ">= 2.5.0, < 2.18.0"
+      version = "< 3.3.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
