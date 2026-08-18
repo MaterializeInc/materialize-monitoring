@@ -261,6 +261,14 @@ main.container {
   }
 }
 
+.highlight {
+  code.language-promql {
+    span.replaceable {
+      text-decoration: underline dashed;
+    }
+  }
+}
+
 .warning,
 .note,
 .info,
