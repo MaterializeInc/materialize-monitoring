@@ -438,7 +438,7 @@ Usage:
   configured somewhere this chart cannot see.
   */}}
   {{- if ( include "mzmon.grafana.enabled" $ ) }}
-    {{- range $name := list "persistence" "exposure" "disruption" "security" }}
+    {{- range $name := list "persistence" "exposure" "disruption" "security" "networkPolicy" }}
       {{- $res := include ( printf "mzmon.grafana.validate.%s" $name ) $ | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}
       {{- $warnings = concat $warnings $res.warnings | default list }}
@@ -729,6 +729,59 @@ Usage:
         {{- $warnings = append $warnings "connections.datasources.loki.tenant is empty; reads fail with \"no org id\" unless Loki runs with auth_enabled: false." }}
       {{- end }}
     {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate the NetworkPolicy on the bundled Grafana.
+
+The subchart's policy template is unusually rigid — one ingress rule, on
+`service.targetPort`, and no way to add a second port through values — so most
+of what can go wrong here is a combination that renders an object which enforces
+nothing, or one that quietly closes a port something else needs.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.networkPolicy" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.networkPolicy" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $np := $.Values.grafana.networkPolicy | default dict }}
+
+  {{- if $np.enabled }}
+    {{- $egress := $np.egress | default dict }}
+    {{- /* policyTypes is built from these two flags alone. With both off the
+           chart emits a NetworkPolicy with no policy types and no rules: a real
+           object, selecting Grafana's pods, enforcing nothing. */}}
+    {{- if and ( not $np.ingress ) ( not $egress.enabled ) }}
+      {{- $errors = append $errors "grafana.networkPolicy.enabled is on but both grafana.networkPolicy.ingress and grafana.networkPolicy.egress.enabled are off, so the rendered policy has no policy types and no rules. It would be created and enforce nothing. Turn one of them on, or set grafana.networkPolicy.enabled=false." }}
+    {{- end }}
+
+    {{- if and ( not $np.allowExternal ) ( not $np.explicitNamespacesSelector ) ( not $np.explicitIpBlocks ) }}
+      {{- /* Without either escape hatch the only permitted sources are pods
+             carrying the chart's client label, which nothing in this release
+             sets. An ingress controller in another namespace is the usual
+             casualty, and Grafana simply stops answering. */}}
+      {{- $warnings = append $warnings "grafana.networkPolicy.allowExternal is off with neither explicitNamespacesSelector nor explicitIpBlocks set, so the only sources allowed in are pods labelled `<fullname>-client: \"true\"` in Grafana's own namespace. An ingress controller, a load balancer, or `kubectl port-forward` would all be denied." }}
+    {{- end }}
+
+    {{- /* The subchart's policy opens `service.targetPort` and nothing else, so
+           on its own it closes the alerting gossip port on the very pods that
+           need it. `templates/networkpolicies.yaml` renders the missing rule
+           alongside; this fires when that supplement has been turned off and the
+           gap is real again. Read through `mzmon.grafana.iniSection`, which
+           tolerates a nulled `grafana.ini` section — `dig` does not. */}}
+    {{- if $np.ingress }}
+      {{- $haPeers := ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "unified_alerting" ) | fromYaml ).ha_peers | default "" }}
+      {{- if and $haPeers ( not ( include "mzmon.networkPolicy.grafanaGossip.enabled" $ ) ) }}
+        {{- $warnings = append $warnings "grafana.ini.unified_alerting.ha_peers is set but networkPolicies.grafanaGossip is off, and grafana.networkPolicy only ever opens service.targetPort. Port 9094 stays closed, the replicas never find each other, and every Grafana-managed alert notifies once per replica. Turn networkPolicies.grafanaGossip back on, or supply an equivalent policy of your own." }}
+      {{- end }}
+    {{- end }}
+  {{- else }}
+    {{- $warnings = append $warnings "grafana.networkPolicy.enabled is recommended in production." }}
   {{- end }}
 
   {{- /* final output */}}

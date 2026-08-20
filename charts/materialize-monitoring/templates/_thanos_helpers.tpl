@@ -96,6 +96,10 @@ Usage:
     {{- $res := include "mzmon.thanos.validate.disruption" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- $res := include "mzmon.thanos.validate.networkPolicy" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
   {{- end }}
 
   {{- /* Reachability runs whether or not Thanos is enabled: the point is to
@@ -423,6 +427,31 @@ deployed, and a Query Frontend deployed that nothing reads through.
         {{- $warnings = append $warnings ( printf "thanos.queryFrontend.enabled is true but connections.datasources.thanos.url (%s) does not address it, so reads bypass the cache. Point the datasource at the query-frontend Service." $dsUrl ) }}
       {{- end }}
     {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate the Thanos NetworkPolicies.
+
+There is exactly one knob — `thanos.global.networkPolicies` — and the rules
+behind it are fixed by the subchart, so this checks the switch and says what the
+switch actually buys. That is the useful part: the policies it renders allow
+ingress on each component's own service ports *from anywhere*, which is a
+narrower claim than "Thanos is policed" and worth not misreading.
+
+Usage:
+  {{- $res := include "mzmon.thanos.validate.networkPolicy" $ | fromYaml }}
+*/}}
+{{- define "mzmon.thanos.validate.networkPolicy" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- $global := $.Values.thanos.global | default dict }}
+  {{- if not $global.networkPolicies }}
+    {{- $warnings = append $warnings "thanos.global.networkPolicies is recommended in production. It is the subchart's only switch, and it closes every port on the Thanos pods that is not a declared service port." }}
   {{- end }}
 
   {{- /* final output */}}

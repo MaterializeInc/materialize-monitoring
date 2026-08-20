@@ -690,6 +690,14 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- range $release := ( list "alloy-agent" "alloy-gateway" ) }}
+    {{- if hasKey $.Subcharts $release }}
+      {{- $res := include "mzmon.alloy.validate.networkPolicy" ( dict "context" $ "release" $release ) | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
+  {{- end }}
+
   {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
     {{- $gw := $.Values.pipeline }}
     {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
@@ -934,6 +942,72 @@ Usage:
         {{- end }}
       {{- end }}
     {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate the NetworkPolicy on one Alloy release.
+
+Both releases wrap the same subchart, so both get the same checks; the caller
+names which one. The subchart's template renders nothing at all unless
+`flavor` is `kubernetes`, and it declares only the policy types listed in
+`policyTypes` — so the ways to end up with a policy that is absent, inert, or a
+silent deny are all shapes of the values rather than shapes of the rules.
+
+Usage:
+  {{- include "mzmon.alloy.validate.networkPolicy" ( dict "context" $ "release" "alloy-agent" ) }}
+*/}}
+{{- define "mzmon.alloy.validate.networkPolicy" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $context := .context | required ".context must be specified" }}
+  {{- $release := .release | required ".release must be specified" }}
+  {{- $values := index $context.Values $release | required ( printf "%s is missing from values." $release ) }}
+  {{- $np := $values.networkPolicy | default dict }}
+
+  {{- if $np.enabled }}
+    {{- $flavor := $np.flavor | default "" }}
+    {{- /* The template is gated on `eq flavor "kubernetes"` and there is no
+           else branch, so any other value renders no policy whatsoever — an
+           `enabled: true` that produces nothing and reports nothing. */}}
+    {{- if ne $flavor "kubernetes" }}
+      {{- $errors = append $errors ( printf "%s.networkPolicy.flavor is %q, and the subchart renders a policy only for \"kubernetes\". Nothing would be created, and the render would not tell you." $release $flavor ) }}
+    {{- end }}
+
+    {{- $types := $np.policyTypes | default list }}
+    {{- if not $types }}
+      {{- $errors = append $errors ( printf "%s.networkPolicy.policyTypes is empty, which leaves the policy with no direction to enforce." $release ) }}
+    {{- end }}
+
+    {{- if has "Ingress" $types }}
+      {{- if not $np.ingress }}
+        {{- $warnings = append $warnings ( printf "%s.networkPolicy declares the Ingress type with no rules, which denies every inbound connection. The gateway's scrape of /metrics on 12345 is the first thing that stops, and it stops silently." $release ) }}
+      {{- else }}
+        {{- /* The subchart ships `ingress: [{}]` — an empty rule, which allows
+               everything. Turning the policy on without replacing it is the
+               most likely way to end up believing the pod is protected. */}}
+        {{- range $rule := $np.ingress }}
+          {{- if not $rule }}
+            {{- $warnings = append $warnings ( printf "%s.networkPolicy.ingress still contains the subchart's empty `{}` rule, which allows every source on every port. The policy renders and enforces nothing." $release ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if has "Egress" $types }}
+      {{- /* Alloy is an API-server client before it is anything else:
+             discovery.kubernetes backs pod-log collection on the agent and every
+             ServiceMonitor/PodMonitor target on the gateway. With no egress rule
+             the process starts, reports healthy, and discovers nothing. */}}
+      {{- if not $np.egress }}
+        {{- $errors = append $errors ( printf "%s.networkPolicy declares the Egress type with no rules, which denies all egress. Alloy would come up healthy and collect nothing: discovery.kubernetes could not reach the API server, and the agent could not reach the gateway. Either give it rules or drop \"Egress\" from policyTypes." $release ) }}
+      {{- end }}
+    {{- end }}
+  {{- else }}
+    {{- $warnings = append $warnings ( printf "%s.networkPolicy.enabled is recommended in production." $release ) }}
   {{- end }}
 
   {{- /* final output */}}

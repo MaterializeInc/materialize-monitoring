@@ -116,6 +116,10 @@ grafana:
   # they are unaffected either way.
   headlessService: true
 
-# NOTE: gossip needs pod-to-pod traffic on 9094, TCP *and* UDP. Nothing blocks it
-# today, but a NetworkPolicy that does will make alert notifications duplicate
-# rather than fail — the replicas simply never find each other.
+# NOTE: gossip needs pod-to-pod traffic on 9094, TCP *and* UDP, and something does
+# block it now: `grafana.networkPolicy` is on by default and the subchart's policy
+# template opens `service.targetPort` and nothing else. The chart closes that gap
+# itself — `networkPolicies.grafanaGossip` renders the missing 9094 rule alongside,
+# and it renders precisely because `ha_peers` is set above. Turn that off and the
+# replicas start healthy, never find each other, and duplicate every notification
+# rather than failing; the render warns when it sees that combination.

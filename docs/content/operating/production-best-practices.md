@@ -10,6 +10,10 @@ Every checklist item is tagged with its **primary owner** under the [shared resp
 
 Today this covers the **collection tier (Alloy)**, **node metrics (node-exporter)**, the bundled **logging backend (Loki)**, the bundled **metrics backend (Thanos)**, and the bundled **Grafana**; an Alertmanager section will follow the same shape.
 
+Security is organized the other way round.
+The per-component items below carry the security decisions specific to each backend, and [Securing](../securing/) reads across all of them — the trust boundaries, the cluster permissions the stack holds, where credentials live, and what is not yet built.
+Start there if the question is "is this safe to expose", and here if it is "is this component configured correctly".
+
 ## Shared responsibility model
 
 Four parties share responsibility for a production deployment.
@@ -52,7 +56,7 @@ Still yours, on any install path:
 
 - A usable **StorageClass** must exist — four workloads are PVC-backed (Alertmanager, the Loki ruler, the Thanos Store Gateway and Compactor) and the modules do not create one. "Usable" is not the same as "present": on GCP's C4 and N4 machine families, which accept only Hyperdisk, *every* StorageClass GKE creates by default is Persistent Disk and none of them will attach. The Terraform modules take `storage_class`; see [Getting Started > Terraform](../../getting-started/terraform/#storageclass-on-gcp-c4-and-n4-node-pools).
 - **Sizing and retention budgets**, node-pool capacity, and the profile choice.
-- **Basic-auth or mTLS secrets** between components, which are not yet wired on any path.
+- **Basic-auth or mTLS secrets** between components, which are not yet wired on any path — see [Securing > What is not there yet](../securing/#gaps) for what that leaves in place and what it does not.
 - Everything tagged `[operator]`.
 
 Azure has no wrapper module yet, so an Azure install is a plain `[consumer]` — every item below applies.
@@ -103,6 +107,42 @@ Both sit well below `system-cluster-critical` (2000000000) and `system-node-crit
 - [ ] `[operator]` **If you rename or disable them, update the `priorityClassName` values in the subchart blocks to match.** A `priorityClassName` naming a class that does not exist does not degrade — the API server *rejects* the pod, and the only evidence is an admission error on a ReplicaSet nobody is watching. A render-time check warns when it can tell that has happened.
 - [x] `[chart]` The `scheduling` profile carries the whole fan-out — node selector, tolerations, and both class names — with every site aliased off four anchors, so a rename is a two-line edit rather than eleven `priorityClassName` keys across nine subcharts that can half-apply. See [Getting Started > Helm](../../getting-started/helm/#scheduling-profile).
 - [ ] `[operator]` If your platform already defines a priority scheme, point the subchart values at your own classes instead. `metrics-server` is left on the upstream `system-cluster-critical` deliberately: it backs the metrics API that HPAs and the Materialize Console read, so it is cluster plumbing rather than monitoring.
+
+## Network policies {#network-policies}
+
+Every workload in the stack carries a NetworkPolicy, and every one of them is on by default.
+Most come from the subchart that owns the workload; the three subcharts that ship no policy of their own get one rendered by this chart, from `templates/networkpolicies.yaml` and configured under `networkPolicies`.
+
+| Component | Configured at | Ingress | Egress |
+|---|---|---|---|
+| `alloy-agent` | `alloy-agent.networkPolicy` | `12345` from the gateway | unrestricted |
+| `alloy-gateway` | `alloy-gateway.networkPolicy` | `3100`/`4317`/`4318`/`9090` from any pod in the cluster; `12345` from itself | unrestricted |
+| `loki` | `loki.networkPolicy` | in-namespace, plus the configured namespace selectors | in-namespace, DNS, object storage |
+| `thanos` | `thanos.global.networkPolicies` | each component's own service ports, from anywhere | unrestricted |
+| `grafana` | `grafana.networkPolicy` | `3000` from anywhere | unrestricted |
+| `grafana` (gossip) | `networkPolicies.grafanaGossip` | `9094` TCP+UDP between Grafana pods | — |
+| `kube-state-metrics` | `kube-state-metrics.networkPolicy` | `8080`/`8081` from the gateway | DNS and the API server only |
+| `node-exporter` | `node-exporter.networkPolicy` | `9100` from the gateway | denied |
+| `alertmanager` | `networkPolicies.alertmanager` | `9093`/`9094` in-namespace | in-namespace, DNS, `443`/`587`/`465` outbound |
+| `grafana-operator` | `networkPolicies.grafana-operator` | `9090` in-namespace | in-namespace, DNS, `443`/`6443` outbound |
+| `metrics-server` | `networkPolicies.metrics-server` | `10250` from anywhere | in-namespace, DNS, `10250`/`443`/`6443` outbound |
+
+**Ingress is tight and egress mostly is not**, and that asymmetry is deliberate rather than unfinished.
+Ingress is the direction that protects these endpoints — unauthenticated metrics, log-push, and query APIs — its allowed peers are knowable from the chart, and a wrong rule fails loudly at the first scrape.
+Egress destinations are cluster- and account-specific: the API server's address, kubelet ports on node IPs, an object-storage endpoint, a notification provider, an external Grafana.
+A wrong egress rule fails silently, minutes or hours later, somewhere other than the pod that changed.
+So egress is narrowed only where the chart genuinely knows the destination set — `node-exporter` (nothing), `kube-state-metrics` (DNS and the API server), `loki` (in-namespace, DNS, object storage) — and left open elsewhere, with `egress.extra` and the subcharts' own egress lists as the place to narrow it against facts only your cluster has.
+
+The gateway is the clearest case for why: it scrapes the kubelet cAdvisor endpoint on every node — port `10250` on a *node* IP, which no `podSelector` matches — and it discovers `ServiceMonitor` and `PodMonitor` targets cluster-wide, so its destination set is every pod and port anyone has ever pointed a monitor at, plus whatever external backend `connections` names.
+
+- [x] `[chart]` Policies on by default for every component, with a render-time warning on each one that is switched off.
+- [x] `[chart]` Validators reject the shapes that render a policy which cannot work: an Alloy `flavor` the subchart does not implement (it renders nothing, silently), an Alloy or `kube-state-metrics` policy declaring `Egress` with no rules, a Grafana policy with neither direction enabled, a chart-rendered policy that opens no ports at all.
+- [ ] `[operator]` **A NetworkPolicy does nothing unless the CNI enforces it.** Cilium and Calico do. `kindnet`, the default in `kind` and therefore in the E2E tiers, ignores NetworkPolicy entirely — so a green E2E run is not evidence that any of this is enforced.
+- [ ] `[operator]` **Host-networked pods are outside pod policy on most CNIs.** That is `node-exporter`, and the node firewall is the real control there. See [Exposure](#exposure).
+- [ ] `[consumer]` **Under the [split-namespace](#namespace-layout) layout the pod-label rules stop matching.** A `podSelector` without a `namespaceSelector` does not cross a namespace boundary, so those rules match nothing and the traffic they allow is dropped — no error, just silence. Add `namespaceSelector` entries through `networkPolicies.<component>.ingress.extra` / `egress.extra` and the subcharts' own ingress lists, or turn the affected policies off. The render warns when it sees the combination.
+- [ ] `[operator]` **Narrow the `0.0.0.0/0` egress rules where your infrastructure lets you.** `kube-state-metrics` and `grafana-operator` reach the API server on `443`/`6443` to everywhere because a chart cannot derive the control plane's address; Loki reaches object storage the same way. A VPC endpoint's CIDR, or Cilium's `toFQDNs`, is the tighter form.
+- [ ] `[operator]` **Nothing here allows the kubelet's liveness and readiness probes**, which arrive from the node's own IP. Cilium and Calico both exempt host-to-pod traffic, so probes keep working; a CNI that does not would fail every pod in the namespace at once, which is the symptom to recognize rather than a per-component bug.
+- [x] `[chart]` `metrics-server` accepts `10250` from any source, unlike everything else. The aggregation layer dials it from the API server, which on a managed control plane is not a pod, not in the pod CIDR, and not selectable — closing that port would break `kubectl top` and every HPA in the cluster, not just this release. The policy still closes every other port on the pod.
 
 ## Images and registries {#images-and-registries}
 
@@ -219,6 +259,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [x] `[chart]` Distroless Alloy image: FIPS boringcrypto, multi-arch, non-root, GHCR-published.
 - [x] `[chart]` ServiceMonitor/PodMonitor (or GCP `PodMonitoring`) for both Alloy roles — scrape Alloy's own component metrics (received/sent bytes, dropped lines, write failures).
 - [ ] `[operator]` Alert on gateway write failures and drop counters (`drop_counter_reason`) so shedding or a broken destination is visible rather than silent data loss.
+- [x] `[chart]` **NetworkPolicy** on both roles, ingress only. The agent accepts `12345` from the gateway alone. The gateway accepts its ingest ports (`3100`, `4317`, `4318`, `9090`) from any pod in the cluster — those are the endpoints the stack exists to offer, and their clients are your workloads — while `12345`, which carries clustering gossip and the debugging UI, is restricted to the gateway's own pods. Egress on both is deliberately unrestricted; see [Network policies](#network-policies) for why an allowlist there would be a copy of your cluster inventory that goes stale.
 
 ## Node metrics (node-exporter)
 
@@ -292,7 +333,7 @@ count({job="node-exporter"})
 >   Most CNIs, **Cilium and Calico among them, do not apply pod NetworkPolicy to host-networked pods**, because that traffic belongs to the node identity rather than the pod's. The chart ships a policy anyway — it is enforced where the CNI supports it, and it declares intent everywhere else — but the node firewall or security group is the actual control. Do not treat the endpoint as private because a NetworkPolicy exists.
 
 - [x] `[chart]` NetworkPolicy on by default: ingress restricted to the Alloy gateway on 9100, egress denied outright (node_exporter never initiates a connection).
-- [ ] `[consumer]` Under the [split-namespace](#namespace-layout) layout the default ingress rule stops matching — it selects the gateway by pod label within the release namespace. Replace `node-exporter.networkPolicy.ingress` with a rule carrying a `namespaceSelector`.
+- [ ] `[consumer]` Under the [split-namespace](#namespace-layout) layout the default ingress rule stops matching — it selects the gateway by pod label within the release namespace. Replace `node-exporter.networkPolicy.ingress` with a rule carrying a `namespaceSelector`. This is not specific to node-exporter; see [Network policies](#network-policies), where the render-time warning covers the whole set.
 - [ ] `[operator]` **Confirm port 9100 is not reachable from outside the cluster.** With `hostNetwork`, the exporter listens on the node's interfaces, so this is a security-group / firewall question, not a Kubernetes one.
 - [x] `[chart]` `kube-rbac-proxy` is **off**. It would authenticate scrapes via TokenReview/SubjectAccessReview over HTTPS, but it is a second container on *every* node with a request comparable to node_exporter's — roughly doubling the per-node cost of node metrics to protect an endpoint that exposes no secrets. DaemonSet overhead is the constraint being managed.
 - [ ] `[operator]` **TLS client authentication is available and deliberately parked.** `kubeRBACProxy.tls.tlsClientAuth` plus `tlsSecret` restricts `/metrics` to a scraper holding a certificate signed by the configured CA — the shape an in-cluster mTLS story would use. It is not enabled pending the cert-manager integration ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)), which is where certificate issuance and renewal for the rest of the stack lands; wiring it here first would mean minting and rotating a CA by hand for one component. Turn it on yourself if your environment requires authenticated scrapes today, accepting the per-node cost above.
@@ -467,8 +508,8 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 
 - [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Object-store access via **workload identity** (IRSA / GKE WI / Azure WI) — see [Storing > Granting object-storage access](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) for the per-provider setup; static keys only as a documented escape hatch.
 - [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** No long-lived credentials in the chart; storage secret by reference.
-- [ ] `[chart]` `runAsNonRoot`, read-only root filesystem, dropped capabilities on all components.
-- [ ] `[operator]` Optional inter-component TLS where the cluster requires it.
+- [x] `[chart]` `runAsNonRoot`, read-only root filesystem, and all capabilities dropped on **every** Loki component, memcached included. That is not true of the whole stack — see [Workload hardening](../securing/#workload-hardening) for the two workloads that cannot be, and why.
+- [ ] `[operator]` Optional inter-component TLS where the cluster requires it. Nothing in the stack ships it yet ([Securing > What is not there yet](../securing/#gaps)).
 
 ##### NetworkPolicy egress (if `networkPolicy.enabled`)
 
@@ -879,6 +920,7 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 
 - [x] `[chart]` ServiceMonitors for every Thanos component (`thanos.global.serviceMonitor`).
 - [ ] `[operator]` Alert on Receive write failures and quorum errors — with RF 1 or 2 these are the first sign of a lost pod, and they are silent from the dashboards' point of view.
+- [x] `[chart]` **NetworkPolicies** on via `thanos.global.networkPolicies`, one per enabled component. The subchart exposes no knobs: each policy allows that component's own service ports from anywhere and leaves egress open, so it closes non-service ports rather than restricting callers. Receive's `grpc`, `http` and `remote-write` are all in its own list, so hashring replication and the gateway's writes are unaffected. See [Network policies](#network-policies).
 
 #### 7. Validation
 
@@ -974,7 +1016,7 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` A validator warns when `autoscaling.targetCPU` is set with no CPU request — the HPA measures utilization against the request, so with no request there is no denominator and it never scales.
 - [x] `[chart]` **Probes** on `/api/health` (liveness and readiness) come from the subchart and are left at their defaults.
 - [x] `[chart]` Grafana-managed **unified alerting is not HA out of the box** — each replica evaluates every rule independently and notifies separately. The `grafana-postgres` profile enables gossip (`headlessService: true` plus `unified_alerting.ha_peers`), and validators warn both on several replicas with no gossip and on `ha_peers` pointing at a headless Service that was never created. Gossip is *not* a chart default: at one replica it is inert and costs a `ha_peer_timeout` settle on every start. The Prometheus rules this chart ships are unaffected either way.
-- [ ] `[operator]` Gossip needs pod-to-pod **9094 on TCP and UDP**. A NetworkPolicy that blocks it makes notifications duplicate rather than fail, because the replicas simply never find each other.
+- [x] `[chart]` Gossip needs pod-to-pod **9094 on TCP and UDP**, and the Grafana subchart's own NetworkPolicy closes it — that template emits one ingress rule, on `service.targetPort`, and takes no second port. The chart renders the missing rule itself as `networkPolicies.grafanaGossip`, which appears exactly when `unified_alerting.ha_peers` is set. Turn it off and notifications duplicate rather than fail, because the replicas simply never find each other; a validator warns on that combination.
 - [x] `[chart]` `priorityClassName` on Grafana and grafana-operator (`monitoring-scalable`), so neither is evicted ahead of ordinary workloads — Grafana is where an incident starts. See [Scheduling priority](#scheduling-priority).
 
 #### 5. Images & supply chain
@@ -996,7 +1038,7 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 #### 7. Network & meta-monitoring
 
 - [x] `[chart]` ServiceMonitor for Grafana's own metrics.
-- [ ] `[chart]` **NetworkPolicy** — the subchart ships `networkPolicy` values but the chart neither enables nor opinionates them yet ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Grafana needs ingress from the operator and from whatever fronts it, and egress to Thanos Query, the Loki query frontend, its database, and its identity provider.
+- [x] `[chart]` **NetworkPolicy** on by default: ingress on `3000` from any source, every other port on the pod closed. `allowExternal` stays on because every way a human reaches Grafana is unselectable from here — an ingress controller in another namespace, a load balancer's client ranges, `kubectl port-forward` arriving from the API server. Narrow it with `explicitNamespacesSelector` and `explicitIpBlocks` once you know your path in. Egress is left unrestricted: Grafana dials Thanos Query, the Loki query frontend, its database, its identity provider, and `grafana.com` if `plugins` is set, and a partial allowlist there fails as a dashboard that renders empty with no error. See [Network policies](#network-policies).
 - [x] `[chart]` `analytics.reporting_enabled` and `check_for_updates` are off — egress a monitoring stack does not need, and update banners are noise when the version is pinned by the chart.
 - [ ] `[operator]` Alert on Grafana being down. It is not a data-loss incident, but it is the interface every other alert is investigated through.
 
