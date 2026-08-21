@@ -31,7 +31,7 @@ loki.relabel "journal" {
 
 loki.process "node_logs" {
 	forward_to = [
-		loki.write.gateway.receiver,
+		loki.process.egress.receiver,
 	]
 
 	stage.static_labels {
@@ -220,7 +220,7 @@ discovery.relabel "local_pods" {
 
 loki.process "pod_logs" {
 	forward_to = [
-		loki.write.gateway.receiver,
+		loki.process.egress.receiver,
 	]
 
 	stage.cri { }
@@ -273,9 +273,3 @@ loki.process "sampleDebug" {
 }
 
 loki.echo "stub" { }
-
-loki.write "gateway" {
-	endpoint {
-		url = coalesce(sys.env("AGENT_LOKI_DEST"), "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push")
-	}
-}

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
-# Alloy gateway destination stub.
-# These are processed by mz-monitoring-build gen-pipelines to produce a gateway-dest-stub.alloy config.
+# Alloy agent destination stub.
+# These are processed by mz-monitoring-build gen-pipelines to produce an agent-dest-stub.alloy config.
 
 description: |
   BUILD-TIME egress stand-in for the alloy-agent pipeline. This is NOT what

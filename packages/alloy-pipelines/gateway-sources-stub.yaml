@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway ingress stub.
+# These are processed by mz-monitoring-build gen-pipelines to produce a gateway-sources-stub.alloy config.
+
+description: |
+  BUILD-TIME ingress stand-in for the alloy-gateway pipeline. This is NOT what
+  deploys.
+
+blocks:
+  # --- ingress: receive entries from alloy-agent ------------------------------
+
+  # Loki push API. Fans out to the sampled debug tap and the main processor.
+  # listen_port is configurable via ALLOY_LOKI_PORT (default 3100). The
+  # encoding.from_json wrapper coerces the sys.env string to a number (alloy has
+  # no to_int); treat that coercion as provisional (see agent.yaml stage.limit).
+  - loki.source.api:
+      label: gateway
+      forward_to:
+        - loki.process.sampleDebug.receiver
+        - loki.process.inputProcessor.receiver
+      blocks:
+        - http:
+            listen_port:
+              function: encoding.from_json
+              arguments:
+                - function: coalesce
+                  arguments:
+                    - env: ALLOY_LOKI_PORT
+                    - "3100"
+
+  # OTLP receiver for logs/metrics, bridged into the loki/prometheus pipelines via the exporters below.
+  # grpc defaults to :4317, http to :4318.
+  - otelcol.receiver.otlp:
+      label: gateway
+      blocks:
+        # An empty server block is meaningful: its presence is what turns the
+        # listener on, at its default address.
+        - grpc: {}
+        - http: {}
+        - output:
+            logs:
+              - otelcol.exporter.loki.bridge.input
+            metrics:
+              # switches to gateway-metrics.yaml
+              - otelcol.processor.filter.inputMetricProcessor.input

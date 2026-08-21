@@ -19,7 +19,7 @@ SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 SOURCES_mz-monitoring-e2e = $(shell find packages/mz-monitoring-e2e -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent agent-dest-stub
+ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub gateway-sources-stub agent agent-dest-stub
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -71,7 +71,7 @@ docs: docs/public
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
-alloy-pipelines: $(PIPELINES_DIR)
+alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
 .PHONY: alloy-pipelines
 
 # Make all dashboards

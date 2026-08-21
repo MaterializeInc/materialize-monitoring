@@ -221,8 +221,44 @@ Usage:
   {{- /* Metric processors */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
 
+  {{- /* Output rendered sources */}}
+  {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
+
   {{- /* Output rendered destination */}}
   {{- include "mzmon.alloyGateway.pipeline.destination" $ }}
+{{- end }}
+
+{{/*
+Generate the alloy-gateway pipeline sources.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.sources" }}
+# TODO: fully specify
+loki.source.api "gateway" {
+    http {
+        listen_port = sys.env("ALLOY_LOKI_PORT")
+    }
+
+    forward_to = [
+        loki.process.sampleDebug.receiver,
+        loki.process.inputProcessor.receiver,
+    ]
+}
+
+otelcol.receiver.otlp "gateway" {
+    grpc {}
+    http {}
+    output {
+        logs = [
+            otelcol.exporter.loki.bridge.input,
+        ]
+        metrics = [
+            otelcol.processor.filter.inputMetricProcessor.input,
+        ]
+    }
+}
 {{- end }}
 
 {{/*
