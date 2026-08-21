@@ -1,16 +1,6 @@
 // This pipeline defines the flow of metrics through the Alloy gateway, from
 // ingestion to their final destination.
 
-prometheus.receive_http "gateway" {
-	forward_to = [
-		otelcol.receiver.prometheus.inputBridge.receiver,
-	]
-
-	http {
-		listen_port = 9090
-	}
-}
-
 otelcol.receiver.prometheus "inputBridge" {
 	output {
 		metrics = [

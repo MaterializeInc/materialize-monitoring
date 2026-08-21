@@ -43,3 +43,15 @@ blocks:
             metrics:
               # switches to gateway-metrics.yaml
               - otelcol.processor.filter.inputMetricProcessor.input
+
+  # Prometheus remote-write receiver. The third ingress listener, and the one
+  # most easily forgotten: it used to live in gateway-metrics.yaml, which meant a
+  # secured logs path could sit in front of a plaintext metrics path.
+  - prometheus.receive_http:
+      label: gateway
+      forward_to:
+        # switches to gateway-metrics.yaml
+        - otelcol.receiver.prometheus.inputBridge.receiver
+      blocks:
+        - http:
+            listen_port: 9090

@@ -272,6 +272,16 @@ pipeline:
             caFile: /etc/mzmon/tls/ca.crt
   metrics:
     gateway:
+      # The third ingress listener, prometheus.receive_http on 9090. Separate
+      # from the logs tree because the listeners are, but secured in the same
+      # step — a plaintext metrics port behind secured logs ports is the
+      # asymmetry that makes a gateway look closed when half of it is open.
+      server:
+        tls:
+          enabled: true
+          certFile: /etc/mzmon/tls/tls.crt
+          keyFile: /etc/mzmon/tls/tls.key
+          clientAuth: NoClientCert
       destination:
         prometheusRemoteWrite:
           tls:

@@ -148,7 +148,7 @@ $(PIPELINES_DIR): $(addprefix $(PIPELINES_DIR)/,$(addsuffix .alloy,$(ALLOY_TARGE
 
 alloy-pipelines-validate:
 	cat "$(PIPELINES_DIR)/agent.alloy" "$(PIPELINES_DIR)/agent-dest-stub.alloy" | alloy validate /dev/stdin
-	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
+	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-sources-stub.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
 .PHONY: alloy-pipelines-validate
 
 ### SCRAPER SYNC ###

@@ -235,8 +235,12 @@ Usage:
   {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
 */}}
 {{- define "mzmon.alloyGateway.pipeline.sources" }}
-  {{- $server := dig "logging" "gateway" "server" dict ( $.Values.pipeline | default dict ) }}
-  {{- $tls := $server.tls | default dict }}
+  {{- /* Two server blocks, because the listeners belong to two pipeline trees
+         and an operator securing one should not silently secure the other. The
+         logs tree covers loki.source.api and otelcol.receiver.otlp; the metrics
+         tree covers prometheus.receive_http. */}}
+  {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+  {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
 loki.source.api "gateway" {
     forward_to = [
         loki.process.sampleDebug.receiver,
@@ -265,6 +269,21 @@ otelcol.receiver.otlp "gateway" {
         logs = [
             otelcol.exporter.loki.bridge.input,
         ]
+    }
+}
+
+{{- /* The third listener. It lived in the pre-rendered metrics pipeline until
+       this moved here, which is why it was the one ingress port that could not
+       be given TLS from values — a secured logs path in front of a plaintext
+       metrics path. Same dskit-flavoured server block as loki.source.api. */}}
+prometheus.receive_http "gateway" {
+    forward_to = [
+        otelcol.receiver.prometheus.inputBridge.receiver,
+    ]
+
+    http {
+        listen_port = 9090
+      {{- include "mzmon.alloy.serverTls" ( dict "tls" $metricTls "flavor" "alloy" "indent" 8 ) }}
     }
 }
 {{- end }}
@@ -1244,18 +1263,23 @@ Usage:
       {{- end }}
     {{- end }}
     {{- with $tls.minVersion }}
-      {{- /* **The same concept has two vocabularies in one binary.** The client
-             blocks (`tls_config`) take `TLS13`; the dskit-flavoured server block
-             takes `VersionTLS13` and rejects `TLS13` at *load* with
-             `TLS version "TLS13" not recognized` — which `alloy validate` does
-             not catch, so it surfaces as a crashlooping gateway. Values use the
-             client vocabulary throughout and this translates. otelcol accepts
-             either, so it is passed through unchanged. */}}
-      {{- $version := . | toString }}
+      {{- /* **The same concept has three vocabularies in one binary**, and two
+             of them fail in different ways. Client blocks (`tls_config`) take
+             `TLS13`. The dskit server block takes `VersionTLS13` and rejects
+             `TLS13` at load, crashlooping the pod. otelcol takes `1.3` and
+             rejects the other two *silently* — the component goes unhealthy,
+             the listener never binds, and the process stays up. `alloy validate`
+             catches none of it. Values use one vocabulary and this translates. */}}
+      {{- $version := . | toString | trimPrefix "Version" }}
       {{- if eq $flavor "alloy" }}
-        {{- if not ( hasPrefix "Version" $version ) }}
-          {{- $version = printf "Version%s" $version }}
-        {{- end }}
+        {{- $version = printf "Version%s" $version }}
+      {{- else }}
+        {{- /* otelcol speaks OpenTelemetry's dotted form and rejects both other
+               spellings — and it does so *silently*: the component goes
+               unhealthy with `unsupported TLS version`, the listener never
+               binds, and alloy keeps running. Nothing crashes and nothing in
+               `alloy validate` or the pod's status says so. */}}
+        {{- $version = get ( dict "TLS10" "1.0" "TLS11" "1.1" "TLS12" "1.2" "TLS13" "1.3" ) $version | default $version }}
       {{- end }}
       {{- $lines = append $lines ( printf "min_version = %s" ( $version | quote ) ) }}
     {{- end }}
@@ -1312,19 +1336,19 @@ Usage:
     {{- end }}
   {{- end }}
 
-  {{- /* The switch that cannot work yet. An error, not a warning: a security
-         setting that silently does nothing is worse than one that refuses. */}}
-  {{- if $metricServer.enabled }}
-    {{- $errors = append $errors "pipeline.metrics.gateway.server.tls.enabled is set, but the listener it configures — prometheus.receive_http on 9090 — still renders from pre-rendered/pipelines/gateway-metrics.alloy, which is emitted verbatim. The setting would do nothing at all. Move that listener into mzmon.alloyGateway.pipeline.sources the way loki.source.api and otelcol.receiver.otlp already are, or leave this off." }}
+  {{- /* The two ingress trees can be secured independently, which is a real
+         choice — the metrics port has different clients from the logs ports —
+         but securing only one is almost always an oversight rather than that
+         choice, so it warns in both directions. */}}
+  {{- if and $logServer.enabled ( not $metricServer.enabled ) }}
+    {{- $warnings = append $warnings "pipeline.logging.gateway.server.tls is on but pipeline.metrics.gateway.server.tls is not, so the gateway's logs listeners (3100, 4317, 4318) serve TLS while prometheus.receive_http on 9090 stays plaintext. Anything that can reach 9090 can still write arbitrary series. Secure both, or keep the NetworkPolicy on that port and say why." }}
+  {{- end }}
+  {{- if and $metricServer.enabled ( not $logServer.enabled ) }}
+    {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on but pipeline.logging.gateway.server.tls is not, so the remote-write listener on 9090 serves TLS while the log-ingest listeners on 3100/4317/4318 stay plaintext." }}
   {{- end }}
 
   {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
     {{- if $logServer.enabled }}
-      {{- /* The metrics ingest port stays plaintext while the logs ports are
-             secured — the exact asymmetry that makes someone believe the
-             gateway is closed when half of it is open. */}}
-      {{- $warnings = append $warnings "The gateway's logs listeners (loki.source.api on 3100, otelcol.receiver.otlp on 4317/4318) serve TLS, but prometheus.receive_http on 9090 does not and cannot yet — it is still pre-rendered. Anything that can reach 9090 can still write arbitrary series in plaintext. Keep the NetworkPolicy on that port until the listener moves." }}
-
       {{- $auth := $logServer.clientAuth | default "NoClientCert" }}
       {{- if eq $auth "VerifyClientCertIfGiven" }}
         {{- $warnings = append $warnings "pipeline.logging.gateway.server.tls.clientAuth is VerifyClientCertIfGiven, which the OTLP listeners cannot express: otelcol.receiver.otlp has no client_auth_type and treats the client CA as require-and-verify. So loki.source.api will serve a client that presents nothing while 4317/4318 reject it. That is safe for the agent hop (the agent presents once phase 2 is applied) and will break any other OTLP sender that has not rolled." }}

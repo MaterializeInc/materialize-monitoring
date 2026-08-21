@@ -26,3 +26,13 @@ otelcol.receiver.otlp "gateway" {
 		]
 	}
 }
+
+prometheus.receive_http "gateway" {
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+
+	http {
+		listen_port = 9090
+	}
+}

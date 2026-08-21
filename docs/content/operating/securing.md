@@ -258,15 +258,19 @@ Thanos Receive is narrower by construction: its TLS flags scope to the remote-wr
 
 Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
 
-| Phase | Profile | Loki | Thanos Receive |
-|---|---|---|---|
-| 1 | `mtls.values.yaml` | TLS, `NoClientCert` | TLS, no client CA |
-| 2 | `+ mtls-phase2.values.yaml` | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it |
-| 3 | `+ mtls-phase3.values.yaml` | **unreachable** | client CA set — **authenticated** |
+| Phase | Profile | Gateway ingress | Loki | Thanos Receive |
+|---|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA |
+| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it |
+| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** |
+
+The gateway's own ingress reaches phase 3 because its listeners are not the ports the kubelet probes — readiness is on `12345`. That is the difference between it and Loki.
 
 **Loki's HTTP port cannot require client certificates, ever.** The kubelet's readiness and liveness probes dial the same port 3100 that the gateway does, and a Kubernetes `httpGet` probe has no field for a client certificate. Setting `RequireAndVerifyClientCert` fails every probe with `remote error: tls: certificate required`, and every Loki pod goes unready and then restarts. The render refuses it. **Phase 2 is the ceiling for that hop**: a certificate from the wrong CA is refused, an anonymous client is still served. Real authentication there needs an authenticating proxy in front of Loki, or a listener the kubelet does not touch.
 
 **Thanos Receive does reach phase 3**, because its probes are on the HTTP port while the TLS flags scope to the separate remote-write listener. Verified: a client presenting no certificate is refused at the TLS handshake; one presenting a certificate from the trusted CA is served.
+
+**`min_version` has three vocabularies in one binary, and two of them fail differently.** Client blocks (`tls_config`) take `TLS13`; the dskit-flavoured listeners (`loki.source.api`, `prometheus.receive_http`) take `VersionTLS13` and reject anything else at load, crashlooping the pod; `otelcol.receiver.otlp` takes OpenTelemetry's `1.3` and rejects the others **silently** — the component goes unhealthy, its port never binds, and the process stays up reporting Ready. `alloy validate` catches none of the three. Values use one vocabulary and the chart translates per listener; that silent case is why `kubectl get pods` is not enough to confirm this feature is working.
 
 Two more measured constraints the profiles encode, both of which crashloop the stack if you get them wrong:
 
@@ -297,8 +301,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
 | **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
-| **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The gateway's `loki.source.api` and `otelcol.receiver.otlp` listeners now render from Helm, so they take TLS from values; a client presenting no certificate is refused at the handshake |
-| **In-cluster TLS, → gateway `prometheus.receive_http` (9090)** | ❌ Still plaintext. That listener is the one gateway ingress still rendered from the pre-rendered pipeline, so no value reaches it — the render refuses `pipeline.metrics.gateway.server.tls` rather than pretending |
+| **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
 | **In-cluster TLS, agent → gateway** | ❌ Blocked on the listener. The gateway's `loki.source.api` lives in the pre-rendered pipeline, which is emitted verbatim, so its `tls` block cannot be made conditional on a value. The render refuses this hop rather than half-enabling it |
 | **Mutual TLS between components** | 🔨 One hop (gateway → Thanos Receive) genuinely requires and verifies a client certificate. Everything else is encrypted at best. NetworkPolicy answers *which pods* may connect; on the remaining hops nothing answers *who is on the other end* |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |

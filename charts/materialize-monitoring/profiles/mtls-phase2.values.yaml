@@ -102,6 +102,12 @@ pipeline:
             keyFile: /etc/mzmon/tls/tls.key
   metrics:
     gateway:
+      server:
+        tls:
+          # Same dskit-flavoured listener as loki.source.api, so it has a real
+          # verify-if-given and moves in step with the logs tree.
+          clientCAFile: /etc/mzmon/tls/ca.crt
+          clientAuth: VerifyClientCertIfGiven
       destination:
         prometheusRemoteWrite:
           tls:

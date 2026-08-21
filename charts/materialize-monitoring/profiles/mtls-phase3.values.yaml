@@ -94,6 +94,15 @@ thanos:
       - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
 
 pipeline:
+  metrics:
+    gateway:
+      server:
+        tls:
+          # The remote-write listener. Any in-cluster workload pushing metrics
+          # here must present a certificate from this point on — that is the
+          # whole point, and it is also the step most likely to surprise someone
+          # whose application remote-writes to the gateway.
+          clientAuth: RequireAndVerifyClientCert
   logging:
     gateway:
       server:
