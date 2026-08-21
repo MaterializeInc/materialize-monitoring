@@ -19,7 +19,7 @@ SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 SOURCES_mz-monitoring-e2e = $(shell find packages/mz-monitoring-e2e -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent
+ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent agent-dest-stub
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -71,7 +71,7 @@ docs: docs/public
 grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
-alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
+alloy-pipelines: $(PIPELINES_DIR)
 .PHONY: alloy-pipelines
 
 # Make all dashboards
@@ -133,24 +133,21 @@ charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana
 
 ALLOY_TARGET = $(patsubst %.alloy,%,$(notdir $@))
 
+PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
+
 # Render each target. Validation happens in the aggregate target below, because
 # gateway.alloy is not a standalone config (it references loki.process.egress,
 # supplied by gateway-dest-stub.alloy) and must be validated joined with it.
-charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
+$(PIPELINES_DIR)/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
 	mkdir -p "$(@D)"
 	target/debug/mz-monitoring-build gen-pipelines --output-dir "$(@D)" --target "$(ALLOY_TARGET)"
 
-charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materialize-monitoring/pre-rendered/pipelines/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
+$(PIPELINES_DIR): $(addprefix $(PIPELINES_DIR)/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
 	$(MAKE) alloy-pipelines-validate
 	touch "$@"
 
-# Validate rendered pipelines. agent is currently a self-contained config; the
-# gateway is not — gateway.alloy forwards to loki.process.egress, defined in the
-# destination stub — so validate the two together the way alloy loads a config
-# directory.
-PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
 alloy-pipelines-validate:
-	alloy validate "$(PIPELINES_DIR)/agent.alloy"
+	cat "$(PIPELINES_DIR)/agent.alloy" "$(PIPELINES_DIR)/agent-dest-stub.alloy" | alloy validate /dev/stdin
 	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
 .PHONY: alloy-pipelines-validate
 

@@ -672,6 +672,30 @@ Usage:
 
   {{- /* Output main snippet */}}
   {{- $.Files.Get "pre-rendered/pipelines/agent.alloy" }}
+
+  {{- /* Output rendered destination */}}
+  {{- include "mzmon.alloyAgent.pipeline.destination" $ }}
+{{- end }}
+
+{{/*
+Generate the alloy-agent pipeline destinations.
+
+Usage:
+  {{- include "mzmon.alloyAgent.pipeline.destination" $ }}
+*/}}
+{{- define "mzmon.alloyAgent.pipeline.destination" }}
+loki.process "egress" {
+    forward_to = [
+        "loki.write.destination.receiver",
+    ]
+}
+
+# TODO: fully specify
+loki.write "gateway" {
+    endpoint {
+        url = sys.env("AGENT_LOKI_DEST")
+    }
+}
 {{- end }}
 
 {{- /*

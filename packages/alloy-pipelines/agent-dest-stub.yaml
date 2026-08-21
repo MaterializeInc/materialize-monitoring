@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway destination stub.
+# These are processed by mz-monitoring-build gen-pipelines to produce a gateway-dest-stub.alloy config.
+
+description: |
+  BUILD-TIME egress stand-in for the alloy-agent pipeline. This is NOT what
+  deploys.
+
+blocks:
+  - loki.process:
+      label: egress
+      forward_to:
+        - loki.write.gateway.receiver
+
+  # Default stub: forwards everything to the alloy-gateway.
+  # This may be overwritten in the helm templates.
+  - loki.write:
+      label: gateway
+      blocks:
+        - endpoint:
+            url:
+              function: coalesce
+              arguments:
+                - env: AGENT_LOKI_DEST
+                - "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push"
