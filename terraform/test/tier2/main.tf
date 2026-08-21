@@ -117,10 +117,21 @@ module "monitoring" {
     # `internal.issuerRef` at its own PKI instead, and that path renders the same
     # Certificates against a different issuer.
     #
-    # Short lifetimes deliberately: renewal is the failure that a freshly-installed
-    # test cluster cannot see, so the certificate has to age out inside the run
-    # rather than a quarter later. cert-manager renews at `renewBefore`, so a 1h
-    # certificate with 55m of headroom renews ~5 minutes in.
+    # Chart-default lifetimes, deliberately — an earlier version of this used
+    # `duration = "1h"` with `renewBefore = "55m"` to make renewal happen inside
+    # the run, and that turned out to be pathological. renewBefore at 92% of
+    # duration means cert-manager renews every ~5 minutes; with six certificates
+    # on one small cluster the controller livelocked in an optimistic-locking
+    # re-queue loop, stopped renewing entirely, and then reported
+    # `Ready=True: "Certificate is up to date and has not expired"` on
+    # certificates that had expired 45 minutes earlier. Every TLS hop failed with
+    # `certificate has expired` while cert-manager insisted it was fine.
+    #
+    # Keep renewBefore well under duration (cert-manager's own guidance is a
+    # third or less). A rotation assertion should **force** renewal — delete the
+    # Secret, or `cmctl renew` — rather than trying to provoke it with a short
+    # lifetime, which is both slower and, as above, capable of breaking the thing
+    # it is meant to test.
     !local.substrate.cert_manager_available ? [] : [
       yamlencode({
         certificates = {
@@ -130,8 +141,6 @@ module "monitoring" {
               enabled = true
             }
           }
-          duration    = "1h"
-          renewBefore = "55m"
         }
       })
     ]

@@ -239,13 +239,37 @@ thanos:
 # read once at process start — it works for exactly one certificate lifetime.
 pipeline:
   logging:
+    # The gateway's own listeners. Both halves of the agent hop move here, in one
+    # release: Kubernetes does not order a DaemonSet against a Deployment, and
+    # either half alone is a protocol error that reads like the peer is broken.
+    # The render refuses one without the other.
+    #
+    # `prometheus.receive_http` on 9090 is **not** covered — it still renders
+    # from the pre-rendered metrics pipeline, so `pipeline.metrics.gateway.server`
+    # cannot reach it. The metrics ingest port stays plaintext, and the render
+    # says so.
     gateway:
+      server:
+        tls:
+          enabled: true
+          certFile: /etc/mzmon/tls/tls.crt
+          keyFile: /etc/mzmon/tls/tls.key
+          # No clientCAFile at phase 1: `otelcol.receiver.otlp` treats a client
+          # CA as require-and-verify — it has no client_auth_type — so supplying
+          # one here would reject every OTLP sender that has not rolled.
+          clientAuth: NoClientCert
       destination:
         loki:
           tls:
             enabled: true
             caFile: /etc/mzmon/tls/ca.crt
             # certFile/keyFile arrive in phase 2.
+    agent:
+      destination:
+        loki:
+          tls:
+            enabled: true
+            caFile: /etc/mzmon/tls/ca.crt
   metrics:
     gateway:
       destination:

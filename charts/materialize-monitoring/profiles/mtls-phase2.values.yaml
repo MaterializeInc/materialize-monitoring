@@ -75,12 +75,29 @@ loki:
 pipeline:
   logging:
     gateway:
+      server:
+        tls:
+          # `loki.source.api` honours this and tolerates a client that presents
+          # nothing. `otelcol.receiver.otlp` cannot express it — it has no
+          # client_auth_type — so the CA below puts 4317/4318 straight into
+          # require-and-verify. Safe for the agent, which presents from this
+          # phase on; any *other* OTLP sender has to roll first.
+          clientCAFile: /etc/mzmon/tls/ca.crt
+          clientAuth: VerifyClientCertIfGiven
       destination:
         loki:
           tls:
             # The client half of the phase. The gateway's certificate carries
             # `client auth` as well as `server auth` — one certificate per
             # component covers both roles, which is why a single mount is enough.
+            certFile: /etc/mzmon/tls/tls.crt
+            keyFile: /etc/mzmon/tls/tls.key
+    agent:
+      destination:
+        loki:
+          tls:
+            # The agent's client half. Its certificate carries `client auth`,
+            # and the DaemonSet already mounts it.
             certFile: /etc/mzmon/tls/tls.crt
             keyFile: /etc/mzmon/tls/tls.key
   metrics:

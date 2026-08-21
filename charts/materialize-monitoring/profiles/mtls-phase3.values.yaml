@@ -92,3 +92,14 @@ thanos:
       - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
       - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
       - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
+
+pipeline:
+  logging:
+    gateway:
+      server:
+        tls:
+          # Unlike Loki's HTTP port, the gateway's listeners are not probed by
+          # the kubelet on these ports — the readiness probe is on 12345 — so
+          # phase 3 **is** reachable here. After this, an agent that presents no
+          # certificate is refused at the handshake.
+          clientAuth: RequireAndVerifyClientCert

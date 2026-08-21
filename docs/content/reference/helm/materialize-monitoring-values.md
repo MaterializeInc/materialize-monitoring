@@ -1446,6 +1446,106 @@ Inline PEM stays supported as the bring-your-own-PKI escape hatch.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "tls": {
+    "certFile": "",
+    "clientAuth": "NoClientCert",
+    "clientCAFile": "",
+    "enabled": false,
+    "keyFile": "",
+    "minVersion": "TLS13",
+    "reloadInterval": "1m"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Server-side TLS on this role's listeners.
+The other half of the `destination.*.tls` blocks: those configure Alloy
+as a *client*, this configures it as a *server*. A configured client
+against an unconfigured server is TLS off, which is why the two have to
+move together.
+
+**The gateway has three listeners, not two**, and they are split across
+the two pipeline trees the same way the listeners are:
+
+| Listener | Port | Configured by |
+| --- | --- | --- |
+| `loki.source.api` | 3100 | `pipeline.logging.gateway.server.tls` |
+| `otelcol.receiver.otlp` | 4317 / 4318 | `pipeline.logging.gateway.server.tls` |
+| `prometheus.receive_http` | 9090 | `pipeline.metrics.gateway.server.tls` |
+
+`receive_http` is the one to check last: it lives in the metrics tree and
+is easy to leave behind, and forgetting it leaves the metrics write path
+wide open behind a logs path that looks secured. A validator refuses that
+combination rather than letting it ship.
+
+`clientAuth` is exposed rather than implied because the middle state is
+what a safe rollout needs, and an operator who cannot name that state
+cannot perform one. Values are Go's `tls.ClientAuthType`:
+
+| Value | Meaning |
+| --- | --- |
+| `NoClientCert` | do not ask (phase 1) |
+| `RequestClientCert` | ask, do not verify |
+| `RequireAnyClientCert` | require, do not verify against a CA |
+| `VerifyClientCertIfGiven` | verify what is presented, allow none (phase 2) |
+| `RequireAndVerifyClientCert` | require and verify (phase 3) |
+
+Unlike Loki's server, Alloy's listeners are not probed by the kubelet on
+the same port — the readiness probe is on `12345` — so phase 3 **is**
+reachable here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Serve TLS on this role's listeners.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.certFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Certificate and key the listener presents. Files rather than inline PEM, because cert-manager renews by rewriting the Secret and Alloy re-reads the file on new connections.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.clientCAFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">CA used to verify client certificates. Required by every `clientAuth` value except `NoClientCert`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.clientAuth</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"NoClientCert"</code></td>
+      <td class="helm-value-desc">How hard to insist on a client certificate. See the table above.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.minVersion</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"TLS13"</code></td>
+      <td class="helm-value-desc">Minimum TLS version the listener accepts.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.reloadInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"1m"</code></td>
+      <td class="helm-value-desc">How often the OTLP listeners re-read their certificate files.
+`otelcol.receiver.otlp` only — the `loki.source.api` listener has no
+equivalent and re-reads on new connections instead. This is the best
+renewal behaviour of anything in the stack, so it is worth setting:
+without it a long-lived gRPC stream can outlive the certificate that
+established it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -1684,6 +1784,106 @@ bringing up a new distribution.
 []</pre>
 </td>
       <td class="helm-value-desc">Denylist of metrics that are excluded from being exported These are |'d in a regex pattern
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "tls": {
+    "certFile": "",
+    "clientAuth": "NoClientCert",
+    "clientCAFile": "",
+    "enabled": false,
+    "keyFile": "",
+    "minVersion": "TLS13",
+    "reloadInterval": "1m"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Server-side TLS on this role's listeners.
+The other half of the `destination.*.tls` blocks: those configure Alloy
+as a *client*, this configures it as a *server*. A configured client
+against an unconfigured server is TLS off, which is why the two have to
+move together.
+
+**The gateway has three listeners, not two**, and they are split across
+the two pipeline trees the same way the listeners are:
+
+| Listener | Port | Configured by |
+| --- | --- | --- |
+| `loki.source.api` | 3100 | `pipeline.logging.gateway.server.tls` |
+| `otelcol.receiver.otlp` | 4317 / 4318 | `pipeline.logging.gateway.server.tls` |
+| `prometheus.receive_http` | 9090 | `pipeline.metrics.gateway.server.tls` |
+
+`receive_http` is the one to check last: it lives in the metrics tree and
+is easy to leave behind, and forgetting it leaves the metrics write path
+wide open behind a logs path that looks secured. A validator refuses that
+combination rather than letting it ship.
+
+`clientAuth` is exposed rather than implied because the middle state is
+what a safe rollout needs, and an operator who cannot name that state
+cannot perform one. Values are Go's `tls.ClientAuthType`:
+
+| Value | Meaning |
+| --- | --- |
+| `NoClientCert` | do not ask (phase 1) |
+| `RequestClientCert` | ask, do not verify |
+| `RequireAnyClientCert` | require, do not verify against a CA |
+| `VerifyClientCertIfGiven` | verify what is presented, allow none (phase 2) |
+| `RequireAndVerifyClientCert` | require and verify (phase 3) |
+
+Unlike Loki's server, Alloy's listeners are not probed by the kubelet on
+the same port — the readiness probe is on `12345` — so phase 3 **is**
+reachable here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Serve TLS on this role's listeners.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.certFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Certificate and key the listener presents. Files rather than inline PEM, because cert-manager renews by rewriting the Secret and Alloy re-reads the file on new connections.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.clientCAFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">CA used to verify client certificates. Required by every `clientAuth` value except `NoClientCert`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.clientAuth</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"NoClientCert"</code></td>
+      <td class="helm-value-desc">How hard to insist on a client certificate. See the table above.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.minVersion</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"TLS13"</code></td>
+      <td class="helm-value-desc">Minimum TLS version the listener accepts.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.server<wbr>.tls<wbr>.reloadInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"1m"</code></td>
+      <td class="helm-value-desc">How often the OTLP listeners re-read their certificate files.
+`otelcol.receiver.otlp` only — the `loki.source.api` listener has no
+equivalent and re-reads on new connections instead. This is the best
+renewal behaviour of anything in the stack, so it is worth setting:
+without it a long-lived gRPC stream can outlive the certificate that
+established it.
 </td>
     </tr>
     <tr>

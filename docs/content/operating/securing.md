@@ -285,6 +285,7 @@ Prefer the `tls.*File` carriers on every destination over the inline `ca`/`cert`
 
 The mount is unconditional and marked `optional: true`, so the same values work before, during and after issuance: a Secret that does not exist yet mounts empty rather than blocking the pod.
 
+- [ ] `[operator]` **Do not set `renewBefore` near `duration`.** It looks like a way to exercise renewal and it is a way to break cert-manager: at 92% of duration (a 1h certificate with 55m of headroom) renewal fires every few minutes, and on a small cluster with six certificates the controller livelocked in an optimistic-locking re-queue loop, stopped renewing, and then reported `Ready=True: "Certificate is up to date and has not expired"` on certificates that had expired 45 minutes earlier — every TLS hop failing with `certificate has expired` while the Certificate resource looked healthy. Keep `renewBefore` to a third of `duration` or less, and force renewal explicitly (delete the Secret, or `cmctl renew`) if you want to test it.
 - [ ] `[operator]` **A mounted file is not a reloaded file.** The kubelet refreshes Secret contents atomically, but the process still has to notice, and reload support differs per component. That is why no hop turns on by default, and why enabling one is a decision to make per component rather than per stack.
 
 ## What is not there yet {#gaps}
@@ -296,6 +297,8 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
 | **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
+| **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The gateway's `loki.source.api` and `otelcol.receiver.otlp` listeners now render from Helm, so they take TLS from values; a client presenting no certificate is refused at the handshake |
+| **In-cluster TLS, → gateway `prometheus.receive_http` (9090)** | ❌ Still plaintext. That listener is the one gateway ingress still rendered from the pre-rendered pipeline, so no value reaches it — the render refuses `pipeline.metrics.gateway.server.tls` rather than pretending |
 | **In-cluster TLS, agent → gateway** | ❌ Blocked on the listener. The gateway's `loki.source.api` lives in the pre-rendered pipeline, which is emitted verbatim, so its `tls` block cannot be made conditional on a value. The render refuses this hop rather than half-enabling it |
 | **Mutual TLS between components** | 🔨 One hop (gateway → Thanos Receive) genuinely requires and verifies a client certificate. Everything else is encrypted at best. NetworkPolicy answers *which pods* may connect; on the remaining hops nothing answers *who is on the other end* |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |

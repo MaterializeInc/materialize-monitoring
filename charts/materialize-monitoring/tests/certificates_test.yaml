@@ -392,15 +392,99 @@ tests:
           path: data["config.alloy"]
           pattern: "insecure_skip_verify = true"
 
-  # The agent's hop has a client half ready and no server half: the gateway's
-  # listener is pre-rendered and cannot yet be told to serve TLS. Refusing is
-  # better than sending TLS at a plaintext port.
-  - it: should refuse TLS on the agent hop until the listener can serve it
+  # --- the agent hop, now that the gateway's listeners render from Helm -------
+  # Both halves have to move in one release: Kubernetes does not order them, and
+  # either direction alone is a protocol error that reads like the peer is broken.
+  - it: should refuse the agent client half without the gateway server half
     set:
       pipeline.logging.agent.destination.loki.tls.enabled: true
     asserts:
       - failedTemplate:
-          errorPattern: "is not wired yet"
+          errorPattern: "would send TLS at a plaintext listener"
+
+  - it: should refuse the gateway server half without the agent client half
+    set:
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+    asserts:
+      - failedTemplate:
+          errorPattern: "would send plaintext at a TLS listener"
+
+  # `loki.source.api` takes client_auth_type; `otelcol.receiver.otlp` rejects it
+  # and treats a client CA as require-and-verify. One value, two behaviours, in
+  # the same process — measured against the pinned alloy binary.
+  - it: should render the dskit flavour on the Loki listener
+    set: &agentHopTls
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.logging.gateway.server.tls.clientCAFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.server.tls.clientAuth: VerifyClientCertIfGiven
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+      pipeline.logging.agent.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'client_auth_type = "VerifyClientCertIfGiven"'
+      # otelcol has no such attribute, so exactly one listener carries it.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'reload_interval = "1m"'
+
+  - it: should warn that one clientAuth means two things across the listeners
+    set: *agentHopTls
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "the OTLP listeners cannot express"
+
+  # The metrics ingest port stays plaintext while the logs ports are secured —
+  # the asymmetry that makes someone believe the gateway is closed.
+  - it: should warn that the metrics ingest listener is still plaintext
+    set: *agentHopTls
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "prometheus.receive_http on 9090 does not and cannot yet"
+
+  # A security switch that silently does nothing is worse than one that refuses.
+  - it: should refuse metrics server TLS while its listener is pre-rendered
+    set:
+      pipeline.metrics.gateway.server.tls.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "would do nothing at all"
+
+  # Phase 3 on the listener, with an agent that presents nothing.
+  - it: should refuse requiring a client cert before the agent presents one
+    set:
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.logging.gateway.server.tls.clientCAFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.server.tls.clientAuth: RequireAndVerifyClientCert
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+      pipeline.logging.agent.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    asserts:
+      - failedTemplate:
+          errorPattern: "refused at the TLS handshake"
+
+  # The agent's write is fully specified now, not a stub: retries, tenant, and
+  # a bare (not quoted) receiver reference.
+  - it: should render the agent destination fully
+    template: templates/pipelines/cm-alloy-agent.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "forward_to = \\[\\n\\s+loki.write.gateway.receiver,"
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'tenant_id = "loki"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "retry_on_http_429 = true"
 
   # --- validators -------------------------------------------------------------
   - it: should fail when certificates are on with no issuer
@@ -621,14 +705,32 @@ tests:
           path: spec.template.spec.containers[0].args
           content: --receive.replication-factor=3
 
-  # Phase 3 without phase 2 is the outage this ordering exists to prevent.
-  - it: should refuse the Thanos client CA before the client presents
+  # Phase 3 without phase 2 is the outage this ordering exists to prevent. The
+  # gateway listener trips first — its client CA also comes from phase 2 — and
+  # the message names the phase rather than the missing key.
+  - it: should refuse phase 3 composed without phase 2
     values:
       - ../profiles/mtls.values.yaml
       - ../profiles/mtls-phase3.values.yaml
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "composing phase 3 without phase 2 is what produces this"
+
+  # The Thanos half of the same ordering rule, isolated from the gateway's.
+  - it: should refuse the Thanos client CA before the client presents
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=3
+        - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+        - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
+        - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
     asserts:
       - failedTemplate:
           errorPattern: "puts Receive into require-and-verify immediately"
