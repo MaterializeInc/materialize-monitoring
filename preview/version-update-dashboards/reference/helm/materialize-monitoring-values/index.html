@@ -5,7 +5,7 @@ Storage Requirements# Using Thanos or Loki (both enabled by default) requires ob
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
 Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta property="og:locale" content="en_us"><meta property="og:type" content="article"><meta property="article:section" content="reference"><meta itemprop=name content="materialize-monitoring values"><meta itemprop=description content="materialize-monitoring Helm Reference# Unified observability stack for Materialize: Alloy-based pipeline, optional bundled backends (Loki / Thanos / Grafana / Alertmanager), and the dashboards / alerts / rules that consume the Materialize metrics surface.
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
-Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="15513"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/preview/version-update-dashboards/favicon.png><link rel=manifest href=/materialize-monitoring/preview/version-update-dashboards/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/preview/version-update-dashboards/book.min.5187735f9468a46205ac1acc67b841c9abcae59d0c40de23fae569e4bc892ff6.css integrity="sha256-UYdzX5RopGIFrBrMZ7hByavK5Z0MQN4j+uVp5LyJL/Y=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/preview/version-update-dashboards/en.search.min.31b7d5e17b10e58ae355bd7f91a5058b6df53989376ce5dda5507e6775e2f532.js integrity="sha256-MbfV4XsQ5YrjVb1/kaUFi231OYk3bOXdpVB+Z3Xi9TI=" crossorigin=anonymous></script></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
+Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="18559"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/preview/version-update-dashboards/favicon.png><link rel=manifest href=/materialize-monitoring/preview/version-update-dashboards/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/preview/version-update-dashboards/book.min.5187735f9468a46205ac1acc67b841c9abcae59d0c40de23fae569e4bc892ff6.css integrity="sha256-UYdzX5RopGIFrBrMZ7hByavK5Z0MQN4j+uVp5LyJL/Y=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/preview/version-update-dashboards/en.search.min.a3ab981fa8d17fb4015f979dcf9570e2c25eac206ccf4ea51ecfdbbc9fb27384.js integrity="sha256-o6uYH6jRf7QBX5edz5Vw4sJerCBsz06lHs/bvJ+yc4Q=" crossorigin=anonymous></script></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><header class=site-header role=banner><div class=site-header-inner><a class=site-header-logo href=https://materialize.com/ aria-label=Materialize><svg class="logo-link svelte-ju9vo9" width="161" height="29" viewBox="0 0 161 29" fill="none"><g><path d="M54.0797 6.44507V21.2633h2.5758V11.0613H56.793l4.0953 10.1585h1.9246L66.9081 11.083H67.0456V21.2633h2.5758V6.44507H66.3365L61.9374 17.1825H61.7637L57.3646 6.44507H54.0797z" fill="var(--important)"/><path d="M75.6269 21.4875C77.3706 21.4875 78.4125 20.6699 78.89 19.7366h.0869v1.5267h2.5179V13.8252c0-2.9376-2.39489999999999-3.8203-4.5149-3.8203-2.33710000000001.0-4.1315 1.0419-4.7103 3.0678L74.7152 13.42C74.9757 12.6603 75.7137 12.0091 76.9944 12.0091 78.2099 12.0091 78.8756 12.6314 78.8756 13.7239V13.7673C78.8756 14.5198 78.0869 14.556 76.1261 14.7658 73.9699 14.9974 71.9078 15.6413 71.9078 18.1448 71.9078 20.3299 73.5069 21.4875 75.6269 21.4875zM76.307 19.5629C75.2144 19.5629 74.433 19.0637 74.433 18.1014 74.433 17.0956 75.3085 16.676 76.4806 16.5096 77.168 16.4155 78.5427 16.2419 78.8828 15.9669v1.3096C78.8828 18.5138 77.8843 19.5629 76.307 19.5629z" fill="var(--important)"/><path d="M89.6781 10.1496H87.4857V7.48697H84.8665V10.1496H83.2892v2.0259H84.8665v6.1791C84.852 20.4456 86.3715 21.4731 88.3395 21.4152 89.0848 21.3935 89.5985 21.2488 89.8807 21.1547L89.4393 19.1071C89.2946 19.1433 88.9979 19.2084 88.6724 19.2084c-.658499999999989.0-1.1867-.2315-1.1867-1.2879v-5.745H89.6781V10.1496z" fill="var(--important)"/><path d="M96.6693 21.4803C99.2596 21.4803 101.04 20.2141 101.503 18.2822L99.057 18.0073C98.7025 18.9479 97.8342 19.4399 96.7055 19.4399 95.0124 19.4399 93.8909 18.3257 93.8692 16.4227h7.7418V15.6196c0-3.8999-2.3442-5.6147-5.0792-5.6147C93.3483 10.0049 91.2717 12.342 91.2717 15.7716 91.2717 19.259 93.3193 21.4803 96.6693 21.4803zm-2.7929-6.823C93.956 13.2391 95.0052 12.0453 96.568 12.0453c1.505.0 2.518 1.0998 2.5324 2.612H93.8764z" fill="var(--important)"/><path d="M103.827 21.2633h2.619V14.7296C106.446 13.3187 107.51 12.3202 108.95 12.3202 109.391 12.3202 109.941 12.3998 110.165 12.4722V10.0628C109.926 10.0194 109.514 9.99043 109.225 9.99043 107.951 9.99043 106.888 10.714 106.482 12.0019H106.367V10.1496H103.827V21.2633z" fill="var(--important)"/><path d="M111.905 21.2633h2.62V10.1496h-2.62V21.2633zM113.222 8.57229c.832000000000008.0 1.512-.63672 1.512-1.41815C114.734 6.36548 114.054 5.72876 113.222 5.72876 112.383 5.72876 111.703 6.36548 111.703 7.15414 111.703 7.93557 112.383 8.57229 113.222 8.57229z" fill="var(--important)"/><path d="M120.416 21.4875C122.16 21.4875 123.202 20.6699 123.679 19.7366H123.766v1.5267h2.518V13.8252c0-2.9376-2.39500000000001-3.8203-4.515-3.8203-2.337.0-4.131 1.0419-4.71000000000001 3.0678L119.504 13.42C119.765 12.6603 120.503 12.0091 121.784 12.0091 122.999 12.0091 123.665 12.6314 123.665 13.7239V13.7673C123.665 14.5198 122.876 14.556 120.915 14.7658 118.759 14.9974 116.697 15.6413 116.697 18.1448c0 2.1851 1.599 3.3427 3.71899999999999 3.3427zM121.096 19.5629C120.004 19.5629 119.222 19.0637 119.222 18.1014c0-1.0058.876000000000005-1.4254 2.048-1.5918C121.957 16.4155 123.332 16.2419 123.672 15.9669v1.3096C123.672 18.5138 122.674 19.5629 121.096 19.5629z" fill="var(--important)"/><path d="M131.537 6.44507h-2.619V21.2633h2.619V6.44507z" fill="var(--important)"/><path d="M134.23 21.2633h2.62V10.1496h-2.62V21.2633zM135.547 8.57229c.831999999999994.0 1.512-.63672 1.512-1.41815C137.059 6.36548 136.379 5.72876 135.547 5.72876 134.708 5.72876 134.028 6.36548 134.028 7.15414 134.028 7.93557 134.708 8.57229 135.547 8.57229z" fill="var(--important)"/><path d="M139.398 21.2633h9.124V19.0926H142.878V18.9986L148.334 11.9368V10.1496H139.586v2.1706H145.129V12.4143L139.398 19.5991v1.6642z" fill="var(--important)"/><path d="M155.586 21.4803C158.176 21.4803 159.956 20.2141 160.419 18.2822L157.973 18.0073C157.619 18.9479 156.751 19.4399 155.622 19.4399 153.929 19.4399 152.807 18.3257 152.786 16.4227H160.528V15.6196c0-3.8999-2.345-5.6147-5.07999999999998-5.6147C152.265 10.0049 150.188 12.342 150.188 15.7716c0 3.4874 2.048 5.7087 5.39800000000003 5.7087zM152.793 14.6573C152.872 13.2391 153.922 12.0453 155.484 12.0453c1.505.0 2.518 1.0998 2.53299999999999 2.612H152.793z" fill="var(--important)"/></g><path class="bar1 svelte-ju9vo9" d="M8.52478 28.5217c-2.74376.0-5.48752.0-8.231282.0C.0489163 28.5217.0 28.4728.0 28.2327c0-2.7304.0-5.4653.0-8.2046C.182324 20.0281.257922 20.2015.369096 20.3082 2.99872 22.9201 5.62389 25.5393 8.24462 28.166 8.35135 28.2594 8.51589 28.335 8.52478 28.5217z" fill="var(--important)"/><path class="bar3 svelte-ju9vo9" d="M25.0894 20.4296C25.7698 21.1766 26.4857 21.8837 27.2284 22.5641 27.3218 22.6708 27.4107 22.7864 27.513 22.8887c1.2674 1.2674 2.5436 2.5214 3.8066 3.7933C31.9199 27.2912 32.5691 27.8559 33.0983 28.523H23.8932C23.7998 28.4118 23.7108 28.2962 23.6086 28.1939c-1.509-1.5001-3.0195-3.0046-4.5315-4.5136C13.9276 18.5455 8.77655 13.4108 3.62403 8.27608 2.42335 7.07985 1.25826 5.8525.00866699 4.71853V.685153c1.60534301.0 3.21513301.0 4.82492301.0C4.9615.680522 5.0889.703552 5.20709.75267 5.32528.801787 5.43147.875836 5.51842.969757 9.76673 5.20324 14.018 9.43673 18.2722 13.6702 18.3555 13.7519 18.4431 13.8291 18.5346 13.9015c1.2496 1.2584 2.4947 2.5258 3.7532 3.7799C23.2128 18.6063 24.1555 19.5135 25.0894 20.4296z" fill="var(--important)"/><path class="bar5 svelte-ju9vo9" d="M33.1117 28.5223C32.5691 27.8552 31.9199 27.2904 31.3329 26.6812c-1.2629-1.2718-2.5392-2.5258-3.8066-3.7932C27.424 22.7857 27.3351 22.6701 27.2417 22.5634c0-.191300000000002.0-.378.0-.569300000000002.0-6.4866.0-12.97612.0-19.46866C27.236 2.18135 27.3634 1.84836 27.5975 1.59603 27.8461 1.25748 28.1812.99211 28.5678.82779 28.9543.66347 29.378.606263 29.7942.662177 30.9727.751116 32.1645.697753 33.3518.662177 33.7164.662177 33.7965.76001 33.7965 1.10687c0 6.51032.0 13.01023.0 19.49983.0 2.4636.0 4.9287.0 7.3953C33.7965 28.1754 33.7965 28.3488 33.8232 28.5223H33.1117z" fill="var(--important)" fill-opacity=".7"/><path class="bar2 svelte-ju9vo9" d="M0 16.9643V7.77246C.137855 7.80359.209006 7.92366.297945 8.01704L3.13954 10.8231C8.37507 16.0438 13.6106 21.2645 18.8461 26.4852 19.5132 27.1522 20.2202 27.7881 20.8206 28.5219h-9.223C11.5976 28.3885 11.4687 28.3307 11.3886 28.2506c-3.22254-3.2196-6.45102-6.4362-9.68542-9.6498C1.16656 18.0238.597942 17.4774.0 16.9643H0z" fill="var(--important)"/><path class="bar4 svelte-ju9vo9" d="M25.089 20.4288C24.1551 19.5127 23.2124 18.6055 22.2874 17.6806c-1.2585-1.2541-2.5036-2.5214-3.7532-3.7799.0-.978300000000001.0-1.9522.0-2.9306C18.5244 10.8702 18.5369 10.7693 18.5707 10.6747 18.6045 10.5802 18.6589 10.4942 18.7298 10.4232l6.1235-6.09233C24.9022 4.28195 24.9645 4.24193 25.0089 4.2019 25.1468 4.25082 25.1068 4.3531 25.1068 4.4287c0 5.26221.0 10.5229.0 15.7822C25.1054 20.2838 25.0995 20.3566 25.089 20.4288v0z" fill="var(--important)" fill-opacity=".7"/></svg></a><nav class=site-header-nav aria-label=Primary><a href=https://materialize.com/docs/>Main Docs</a>
 <a class=active href=https://materializeinc.github.io/materialize-monitoring/preview/version-update-dashboards/ aria-current=page>o11y</a></nav></div></header><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/materialize-monitoring/preview/version-update-dashboards/><span>materialize-monitoring Documentation</span></a></h2><div class="book-search hidden"><input id=book-search-input type=text placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><script>document.querySelector(".book-search").classList.remove("hidden")</script><ul><li><input type=checkbox id=section-d8603fc439af14929dcab7034cbdf060 class=toggle>
 <label for=section-d8603fc439af14929dcab7034cbdf060 class=flex><a role=button>Getting Started</a>
@@ -43,7 +43,7 @@ Storage Requirements# Using Thanos or Loki (both enabled by default) requires ob
 <label for=section-3d7c79e66f24fe6b7e434f8767dcd488 class=flex><a role=button>Pipelines</a>
 <img src=/materialize-monitoring/preview/version-update-dashboards/icons/chevron-right.svg class=book-icon alt=Expand></label><ul><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/pipelines/overview/>Overview</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/pipelines/authoring/>Authoring</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/pipelines/metrics/>Metrics</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/pipelines/logging/>Logging</a></li></ul></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/helm/>Helm</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/roadmap/>Roadmap</a></li><li><input type=checkbox id=section-1c7b586ae64c685c93c48a3cbd008632 class=toggle>
 <label for=section-1c7b586ae64c685c93c48a3cbd008632 class=flex><a role=button>Design Docs</a>
-<img src=/materialize-monitoring/preview/version-update-dashboards/icons/chevron-right.svg class=book-icon alt=Expand></label><ul><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/overview/>Overview</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/>First-Class Production Loki Infrastructure</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260803-terraform-modules/>Terraform Modules for materialize-monitoring</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260813-byoc-observability/>Observability for Bring-Your-Own-Cloud</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260816-tls-authentication/>In-cluster TLS and Certificate Authentication</a></li></ul></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/releasing/>Releasing</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/versioning/>Versioning</a></li></ul></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class="book-header hidden"><div class="flex align-center justify-between"><label for=menu-control><img src=/materialize-monitoring/preview/version-update-dashboards/icons/menu.svg class=book-icon alt=Menu></label><h3>materialize-monitoring values</h3><label for=toc-control><img src=/materialize-monitoring/preview/version-update-dashboards/icons/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class=hidden><nav id=TableOfContents><ul><li><a href=#source-code>Source Code</a></li><li><a href=#requirements>Requirements</a><ul><li><a href=#storage-requirements>Storage Requirements</a></li></ul></li><li><a href=#included-subcharts>Included Subcharts</a></li><li><a href=#values>Values</a><ul><li><a href=#globals>Globals</a></li><li><a href=#main-chart-configuration>Main chart configuration</a></li><li><a href=#subchart-enablement-helm-tags>Subchart enablement (Helm tags)</a></li><li><a href=#priority-classes>Priority classes</a></li><li><a href=#materialize-integration>Materialize Integration</a></li><li><a href=#pipeline-configuration>Pipeline configuration</a><ul><li><a href=#log-configuration>Log configuration</a></li><li><a href=#metrics-configuration>Metrics configuration</a></li></ul></li><li><a href=#monitoring-configurations>Monitoring configurations</a><ul><li><a href=#rule-configuration>Rule configuration</a></li><li><a href=#alert-configuration>Alert configuration</a></li><li><a href=#scraper-configuration>Scraper configuration</a></li><li><a href=#grafana-connection-configuration>Grafana connection configuration</a></li><li><a href=#datasource-configuration>Datasource configuration</a></li><li><a href=#uninstall-cleanup>Uninstall cleanup</a></li></ul></li><li><a href=#bundled-subchart-configurations>Bundled subchart configurations</a><ul><li><a href=#alloy-agent>Alloy Agent</a></li><li><a href=#alloy-gateway>Alloy Gateway</a></li><li><a href=#loki>Loki</a></li><li><a href=#thanos>Thanos</a></li><li><a href=#grafana-operator>Grafana Operator</a></li><li><a href=#grafana-instance>Grafana Instance</a></li><li><a href=#alertmanager>Alertmanager</a></li><li><a href=#kube-state-metrics>Kube State Metrics</a></li><li><a href=#node-exporter>Node Exporter</a></li><li><a href=#metrics-server>Metrics Server</a></li></ul></li></ul></li></ul></nav></aside></header><article class="markdown book-article"><h1 id=materialize-monitoring-helm-reference><code>materialize-monitoring</code> Helm Reference<a class=anchor href=#materialize-monitoring-helm-reference>#</a></h1><p>Unified observability stack for Materialize: Alloy-based pipeline,
+<img src=/materialize-monitoring/preview/version-update-dashboards/icons/chevron-right.svg class=book-icon alt=Expand></label><ul><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/overview/>Overview</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260627-loki-production-infrastructure/>First-Class Production Loki Infrastructure</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260803-terraform-modules/>Terraform Modules for materialize-monitoring</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260813-byoc-observability/>Observability for Bring-Your-Own-Cloud</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/design-docs/20260816-tls-authentication/>In-cluster TLS and Certificate Authentication</a></li></ul></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/releasing/>Releasing</a></li><li><a href=/materialize-monitoring/preview/version-update-dashboards/reference/internal/versioning/>Versioning</a></li></ul></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class="book-header hidden"><div class="flex align-center justify-between"><label for=menu-control><img src=/materialize-monitoring/preview/version-update-dashboards/icons/menu.svg class=book-icon alt=Menu></label><h3>materialize-monitoring values</h3><label for=toc-control><img src=/materialize-monitoring/preview/version-update-dashboards/icons/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class=hidden><nav id=TableOfContents><ul><li><a href=#source-code>Source Code</a></li><li><a href=#requirements>Requirements</a><ul><li><a href=#storage-requirements>Storage Requirements</a></li></ul></li><li><a href=#included-subcharts>Included Subcharts</a></li><li><a href=#values>Values</a><ul><li><a href=#globals>Globals</a></li><li><a href=#main-chart-configuration>Main chart configuration</a></li><li><a href=#subchart-enablement-helm-tags>Subchart enablement (Helm tags)</a></li><li><a href=#priority-classes>Priority classes</a></li><li><a href=#network-policies>Network policies</a></li><li><a href=#materialize-integration>Materialize Integration</a></li><li><a href=#pipeline-configuration>Pipeline configuration</a><ul><li><a href=#log-configuration>Log configuration</a></li><li><a href=#metrics-configuration>Metrics configuration</a></li></ul></li><li><a href=#monitoring-configurations>Monitoring configurations</a><ul><li><a href=#rule-configuration>Rule configuration</a></li><li><a href=#alert-configuration>Alert configuration</a></li><li><a href=#scraper-configuration>Scraper configuration</a></li><li><a href=#grafana-connection-configuration>Grafana connection configuration</a></li><li><a href=#datasource-configuration>Datasource configuration</a></li><li><a href=#uninstall-cleanup>Uninstall cleanup</a></li></ul></li><li><a href=#bundled-subchart-configurations>Bundled subchart configurations</a><ul><li><a href=#alloy-agent>Alloy Agent</a></li><li><a href=#alloy-gateway>Alloy Gateway</a></li><li><a href=#loki>Loki</a></li><li><a href=#thanos>Thanos</a></li><li><a href=#grafana-operator>Grafana Operator</a></li><li><a href=#grafana-instance>Grafana Instance</a></li><li><a href=#alertmanager>Alertmanager</a></li><li><a href=#kube-state-metrics>Kube State Metrics</a></li><li><a href=#node-exporter>Node Exporter</a></li><li><a href=#metrics-server>Metrics Server</a></li></ul></li></ul></li></ul></nav></aside></header><article class="markdown book-article"><h1 id=materialize-monitoring-helm-reference><code>materialize-monitoring</code> Helm Reference<a class=anchor href=#materialize-monitoring-helm-reference>#</a></h1><p>Unified observability stack for Materialize: Alloy-based pipeline,
 optional bundled backends (Loki / Thanos / Grafana / Alertmanager),
 and the dashboards / alerts / rules that consume the Materialize
 metrics surface.</p><h2 id=source-code>Source Code<a class=anchor href=#source-code>#</a></h2><ul><li><a href=https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring rel=external class=github-source-link>https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring</a></li></ul><h2 id=requirements>Requirements<a class=anchor href=#requirements>#</a></h2><p>Kubernetes: <code>>=1.27.0-0</code></p><h3 id=storage-requirements>Storage Requirements<a class=anchor href=#storage-requirements>#</a></h3><p>Using Thanos or Loki (both enabled by default) requires
@@ -112,7 +112,168 @@ chart warns at render time when it can tell that has happened.</p><table class=h
   "name": "monitoring-scalable",
   "preemptionPolicy": "Never",
   "value": 1000
-}</pre></td><td class=helm-value-desc>Priority for replicated or buffered components, where losing a pod costs capacity rather than visibility.</td></tr></tbody></table><h3 id=materialize-integration>Materialize Integration<a class=anchor href=#materialize-integration>#</a></h3><p>Materialize-specific configuration values.</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>materialize<wbr>.namespaces</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Priority for replicated or buffered components, where losing a pod costs capacity rather than visibility.</td></tr></tbody></table><h3 id=network-policies>Network policies<a class=anchor href=#network-policies>#</a></h3><p>NetworkPolicies for the components whose own charts ship none.
+Most of the stack polices itself, and each component is configured in its own
+block further down:</p><table><thead><tr><th>Component</th><th>Key</th></tr></thead><tbody><tr><td>Alloy agent</td><td><code>alloy-agent.networkPolicy</code></td></tr><tr><td>Alloy gateway</td><td><code>alloy-gateway.networkPolicy</code></td></tr><tr><td>Loki</td><td><code>loki.networkPolicy</code></td></tr><tr><td>Thanos</td><td><code>thanos.global.networkPolicies</code></td></tr><tr><td>Grafana</td><td><code>grafana.networkPolicy</code></td></tr><tr><td>kube-state-metrics</td><td><code>kube-state-metrics.networkPolicy</code></td></tr><tr><td>node-exporter</td><td><code>node-exporter.networkPolicy</code></td></tr></tbody></table><p>This block covers the three subcharts that render no <code>networkpolicy.yaml</code> at
+all — <strong>Alertmanager</strong>, <strong>grafana-operator</strong>, and <strong>metrics-server</strong> — so the
+stack does not leave three unpoliced pods in an otherwise policed namespace.
+The policies are rendered by this chart, from <code>templates/networkpolicies.yaml</code>.</p><p>The shape mirrors Loki&rsquo;s, because Loki is the component whose policy set this
+repo has actually operated: allow the release to talk to itself, allow DNS,
+name the destinations that live outside the cluster, deny the rest. Each app
+gets one <code>Ingress</code>+<code>Egress</code> policy plus a separate DNS policy, for the same
+reason Loki splits them — a rule you have to disable should not take the rest
+of the policy with it.</p><p><strong>A NetworkPolicy is a declaration, not always a control.</strong> Four limits are
+worth knowing before treating any of this as a boundary:</p><ul><li>It does nothing unless the CNI enforces it. <code>kindnet</code> (the default in
+<code>kind</code>, and therefore in the E2E tiers) ignores NetworkPolicy entirely;
+Cilium and Calico enforce it.</li><li>Most CNIs do not apply pod policy to host-networked pods. Nothing in this
+block is host-networked today, but <code>node-exporter.networkPolicy</code> carries
+the same caveat at greater length, and it is the same caveat.</li><li>Rules written with <code>podSelector</code> alone stop at the namespace boundary.
+Under <code>profiles/split-namespace.values.yaml</code> the components no longer share
+a namespace, so those rules match nothing — add <code>namespaceSelector</code> entries
+through the <code>extra</code> hooks below, or turn the affected policy off.</li><li>Nothing here allows the kubelet&rsquo;s liveness and readiness probes, which
+arrive from the node&rsquo;s own IP. Cilium and Calico both exempt host-to-pod
+traffic so probes keep working; a CNI that does not would fail every pod in
+the namespace, Loki&rsquo;s included, and that is the symptom to recognize.</li></ul><p>Egress is where a wrong rule hurts: it fails silently, minutes or hours later,
+somewhere other than the pod you changed. So egress is narrowed only where the
+destination set is knowable from the chart. Where it is not — the API server&rsquo;s
+address, kubelet ports on node IPs, an arbitrary notification provider — the
+rule is broad and says so, and <code>egress.extra</code> is where you narrow it against
+facts only your cluster has.</p><p>Every component below takes the same eight keys, so they are described once
+here rather than three times over. Each component&rsquo;s own entry then says only
+what is particular to it — which ports, and why that egress is as wide as it is.</p><table><thead><tr><th>Key</th><th>Meaning</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>Render this policy. Unset follows <code>networkPolicies.enabled</code>.</td></tr><tr><td><code>ingress.ports</code></td><td>Ports opened to the rest of the component&rsquo;s namespace. A bare number means TCP; <code>{port, protocol}</code> spells out anything else.</td></tr><tr><td><code>ingress.allowExternal</code></td><td>Drop the source restriction entirely, so the ports above accept connections from any namespace and from outside the cluster.</td></tr><tr><td><code>ingress.extra</code></td><td>Raw <code>NetworkPolicyIngressRule</code> entries, appended verbatim. The hook for a cross-namespace source.</td></tr><tr><td><code>egress.inNamespace</code></td><td>Reach the other pods of this release, on any port.</td></tr><tr><td><code>egress.dns</code></td><td>Reach cluster DNS. Rendered as a policy of its own.</td></tr><tr><td><code>egress.external.ports</code> / <code>.cidrs</code></td><td>Ports and CIDRs outside the cluster. Ports with no CIDRs means those ports <em>anywhere</em>.</td></tr><tr><td><code>egress.extra</code></td><td>Raw <code>NetworkPolicyEgressRule</code> entries, appended verbatim.</td></tr></tbody></table><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>networkPolicies<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Render the policies in this block. Off skips all three at once; the per-component `enabled` keys below override it either way.</td></tr><tr><td class=helm-value-key>networkPolicies<wbr>.alertmanager</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "egress": {
+    "dns": true,
+    "external": {
+      "cidrs": [
+        "0.0.0.0/0"
+      ],
+      "ports": [
+        443,
+        587,
+        465
+      ]
+    },
+    "extra": [],
+    "inNamespace": true
+  },
+  "enabled": null,
+  "ingress": {
+    "allowExternal": false,
+    "extra": [],
+    "ports": [
+      9093,
+      {
+        "port": 9094,
+        "protocol": "TCP"
+      },
+      {
+        "port": 9094,
+        "protocol": "UDP"
+      }
+    ]
+  }
+}</pre></td><td class=helm-value-desc>Alertmanager: reachable from the release namespace, free to egress to notification providers.<p>Ingress covers <code>9093</code> (the API — Loki&rsquo;s ruler, the Alloy gateway&rsquo;s scrape,
+and Grafana&rsquo;s alerting all arrive here) and <code>9094</code>, the gossip port a
+multi-replica Alertmanager uses to deduplicate notifications between peers.</p><p><strong><code>9094</code> is listed twice, TCP and UDP, and both are required.</strong> Alertmanager&rsquo;s
+mesh is memberlist: it joins and pushes state over TCP and gossips over UDP,
+and the upstream chart&rsquo;s Service declares <code>clusterpeer-tcp</code> and
+<code>clusterpeer-udp</code> on the same port for exactly that reason. A TCP-only rule
+produces the worst version of this failure — the peers find each other, the
+cluster forms, and it never converges, so every notification goes out once
+per replica.</p><p>Both are listed even at the default <code>replicaCount: 1</code>, where nothing dials
+either: the cost is an open port that no pod connects to, and the alternative
+is a cluster that silently sends every notification twice the day someone
+scales it up.</p><p>Egress is deliberately wide. Alertmanager&rsquo;s job is to reach PagerDuty, Slack,
+an SMTP relay, or a webhook on someone&rsquo;s internal network, and this chart
+cannot know which — <code>443</code> and the SMTP ports are the defaults because they
+are what receivers use, not because they are a boundary.</p></td></tr><tr><td class=helm-value-key>networkPolicies<wbr>.grafana-operator</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "egress": {
+    "dns": true,
+    "external": {
+      "cidrs": [
+        "0.0.0.0/0"
+      ],
+      "ports": [
+        443,
+        6443
+      ]
+    },
+    "extra": [],
+    "inNamespace": true
+  },
+  "enabled": null,
+  "ingress": {
+    "allowExternal": false,
+    "extra": [],
+    "ports": [
+      9090
+    ]
+  }
+}</pre></td><td class=helm-value-desc>grafana-operator: metrics scraped by the Alloy gateway, egress to the API server and to whichever Grafana it reconciles.<p>Ingress is only the metrics port. <code>8888</code> (pprof) is deliberately left out —
+it is a debugging surface, and a policy that opens it by default defeats the
+point of having one.</p><p>Egress carries <code>443</code>/<code>6443</code> to <code>0.0.0.0/0</code> because the operator is an API
+client first: it watches <code>Grafana</code>, <code>GrafanaDashboard</code> and <code>GrafanaDatasource</code>
+resources continuously, and a policy that cannot reach the API server leaves
+it running, healthy, and reconciling nothing. The API server&rsquo;s address is not
+something a chart can derive — in-cluster it is a Service ClusterIP that most
+CNIs evaluate against the real endpoint behind it, which on a managed control
+plane is outside the cluster network entirely.</p><p><code>connections.grafana.mode: external</code> puts the Grafana it writes to outside the
+cluster as well; <code>443</code> already covers the usual case, but a self-hosted
+Grafana on another port needs an <code>egress.extra</code> entry. The render warns when
+it can tell that applies.</p></td></tr><tr><td class=helm-value-key>networkPolicies<wbr>.grafanaGossip</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": null,
+  "port": 9094
+}</pre></td><td class=helm-value-desc>Grafana's unified-alerting gossip port, which the `grafana` subchart's own policy cannot open.<p>A supplement, not a replacement: <code>grafana.networkPolicy</code> stays on and keeps
+doing what it does. That template emits exactly one ingress rule, on
+<code>service.targetPort</code>, with no way to add a second port through values — so a
+multi-replica Grafana running HA alerting has its <code>9094</code> gossip closed by the
+very policy that protects its UI. The failure is quiet in the worst way: the
+replicas start healthy, never find each other, and every Grafana-managed alert
+notifies once per replica.</p><p>This renders the missing rule from the umbrella chart, which can. TCP <em>and</em>
+UDP, because memberlist uses both — TCP for the join and for state pushes, UDP
+for the gossip itself — and a TCP-only rule produces a cluster that forms and
+then does not converge.</p><p>It renders only when <code>grafana.ini.unified_alerting.ha_peers</code> is set, which is
+what makes the replicas dial <code>9094</code> in the first place;
+<code>profiles/grafana-postgres.values.yaml</code> is the shipped shape that sets it.
+Nothing is created for a single-replica Grafana that never gossips.</p></td></tr><tr><td class=helm-value-key>networkPolicies<wbr>.metrics-server</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "egress": {
+    "dns": true,
+    "external": {
+      "cidrs": [
+        "0.0.0.0/0"
+      ],
+      "ports": [
+        10250,
+        443,
+        6443
+      ]
+    },
+    "extra": [],
+    "inNamespace": true
+  },
+  "enabled": null,
+  "ingress": {
+    "allowExternal": true,
+    "extra": [],
+    "ports": [
+      10250
+    ]
+  }
+}</pre></td><td class=helm-value-desc>metrics-server: serves the metrics API to the API server, scrapes every kubelet.<p>Both directions are broad, and both for the same reason: the peers are the
+control plane and the nodes, neither of which has an address this chart can
+select. <code>allowExternal</code> is <strong>true</strong> by default here, unlike the other two —
+the aggregation layer dials <code>10250</code> from the API server, which on a managed
+control plane is not a pod, not in the cluster&rsquo;s pod CIDR, and not reachable
+by any <code>podSelector</code>. A policy that closed that port would break every <code>kubectl top</code> and every HPA in the cluster, not just this release.</p><p>What the policy still buys is the rest of the surface: no other port on the
+pod accepts a connection, and egress is limited to the kubelet port plus the
+API server rather than anywhere at all.</p><p>Egress <code>10250</code> to <code>0.0.0.0/0</code> is the kubelet summary API on each node. Node
+IPs are not selectable either, and narrowing this to the node CIDR is a good
+idea wherever you know it — <code>egress.extra</code> with an <code>ipBlock</code>, and drop
+<code>10250</code> from <code>external.ports</code>.</p></td></tr></tbody></table><h3 id=materialize-integration>Materialize Integration<a class=anchor href=#materialize-integration>#</a></h3><p>Materialize-specific configuration values.</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>materialize<wbr>.namespaces</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Namespaces to scrape Materialize workloads from. Empty list means all namespaces the chart can read.</td></tr><tr><td class=helm-value-key>materialize<wbr>.environmentd<wbr>.serviceMonitor</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
@@ -515,7 +676,47 @@ equal to the request turns that into CFS throttling on the busiest nodes.</p></t
     "effect": "NoSchedule",
     "operator": "Exists"
   }
-]</pre></td><td class=helm-value-desc>Taints the agent tolerates out of the box: every `NoSchedule` one. Coverage is correctness for this workload, not a placement preference. A node the DaemonSet never lands on produces no logs and no error, and nothing shows a hole where a node should be — so the default is the same blanket rule `node-exporter` already ships, for the same reason. Enumerating keys instead would make coverage depend on this chart knowing your taints, which it does not: a node pool tainted with anything the list does not name goes silently uncollected. That is the failure this replaced. It is not always silent, either. A bootstrap gate — a `NoSchedule` taint applied to every node at boot and lifted once the DaemonSets are running, which is what `node.materialize.com/daemonsets-not-scheduled` is — deadlocks outright against an agent that does not tolerate it: the taint waits on a pod that is waiting on the taint, and the node never admits any workload. `NoExecute` is deliberately not tolerated here — a node being drained for a problem should shed the agent too. The two exceptions are not the chart's to make: the DaemonSet controller adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` (both `NoExecute`) to every DaemonSet pod unconditionally, so the agent keeps running on a node that goes unreachable whatever is written here. Add other `NoExecute` taints through the Terraform module's `tolerations`, which appends to this list. To narrow this — a node pool whose per-node budget genuinely cannot absorb the agent — replace the list rather than adding to it, and record which pools you gave up. Helm overwrites lists, so setting this key at all replaces the whole default.</td></tr><tr><td class=helm-value-key>alloy-agent<wbr>.controller<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-critical"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Critical: this is a per-node singleton, so an eviction is a log gap on that node with no replica to cover it.</td></tr></tbody></table><h4 id=alloy-gateway>Alloy Gateway<a class=anchor href=#alloy-gateway>#</a></h4><p>Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy rel=external class=external-link>https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy</a></li><li><a href=https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml rel=external class=external-link>https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>alloy-gateway<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"alloy-gateway"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.crds</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+]</pre></td><td class=helm-value-desc>Taints the agent tolerates out of the box: every `NoSchedule` one. Coverage is correctness for this workload, not a placement preference. A node the DaemonSet never lands on produces no logs and no error, and nothing shows a hole where a node should be — so the default is the same blanket rule `node-exporter` already ships, for the same reason. Enumerating keys instead would make coverage depend on this chart knowing your taints, which it does not: a node pool tainted with anything the list does not name goes silently uncollected. That is the failure this replaced. It is not always silent, either. A bootstrap gate — a `NoSchedule` taint applied to every node at boot and lifted once the DaemonSets are running, which is what `node.materialize.com/daemonsets-not-scheduled` is — deadlocks outright against an agent that does not tolerate it: the taint waits on a pod that is waiting on the taint, and the node never admits any workload. `NoExecute` is deliberately not tolerated here — a node being drained for a problem should shed the agent too. The two exceptions are not the chart's to make: the DaemonSet controller adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` (both `NoExecute`) to every DaemonSet pod unconditionally, so the agent keeps running on a node that goes unreachable whatever is written here. Add other `NoExecute` taints through the Terraform module's `tolerations`, which appends to this list. To narrow this — a node pool whose per-node budget genuinely cannot absorb the agent — replace the list rather than adding to it, and record which pools you gave up. Helm overwrites lists, so setting this key at all replaces the whole default.</td></tr><tr><td class=helm-value-key>alloy-agent<wbr>.controller<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-critical"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Critical: this is a per-node singleton, so an eviction is a log gap on that node with no replica to cover it.</td></tr><tr><td class=helm-value-key>alloy-agent<wbr>.networkPolicy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "egress": null,
+  "enabled": true,
+  "flavor": "kubernetes",
+  "ingress": [
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 12345,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "policyTypes": [
+    "Ingress"
+  ]
+}</pre></td><td class=helm-value-desc>NetworkPolicy for the agent.<p>Ingress is one port from one peer. <code>12345</code> is Alloy&rsquo;s HTTP server — it serves
+<code>/metrics</code> and the live debugging UI, which shows the running pipeline and
+samples of the data moving through it — and the only pod that needs to reach
+it is the gateway performing the <code>serviceMonitor</code> scrape.</p><p><strong>Egress is not restricted</strong>, and the <code>policyTypes</code> list says so rather than
+pairing an <code>Egress</code> type with an allow-everything rule. Two of the agent&rsquo;s
+three destinations are unaddressable from here: the API server backs
+<code>discovery.kubernetes</code>, and on a managed control plane it is not in the pod
+network at all. The third, the gateway, is in-namespace and would be easy —
+but a policy that allows only the parts we happen to know is a policy that
+breaks the first time someone adds a scrape to the agent pipeline, and does
+it silently. Narrow it deliberately, with <code>egress</code> and <code>policyTypes</code>, once you
+know what your agent actually collects.</p><p>The default <code>from</code> selects by pod label within the release namespace. Running
+the gateway in a different namespace (see <code>profiles/split-namespace.values.yaml</code>)
+requires replacing this list with one that adds a <code>namespaceSelector</code>.</p></td></tr><tr><td class=helm-value-key>alloy-agent<wbr>.networkPolicy<wbr>.egress</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Null rather than `[]`: an empty list still merges as "no rules", but null is what the subchart documents for "do not render this direction", and it keeps `egress` out of a spec whose `policyTypes` omits `Egress`.</td></tr></tbody></table><h4 id=alloy-gateway>Alloy Gateway<a class=anchor href=#alloy-gateway>#</a></h4><p>Alloy gateway instance. Cardinality reduction and backend-specific egress happen here.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy rel=external class=external-link>https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy</a></li><li><a href=https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml rel=external class=external-link>https://github.com/grafana/alloy/blob/main/operations/helm/charts/alloy/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>alloy-gateway<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"alloy-gateway"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.crds</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "create": false
 }</pre></td><td class=helm-value-desc>Control for the PodLogs crd.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.global<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
@@ -601,7 +802,78 @@ equal to the request turns that into CFS throttling on the busiest nodes.</p></t
   }
 }</pre></td><td class=helm-value-desc>Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.controller<wbr>.extraAnnotations</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {}</pre></td><td class=helm-value-desc>Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.controller<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-critical"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Critical despite being a Deployment: every signal in the stack leaves through here, so losing it stops logs and metrics at once.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td><td class=helm-value-type>int</td><td class=helm-value-default><code>0</code></td><td class=helm-value-desc>Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*. It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement. Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.serviceAccount<wbr>.create</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Create a service account for alloy-gateway.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.serviceAccount<wbr>.annotations</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
-{}</pre></td><td class=helm-value-desc>Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA. Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.</td></tr></tbody></table><h4 id=loki>Loki<a class=anchor href=#loki>#</a></h4><p>Bundled Loki backend for logs.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/grafana-community/helm-charts/tree/main/charts/loki rel=external class=external-link>https://github.com/grafana-community/helm-charts/tree/main/charts/loki</a></li><li><a href=https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml rel=external class=external-link>https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>loki<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"loki"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>loki<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>loki<wbr>.global<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority for Loki. See the Priority classes section. `global` covers every component that renders through the chart's `_pod.tpl` — but *not* the two memcached StatefulSets, which read only their own component key. They are set explicitly further down. This is the same asymmetry `terraform/modules/materialize-monitoring/scheduling.tf` calls out for nodeSelector and tolerations; rendering is what catches it.</td></tr><tr><td class=helm-value-key>loki<wbr>.deploymentMode</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"Distributed"</code></td><td class=helm-value-desc>How loki is deployed. We prefer to run in Distributed/Microservices mode.</td></tr><tr><td class=helm-value-key>loki<wbr>.networkPolicy<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Whether to enable a network policy for loki In production, this is recommended to be enabled.</td></tr><tr><td class=helm-value-key>loki<wbr>.networkPolicy<wbr>.metrics</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{}</pre></td><td class=helm-value-desc>Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA. Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.networkPolicy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "egress": null,
+  "enabled": true,
+  "flavor": "kubernetes",
+  "ingress": [
+    {
+      "from": [
+        {
+          "namespaceSelector": {}
+        }
+      ],
+      "ports": [
+        {
+          "port": 3100,
+          "protocol": "TCP"
+        },
+        {
+          "port": 4317,
+          "protocol": "TCP"
+        },
+        {
+          "port": 4318,
+          "protocol": "TCP"
+        },
+        {
+          "port": 9090,
+          "protocol": "TCP"
+        }
+      ]
+    },
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 12345,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "policyTypes": [
+    "Ingress"
+  ]
+}</pre></td><td class=helm-value-desc>NetworkPolicy for the gateway.<p>Two ingress rules, because the gateway&rsquo;s ports fall into two groups with very
+different audiences.</p><p><strong>The ingest ports — <code>3100</code> (Loki push), <code>4317</code>/<code>4318</code> (OTLP), <code>9090</code>
+(Prometheus remote write) — are open to every pod in the cluster.</strong> That is
+deliberate and it is not laziness: these are the endpoints the stack exists to
+offer. The agent pushes logs to <code>3100</code>, and anything in the cluster with
+telemetry to send — a Materialize workload emitting OTLP, an application
+remote-writing metrics — is a legitimate client this chart cannot enumerate.
+<code>namespaceSelector: {}</code> still means <em>in-cluster</em>: a sender outside the pod
+network is denied, and the gateway is not meant to be internet-facing.</p><p><strong><code>12345</code> is not an ingest port and is closed to everything but the gateway
+itself.</strong> It carries the clustering gossip between gateway replicas
+(<code>alloy.clustering.enabled</code>) and serves <code>/metrics</code> and the debugging UI, which
+exposes the pipeline and samples of the telemetry passing through it. The
+gateway scrapes its own <code>serviceMonitor</code>, so its own pods are the only peer.</p><p><strong>Egress is not restricted, and cannot usefully be.</strong> The gateway scrapes the
+kubelet cAdvisor endpoint on every node — port <code>10250</code> on a <em>node</em> IP, which
+no <code>podSelector</code> matches — and it discovers <code>ServiceMonitor</code> and <code>PodMonitor</code>
+targets cluster-wide, so its destination set is every pod and every port that
+anyone in the cluster has ever pointed a monitor at. On top of that it is the
+stack&rsquo;s egress point for external backends: Amazon Managed Prometheus,
+Honeycomb, a Datadog or OTLP destination under <code>connections</code>. Enumerating that
+is not a policy, it is a copy of the cluster&rsquo;s inventory that goes stale.</p></td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.networkPolicy<wbr>.egress</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>See the note above: unrestricted, deliberately.</td></tr></tbody></table><h4 id=loki>Loki<a class=anchor href=#loki>#</a></h4><p>Bundled Loki backend for logs.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/grafana-community/helm-charts/tree/main/charts/loki rel=external class=external-link>https://github.com/grafana-community/helm-charts/tree/main/charts/loki</a></li><li><a href=https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml rel=external class=external-link>https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>loki<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"loki"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>loki<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>loki<wbr>.global<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority for Loki. See the Priority classes section. `global` covers every component that renders through the chart's `_pod.tpl` — but *not* the two memcached StatefulSets, which read only their own component key. They are set explicitly further down. This is the same asymmetry `terraform/modules/materialize-monitoring/scheduling.tf` calls out for nodeSelector and tolerations; rendering is what catches it.</td></tr><tr><td class=helm-value-key>loki<wbr>.deploymentMode</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"Distributed"</code></td><td class=helm-value-desc>How loki is deployed. We prefer to run in Distributed/Microservices mode.</td></tr><tr><td class=helm-value-key>loki<wbr>.networkPolicy<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Whether to enable a network policy for loki In production, this is recommended to be enabled.</td></tr><tr><td class=helm-value-key>loki<wbr>.networkPolicy<wbr>.metrics</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "namespaceSelector": {}
 }</pre></td><td class=helm-value-desc>Selector for incoming traffic to metric endpoints. This must be configured manually (usually set to `kubernetes.io/metadata.name: monitoring`).</td></tr><tr><td class=helm-value-key>loki<wbr>.networkPolicy<wbr>.ingress</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
@@ -814,7 +1086,19 @@ voluntary eviction and hang node drains indefinitely. <code>maxUnavailable: 1</c
 permits the eviction, so the singleton is a harmless no-op rather than
 a drain deadlock.</li><li>On Receive it must stay within what write quorum tolerates
 (<code>replicationFactor - ((replicationFactor / 2) + 1)</code>), which is 1 at
-the replication factor of 3 set below. A validator enforces this.</li></ul><p>This matches the Loki convention (ingester <code>maxUnavailable: 1</code>).</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.query</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+the replication factor of 3 set below. A validator enforces this.</li></ul><p>This matches the Loki convention (ingester <code>maxUnavailable: 1</code>).</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.networkPolicies</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>NetworkPolicies for every enabled Thanos component.<p>One switch, no per-component knobs and no selectors — the subchart renders a
+fixed policy per component and exposes nothing to tune. What each one says
+is: <strong>ingress on that component&rsquo;s own service ports, from anywhere; egress
+unrestricted.</strong></p><p>So this is the weakest policy in the stack, and worth being clear about what
+it does and does not buy. It does not restrict <em>who</em> may reach Query, Receive
+or Store Gateway — any pod in the cluster still can. It does close every port
+that is not a declared service port, which is the surface an unrelated
+workload would otherwise find on these pods.</p><p>It is on because it costs nothing to be right about. The rules cannot break a
+working install: Receive&rsquo;s <code>grpc</code>, <code>http</code> and <code>remote-write</code> ports are all in
+its own ingress list, so hashring replication between Receive pods and the
+gateway&rsquo;s writes both keep working, and unrestricted egress leaves the object
+store reachable. Narrowing the ingress sources needs an upstream change, or
+your own policy layered on top.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.query</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "autoscaling": {
     "enabled": true,
@@ -1469,7 +1753,46 @@ The subchart&rsquo;s <code>assertNoLeakedSecrets</code> check fails the render i
 </span></span><span style=display:flex><span>      <span style=color:#f92672>secretName</span>: <span style=color:#ae81ff>grafana-oidc</span>
 </span></span><span style=display:flex><span>      <span style=color:#f92672>mountPath</span>: <span style=color:#ae81ff>/etc/secrets/grafana-oidc</span>
 </span></span><span style=display:flex><span>      <span style=color:#f92672>readOnly</span>: <span style=color:#66d9ef>true</span></span></span></code></pre></div><p>Every provider, the role-mapping rules, and the break-glass path are in
-<a href=https://materializeinc.github.io/materialize-monitoring/dashboards/grafana/auth/ rel=external class=external-link>Dashboards > Grafana > Authentication</a>.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.plugins</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+<a href=https://materializeinc.github.io/materialize-monitoring/dashboards/grafana/auth/ rel=external class=external-link>Dashboards > Grafana > Authentication</a>.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "allowExternal": true,
+  "egress": {
+    "enabled": false
+  },
+  "enabled": true,
+  "explicitIpBlocks": [],
+  "explicitNamespacesSelector": {},
+  "ingress": true
+}</pre></td><td class=helm-value-desc>NetworkPolicy for Grafana.<p>The subchart&rsquo;s policy is rigid: it emits exactly one ingress rule, on
+<code>service.targetPort</code>, and either allows every source or a fixed set of them.
+There is no way to add a second port through values. That constrains what this
+can say, so it is worth being precise about what it does say.</p><p><strong>Ingress: <code>3000</code> from anywhere, everything else closed.</strong> <code>allowExternal</code>
+stays true because Grafana is the one component in this stack a human is meant
+to reach, and the ways they reach it are all things a <code>podSelector</code> cannot see
+— an ingress-controller pod in another namespace, a cloud load balancer&rsquo;s
+source IPs, <code>kubectl port-forward</code>, which arrives from the API server.
+Turning it off is worthwhile once you know your path in; <code>explicitNamespacesSelector</code>
+takes the ingress controller&rsquo;s namespace and <code>explicitIpBlocks</code> takes a load
+balancer&rsquo;s health-check and client ranges. <code>profiles/grafana-ingress.values.yaml</code>
+is where that belongs.</p><p>What it closes is the rest of the pod: <code>6060</code> (pprof) and <code>9094</code> (the
+unified-alerting gossip port) stop accepting connections. pprof should not be
+reachable in production, so that one is the point. <code>9094</code> is not — it matters
+as soon as you run multiple replicas <em>and</em> set
+<code>grafana.ini.unified_alerting.ha_peers</code>, which needs the pods to reach each
+other on it, and this template cannot express a second port.</p><p><strong>You do not have to turn this off to get HA alerting.</strong> The chart renders the
+missing rule itself, as <code>networkPolicies.grafanaGossip</code>, and it appears exactly
+when <code>ha_peers</code> is set. Policies are additive, so the two sit side by side.
+Turning <em>that</em> off while HA alerting is configured is what the render warns
+about; turning this one off takes the supplement with it, since a lone gossip
+policy would isolate the pods and leave only <code>9094</code> open.</p><p><strong>Egress is left unrestricted</strong> (<code>egress.enabled: false</code> renders a policy with
+no <code>Egress</code> policy type at all, rather than an empty allow). Grafana dials the
+things it is configured to dial: Loki and Thanos in-namespace, a PostgreSQL
+state database wherever it lives, an OIDC provider on the internet, <code>grafana.com</code>
+if <code>plugins</code> is non-empty. The first two are knowable here and the rest are
+not, and a partial allowlist would fail as a dashboard that renders empty with
+no error — the worst failure mode this stack has.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.ingress</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Emit the ingress rule. False renders a policy with no rules at all, which — with egress off too — is an empty spec, not a deny.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.allowExternal</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Accept from any source. See the note above before turning this off.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.explicitNamespacesSelector</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{}</pre></td><td class=helm-value-desc>Namespaces allowed in when `allowExternal` is false. The ingress controller's namespace goes here.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.explicitIpBlocks</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[]</pre></td><td class=helm-value-desc>CIDRs allowed in when `allowExternal` is false. Load-balancer client and health-check ranges go here.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.egress<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>false</code></td><td class=helm-value-desc>Leave off. See the note above: a partial egress allowlist for Grafana fails as empty panels rather than as an error.</td></tr><tr><td class=helm-value-key>grafana<wbr>.plugins</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Grafana plugins to install at container start.
 Each entry is downloaded from grafana.com when the pod starts, so this needs
 egress to `grafana.com` on 443 and adds that download to every start and
@@ -1486,7 +1809,79 @@ a pinned Grafana.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.imageRe
 }</pre></td><td class=helm-value-desc>Helm test hooks shipped by the subchart. Off: it pulls a `bats` image this chart does not otherwise use or pin, and the e2e suite covers what it asserts.</td></tr><tr><td class=helm-value-key>grafana<wbr>.assertNoLeakedSecrets</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Fail the render when a secret is inlined into `grafana.ini`. Leave this on. It is the guard that keeps database and OAuth credentials out of the ConfigMap; see the note on `grafana.ini`.</td></tr><tr><td class=helm-value-key>grafana<wbr>.serviceMonitor</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true
-}</pre></td><td class=helm-value-desc>Scrape Grafana's own metrics.</td></tr></tbody></table><h4 id=alertmanager>Alertmanager<a class=anchor href=#alertmanager>#</a></h4><p>Bundled Alertmanager for routing alerts emitted by the rule packages.</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>alertmanager<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.</td></tr><tr><td class=helm-value-key>alertmanager<wbr>.persistence<wbr>.size</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"4Gi"</code></td><td class=helm-value-desc>Volume for silences and the notification log. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.</td></tr></tbody></table><h4 id=kube-state-metrics>Kube State Metrics<a class=anchor href=#kube-state-metrics>#</a></h4><p>kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml rel=external class=external-link>https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>kube-state-metrics<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.</td></tr></tbody></table><h4 id=node-exporter>Node Exporter<a class=anchor href=#node-exporter>#</a></h4><p>node-exporter for hardware and OS metrics from every node.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-node-exporter/values.yaml rel=external class=external-link>https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-node-exporter/values.yaml</a></li><li><a href=https://github.com/prometheus/node_exporter#collectors rel=external class=external-link>https://github.com/prometheus/node_exporter#collectors</a></li></ul><p>Run as its own DaemonSet rather than folded into the Alloy agent&rsquo;s
+}</pre></td><td class=helm-value-desc>Scrape Grafana's own metrics.</td></tr></tbody></table><h4 id=alertmanager>Alertmanager<a class=anchor href=#alertmanager>#</a></h4><p>Bundled Alertmanager for routing alerts emitted by the rule packages.</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>alertmanager<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.</td></tr><tr><td class=helm-value-key>alertmanager<wbr>.persistence<wbr>.size</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"4Gi"</code></td><td class=helm-value-desc>Volume for silences and the notification log. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.</td></tr></tbody></table><h4 id=kube-state-metrics>Kube State Metrics<a class=anchor href=#kube-state-metrics>#</a></h4><p>kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml rel=external class=external-link>https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>kube-state-metrics<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.</td></tr><tr><td class=helm-value-key>kube-state-metrics<wbr>.networkPolicy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "egress": [
+    {
+      "ports": [
+        {
+          "port": 53,
+          "protocol": "UDP"
+        },
+        {
+          "port": 53,
+          "protocol": "TCP"
+        }
+      ],
+      "to": [
+        {
+          "namespaceSelector": {}
+        }
+      ]
+    },
+    {
+      "ports": [
+        {
+          "port": 443,
+          "protocol": "TCP"
+        },
+        {
+          "port": 6443,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "enabled": true,
+  "ingress": [
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 8080,
+          "protocol": "TCP"
+        },
+        {
+          "port": 8081,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ]
+}</pre></td><td class=helm-value-desc>NetworkPolicy for kube-state-metrics.<p>Ingress is narrowed to the Alloy gateway, which is what scrapes it
+(<code>prometheus.operator.servicemonitors</code> in the gateway pipeline) — the same
+shape as <code>node-exporter.networkPolicy</code>, and unlike that one it is actually
+enforced, because these pods are not host-networked.</p><p><code>8081</code> is listed alongside <code>8080</code> even though nothing serves it at the default
+<code>selfMonitor.enabled: false</code>. A closed port that nothing dials costs nothing;
+the alternative is that turning <code>selfMonitor</code> on produces a scrape that fails
+silently against a policy nobody thought to update.</p><p><strong>Egress is restricted, and this is the one component where that is safe to
+do</strong>, because its destination set is closed: DNS, and the API server. It reads
+nothing else — the whole workload is a watch on the API and an exposition
+endpoint. Deny egress outright (as <code>node-exporter</code> does) and it never lists a
+single object; the pod stays Ready and every <code>kube_*</code> series simply disappears.</p><p><code>443</code>/<code>6443</code> to <code>0.0.0.0/0</code> rather than something tighter because the API
+server&rsquo;s address is the one thing a chart cannot derive. In-cluster it is the
+<code>kubernetes.default.svc</code> ClusterIP, which most CNIs evaluate against the
+endpoint behind it — and on a managed control plane that endpoint is outside
+the cluster network entirely. Narrow the CIDR to your control plane&rsquo;s where
+you know it.</p></td></tr></tbody></table><h4 id=node-exporter>Node Exporter<a class=anchor href=#node-exporter>#</a></h4><p>node-exporter for hardware and OS metrics from every node.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-node-exporter/values.yaml rel=external class=external-link>https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-node-exporter/values.yaml</a></li><li><a href=https://github.com/prometheus/node_exporter#collectors rel=external class=external-link>https://github.com/prometheus/node_exporter#collectors</a></li></ul><p>Run as its own DaemonSet rather than folded into the Alloy agent&rsquo;s
 <code>prometheus.exporter.unix</code>, so its resource envelope stays known and separate:
 a metrics regression cannot then starve log collection out of a shared limit.
 See the Terraform modules design doc for the full argument.</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>node-exporter<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"node-exporter"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-critical"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Critical: a node with no node-exporter is a node nothing else reports on, and the gap does not backfill.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
@@ -1650,4 +2045,4 @@ drift changing swap behaviour underneath a swap-dependent workload.</li><li><cod
 this chart does not create.</li></ul></td></tr></tbody></table><h4 id=metrics-server>Metrics Server<a class=anchor href=#metrics-server>#</a></h4><p>metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml rel=external class=external-link>https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>metrics-server<wbr>.replicas</td><td class=helm-value-type>int</td><td class=helm-value-default><code>1</code></td><td class=helm-value-desc>Number of replicas for metrics-server.</td></tr></tbody></table></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div></div><div></div></div><div class="flex flex-wrap justify-between"><span><a href=/materialize-monitoring/preview/version-update-dashboards/operating/tuning/ class="flex align-center"><img src=/materialize-monitoring/preview/version-update-dashboards/icons/backward.svg class=book-icon alt=Backward>
 <span>Tuning</span>
 </a></span><span><a href=/materialize-monitoring/preview/version-update-dashboards/reference/terraform/materialize-monitoring-variables/ class="flex align-center"><span>Terraform variables</span>
-<img src=/materialize-monitoring/preview/version-update-dashboards/icons/forward.svg class=book-icon alt=Forward></a></span></div><div class=book-comments></div><script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script></footer><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#source-code>Source Code</a></li><li><a href=#requirements>Requirements</a><ul><li><a href=#storage-requirements>Storage Requirements</a></li></ul></li><li><a href=#included-subcharts>Included Subcharts</a></li><li><a href=#values>Values</a><ul><li><a href=#globals>Globals</a></li><li><a href=#main-chart-configuration>Main chart configuration</a></li><li><a href=#subchart-enablement-helm-tags>Subchart enablement (Helm tags)</a></li><li><a href=#priority-classes>Priority classes</a></li><li><a href=#materialize-integration>Materialize Integration</a></li><li><a href=#pipeline-configuration>Pipeline configuration</a><ul><li><a href=#log-configuration>Log configuration</a></li><li><a href=#metrics-configuration>Metrics configuration</a></li></ul></li><li><a href=#monitoring-configurations>Monitoring configurations</a><ul><li><a href=#rule-configuration>Rule configuration</a></li><li><a href=#alert-configuration>Alert configuration</a></li><li><a href=#scraper-configuration>Scraper configuration</a></li><li><a href=#grafana-connection-configuration>Grafana connection configuration</a></li><li><a href=#datasource-configuration>Datasource configuration</a></li><li><a href=#uninstall-cleanup>Uninstall cleanup</a></li></ul></li><li><a href=#bundled-subchart-configurations>Bundled subchart configurations</a><ul><li><a href=#alloy-agent>Alloy Agent</a></li><li><a href=#alloy-gateway>Alloy Gateway</a></li><li><a href=#loki>Loki</a></li><li><a href=#thanos>Thanos</a></li><li><a href=#grafana-operator>Grafana Operator</a></li><li><a href=#grafana-instance>Grafana Instance</a></li><li><a href=#alertmanager>Alertmanager</a></li><li><a href=#kube-state-metrics>Kube State Metrics</a></li><li><a href=#node-exporter>Node Exporter</a></li><li><a href=#metrics-server>Metrics Server</a></li></ul></li></ul></li></ul></nav></div></aside></main></body></html>
+<img src=/materialize-monitoring/preview/version-update-dashboards/icons/forward.svg class=book-icon alt=Forward></a></span></div><div class=book-comments></div><script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script></footer><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#source-code>Source Code</a></li><li><a href=#requirements>Requirements</a><ul><li><a href=#storage-requirements>Storage Requirements</a></li></ul></li><li><a href=#included-subcharts>Included Subcharts</a></li><li><a href=#values>Values</a><ul><li><a href=#globals>Globals</a></li><li><a href=#main-chart-configuration>Main chart configuration</a></li><li><a href=#subchart-enablement-helm-tags>Subchart enablement (Helm tags)</a></li><li><a href=#priority-classes>Priority classes</a></li><li><a href=#network-policies>Network policies</a></li><li><a href=#materialize-integration>Materialize Integration</a></li><li><a href=#pipeline-configuration>Pipeline configuration</a><ul><li><a href=#log-configuration>Log configuration</a></li><li><a href=#metrics-configuration>Metrics configuration</a></li></ul></li><li><a href=#monitoring-configurations>Monitoring configurations</a><ul><li><a href=#rule-configuration>Rule configuration</a></li><li><a href=#alert-configuration>Alert configuration</a></li><li><a href=#scraper-configuration>Scraper configuration</a></li><li><a href=#grafana-connection-configuration>Grafana connection configuration</a></li><li><a href=#datasource-configuration>Datasource configuration</a></li><li><a href=#uninstall-cleanup>Uninstall cleanup</a></li></ul></li><li><a href=#bundled-subchart-configurations>Bundled subchart configurations</a><ul><li><a href=#alloy-agent>Alloy Agent</a></li><li><a href=#alloy-gateway>Alloy Gateway</a></li><li><a href=#loki>Loki</a></li><li><a href=#thanos>Thanos</a></li><li><a href=#grafana-operator>Grafana Operator</a></li><li><a href=#grafana-instance>Grafana Instance</a></li><li><a href=#alertmanager>Alertmanager</a></li><li><a href=#kube-state-metrics>Kube State Metrics</a></li><li><a href=#node-exporter>Node Exporter</a></li><li><a href=#metrics-server>Metrics Server</a></li></ul></li></ul></li></ul></nav></div></aside></main></body></html>
