@@ -93,15 +93,49 @@ module "monitoring" {
   # Scoped to this test root on purpose: it is a property of kind, not advice for
   # a real cluster, where leaving verification on is correct (EKS and GKE both
   # scrape cAdvisor fine as shipped).
-  additional_values = [
-    yamlencode({
-      pipeline = {
-        metrics = {
-          kubelet = {
-            tlsInsecureSkipVerify = true
+  additional_values = concat(
+    [
+      yamlencode({
+        pipeline = {
+          metrics = {
+            kubelet = {
+              tlsInsecureSkipVerify = true
+            }
           }
         }
-      }
-    })
-  ]
+      })
+    ],
+    # Certificates, when the substrate installed cert-manager.
+    #
+    # Through `additional_values` rather than module variables because the module
+    # does not model certificates yet — that lands with the load-balancer work,
+    # which is what needs the external issuer. The chart surface is what tier 2
+    # is qualifying here.
+    #
+    # The chart bootstraps its own self-signed root, which is the path a Helm-only
+    # consumer takes and the one worth having under test. A real deployment points
+    # `internal.issuerRef` at its own PKI instead, and that path renders the same
+    # Certificates against a different issuer.
+    #
+    # Short lifetimes deliberately: renewal is the failure that a freshly-installed
+    # test cluster cannot see, so the certificate has to age out inside the run
+    # rather than a quarter later. cert-manager renews at `renewBefore`, so a 1h
+    # certificate with 55m of headroom renews ~5 minutes in.
+    !local.substrate.cert_manager_available ? [] : [
+      yamlencode({
+        certificates = {
+          enabled = true
+          internal = {
+            selfSigned = {
+              enabled = true
+            }
+          }
+          duration    = "1h"
+          renewBefore = "55m"
+        }
+      })
+    ]
+  )
+
+  depends_on = [data.terraform_remote_state.substrate]
 }

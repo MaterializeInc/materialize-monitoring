@@ -317,6 +317,7 @@ loki.write "destination" {
       {{- else }}
         {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
       {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $gatewayLogValues.destination.loki.tls "indent" 8 ) }}
     }
 }
 {{- end }}
@@ -362,6 +363,7 @@ prometheus.remote_write "destination" {
       {{- else }}
         {{- printf "Unsupported authType: %s" $gatewayMetricsValues.destination.prometheusRemoteWrite.authType | fail }}
       {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $gatewayMetricsValues.destination.prometheusRemoteWrite.tls "indent" 8 ) }}
     }
 }
 {{- end }}
@@ -1012,4 +1014,80 @@ Usage:
 
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Derive a destination URL's scheme from whether TLS is on.
+
+Every in-cluster destination default is written `http://`, and `tls.enabled: true`
+against an `http://` URL is either ignored or fails confusingly depending on the
+component — a plaintext request to a TLS port, which reports as a protocol error
+rather than as a configuration one. Deriving the scheme is what stops a correct
+TLS config from presenting as a broken endpoint.
+
+An explicit `https://` is left alone, and so is any scheme the operator wrote
+that is not `http://`: the point is to fix the chart's own default, not to
+second-guess a URL someone typed.
+
+Usage:
+  {{ include "mzmon.alloy.destUrl" ( dict "url" $rendered "tls" $dest.tls ) }}
+*/}}
+{{- define "mzmon.alloy.destUrl" -}}
+  {{- $url := .url | toString }}
+  {{- $tls := .tls | default dict }}
+  {{- if and $tls.enabled ( hasPrefix "http://" $url ) -}}
+    {{- printf "https://%s" ( trimPrefix "http://" $url ) -}}
+  {{- else -}}
+    {{- $url -}}
+  {{- end -}}
+{{- end }}
+
+{{- /*
+Render an alloy `tls_config` block from a destination's `tls` values.
+
+Emits nothing when TLS is off, so a caller can include it unconditionally.
+
+File carriers win over the inline/env ones when both are set, and the block is
+built so that only what is configured appears: a server-only TLS hop (phase 1 of
+a rollout) has a CA and no client keypair, and emitting empty `cert_file` /
+`key_file` attributes would make alloy reject the config rather than skip them.
+
+Usage:
+  {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
+*/}}
+{{- define "mzmon.alloy.tlsConfig" }}
+  {{- $tls := .tls | default dict }}
+  {{- if $tls.enabled }}
+    {{- $pad := repeat ( .indent | default 8 | int ) " " }}
+    {{- $lines := list }}
+    {{- if not ( $tls.verify | default true ) }}
+      {{- $lines = append $lines "insecure_skip_verify = true" }}
+    {{- end }}
+    {{- if $tls.caFile }}
+      {{- $lines = append $lines ( printf "ca_file = %s" ( $tls.caFile | quote ) ) }}
+    {{- else if $tls.ca }}
+      {{- $lines = append $lines ( printf "ca_pem = sys.env(%s)" ( $tls.caEnv | required "tls.caEnv is required when tls.ca is set" | quote ) ) }}
+    {{- end }}
+    {{- if $tls.certFile }}
+      {{- $lines = append $lines ( printf "cert_file = %s" ( $tls.certFile | quote ) ) }}
+    {{- else if $tls.cert }}
+      {{- $lines = append $lines ( printf "cert_pem = sys.env(%s)" ( $tls.certEnv | required "tls.certEnv is required when tls.cert is set" | quote ) ) }}
+    {{- end }}
+    {{- if $tls.keyFile }}
+      {{- $lines = append $lines ( printf "key_file = %s" ( $tls.keyFile | quote ) ) }}
+    {{- else if $tls.key }}
+      {{- $lines = append $lines ( printf "key_pem = sys.env(%s)" ( $tls.keyEnv | required "tls.keyEnv is required when tls.key is set" | quote ) ) }}
+    {{- end }}
+    {{- with $tls.serverName }}
+      {{- $lines = append $lines ( printf "server_name = %s" ( . | quote ) ) }}
+    {{- end }}
+    {{- with $tls.minVersion }}
+      {{- $lines = append $lines ( printf "min_version = %s" ( . | quote ) ) }}
+    {{- end }}
+{{ $pad }}tls_config {
+    {{- range $line := $lines }}
+{{ $pad }}    {{ $line }}
+    {{- end }}
+{{ $pad }}}
+  {{- end }}
 {{- end }}

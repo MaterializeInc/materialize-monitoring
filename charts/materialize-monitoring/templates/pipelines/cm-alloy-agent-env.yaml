@@ -21,6 +21,17 @@ data:
   {{- printf "Unsupported .Values.pipeline.logging.agent.destination.loki.authType %s" $lokiDest.authType | fail }}
   {{- end }}
   {{- if $lokiDest.tls.enabled }}
-    {{- fail "TLS is not supported for the alloy-gateway destination yet" }}
+    {{- /* The client half of this hop is ready — `mzmon.alloy.tlsConfig` would
+           render it, and the scheme would derive. The server half is not: the
+           gateway's `loki.source.api` listener lives in the pre-rendered pipeline
+           (`pre-rendered/pipelines/gateway.alloy`), which is emitted verbatim, so
+           its `tls` block cannot be made conditional on a Helm value. Enabling
+           the client alone would send TLS at a plaintext listener, which fails as
+           a protocol error rather than as a config one — so this refuses instead.
+
+           Fixing it means moving the three gateway ingress listeners into a
+           Helm-rendered fragment, the way the destination tail already is. See
+           the TLS design doc. */}}
+    {{- fail "TLS on the agent's gateway destination is not wired yet: the gateway's loki.source.api listener is pre-rendered and cannot yet be told to serve TLS, so the client half alone would talk TLS at a plaintext port. The gateway's own destinations (pipeline.{logging,metrics}.gateway.destination.*.tls) are wired and are the phase-1 hops to start with." }}
   {{- end }}
 {{- end }}

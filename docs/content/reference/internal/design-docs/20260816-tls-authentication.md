@@ -85,10 +85,10 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | Loki multi-tenancy | ✅ Shipped | `auth_enabled: true`; `X-Scope-OrgID` from `pipeline.logging.tenancy.tenantMap` and from the Grafana datasource header |
 | Grafana ingress TLS | ✅ Modeled | `grafana.ingress.tls`, with the render refusing a `LoadBalancer` with no allowlist unless `allowPublicAccess` |
 | **Default posture on every in-cluster hop** | ⚠️ **Plaintext** | `http://alloy-gateway…:3100`, `http://loki-distributor…:3100`, `http://thanos-receive…:10908`, `http://thanos-query…:9090`, `http://loki-query-frontend…:3100` |
-| **Certificate issuance** | ❌ **Missing** | No `Certificate` templates and no cert-manager reference anywhere under `templates/` |
+| **Certificate issuance** | ✅ Shipped | `templates/certificates.yaml`, gated on `certificates.enabled` (default false). Per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root chain, and a separate external issuer for a Grafana behind an L4 LB |
 | **Server-side TLS on all three gateway listeners** | ⚠️ `raw` only | `loki.source.api` `http`, `otelcol.receiver.otlp` `grpc` / `http`, and `prometheus.receive_http` `http` — every one reaches `tls` only through the `raw` escape hatch. The `receive_http` schema says so outright: *"`http` configures the server; a `tls` block uses the `raw:` escape"* |
-| **A configurable cluster domain** | ❌ **Missing** | No `clusterDomain` value anywhere in the chart. In-cluster URLs stop at `$svc.$ns.svc`; `terraform/test/generic-cloud` hardcodes `svc.cluster.local` |
-| **A trust-bundle surface for non-public CAs** | ❌ **Missing** | Nothing lets an operator add a CA to Loki, Thanos, or Alloy for an S3-compatible endpoint with a private certificate |
+| **A configurable cluster domain** | ✅ Shipped | `global.clusterDomain`. Placed under `global` rather than top-level because Loki and Thanos already read `global.clusterDomain` and build real addresses from it, so Helm's propagation makes one value cover all three — this settles [open question 9](#open-questions). `metrics-server` reads its own `tls.clusterDomain` and is covered by a validator instead |
+| **A trust-bundle surface for non-public CAs** | 🔨 Modeled | `certificates.trustBundle` names a Secret and/or ConfigMap. Mounting it into Loki and Thanos is outstanding |
 | **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | ⬜ Not wired | Each subchart exposes it through its own config passthrough; the umbrella models none of it |
 | **Grafana → backends client certificates** | ⚠️ Expressible, unmodeled | `connections.datasources.*.valuesFrom` can inject `secureJsonData`; nothing defaults or documents the cert keys |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
@@ -372,6 +372,18 @@ A tier-0 render assertion should pin this, since a wrong scheme is valid YAML.
 ## Per-component notes
 
 **`alloy-gateway`'s three listeners.**
+
+> [!WARNING]
+>   **Found during implementation: typing the `tls` block is not the blocker — *conditionality* is.**
+>   All three listeners live in `pre-rendered/pipelines/gateway.alloy`, which the chart emits **verbatim** into the ConfigMap. Alloy config has no conditional-block construct, and a `tls` block with an empty `cert_file` is a load error rather than a no-op, so there is no way to make these listeners serve TLS *only when a Helm value says so* while they stay pre-rendered. Typing the schema does not change that.
+>
+>   Two ways out, and it should be a deliberate decision:
+>
+>   1. **Render the ingress from Helm**, the way `mzmon.alloyGateway.pipeline.destination` already is. That is the existing precedent for a values-driven part of the pipeline, and the `alloy validate` pre-install job is the safety net that replaces the JSONSchema. Cost: three more components leave schema validation.
+>   2. **Render variants at build time** and have Helm pick the file. Keeps schema coverage; doubles the maintenance surface for every future ingress change.
+>
+>   Until then the chart **refuses** `pipeline.logging.agent.destination.loki.tls.enabled` with a message saying why, rather than enabling a client half that would talk TLS at a plaintext port. The gateway's *own* destinations — gateway → Loki and gateway → Thanos — have no such problem, because both are Helm-rendered, and those are the phase-1 hops that shipped first.
+
 `loki.source.api`'s `http` block, `otelcol.receiver.otlp`'s `grpc` / `http` blocks, and `prometheus.receive_http`'s `http` block all reach `tls` only through the `raw` escape hatch.
 Shipping mTLS on `raw` would work and should not be the end state: the [pipelines-as-code](../../pipelines/) convention is that anything we configure routinely gets a typed block.
 Typing `tls` on all three is part of this work, and `receive_http` is the one to check for last, since it lives in `gateway-metrics.yaml` and is easy to leave behind.
@@ -462,13 +474,13 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 
 | Item | Depends on | Phase |
 |---|---|---|
-| `clusterDomain` value, threaded through the namespace helpers | — | 1 |
-| `certificates.*` values block and `Certificate` templates, gated on `certificates.enabled`, carrying the full SAN ladder | `clusterDomain` | 1 |
-| Render assertion that every destination URL matches a SAN on the corresponding `Certificate` | above | 1 |
+| ~~`clusterDomain` value, threaded through the namespace helpers~~ **Shipped** as `global.clusterDomain` | — | 1 |
+| ~~`certificates.*` values block and `Certificate` templates, gated on `certificates.enabled`, carrying the full SAN ladder~~ **Shipped**, plus an opt-in self-signed root and an external issuer for the L4-LB case | `clusterDomain` | 1 |
+| ~~Render assertion that every destination URL matches a SAN on the corresponding `Certificate`~~ **Shipped** (`mzmon.certificates.validate.sans`) | above | 1 |
 | `certificates.trustBundle` — additional roots mounted and concatenated with the internal CA, reaching Loki, Thanos, and both Alloy roles | — | 1 |
-| Mount rendering for each component, on the existing `mounts.extra` / `volumes.extra` convention | above | 1 |
-| `*File` carriers on every destination `tls` block | — | 1 |
-| Scheme derivation from `tls.enabled`, with a tier-0 render assertion | — | 1 |
+| ~~Mount rendering for each component, on the existing `mounts.extra` / `volumes.extra` convention~~ **Shipped for both Alloy roles**, as an unconditional `optional: true` secret volume — so the same values work before, during and after issuance. Loki and Thanos outstanding | above | 1 |
+| ~~`*File` carriers on every destination `tls` block~~ **Shipped** | — | 1 |
+| ~~Scheme derivation from `tls.enabled`~~ **Shipped** (`mzmon.alloy.destUrl`), with unit coverage; a tier-0 assertion is still worth adding | — | 1 |
 | Typed `tls` blocks on `loki.source.api`, `otelcol.receiver.otlp`, **and `prometheus.receive_http`** in the Alloy schema, replacing `raw` | — | 1 |
 | `pipeline.logging.gateway.server.tls` **and `pipeline.metrics.gateway.server.tls`** values and rendering | above | 1 |
 | Loki and Thanos server TLS through subchart passthrough, with snapshot tests pinning the keys | — | 1–2 |
@@ -493,7 +505,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 
 ## Open questions
 
-1. **Dedicated issuer or shared with `materialize-instance`?** Sharing keeps the variable story simple and makes any Materialize workload's certificate valid against our receivers. A dedicated issuer makes "signed by our CA" mean something. The proposal above recommends dedicated-by-default in Terraform with identical variable names; this deserves an explicit decision rather than inheriting one.
+1. **Dedicated issuer or shared with `materialize-instance`?** *(Partly settled: the chart now offers `internal.selfSigned` as an opt-in dedicated root, default off, with consume-by-reference as the production path. The Terraform default is still open.)* Sharing keeps the variable story simple and makes any Materialize workload's certificate valid against our receivers. A dedicated issuer makes "signed by our CA" mean something. The proposal above recommends dedicated-by-default in Terraform with identical variable names; this deserves an explicit decision rather than inheriting one.
 2. **Which components actually reload certificate files?** Everything about the rotation story depends on this, and it has to be measured per component and per version rather than read off documentation.
 3. **Should Loki tenancy derive from certificate identity in-cluster?** It would close the assert-vs-assign gap, and the only mechanism available is a proxy in front of Loki that the stack does not otherwise need. Probably not worth it — but the alternative is documenting that in-cluster tenancy is a convention, not a control.
 4. **Is `split-namespace` fully covered?** Cross-namespace SANs, `serverName` / SNI, and NetworkPolicy selectors that reference pod labels without a namespace selector all get harder when components are split. The `Certificate` SAN list has to be derived from the same namespace helpers the URLs use.
@@ -501,5 +513,5 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 6. **Certificate duration.** Short durations reduce the cost of having no revocation mechanism and increase the blast radius of a reload bug. The 90d/30d default above is a starting point, not a researched one.
 7. **Does anything here change if the operator runs a service mesh?** The intended answer is "leave it off", but a mesh that transparently re-encrypts a connection the pipeline also encrypts is a double-TLS configuration someone will file a bug about.
 8. **One trust bundle or one per direction?** A single concatenated bundle per component is simpler and means the object store's CA is also trusted for peer verification — harmless in practice, sloppy in principle. Separate bundles are more precise and more values. Leaning single, but it should be a decision rather than an accident of implementation.
-9. **Does `clusterDomain` belong at the top level or under `global`?** It is consumed by templates in this chart and potentially by subcharts that build their own internal URLs, which is the usual argument for `global` — and the [scheduling and storage-class decision](../20260803-terraform-modules/#scheduling-and-storage-class-want-profiles) deliberately went the other way for fan-out visibility.
+9. ~~**Does `clusterDomain` belong at the top level or under `global`?**~~ **Settled: `global`.** Not on taste — Loki and Thanos already read `global.clusterDomain` and build memberlist, cache and endpoint addresses from it, so anything else would leave three keys that can disagree. Verified by rendering: setting it changes Loki's own config, not just our SANs. `metrics-server` reads `tls.clusterDomain` and does not participate, so it gets a validator rather than a silent second write.
 10. **How far does pgwire go?** Named here because settling it downstream changes what "the LB conventions" means, and the monitoring stack should not harden a precedent that the console and pgwire work then has to fight.

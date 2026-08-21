@@ -1,0 +1,450 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# cert-manager issuance and the client half of in-cluster TLS.
+#
+# Warnings are asserted against `NOTES.txt`; `templates/validate.yaml` emits them
+# as YAML comments and produces no document to match on. Errors use
+# `failedTemplate`, since the validator fails the whole render.
+suite: certificates
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  loki.loki.storage.bucketNames.chunks: test-chunks
+  loki.loki.storage.bucketNames.ruler: test-ruler
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  thanos.global.objstore.config: |
+    type: FILESYSTEM
+tests:
+  # --- the off switch ---------------------------------------------------------
+  # cert-manager must not become a dependency of an install that did not ask for
+  # it, so the default has to render nothing at all rather than something inert.
+  - it: should render no cert-manager resources by default
+    template: templates/certificates.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should raise nothing on the defaults
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "certificates\\."
+
+  # --- the self-signed bootstrap ---------------------------------------------
+  # cert-manager has no single "give me a private CA" primitive: a selfSigned
+  # issuer signs leaves directly, so a private CA is three resources.
+  - it: should bootstrap a self-signed root as an issuer, a CA, and a CA issuer
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          name: mzmon-selfsigned
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-internal-ca
+        documentIndex: 1
+      - equal:
+          path: spec.isCA
+          value: true
+        documentIndex: 1
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          name: mzmon-internal-ca
+        documentIndex: 2
+      - equal:
+          path: spec.ca.secretName
+          value: mzmon-internal-ca
+        documentIndex: 2
+
+  # The trap in the self-signed path. A ClusterIssuer with a `ca` backend reads
+  # its Secret from cert-manager's cluster resource namespace, not from wherever
+  # the Certificate was created — put the CA in the release namespace and the
+  # issuer sits False with `secret not found` while the Secret is one namespace
+  # over.
+  - it: should put a ClusterIssuer CA in cert-manager's namespace
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: cert-manager
+
+  # A namespaced Issuer has the opposite rule, so the CA follows it home.
+  - it: should put a namespaced Issuer CA in the release namespace
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.internal.selfSigned.kind: Issuer
+    template: templates/certificates.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+
+  - it: should rotate the key with the certificate rather than around it
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.privateKey.rotationPolicy
+          value: Always
+
+  # --- the SAN ladder ---------------------------------------------------------
+  # All four rungs, because the chart's own URLs disagree about which one to use:
+  # every in-cluster destination stops at `$svc.$ns.svc`, while the Terraform
+  # substrate writes `…svc.cluster.local`. A certificate carrying only the
+  # fully-qualified form fails against the endpoints the chart itself ships.
+  - it: should issue every rung of the SAN ladder
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-alloy-gateway-tls
+          namespace: test-monitoring
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc.cluster.local
+      - contains:
+          path: spec.dnsNames
+          content: localhost
+      - contains:
+          path: spec.ipAddresses
+          content: 127.0.0.1
+
+  # The gateway replicas gossip over a second, headless Service, which is a
+  # different name and needs its own rungs.
+  - it: should cover every Service a component answers on
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway-cluster.test-monitoring.svc
+
+  - it: should follow the cluster domain into the last rung
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      global.clusterDomain: cluster.internal
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc.cluster.internal
+      - notContains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc.cluster.local
+
+  # Certificates are namespaced, so one issued into the wrong namespace is
+  # mounted by nothing. The ladder has to come from the same namespace helpers
+  # the URLs use, or split-namespace produces certificates for the wrong host.
+  - it: should follow a component into its own namespace under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: alloy-gateway
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.alloy-gateway.svc.cluster.local
+
+  # Each component is both ends of some hop — the gateway serves the agent and
+  # dials Loki — so one certificate has to be valid for both roles.
+  - it: should issue for both server and client auth
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - equal:
+          path: spec.usages
+          value:
+            - server auth
+            - client auth
+
+  # --- the external certificate ----------------------------------------------
+  # An L4 load balancer passes TCP through, so TLS terminates at the pod and the
+  # material has to exist in the cluster. An L7 LB with a cloud-managed
+  # certificate is the other shape, and renders nothing here.
+  - it: should issue a Grafana certificate for the external name
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/certificates.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-grafana-external-tls
+          namespace: test-monitoring
+        documentIndex: 9
+      - equal:
+          path: spec.dnsNames
+          value:
+            - grafana.example.com
+        documentIndex: 9
+      - equal:
+          path: spec.issuerRef.name
+          value: letsencrypt
+        documentIndex: 9
+      # Browser-facing only; nothing dials out with it.
+      - equal:
+          path: spec.usages
+          value:
+            - server auth
+        documentIndex: 9
+
+  # The public name also lands on Grafana's internal certificate, so one mount
+  # serves both a browser arriving through the LB and the operator dialing the
+  # Service.
+  - it: should add the external name to Grafana's internal certificate too
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/certificates.yaml
+    documentIndex: 6
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-grafana-tls
+      - contains:
+          path: spec.dnsNames
+          content: grafana.example.com
+
+  # --- mounts -----------------------------------------------------------------
+  # `optional: true` is what lets the mount be unconditional: the Secret does not
+  # exist until cert-manager has signed, and an optional volume that is missing
+  # mounts empty rather than blocking the pod. So the same values work before,
+  # during and after issuance.
+  - it: should mount certificate material optionally on the gateway
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-alloy-gateway-tls
+              optional: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: mzmon-tls
+            mountPath: /etc/mzmon/tls
+            readOnly: true
+
+  - it: should mount certificate material optionally on the agent
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-alloy-agent-tls
+              optional: true
+
+  # --- the client half --------------------------------------------------------
+  # Every in-cluster destination default is `http://`, and TLS against an
+  # `http://` URL is a plaintext request to a TLS port — which reports as a
+  # protocol error rather than a configuration one.
+  - it: should derive the scheme from tls.enabled
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_LOKI_DEST
+          pattern: "^https://loki-distributor"
+
+  - it: should leave the scheme alone when tls is off
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_LOKI_DEST
+          pattern: "^http://loki-distributor"
+
+  - it: should render a tls_config from the file carriers
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.destination.loki.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.destination.loki.tls.keyFile: /etc/mzmon/tls/tls.key
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'ca_file = "/etc/mzmon/tls/ca\.crt"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'cert_file = "/etc/mzmon/tls/tls\.crt"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'key_file = "/etc/mzmon/tls/tls\.key"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'min_version = "TLS13"'
+
+  # Phase 1 of a rollout is server TLS with no client certificate, so a CA
+  # without a keypair has to render — emitting empty cert_file/key_file would
+  # make alloy reject the config instead of skipping them.
+  - it: should render a CA-only tls_config for a server-verification-only phase
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled: true
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'ca_file = "/etc/mzmon/tls/ca\.crt"'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: "cert_file"
+
+  # The agent's hop has a client half ready and no server half: the gateway's
+  # listener is pre-rendered and cannot yet be told to serve TLS. Refusing is
+  # better than sending TLS at a plaintext port.
+  - it: should refuse TLS on the agent hop until the listener can serve it
+    set:
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "is not wired yet"
+
+  # --- validators -------------------------------------------------------------
+  - it: should fail when certificates are on with no issuer
+    set:
+      certificates.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "no internal issuer is configured"
+
+  - it: should fail when both issuer paths are set
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.internal.issuerRef.name: my-issuer
+    asserts:
+      - failedTemplate:
+          errorPattern: "They are alternatives"
+
+  # A namespaced Issuer signs only for its own namespace, and split-namespace
+  # puts components in six.
+  - it: should fail on a namespaced Issuer under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.internal.selfSigned.kind: Issuer
+    asserts:
+      - failedTemplate:
+          errorPattern: "namespaced Issuer signs only for Certificates in its own namespace"
+
+  # The cheapest guard against the failure the ladder exists to prevent: a wrong
+  # `services` list is valid YAML and installs clean.
+  - it: should fail when a destination URL is not covered by a SAN
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.logging.gateway.destination.loki.url: http://somewhere-else.test-monitoring.svc:3100/loki/api/v1/push
+    asserts:
+      - failedTemplate:
+          errorPattern: "which is not a SAN on the loki certificate"
+
+  - it: should fail when an external issuer names no hosts
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+    asserts:
+      - failedTemplate:
+          errorPattern: "dnsNames is empty"
+
+  - it: should warn when external hosts are set with no external issuer
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no external certificate is issued"
+
+  # metrics-server reads its own clusterDomain, so a consumer who sets the global
+  # and nothing else gets SANs for a domain the cluster does not use.
+  - it: should warn when metrics-server's cluster domain disagrees with the global
+    set:
+      tags.metrics-server: true
+      global.clusterDomain: cluster.internal
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "metrics-server does not read the global"
+
+  - it: should stay quiet when both cluster domains agree
+    set:
+      tags.metrics-server: true
+      global.clusterDomain: cluster.internal
+      metrics-server.tls.clusterDomain: cluster.internal
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "metrics-server does not read the global"

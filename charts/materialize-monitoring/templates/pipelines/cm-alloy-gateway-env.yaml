@@ -20,7 +20,7 @@ data:
   GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
   {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
   {{- if $lokiDest.enabled }}
-  GATEWAY_LOKI_DEST: {{ tpl $lokiDest.url $ | quote }}
+  GATEWAY_LOKI_DEST: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $lokiDest.url $ ) "tls" $lokiDest.tls ) | quote }}
     {{- if eq $lokiDest.authType "none" }}
     {{- else if eq $lokiDest.authType "basicAuth" }}
       {{- if $lokiDest.basicAuth.username }}
@@ -36,15 +36,12 @@ data:
     {{- else }}
       {{- printf "Unsupported .Values.pipeline.logging.gateway.destination.loki.authType (%s)" $lokiDest.authType | fail }}
     {{- end }}
-    {{- if $lokiDest.tls.enabled }}
-      {{- fail "TLS is not supported for the alloy-gateway loki destination yet" }}
-    {{- end }}
   {{- end }}
   {{- /* </lokiDest> */}}
 
   {{- $promDest := .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite }}
   {{- if $promDest.enabled }}
-  GATEWAY_PROM_DEST: {{ tpl $promDest.url $ | quote }}
+  GATEWAY_PROM_DEST: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $promDest.url $ ) "tls" $promDest.tls ) | quote }}
     {{- if eq $promDest.authType "none" }}
     {{- else if eq $promDest.authType "basicAuth" }}
       {{- if $promDest.basicAuth.username }}
@@ -62,9 +59,6 @@ data:
              straight into the alloy config, so no env secrets are needed here. */}}
     {{- else }}
       {{- printf "Unsupported .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType (%s)" $promDest.authType | fail }}
-    {{- end }}
-    {{- if $promDest.tls.enabled }}
-      {{- fail "TLS is not supported for the alloy-gateway prometheus destination yet" }}
     {{- end }}
 
   {{ $promDest.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict

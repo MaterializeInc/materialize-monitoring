@@ -96,6 +96,32 @@ from a single Secret name; prefer it over setting this key alone, which
 leaves Loki — the largest pod count in the release — pulling anonymously.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.clusterDomain</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"cluster.local"</code></td>
+      <td class="helm-value-desc">The cluster's DNS domain.
+`cluster.local` is a **default, not a fact** — clusters get built with
+`--cluster-domain=cluster.internal` or a site-specific domain often enough
+that hardcoding it is a reliable way to ship a feature that works everywhere
+we test and nowhere a customer runs.
+
+It lives under `global` because two subcharts already read
+`global.clusterDomain` and build real addresses from it — Loki's memberlist
+join address and canary URL, and Thanos's in-cluster endpoints. Helm
+propagates `global` into every subchart, so setting it here is what makes one
+value mean one thing rather than three keys that can disagree.
+
+**One subchart is not covered by that propagation.** `metrics-server` reads
+its own `metrics-server.tls.clusterDomain`, which is set to the same default
+below; a render-time check warns when the two disagree, because the failure
+is a certificate whose SANs name a domain the cluster does not use.
+
+Load-bearing for `certificates`: the SAN ladder ends in
+`$svc.$ns.svc.$clusterDomain`, so a wrong value here produces certificates
+that fail verification against the endpoints this chart itself dials.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -634,6 +660,343 @@ idea wherever you know it — `egress.extra` with an `ipBlock`, and drop
   </tbody>
 </table>
 
+### Certificates
+
+cert-manager `Certificate` resources for in-cluster TLS.
+**Off by default, and cert-manager is never a hard dependency.** With
+`enabled: false` this section renders nothing at all, which is what keeps a
+hardening feature from becoming a new prerequisite for an install that does not
+want it.
+
+When it is on, the chart renders one `Certificate` per component with the full
+SAN ladder for that component's Services. It does **not** turn TLS on anywhere:
+issuing a certificate and using it are separate switches, on purpose. Each hop
+moves through the phases in
+[Securing](https://materializeinc.github.io/materialize-monitoring/operating/securing/)
+under its own flag, once that component's renewal behaviour has been proven.
+
+**Gated on values, never on `.Capabilities`.** The obvious implementation is to
+probe the API server for `cert-manager.io/v1`, and it is wrong: the same chart
+would then render differently under `helm template`, the tier-0 Terraform render
+check, and an ArgoCD server-side diff than it does under a live install — which
+is exactly the class of bug the render tests exist to catch. A missing CRD with
+this flag on is a clear apply-time failure with a name in it.
+
+## Two issuers, because they cannot be one
+
+| | Internal | External |
+| --- | --- | --- |
+| Names | `$svc`, `$svc.$ns`, `$svc.$ns.svc`, `$svc.$ns.svc.$clusterDomain`, `localhost` | the public DNS name the load balancer answers on |
+| Typical issuer | a self-signed root, or a private CA | ACME, or a private CA that signs your public names |
+| Who verifies it | the stack's own components | a browser |
+
+A public ACME issuer cannot sign `loki-distributor.monitoring.svc`, and a
+self-signed root means nothing to a browser, so collapsing these into one key
+would make one of the two unusable. They are separate `issuerRef`s for that
+reason and no other.
+
+**The external certificate is only needed for an L4 load balancer**, which
+passes TCP through and leaves TLS to terminate at the pod — so the material has
+to exist in the cluster. An L7 load balancer terminating with a cloud-managed
+certificate (ACM, Google Certificate Manager, Azure Key Vault) attaches it by
+ARN or resource ID and the key never enters the cluster; for that shape, leave
+`external` unset and pass the annotation through `grafana.service.annotations`.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">certificates<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Render the cert-manager resources in this section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.internal</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "issuerRef": {
+    "group": "cert-manager.io",
+    "kind": "ClusterIssuer",
+    "name": ""
+  },
+  "selfSigned": {
+    "commonName": "mzmon-internal-ca",
+    "duration": "43800h",
+    "enabled": false,
+    "kind": "ClusterIssuer",
+    "renewBefore": "2160h",
+    "secretName": "mzmon-internal-ca"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">The internal mesh: certificates the stack's components present to each other, carrying in-cluster DNS names.
+
+Supply an issuer with `issuerRef`, or let the chart bootstrap a self-signed
+root with `selfSigned.enabled`. The two are mutually exclusive and the render
+refuses both at once.
+
+**Prefer an issuer scoped to this stack over the cluster's general-purpose
+one.** None of the receiving components here implement per-client
+authorization — Loki, Thanos receive and Alloy's receivers can be told to
+require a certificate signed by a given CA, and none of them can be told that
+*this* identity may write and *that* one may not. The whole authorization
+decision is "is this signed by the CA we trust", so the size of the trust
+domain is the security property. Reusing a `ClusterIssuer` that signs for
+every workload in the cluster reduces mTLS to "has any certificate", which is
+a real improvement over "can reach the Service" and much narrower than it
+sounds.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.internal<wbr>.issuerRef</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "group": "cert-manager.io",
+  "kind": "ClusterIssuer",
+  "name": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">An existing cert-manager issuer to sign internal certificates. `kind` is `Issuer` or `ClusterIssuer`. Leave `name` empty to use `selfSigned` instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.internal<wbr>.selfSigned</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "commonName": "mzmon-internal-ca",
+  "duration": "43800h",
+  "enabled": false,
+  "kind": "ClusterIssuer",
+  "renewBefore": "2160h",
+  "secretName": "mzmon-internal-ca"
+}</pre>
+</td>
+      <td class="helm-value-desc">Have the chart bootstrap a self-signed root and issue from it.
+
+Renders the three resources cert-manager needs for a private CA: a
+`selfSigned` issuer, a CA `Certificate` signed by it, and an issuer backed
+by that CA which every component certificate then references.
+
+Convenient rather than principled — a real deployment usually has a PKI
+already, and `issuerRef` above is the path for it. This exists so that
+trying the feature does not start with a cert-manager tutorial, and so the
+chart-only test tier has a root to issue from.
+
+**`kind: ClusterIssuer` is the default deliberately.** A namespaced
+`Issuer` can only sign for `Certificate` resources in its own namespace,
+and `profiles/split-namespace.values.yaml` puts components in several — so
+a namespaced issuer silently signs some components and leaves the rest
+stuck `Pending`. `Issuer` is correct and cheaper for the single-namespace
+default; the render warns when it sees the combination that does not work.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.internal<wbr>.selfSigned<wbr>.commonName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-internal-ca"</code></td>
+      <td class="helm-value-desc">Subject common name on the generated root.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.internal<wbr>.selfSigned<wbr>.duration</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"43800h"</code></td>
+      <td class="helm-value-desc">Lifetime of the **root**, not of the leaves. Long, because rotating a root means re-trusting it everywhere at once.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.internal<wbr>.selfSigned<wbr>.secretName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-internal-ca"</code></td>
+      <td class="helm-value-desc">Secret the generated root's key pair lands in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.external</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "dnsNames": [],
+  "issuerRef": {
+    "group": "cert-manager.io",
+    "kind": "ClusterIssuer",
+    "name": ""
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">The browser-facing name, for a Grafana behind an L4 load balancer.
+
+Only Grafana takes an external certificate today, because it is the only
+component in the stack meant for a human and the only one this chart helps
+expose. Set `dnsNames` to the hostname the load balancer answers on; it must
+match what users actually type, and what `grafana.ini.server.root_url` says.
+
+Leave `issuerRef.name` empty and nothing external is rendered, which is the
+right answer for an L7 load balancer holding a cloud-managed certificate.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.external<wbr>.dnsNames</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Public DNS names to put on the certificate.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.duration</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2160h"</code></td>
+      <td class="helm-value-desc">Lifetime of each component certificate, and how long before expiry cert-manager renews it.
+Short durations are the only mitigation available for the fact that nothing
+here can check revocation — `otelcol.receiver.otlp` has no CRL support, and
+in-cluster there is no load balancer to act as a checkpoint, so revoking
+means re-issuing the CA. They also raise the cost of a component that does
+not reload its certificate cleanly, which is why no hop turns on until its
+rotation behaviour is proven. 90 days with 30 days of headroom is a starting
+point rather than a researched one.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.mountPath</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"/etc/mzmon/tls"</code></td>
+      <td class="helm-value-desc">Where certificate material is mounted in every consuming pod. `tls.crt`, `tls.key` and `ca.crt` appear under this path.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.trustBundle</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "configMapName": "",
+  "key": "ca.crt",
+  "secretName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Additional roots to trust, merged with the internal CA rather than replacing it.
+Trust is plural, and `caFile` singular is the wrong model for it. A Loki
+ingester may need the internal issuer's CA to verify the gateway *and* an
+unrelated private CA to write chunks to an on-prem object store — those are
+different roots and both have to be present.
+
+Two cases this exists for, both real:
+
+  * **An S3-compatible store behind a private CA.** The endpoint is already
+    configurable, so the stack fully supports pointing at one and has no way
+    to trust it; the failure is a verification error at startup on every
+    component that touches storage, and the only workarounds without this are
+    disabling verification or rebuilding images.
+  * **An image that ships no CA bundle.** Distroless and minimal bases often
+    do not, so even a genuinely public endpoint can fail to verify.
+
+Name a Secret or a ConfigMap holding PEM roots. Both may be set.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.trustBundle<wbr>.key</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"ca.crt"</code></td>
+      <td class="helm-value-desc">Key within that Secret or ConfigMap holding the PEM bundle.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">certificates<wbr>.components</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "alertmanager": {
+    "enabled": null,
+    "extraDnsNames": [],
+    "extraIpAddresses": [],
+    "secretName": "",
+    "services": [
+      "mzmon-alertmanager"
+    ]
+  },
+  "alloy-agent": {
+    "enabled": null,
+    "extraDnsNames": [],
+    "extraIpAddresses": [],
+    "secretName": "",
+    "services": [
+      "alloy-agent"
+    ]
+  },
+  "alloy-gateway": {
+    "enabled": null,
+    "extraDnsNames": [],
+    "extraIpAddresses": [],
+    "secretName": "",
+    "services": [
+      "alloy-gateway",
+      "alloy-gateway-cluster"
+    ]
+  },
+  "grafana": {
+    "enabled": null,
+    "extraDnsNames": [],
+    "extraIpAddresses": [],
+    "secretName": "",
+    "services": [
+      "grafana"
+    ]
+  },
+  "loki": {
+    "enabled": null,
+    "extraDnsNames": [],
+    "extraIpAddresses": [],
+    "secretName": "",
+    "services": [
+      "loki-distributor",
+      "loki-query-frontend"
+    ]
+  },
+  "thanos": {
+    "enabled": null,
+    "extraDnsNames": [],
+    "extraIpAddresses": [],
+    "secretName": "",
+    "services": [
+      "thanos-receive",
+      "thanos-query"
+    ]
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Per-component certificates.
+One `Certificate` per component rather than one shared across the stack: the
+SANs differ, the namespaces differ under `split-namespace`, and a single key
+shared by every workload makes any one compromise total.
+
+`services` is the list the SAN ladder is built from, and it is a list rather
+than a single name because Loki and Thanos are several Services behind one
+trust boundary. The defaults name exactly the Services this chart's own URLs
+dial — a render check asserts that every in-cluster destination URL matches a
+SAN on the corresponding certificate, so a Service added to a destination and
+forgotten here fails the render rather than the handshake.
+
+Each entry takes:
+
+| Key | Meaning |
+| --- | --- |
+| `enabled` | Render this certificate. Unset follows `certificates.enabled`. |
+| `services` | Service names the SAN ladder is built for. |
+| `extraDnsNames` | Appended verbatim — an ingress host, a mesh name. |
+| `extraIpAddresses` | Appended to the IP SANs, which already carry `127.0.0.1`. |
+| `secretName` | Where the material lands. Defaults to `<release>-<component>-tls`. |
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Materialize Integration
 
 Materialize-specific configuration values.
@@ -1055,6 +1418,27 @@ Configuration for log behavior
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.caFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
+The inline `ca`/`cert`/`key` above travel through **environment
+variables**, which are captured once at process start. cert-manager
+renews by rewriting the Secret in place, so an env-carried PEM works
+for exactly one certificate lifetime and then fails on every hop at
+once, months after the change that caused it and with no deploy
+nearby to blame.
+
+A mounted file does not have that problem: the kubelet refreshes
+Secret contents atomically, and Alloy's client paths pick up the new
+material on the next connection. Set these to paths under
+`certificates.mountPath`, which is where the chart mounts the
+certificate it issues for this component.
+
+Inline PEM stays supported as the bring-your-own-PKI escape hatch.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.agent<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
@@ -1179,6 +1563,27 @@ Configuration for log behavior
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">Client private key PEM contents for TLS.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.caFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
+The inline `ca`/`cert`/`key` above travel through **environment
+variables**, which are captured once at process start. cert-manager
+renews by rewriting the Secret in place, so an env-carried PEM works
+for exactly one certificate lifetime and then fails on every hop at
+once, months after the change that caused it and with no deploy
+nearby to blame.
+
+A mounted file does not have that problem: the kubelet refreshes
+Secret contents atomically, and Alloy's client paths pick up the new
+material on the next connection. Set these to paths under
+`certificates.mountPath`, which is where the chart mounts the
+certificate it issues for this component.
+
+Inline PEM stays supported as the bring-your-own-PKI escape hatch.
 </td>
     </tr>
     <tr>
@@ -1404,6 +1809,27 @@ bringing up a new distribution.
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">Client private key PEM contents for TLS.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.caFile</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
+The inline `ca`/`cert`/`key` above travel through **environment
+variables**, which are captured once at process start. cert-manager
+renews by rewriting the Secret in place, so an env-carried PEM works
+for exactly one certificate lifetime and then fails on every hop at
+once, months after the change that caused it and with no deploy
+nearby to blame.
+
+A mounted file does not have that problem: the kubelet refreshes
+Secret contents atomically, and Alloy's client paths pick up the new
+material on the next connection. Set these to paths under
+`certificates.mountPath`, which is where the chart mounts the
+certificate it issues for this component.
+
+Inline PEM stays supported as the bring-your-own-PKI escape hatch.
 </td>
     </tr>
     <tr>
@@ -2428,6 +2854,11 @@ memory limit above.
       "mountPath": "/etc/machine-id",
       "name": "machineid",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/tls",
+      "name": "mzmon-tls",
+      "readOnly": true
     }
   ],
   "varlog": true
@@ -2469,6 +2900,29 @@ test on kind alone — the two differ in *which* directory holds the journal
 (`/run/log/journal` there, `/var/log/journal` on Bottlerocket), and only
 the latter needs the ID to resolve. Do not remove this because kind stays
 green.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.alloy<wbr>.mounts<wbr>.extra[3]</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "mountPath": "/etc/mzmon/tls",
+  "name": "mzmon-tls",
+  "readOnly": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Certificate material from `certificates`, when it is enabled.
+`optional: true` is what lets this be unconditional. The Secret does
+not exist until `certificates.enabled` is on and cert-manager has
+signed, and an optional secret volume that is missing mounts empty
+rather than blocking the pod — so the same values work before, during
+and after issuance, and a certificate that has not been signed yet is
+a pod that starts and serves plaintext rather than one stuck
+`ContainerCreating`.
+
+The kubelet refreshes the contents in place on renewal, which is why
+the `tls.*File` carriers are preferred over the inline PEMs.
 </td>
     </tr>
     <tr>
@@ -2746,12 +3200,40 @@ Upstream reference:
     {
       "mountPath": "/tmp",
       "name": "tmp"
+    },
+    {
+      "mountPath": "/etc/mzmon/tls",
+      "name": "mzmon-tls",
+      "readOnly": true
     }
   ],
   "varlog": false
 }</pre>
 </td>
       <td class="helm-value-desc">Volume mounts to expose to alloy gateway.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.mounts<wbr>.extra[1]</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "mountPath": "/etc/mzmon/tls",
+  "name": "mzmon-tls",
+  "readOnly": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Certificate material from `certificates`, when it is enabled.
+`optional: true` is what lets this be unconditional. The Secret does
+not exist until `certificates.enabled` is on and cert-manager has
+signed, and an optional secret volume that is missing mounts empty
+rather than blocking the pod — so the same values work before, during
+and after issuance, and a certificate that has not been signed yet is
+a pod that starts and serves plaintext rather than one stuck
+`ContainerCreating`.
+
+The kubelet refreshes the contents in place on renewal, which is why
+the `tls.*File` carriers are preferred over the inline PEMs.
 </td>
     </tr>
     <tr>

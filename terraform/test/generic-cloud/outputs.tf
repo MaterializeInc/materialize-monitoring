@@ -58,3 +58,8 @@ output "workload_identity_available" {
   description = "Always false. rustfs takes static credentials and kind has no OIDC issuer an IAM provider trusts, so IRSA and Workload Identity are only covered at tier 3."
   value       = false
 }
+
+output "cert_manager_available" {
+  description = "Whether cert-manager is installed, and therefore whether the monitoring module can be asked to render Certificates."
+  value       = var.install_cert_manager
+}

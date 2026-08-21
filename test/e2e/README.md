@@ -128,6 +128,6 @@ The assertion suite runs the same collector itself when `--diagnostics-dir` is s
 
 The tier-1 job installs a Rust toolchain and builds the suite *before* creating the cluster, so a compile error fails in seconds rather than after a ten-minute install.
 
-**Still to build:** WAL durability across a gateway outage; NetworkPolicy and in-cluster mTLS, both of which the design doc assigns to tier 2 and neither of which is asserted yet; and a kind resource-sizing profile, without which "medium on main" has nowhere to run.
+**Still to build:** WAL durability across a gateway outage; NetworkPolicy and in-cluster mTLS, both of which the design doc assigns to tier 2 and neither of which is asserted yet — tier 2 now *installs* cert-manager and issues certificates with a 1h/55m lifetime, so the material and the renewal are exercised, but nothing yet asserts that a hop is genuinely TLS or that an unauthenticated client is refused; and a kind resource-sizing profile, without which "medium on main" has nowhere to run.
 
 `container_*` and `node_*` assertions are now writable — the gateway scrapes `/metrics/cadvisor` on every kubelet, and node-exporter installs behind `tags.node-exporter`. They belong at tier 2, where a metrics backend exists to query them out of; tier 1 discards metrics entirely.
