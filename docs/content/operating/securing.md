@@ -254,8 +254,27 @@ The render refuses each of those rather than letting you find out, which is most
 
 Thanos Receive is narrower by construction: its TLS flags scope to the remote-write listener, so probes, metrics and the ServiceMonitor are untouched and Thanos Query stays plaintext.
 
-- [ ] `[operator]` **Phase 1 is encryption, not authentication.** Neither server requires a client certificate yet. Moving to `VerifyClientCertIfGiven` and then `RequireAndVerifyClientCert` is an ordered, per-hop step, and the profile documents it — a stack left at `VerifyClientCertIfGiven` looks like mTLS in every values file and rejects nothing.
-- [ ] `[operator]` **Roll the server and its clients in either order at phase 1, never at phase 3.** Kubernetes does not order them, so a server that starts requiring certificates before its clients present them stops ingesting until they catch up.
+### The phases, and where each hop can actually end up
+
+Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
+
+| Phase | Profile | Loki | Thanos Receive |
+|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, `NoClientCert` | TLS, no client CA |
+| 2 | `+ mtls-phase2.values.yaml` | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it |
+| 3 | `+ mtls-phase3.values.yaml` | **unreachable** | client CA set — **authenticated** |
+
+**Loki's HTTP port cannot require client certificates, ever.** The kubelet's readiness and liveness probes dial the same port 3100 that the gateway does, and a Kubernetes `httpGet` probe has no field for a client certificate. Setting `RequireAndVerifyClientCert` fails every probe with `remote error: tls: certificate required`, and every Loki pod goes unready and then restarts. The render refuses it. **Phase 2 is the ceiling for that hop**: a certificate from the wrong CA is refused, an anonymous client is still served. Real authentication there needs an authenticating proxy in front of Loki, or a listener the kubelet does not touch.
+
+**Thanos Receive does reach phase 3**, because its probes are on the HTTP port while the TLS flags scope to the separate remote-write listener. Verified: a client presenting no certificate is refused at the TLS handshake; one presenting a certificate from the trusted CA is served.
+
+Two more measured constraints the profiles encode, both of which crashloop the stack if you get them wrong:
+
+- **Loki's `client_ca_file` and `client_auth_type` must arrive together.** dskit refuses a client CA with no policy — Loki exits at startup with `client CA's have been configured without a Client Auth Policy`, buried in a Go stack trace, on every microservice at once. That is why phase 1 ships neither.
+- **Both probes need the scheme, not just readiness.** Liveness hits a different path on the same port; left plaintext it returns 400 and the kubelet restarts the container *after* readiness has gone green, which reads as an unrelated flap.
+
+- [ ] `[operator]` **Phase 1 is encryption, not authentication**, and phase 2 only rejects the wrong CA. Only the Thanos hop reaches real authentication.
+- [ ] `[operator]` **Roll the server and its clients in either order at phase 1 and 2, never at phase 3.** Kubernetes does not order them, so a server that starts requiring certificates before its clients present them stops ingesting until they catch up. Phase 2 exists to make phase 3 order-independent; the render refuses phase 3 applied without it.
 - [ ] `[operator]` **Grafana's datasource TLS does not renew like the rest.** It reads from `secureJsonData`, which is provisioned config rather than a file mount, so a new CA means re-provisioning the datasource.
 
 ### Renewal is the failure that matters
@@ -275,9 +294,10 @@ Stated plainly, because the values surface implies more than the deployment has 
 | Gap | Status |
 |---|---|
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
-| **In-cluster TLS, gateway → Loki and gateway → Thanos** | ✅ Both halves shipped, off by default. `profiles/mtls.values.yaml` assembles them; a validator refuses a half-applied config. **Phase 1 — encrypted, not authenticated** |
+| **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
+| **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
 | **In-cluster TLS, agent → gateway** | ❌ Blocked on the listener. The gateway's `loki.source.api` lives in the pre-rendered pipeline, which is emitted verbatim, so its `tls` block cannot be made conditional on a value. The render refuses this hop rather than half-enabling it |
-| **Mutual TLS between components** | ❌ Not shipped. Certificates carry `client auth`, and nothing requires one yet. NetworkPolicy answers *which pods* may connect; nothing answers *who is on the other end*, and several policies answer the first question with "any pod in the cluster" |
+| **Mutual TLS between components** | 🔨 One hop (gateway → Thanos Receive) genuinely requires and verifies a client certificate. Everything else is encrypted at best. NetworkPolicy answers *which pods* may connect; on the remaining hops nothing answers *who is on the other end* |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
 | **A trust bundle for a private CA** | 🔨 Modeled, unwired. `certificates.trustBundle` names the Secret or ConfigMap; mounting it into Loki and Thanos is outstanding |
 | **Intra-Loki and intra-Thanos TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store — all real hops inside a single subchart's trust boundary |

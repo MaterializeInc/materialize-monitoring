@@ -1,0 +1,94 @@
+# Profile: phase 3 — the servers start requiring a client certificate.
+#
+# Composed over both earlier phases, in order:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/mtls.values.yaml \
+#     -f charts/materialize-monitoring/profiles/mtls-phase2.values.yaml \
+#     -f charts/materialize-monitoring/profiles/mtls-phase3.values.yaml \
+#     --set certificates.enabled=true \
+#     --set certificates.internal.selfSigned.enabled=true
+#
+# **This is the one that authenticates — on the Thanos hop only.** After this, a
+# client with no certificate, or one signed by a CA Receive does not trust, is
+# refused at the TLS handshake rather than served.
+#
+# The Loki hop stops at phase 2 and cannot go further; see the section below for
+# why, which is a property of Kubernetes probes rather than of Loki.
+#
+# ---------------------------------------------------------------------------
+# Do not apply this until every writer is already presenting
+# ---------------------------------------------------------------------------
+# Phase 2 exists so that this step is order-independent. Applied on top of a
+# stack where the clients are already presenting certificates, this is safe in
+# any rollout order: the servers tighten, and every existing connection already
+# satisfies the new requirement.
+#
+# Applied by skipping phase 2, it is an outage. The server pods roll first as
+# often as not, and every write is refused at the handshake until the gateway
+# catches up. The render refuses the combination it can see — a destination with
+# no `certFile` against a server that requires one — but it cannot see whether
+# your *running* pods have rolled yet. That part is yours to confirm:
+#
+#   kubectl -n monitoring get pods -l app.kubernetes.io/name=alloy-gateway \
+#     -o jsonpath='{.items[*].spec.containers[0].volumeMounts[*].mountPath}'
+#
+# ---------------------------------------------------------------------------
+# What it still does not buy
+# ---------------------------------------------------------------------------
+# **Authentication, not authorization.** None of these components can express
+# "this identity may write and that one may not" — the whole decision is "is this
+# signed by the CA we trust". So the size of the trust domain *is* the security
+# property, which is the argument for an issuer scoped to this stack rather than
+# the cluster's general-purpose `ClusterIssuer`.
+#
+# **Tenancy is still asserted, not assigned.** Loki takes the tenant from
+# `X-Scope-OrgID`, set by the client. A certificate does not constrain that
+# header, and in-cluster there is no load balancer to derive a verified one.
+#
+# **There is no revocation.** Neither hop can check a CRL, so revoking means
+# re-issuing the CA. That is the argument for the short `certificates.duration`
+# rather than for a mechanism this stack does not have.
+
+# ---------------------------------------------------------------------------
+# Loki is deliberately absent, and cannot be added
+# ---------------------------------------------------------------------------
+# `client_auth_type: RequireAndVerifyClientCert` on Loki's HTTP port does not
+# work, and the reason is structural rather than a missing setting: **the kubelet
+# is a client of that port too.** Loki serves `/ready` and
+# `/loki/api/v1/status/buildinfo` on 3100, the readiness and liveness probes dial
+# them, and a Kubernetes `httpGet` probe has no way to present a client
+# certificate. Requiring one fails every probe with
+#
+#   Readiness probe failed: Get "https://10.244.1.71:3100/ready":
+#   remote error: tls: certificate required
+#
+# and every Loki pod goes unready and then restarts. Verified on a live cluster;
+# there is no probe-side fix, because the probe API has no field for it.
+#
+# So **phase 2 is the terminal state for the Loki HTTP hop**: encrypted, with a
+# certificate from the wrong CA refused, and an anonymous client still served.
+# Getting real authentication there needs something the probe can bypass — an
+# authenticating proxy in front of Loki, or moving inter-component traffic to a
+# port the kubelet does not touch. Both are larger than this profile.
+#
+# Thanos Receive does not have the problem, which is why it is here: its probes
+# live on the HTTP port and the TLS flags scope to the separate remote-write
+# listener, so requiring a client certificate there touches nothing the kubelet
+# dials.
+
+thanos:
+  receive:
+    # The whole Thanos-side move, and the reason it lands here rather than in
+    # phase 2: setting the client CA at all puts Receive into require-and-verify.
+    # There is no middle state on this hop.
+    #
+    # The list restates every earlier entry, because Helm overwrites lists rather
+    # than merging them — including `--receive.replication-factor=3`, which
+    # silently falls back to 1 (write quorum 1, no tolerated losses) if dropped.
+    extraArgs:
+      - --receive.replication-factor=3
+      - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+      - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
+      - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt

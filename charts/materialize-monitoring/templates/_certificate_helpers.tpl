@@ -427,9 +427,16 @@ Usage:
 
     {{- /* The probes. Loki's `_pod.tpl` coalesces component, defaults, and loki
            level, so `defaults` is the one place that covers every component. */}}
-    {{- $probeScheme := dig "defaults" "readinessProbe" "httpGet" "scheme" "" $loki }}
-    {{- if ne ( $probeScheme | upper ) "HTTPS" }}
-      {{- $errors = append $errors "loki.loki.server.http_tls_config is set but loki.defaults.readinessProbe.httpGet.scheme is not HTTPS, so the kubelet probes a TLS listener over plaintext. Every Loki pod fails readiness at once and the rollout stalls looking like a crashloop. Set the scheme on loki.defaults so it reaches every component — a per-component probe does not." }}
+    {{- /* Both probes, not just readiness. The liveness probe hits a different
+           path on the same port; left plaintext it returns 400, which the
+           kubelet counts as a failure and restarts the container for — after
+           readiness has already gone green, so it reads as an unrelated
+           flap. */}}
+    {{- range $probe := ( list "readinessProbe" "livenessProbe" ) }}
+      {{- $scheme := dig "defaults" $probe "httpGet" "scheme" "" $loki }}
+      {{- if ne ( $scheme | upper ) "HTTPS" }}
+        {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config is set but loki.defaults.%s.httpGet.scheme is not HTTPS, so the kubelet probes a TLS listener over plaintext. Readiness fails on every pod at once and looks like a crashloop; liveness fails with a 400 and restarts containers after readiness has gone green. Set the scheme on loki.defaults so it reaches every component — a per-component probe does not." $probe ) }}
+      {{- end }}
     {{- end }}
 
     {{- /* The scrape. */}}
@@ -471,6 +478,10 @@ Usage:
     {{- end }}
   {{- end }}
 
+  {{- $res := include "mzmon.certificates.validate.clientAuth" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- /* Serving TLS from material this chart is not issuing is legitimate —
          someone else's PKI, mounted by hand — but it is also what a half-applied
          profile looks like, and the symptom is a pod that cannot read its own
@@ -478,6 +489,102 @@ Usage:
   {{- if or ( include "mzmon.certificates.lokiServerTls" $ ) ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
     {{- if not ( dig "enabled" false ( $.Values.certificates | default dict ) ) }}
       {{- $warnings = append $warnings "A backend is configured to serve TLS while certificates.enabled is off, so this chart is not issuing the material it references. That is correct if you mount your own, and is otherwise the signature of a half-applied mtls profile — the pods will not start, because the cert file they are pointed at does not exist." }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate the phase-2/3 client-authentication rollout.
+
+The failure this exists for is an ordering failure, and it is the one that costs
+data: a server that starts *requiring* client certificates before its writers
+present them refuses every connection at the TLS handshake, and Kubernetes does
+not order a server's rollout against its clients'.
+
+**The two backends do not offer the same states**, which is what makes this easy
+to get wrong. Measured against the shipped versions:
+
+  * Loki's `VerifyClientCertIfGiven` genuinely tolerates a client that presents
+    nothing, so its rollout has a safe middle state.
+  * Thanos Receive has none. `--remote-write.server-tls-client-ca` is
+    require-and-verify the moment it is set, so on that hop the client must
+    already be presenting *before* the flag appears. Nothing in the flag's name
+    or help text says so.
+
+Usage:
+  {{- $res := include "mzmon.certificates.validate.clientAuth" $ | fromYaml }}
+*/}}
+{{- define "mzmon.certificates.validate.clientAuth" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $pipeline := $.Values.pipeline | default dict }}
+  {{- $loki := $.Values.loki | default dict }}
+
+  {{- /* Does the gateway present a client certificate on each hop? */}}
+  {{- $lokiPresents := and
+        ( dig "logging" "gateway" "destination" "loki" "tls" "certFile" "" $pipeline )
+        ( dig "logging" "gateway" "destination" "loki" "tls" "keyFile" "" $pipeline ) }}
+  {{- $promPresents := and
+        ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "tls" "certFile" "" $pipeline )
+        ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "tls" "keyFile" "" $pipeline ) }}
+
+  {{- $lokiAuth := dig "loki" "server" "http_tls_config" "client_auth_type" "" $loki }}
+  {{- $lokiClientCa := dig "loki" "server" "http_tls_config" "client_ca_file" "" $loki }}
+
+  {{- /* dskit refuses to build a TLS config that names a client CA with no
+         policy to use it. Loki exits at startup — every microservice at once —
+         and the reason is one line inside a Go stack trace. Caught on a live
+         cluster rather than by reading the config reference, which documents
+         both keys and not the constraint between them. */}}
+  {{- if and $lokiClientCa ( or ( not $lokiAuth ) ( eq $lokiAuth "NoClientCert" ) ) }}
+    {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config sets client_ca_file with client_auth_type %q. dskit rejects that combination and Loki exits at startup with \"client CA's have been configured without a Client Auth Policy\" — every Loki pod crashloops, and the reason is buried in a stack trace. The CA and the policy have to arrive together: use VerifyClientCertIfGiven (profiles/mtls-phase2.values.yaml), or drop client_ca_file." ( $lokiAuth | default "unset" ) ) }}
+  {{- end }}
+
+  {{- /* The mirror image: a policy that needs a CA and has none. */}}
+  {{- if and ( has $lokiAuth ( list "VerifyClientCertIfGiven" "RequireAndVerifyClientCert" ) ) ( not $lokiClientCa ) }}
+    {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config.client_auth_type is %q but no client_ca_file is set, so Loki has nothing to verify presented certificates against." $lokiAuth ) }}
+  {{- end }}
+
+  {{- /* Loki cannot require client certificates on its HTTP port at all, because
+         the kubelet is a client of that port and a Kubernetes httpGet probe has
+         no way to present one. Verified on a live cluster: every pod goes
+         unready with `remote error: tls: certificate required`, then restarts.
+         There is no values-side fix, so this is an error rather than a warning
+         about ordering. */}}
+  {{- if has $lokiAuth ( list "RequireAndVerifyClientCert" "RequireAnyClientCert" ) }}
+    {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config.client_auth_type is %q, which cannot work on Loki's HTTP port: the kubelet's readiness and liveness probes dial that same port, and a Kubernetes httpGet probe cannot present a client certificate. Every Loki pod goes unready with \"remote error: tls: certificate required\" and then restarts. VerifyClientCertIfGiven (profiles/mtls-phase2.values.yaml) is the terminal state for this hop — it refuses a certificate from the wrong CA and still serves the probes. Real authentication here needs an authenticating proxy in front of Loki, or a listener the kubelet does not touch." $lokiAuth ) }}
+  {{- end }}
+
+  {{- /* Thanos has no middle state; the flag *is* phase 3. This is the check
+         that would have caught shipping the client CA at phase 1. */}}
+  {{- if ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
+    {{- $hasClientCa := false }}
+    {{- range $arg := ( dig "receive" "extraArgs" list ( $.Values.thanos | default dict ) ) }}
+      {{- if hasPrefix "--remote-write.server-tls-client-ca" ( $arg | toString ) }}{{- $hasClientCa = true }}{{- end }}
+    {{- end }}
+    {{- if and $hasClientCa ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "enabled" false $pipeline ) ( not $promPresents ) }}
+      {{- $errors = append $errors "thanos.receive.extraArgs sets --remote-write.server-tls-client-ca, which puts Receive into require-and-verify immediately — there is no verify-if-given on this hop, whatever the flag's help text suggests. The gateway presents no client certificate (no certFile/keyFile on pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls), so every metric write would be refused at the TLS handshake. Apply profiles/mtls-phase2.values.yaml first, confirm the gateway has rolled, then add this flag." }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* Parked at phase 2. The design calls for saying this out loud, because
+         the values file looks like mTLS and rejects almost nothing. */}}
+  {{- if eq $lokiAuth "VerifyClientCertIfGiven" }}
+    {{- $warnings = append $warnings "loki.loki.server.http_tls_config.client_auth_type is VerifyClientCertIfGiven: a client presenting no certificate is still served, and only a certificate from the wrong CA is refused. This hop is encrypted and not authenticated, and — unlike the Thanos hop — it cannot be taken further, because the kubelet probes the same port and cannot present a certificate. Treat it as the ceiling for Loki over HTTP rather than as a step you forgot to finish." }}
+  {{- end }}
+
+  {{- /* A client presenting a certificate that no server asks for is harmless
+         but is also what a stalled rollout looks like. */}}
+  {{- if and $promPresents ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
+    {{- $hasClientCa := false }}
+    {{- range $arg := ( dig "receive" "extraArgs" list ( $.Values.thanos | default dict ) ) }}
+      {{- if hasPrefix "--remote-write.server-tls-client-ca" ( $arg | toString ) }}{{- $hasClientCa = true }}{{- end }}
+    {{- end }}
+    {{- if not $hasClientCa }}
+      {{- $warnings = append $warnings "The gateway presents a client certificate to Thanos Receive, but Receive has no --remote-write.server-tls-client-ca and therefore ignores it. That is exactly right mid-rollout — it is what makes phase 3 safe to apply in any order — and it means this hop is not authenticated yet. Finish with profiles/mtls-phase3.values.yaml." }}
     {{- end }}
   {{- end }}
 

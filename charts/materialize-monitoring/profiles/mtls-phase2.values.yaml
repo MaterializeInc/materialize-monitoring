@@ -1,0 +1,92 @@
+# Profile: phase 2 — clients start presenting a client certificate.
+#
+# Composed **over** `mtls.values.yaml`, never instead of it:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/mtls.values.yaml \
+#     -f charts/materialize-monitoring/profiles/mtls-phase2.values.yaml \
+#     --set certificates.enabled=true \
+#     --set certificates.internal.selfSigned.enabled=true
+#
+# ---------------------------------------------------------------------------
+# What phase 2 is for
+# ---------------------------------------------------------------------------
+# Kubernetes does not order a server's rollout against its clients'. If a server
+# starts *requiring* client certificates in the same release that the clients
+# start presenting them, then on any hop where the server rolls first, ingestion
+# stops until the clients catch up — and on a busy pipeline that is data loss,
+# not just latency.
+#
+# Phase 2 removes the ordering problem by making the two changes independent:
+# **the clients start presenting while the servers still do not care.** Once
+# every writer is presenting, phase 3 can require it in any order, safely.
+#
+# ---------------------------------------------------------------------------
+# The two backends reach this differently, and it is not symmetric
+# ---------------------------------------------------------------------------
+# Measured against the versions this chart ships, not read off documentation:
+#
+#   * **Loki** has a real `VerifyClientCertIfGiven`. A client with no certificate
+#     is still served; a client presenting one from the configured CA is served;
+#     a client presenting one from *any other* CA is refused at the handshake. So
+#     Loki moves to that state here, and gains a real (if partial) check.
+#
+#   * **Thanos Receive has no equivalent.** `--remote-write.server-tls-client-ca`
+#     puts the listener straight into require-and-verify — a client with no
+#     certificate is refused at the handshake. There is no middle state to move
+#     to, so **the Thanos server is unchanged in this profile**; only its client
+#     starts presenting. That is precisely what makes phase 3 safe to apply
+#     later without watching the rollout order.
+#
+# The asymmetry is the reason this is a phase rather than a flag: the same
+# intent needs a server change on one hop and a client-only change on the other.
+#
+# ---------------------------------------------------------------------------
+# What this does NOT give you
+# ---------------------------------------------------------------------------
+# **A stack sitting here is not authenticated.** On the Loki hop, a client that
+# presents nothing is still served — the only thing rejected is a certificate
+# from the wrong CA. On the Thanos hop, nothing is rejected at all yet.
+#
+# That is worth stating plainly because the values file looks like mTLS: every
+# destination carries a `certFile` and a `keyFile`, and the server names a client
+# CA. Neither of those facts means a request without a certificate is refused.
+# Only phase 3 does that, and the render warns while you are parked here.
+
+loki:
+  loki:
+    server:
+      http_tls_config:
+        # The CA and the policy arrive together, and they have to: dskit rejects
+        # a client CA with no policy (Loki exits at startup), and a policy with
+        # no CA has nothing to verify against. Phase 1 therefore ships neither.
+        #
+        # Verified behaviour: no certificate -> served; certificate from this CA
+        # -> served; certificate from another CA -> refused at the handshake.
+        client_ca_file: /etc/mzmon/tls/ca.crt
+        client_auth_type: VerifyClientCertIfGiven
+
+# Thanos Receive is deliberately absent from this file. Adding
+# `--remote-write.server-tls-client-ca` here would skip straight to phase 3 on
+# that hop and reject every writer that has not rolled yet — which is the exact
+# outage this phase exists to prevent.
+
+pipeline:
+  logging:
+    gateway:
+      destination:
+        loki:
+          tls:
+            # The client half of the phase. The gateway's certificate carries
+            # `client auth` as well as `server auth` — one certificate per
+            # component covers both roles, which is why a single mount is enough.
+            certFile: /etc/mzmon/tls/tls.crt
+            keyFile: /etc/mzmon/tls/tls.key
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          tls:
+            certFile: /etc/mzmon/tls/tls.crt
+            keyFile: /etc/mzmon/tls/tls.key

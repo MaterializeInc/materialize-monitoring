@@ -17,8 +17,9 @@
 #
 # **This is phase 1, not mTLS.** Traffic is encrypted and the client verifies the
 # server; neither server requires a client certificate yet, so nothing here
-# authenticates anyone. `client_auth_type` is deliberately left at the permissive
-# end — see the phase table below for why moving it is a separate, ordered step.
+# authenticates anyone. Phases 2 and 3 are separate profiles, composed over this
+# one — see the phase table below, which records what each backend actually does
+# rather than what its flags suggest.
 #
 # Not covered, and deliberately so:
 #
@@ -55,21 +56,35 @@
 # them stops ingesting until they catch up. Each hop moves through four states,
 # and this profile lands you in phase 1:
 #
-#   | Phase | Server                        | Client                | Effect |
-#   | ----- | ----------------------------- | --------------------- | ------ |
-#   | 0     | plaintext                     | plaintext             | the default |
-#   | 1     | TLS, `NoClientCert`           | TLS, verifies server  | **this profile** — encrypted, either rollout order works |
-#   | 2     | `VerifyClientCertIfGiven`     | presents a client cert| certificates that are presented are checked; clients that have not rolled still work |
-#   | 3     | `RequireAndVerifyClientCert`  | presents a client cert| authenticated |
+#   | Phase | Loki server                  | Thanos Receive server | Client                 |
+#   | ----- | ---------------------------- | --------------------- | ---------------------- |
+#   | 0     | plaintext                    | plaintext             | plaintext              |
+#   | 1     | TLS, `NoClientCert`          | TLS, no client CA     | verifies the server    |
+#   | 2     | `VerifyClientCertIfGiven`    | TLS, no client CA     | **presents** a cert    |
+#   | 3     | `RequireAndVerifyClientCert` | TLS, **client CA set**| presents a cert        |
 #
-# **Phase 2 is not a destination.** `VerifyClientCertIfGiven` produces a config
-# that looks like mTLS in every values file and rejects nothing. It exists so the
-# two halves can roll in either order; a stack left sitting there is encrypted and
-# unauthenticated, and the values will not tell you.
+# Compose the next phase over this one:
 #
-# To go further, change `client_auth_type` below and add `certFile`/`keyFile` to
-# each destination's `tls` block. Do it one hop at a time, and confirm the client
-# is presenting before you require it.
+#   -f profiles/mtls.values.yaml -f profiles/mtls-phase2.values.yaml
+#
+# **The two backends do not have the same states, and this is measured rather
+# than read off documentation.** Against the versions this chart ships:
+#
+#   * **Loki has a real verify-if-given.** With `VerifyClientCertIfGiven`, a
+#     client with no certificate is served, a client with a certificate from the
+#     configured CA is served, and a client with a certificate from any other CA
+#     is refused at the handshake.
+#   * **Thanos Receive does not.** `--remote-write.server-tls-client-ca` puts the
+#     listener into require-and-verify immediately — a client with no certificate
+#     is refused. So Thanos skips phase 2 entirely, and the flag must not appear
+#     before every writer already presents a certificate. That is what phase 2 is
+#     for on the Thanos hop: the client starts presenting while the server still
+#     ignores it, so phase 3 is safe to apply in any order.
+#
+# **Phase 2 is not a destination.** On the Loki hop it produces a config that
+# looks like mTLS in every values file and rejects nothing but a wrong CA. It
+# exists so the two halves can roll in either order; a stack left sitting there
+# is encrypted and only partly authenticated, and the values will not tell you.
 
 # ---------------------------------------------------------------------------
 # Loki: serve TLS on the HTTP port
@@ -83,13 +98,18 @@ loki:
       #
       # `client_auth_type` is Go's `tls.ClientAuthType`, not a Loki invention:
       # NoClientCert | RequestClientCert | RequireAnyClientCert |
-      # VerifyClientCertIfGiven | RequireAndVerifyClientCert. Phase 1 keeps it
-      # permissive; `client_ca_file` is supplied anyway so moving to phase 2 is a
-      # one-word change rather than a re-plumb.
+      # VerifyClientCertIfGiven | RequireAndVerifyClientCert.
+      #
+      # **`client_ca_file` is deliberately absent here, and must stay absent.**
+      # dskit refuses to build a TLS config that names a client CA without a
+      # client-auth policy — Loki exits at startup with `client CA's have been
+      # configured without a Client Auth Policy`, buried in a Go stack trace, and
+      # every microservice crashloops together. Verified on a live cluster; it is
+      # not a warning. The CA arrives in phase 2 alongside the policy that uses
+      # it, which is the only combination dskit accepts.
       http_tls_config:
         cert_file: /etc/mzmon/tls/tls.crt
         key_file: /etc/mzmon/tls/tls.key
-        client_ca_file: /etc/mzmon/tls/ca.crt
         client_auth_type: NoClientCert
 
   # The mount. `defaults` rather than a per-component list because Loki's
@@ -114,12 +134,25 @@ loki:
     # `scheme: HTTPS` makes the kubelet speak TLS; it does not make it verify,
     # which is correct here — the probe connects to the pod IP, and no
     # certificate in the ladder carries that.
+    # **Both probes, not just readiness.** The liveness probe hits a different
+    # path on the same port, and leaving it plaintext against a TLS listener
+    # returns 400 — which the kubelet counts as a failure and restarts the
+    # container for. Missing this is survivable-looking at first (readiness is
+    # green, pods report Running) and then the restarts start. Verified on a
+    # live cluster.
     readinessProbe:
       httpGet:
         path: /ready
         port: http-metrics
         scheme: HTTPS
       initialDelaySeconds: 30
+      timeoutSeconds: 1
+    livenessProbe:
+      httpGet:
+        path: /loki/api/v1/status/buildinfo
+        port: http-metrics
+        scheme: HTTPS
+      initialDelaySeconds: 300
       timeoutSeconds: 1
 
   # The scrape. Without this the gateway scrapes a TLS listener over plaintext
@@ -142,9 +175,18 @@ loki:
   # silently: a canary that cannot reach Loki reports the log store as broken,
   # which is worse than no canary during the incident you are trusting it in.
   lokiCanary:
+    # `-tls` puts the canary into **mTLS** mode, not plain TLS: it builds an mTLS
+    # transport and fails at startup with `unable to read client cert` if the
+    # keypair is missing, even against a server that requires no client
+    # certificate. So all four flags go on together from phase 1 — the server
+    # ignores the keypair until phase 2, and the canary will not start without
+    # it. Verified on a live cluster; the flag help calls all three files
+    # "optional", which they are not once `-tls` is set.
     extraArgs:
       - -tls
       - -ca-file=/etc/mzmon/tls/ca.crt
+      - -cert-file=/etc/mzmon/tls/tls.crt
+      - -key-file=/etc/mzmon/tls/tls.key
     extraVolumes:
       - name: mzmon-tls
         secret:
@@ -172,11 +214,11 @@ thanos:
       - --receive.replication-factor=3
       - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
       - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
-      # Supplied at phase 1 so moving to client verification later does not need
-      # a new mount. Thanos verifies a presented certificate against this; it
-      # does not require one until `--remote-write.server-tls-client-ca` is
-      # paired with a client that presents.
-      - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
+      # NOT `--remote-write.server-tls-client-ca` — see the phase note above.
+      # Measured against quay.io/thanos/thanos:v0.42.4: setting the client CA
+      # puts the listener straight into require-and-verify, and a client with no
+      # certificate is refused at the TLS handshake. There is no verify-if-given
+      # here, so that flag belongs in phase 3 and nowhere earlier.
 
     extraVolumes:
       - name: mzmon-tls
@@ -203,8 +245,7 @@ pipeline:
           tls:
             enabled: true
             caFile: /etc/mzmon/tls/ca.crt
-            # Phase 2+: add certFile and keyFile here, then move Loki's
-            # client_auth_type to VerifyClientCertIfGiven.
+            # certFile/keyFile arrive in phase 2.
   metrics:
     gateway:
       destination:

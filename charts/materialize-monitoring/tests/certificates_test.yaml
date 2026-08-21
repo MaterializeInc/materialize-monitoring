@@ -541,7 +541,7 @@ tests:
           errorPattern: "would send plaintext at a TLS port"
 
   # The failure that presents as a crashloop rather than as a TLS problem.
-  - it: should fail when the Loki probes are left on HTTP
+  - it: should fail when the Loki readiness probe is left on HTTP
     values:
       - ../profiles/mtls.values.yaml
     set:
@@ -550,7 +550,98 @@ tests:
       loki.defaults.readinessProbe.httpGet.scheme: HTTP
     asserts:
       - failedTemplate:
-          errorPattern: "Every Loki pod fails readiness at once"
+          errorPattern: "loki.defaults.readinessProbe.httpGet.scheme is not HTTPS"
+
+  # Liveness is the one that gets forgotten: it hits a different path on the same
+  # port, returns 400 in plaintext, and restarts containers *after* readiness has
+  # already gone green — so it reads as an unrelated flap. Found on a live cluster.
+  - it: should fail when the Loki liveness probe is left on HTTP
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.defaults.livenessProbe.httpGet.scheme: HTTP
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.defaults.livenessProbe.httpGet.scheme is not HTTPS"
+
+  # dskit refuses a client CA with no policy and Loki exits at startup, with the
+  # reason buried in a Go stack trace. Found on a live cluster.
+  - it: should fail on a Loki client CA with no client auth policy
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.server.http_tls_config.client_ca_file: /etc/mzmon/tls/ca.crt
+    asserts:
+      - failedTemplate:
+          errorPattern: "without a Client Auth Policy"
+
+  # The kubelet is a client of Loki's HTTP port and an httpGet probe cannot
+  # present a certificate, so this is unreachable rather than merely out of
+  # order. Verified on a live cluster: every pod goes unready with
+  # `tls: certificate required`.
+  - it: should refuse RequireAndVerifyClientCert on Loki's probed HTTP port
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.server.http_tls_config.client_auth_type: RequireAndVerifyClientCert
+    asserts:
+      - failedTemplate:
+          errorPattern: "cannot work on Loki's HTTP port"
+
+  # Thanos Receive does reach phase 3, because its probes are on a different port
+  # from the listener the TLS flags cover.
+  - it: should let Thanos Receive reach phase 3
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+
+  # Phase 3 without phase 2 is the outage this ordering exists to prevent.
+  - it: should refuse the Thanos client CA before the client presents
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "puts Receive into require-and-verify immediately"
+
+  # The canary's -tls flag means mTLS: it builds an mTLS transport and will not
+  # start without a keypair, even against a server that requires none.
+  - it: should give the canary a client keypair from phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -cert-file=/etc/mzmon/tls/tls.crt
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -key-file=/etc/mzmon/tls/tls.key
 
   # The failure that hides itself twice: metrics vanish, and `up` goes absent
   # rather than 0, so an alert on `up == 0` does not fire either.
