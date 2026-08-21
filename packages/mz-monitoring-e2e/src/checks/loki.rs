@@ -24,7 +24,7 @@ use crate::ctx::Ctx;
 use crate::promtext::sum_samples;
 use crate::retry::retry_until;
 
-const LOKI_PORT: u16 = 3100;
+pub(super) const LOKI_PORT: u16 = 3100;
 const STREAMS_METRIC: &str = "loki_ingester_streams_created_total";
 
 /// How far back the label queries look.
@@ -49,7 +49,7 @@ pub async fn ready(ctx: &Ctx) -> Result<()> {
         .first_existing_service(&ctx.features.loki_service_candidates().read)
         .await?;
     // No tenant header: `/ready` is not a tenant-scoped endpoint.
-    let target = ServiceTarget::new(service, LOKI_PORT);
+    let target = loki_target(ctx, service)?;
 
     retry_until("loki /ready", ctx.deadline, ctx.interval, || async {
         let body = ctx.cluster.get(&target, "ready").await?;
@@ -75,7 +75,7 @@ pub async fn streams_created(ctx: &Ctx) -> Result<()> {
         .cluster
         .first_existing_service(&ctx.features.loki_service_candidates().ingester)
         .await?;
-    let target = ServiceTarget::new(service, LOKI_PORT);
+    let target = loki_target(ctx, service)?;
 
     retry_until(
         "loki ingested at least one stream",
@@ -111,7 +111,7 @@ pub async fn gateway_labels(ctx: &Ctx) -> Result<()> {
         .cluster
         .first_existing_service(&ctx.features.loki_service_candidates().read)
         .await?;
-    let target = ServiceTarget::new(service, LOKI_PORT).with_tenant(ctx.features.loki_tenant());
+    let target = loki_target(ctx, service)?.with_tenant(ctx.features.loki_tenant());
 
     retry_until(
         "gateway-applied k8s_pod label is present",
@@ -158,7 +158,7 @@ pub async fn recent_query(ctx: &Ctx) -> Result<()> {
         .cluster
         .first_existing_service(&ctx.features.loki_service_candidates().read)
         .await?;
-    let target = ServiceTarget::new(service, LOKI_PORT).with_tenant(ctx.features.loki_tenant());
+    let target = loki_target(ctx, service)?.with_tenant(ctx.features.loki_tenant());
 
     // The gateway applies `namespace` alongside the `k8s_*` families, so this
     // selector also confirms the logs came through the pipeline rather than
@@ -216,5 +216,21 @@ fn expect_success(body: &Value) -> Result<()> {
                 .unwrap_or("no error message")
         ),
         None => bail!("loki response has no status field: {body}"),
+    }
+}
+
+/// A target for Loki's HTTP port, speaking TLS when the release moved that port
+/// to TLS.
+///
+/// Every direct Loki assertion goes through here rather than deciding for
+/// itself, because getting it wrong is not a visible failure: a plaintext GET at
+/// a TLS listener comes back `400 Client sent an HTTP request to an HTTPS
+/// server`, which reads as a malformed query rather than as the wrong scheme.
+fn loki_target(ctx: &Ctx, service: impl Into<String>) -> Result<ServiceTarget> {
+    let target = ServiceTarget::new(service, LOKI_PORT);
+    if ctx.features.loki_server_tls() {
+        Ok(target.with_tls(ctx.client_tls()?))
+    } else {
+        Ok(target)
     }
 }

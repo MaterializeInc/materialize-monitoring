@@ -12,8 +12,14 @@
 
 use std::time::Duration;
 
+use std::sync::Arc;
+
+use anyhow::{Result, anyhow};
+use rustls::ClientConfig;
+
 use crate::cluster::Cluster;
 use crate::features::Features;
+use crate::tls::ClientTls;
 
 pub struct Ctx {
     pub cluster: Cluster,
@@ -28,4 +34,34 @@ pub struct Ctx {
     pub allow_unhealthy: Vec<String>,
     /// Whether assertions that change cluster state may run. See the CLI flag.
     pub allow_disruptive: bool,
+    /// The suite's own certificate material, loaded once at startup when the
+    /// release issues certificates. `None` on a plaintext stack, where nothing
+    /// needs it.
+    pub tls: Option<ClientTls>,
+}
+
+impl Ctx {
+    /// The client configuration for dialling a hop that serves TLS.
+    ///
+    /// An error rather than an `Option`, because every caller reaches this only
+    /// after deciding the hop *is* TLS — at which point missing material is a
+    /// setup problem to report, not a branch to take.
+    pub fn client_tls(&self) -> Result<Arc<ClientConfig>> {
+        self.tls.as_ref().map(ClientTls::authenticated).ok_or_else(|| {
+            anyhow!(
+                "this hop serves TLS but the suite has no certificate material. That combination \
+                 means the release configured a TLS listener without `certificates.enabled`, so \
+                 the material was mounted from somewhere the chart did not issue — point the \
+                 suite at it with --client-cert-secret."
+            )
+        })
+    }
+
+    /// The same trust root, presenting no client certificate.
+    pub fn anonymous_tls(&self) -> Result<Arc<ClientConfig>> {
+        self.tls
+            .as_ref()
+            .map(ClientTls::anonymous)
+            .ok_or_else(|| anyhow!("no certificate material loaded; see --client-cert-secret"))
+    }
 }

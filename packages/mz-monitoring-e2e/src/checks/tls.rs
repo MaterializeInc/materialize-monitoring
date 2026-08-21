@@ -25,20 +25,46 @@
 //!   lands on a path nothing reads. A successful query proves data flowed, not
 //!   how it travelled.
 //!
-//! Deliberately **not** here yet: presenting a client certificate, and presenting
-//! one signed by the wrong CA. Both need a TLS client over the forwarded stream.
-//! Until that lands, "phase 3 refuses an anonymous client" is verified by hand.
-//! A green run here means encrypted, issued and healthy — **not authenticated**.
+//! The suite dials TLS hops with its own client, built from a cert-manager
+//! Secret — see [`crate::tls`] — so it trusts the same CA the components do and
+//! presents an identity that CA signed.
+//!
+//! With that client, [`gateway_requires_client_certificate`] is the one
+//! assertion here about *authentication* rather than encryption — it dials a
+//! phase-3 listener twice, once presenting and once not, and the two answers
+//! have to differ.
+//!
+//! Deliberately **not** here yet: a certificate signed by a CA nothing trusts,
+//! which is what would prove phase 2's `VerifyClientCertIfGiven` rejects rather
+//! than ignores. That needs a second CA, which means provisioning a throwaway
+//! issuer rather than reading an existing Secret.
 
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+use crate::checks::loki::LOKI_PORT;
 use crate::cluster::ServiceTarget;
 use crate::ctx::Ctx;
+use crate::forward::is_tls_refusal;
 use crate::retry::retry_until;
 
 /// Alloy's own HTTP port, which serves the component-health API.
 const ALLOY_ADMIN_PORT: u16 = 12345;
+
+/// The gateway's log-ingest listener — `loki.source.api`, the `loki` port on the
+/// `alloy-gateway` Service.
+///
+/// The one hop in the stack that reaches phase 3 *and* is reachable from here.
+/// Thanos Receive's remote-write listener also requires a client certificate,
+/// but the suite has no remote-write client to dial it with; Loki's HTTP port
+/// stops at phase 2 because the kubelet probes it and a `httpGet` probe cannot
+/// present a certificate.
+const GATEWAY_LOGS_SERVICE: &str = "alloy-gateway";
+const GATEWAY_LOGS_PORT: u16 = 3100;
+
+/// Any path on the ingest listener: the assertion is about the handshake, and a
+/// GET at a push endpoint answering `405` is proof the handshake finished.
+const GATEWAY_PUSH_PATH: &str = "loki/api/v1/push";
 
 /// Every `Certificate` is Ready, and none has expired.
 ///
@@ -242,6 +268,101 @@ pub async fn survives_renewal(ctx: &Ctx) -> Result<()> {
          material it read at startup. Check alloy_components_healthy and the Loki server logs \
          before turning any hop's default on.",
     )
+}
+
+/// Loki's HTTP port serves TLS, and *only* TLS.
+///
+/// Two halves, in this order on purpose. The positive half — a TLS client gets a
+/// good answer — has to come first: without it the negative half passes for the
+/// wrong reason on any stack where Loki is simply down, and "plaintext was
+/// refused" is true of a listener that refuses everything.
+///
+/// The negative half is the one the module docstring is about. A value that
+/// lands on a path nothing reads leaves the port on plaintext, and every other
+/// assertion in the suite still passes — data flows, queries answer, the
+/// certificates are Ready and mounted. Only asking for plaintext and being
+/// turned away distinguishes a TLS listener from a configured intention.
+pub async fn loki_refuses_plaintext(ctx: &Ctx) -> Result<()> {
+    let service = ctx
+        .cluster
+        .first_existing_service(&ctx.features.loki_service_candidates().read)
+        .await?;
+
+    let secure = ServiceTarget::new(service.clone(), LOKI_PORT).with_tls(ctx.client_tls()?);
+    let body = ctx
+        .cluster
+        .get(&secure, "ready")
+        .await
+        .context("Loki did not answer a TLS request on its HTTP port")?;
+    if body.trim() != "ready" {
+        bail!(
+            "Loki answered TLS on {service}:{LOKI_PORT} with {:?}",
+            body.trim()
+        );
+    }
+
+    let plaintext = ServiceTarget::new(service.clone(), LOKI_PORT);
+    match ctx.cluster.get(&plaintext, "ready").await {
+        Err(_) => Ok(()),
+        Ok(body) => bail!(
+            "{service}:{LOKI_PORT} answered a *plaintext* request with {:?} while also answering \
+             TLS. A listener cannot do both, so this is the port being reached by something other \
+             than the TLS one the values configure — check that `loki.loki.server.http_tls_config` \
+             is under the subchart key the release actually renders, and that no sidecar or proxy \
+             is terminating in front of it.",
+            body.trim()
+        ),
+    }
+}
+
+/// The gateway's log-ingest listener turns away a client with no certificate.
+///
+/// **The only assertion in the suite that tests authentication rather than
+/// encryption**, and the reason the suite carries a TLS client at all. Every
+/// other TLS check would pass identically on a stack where the listener is
+/// encrypted and admits the entire cluster.
+///
+/// Ordered positive-then-negative, and both halves are load-bearing. Without the
+/// positive half, a listener that is simply down passes the negative one — "the
+/// anonymous client was refused" is true of a port that refuses everything, and
+/// that reads as security rather than as an outage.
+pub async fn gateway_requires_client_certificate(ctx: &Ctx) -> Result<()> {
+    let trusted =
+        ServiceTarget::new(GATEWAY_LOGS_SERVICE, GATEWAY_LOGS_PORT).with_tls(ctx.client_tls()?);
+
+    // A non-2xx is expected and fine — `loki.source.api` answers a GET at its
+    // push path with a method error. What matters is that the answer is HTTP at
+    // all, which cannot happen unless the server accepted the certificate.
+    if let Err(err) = ctx.cluster.get(&trusted, GATEWAY_PUSH_PATH).await
+        && is_tls_refusal(&err)
+    {
+        return Err(err).context(
+            "the gateway refused a client presenting a certificate from its own CA. The listener \
+             requires one, so this is the trust root disagreeing rather than the policy working: \
+             the CA the suite read out of its Secret is not the CA in clientCAFile. Check that \
+             every component certificate comes from one issuer.",
+        );
+    }
+
+    let anonymous =
+        ServiceTarget::new(GATEWAY_LOGS_SERVICE, GATEWAY_LOGS_PORT).with_tls(ctx.anonymous_tls()?);
+    match ctx.cluster.get(&anonymous, GATEWAY_PUSH_PATH).await {
+        Err(err) if is_tls_refusal(&err) => Ok(()),
+        Err(err) => Err(err).context(format!(
+            "the gateway answered a client with no certificate at the HTTP layer, so `clientAuth: \
+             {}` is not being enforced. An HTTP error here is not the check passing — the request \
+             got past the part that was supposed to stop it.",
+            ctx.features.gateway_logs_client_auth().unwrap_or("<unset>"),
+        )),
+        Ok(_) => bail!(
+            "{GATEWAY_LOGS_SERVICE}:{GATEWAY_LOGS_PORT} served a client presenting no \
+             certificate, while the values set `clientAuth: {}`. Alloy does not fail a listener \
+             whose TLS block it cannot use — it goes unhealthy and binds nothing, or binds \
+             without the policy — so check tls::alloy_components_healthy and the rendered \
+             `.alloy` config before trusting this hop.",
+            ctx.features.gateway_logs_client_auth().unwrap_or("<unset>"),
+        ),
+    }
 }
 
 /// Whether an RFC3339 timestamp is in the past.

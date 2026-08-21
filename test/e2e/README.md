@@ -128,10 +128,37 @@ The assertion suite runs the same collector itself when `--diagnostics-dir` is s
 
 The tier-1 job installs a Rust toolchain and builds the suite *before* creating the cluster, so a compile error fails in seconds rather than after a ten-minute install.
 
-**The suite has no TLS client, and that now bounds what it can assert.** It speaks HTTP straight over the forwarded stream, so against a Loki whose HTTP port serves TLS every *direct* query returns `400 Client sent an HTTP request to an HTTPS server`. Those assertions become ignored trials on such a release rather than failures — honest, but it means a stack running `profiles/mtls*.values.yaml` is covered only by `grafana::loki_datasource_query`, which works because Grafana holds the CA and does the TLS itself. (That is the concrete payoff of the read-through-Grafana assertion described above.) Adding a `rustls` client over the forwarded stream is the unblock; `rustls` is already a dependency via `kube`.
+**The suite speaks TLS, with material it reads out of the cluster.**
+At startup, on any release with `certificates.enabled`, it picks a cert-manager-issued Secret from the release namespace — `--client-cert-secret` overrides the choice — and builds two clients from it: one that trusts the CA and presents the keypair, and one that trusts the CA and presents nothing.
+The identity is borrowed rather than generated on purpose: a self-issued certificate would prove only that the suite can talk to itself, whereas reading the Secret means a failure of *issuance* fails the assertions too.
+Which Secret it used is printed in the run header, so a refused handshake traces back to the material without guessing.
 
-What TLS coverage does exist and is version-independent: `tls::certificates_ready` (every `Certificate` Ready *and* not expired — the second half because cert-manager has been seen reporting `Ready=True` on certificates that expired 45 minutes earlier), `tls::alloy_components_healthy` (a component whose TLS config is rejected goes unhealthy while its pod stays Ready and its listener never binds — nothing else in the suite would notice), and `tls::survives_renewal`, which forces a reissue by deleting the Secret and is opt-in behind `--allow-disruptive` because this binary is pointed at real clusters too.
+Every direct Loki assertion goes through that client when `loki.loki.server.http_tls_config` is set, so a stack running `profiles/mtls*.values.yaml` gets the same coverage as a plaintext one.
+It briefly did not: the direct queries were gated off on a TLS release, and the resulting run was green with the entire log read path unasserted.
 
-**Still to build:** WAL durability across a gateway outage; NetworkPolicy and in-cluster mTLS negative-authentication, neither of which is asserted yet — tier 2 now *installs* cert-manager and issues certificates with a 1h/55m lifetime, so the material and the renewal are exercised, but nothing yet asserts that a hop is genuinely TLS or that an unauthenticated client is refused; and a kind resource-sizing profile, without which "medium on main" has nowhere to run.
+The name asserted in the handshake is `localhost`, which the chart puts on every certificate.
+That is the honest name rather than a convenient one — a port-forward is a loopback tunnel straight to one pod, so no Service DNS name is ever resolved and asserting one would verify a binding the transport did not use.
+What the handshake proves is the chain.
+Whether the SAN ladder covers the Service names the *chart* dials is a render-time property, and `mzmon.certificates.validate` checks it before anything is applied.
+
+One protocol detail worth knowing before writing more of these: **under TLS 1.3 a refused client certificate does not fail the handshake.**
+The client sends its Certificate and Finished in the same flight as its first application data, so `connect` resolves before the server has looked at the certificate — or at its absence — and a `RequireAndVerifyClientCert` listener answers with a fatal `CertificateRequired` alert that the client meets on its first read.
+The suite therefore tests for "a `rustls::Error` anywhere in the chain" rather than for a handshake error.
+Reaching it needs `io::Error::get_ref()`, because `io::Error::source()` delegates to the inner error's *source* instead of yielding the inner error, and a plain chain walk steps straight past the rustls error and ends.
+
+The TLS assertions, all version-independent:
+
+| Assertion | What it catches | Runs when |
+| --- | --- | --- |
+| `tls::certificates_ready` | Every `Certificate` Ready *and* not expired. The second half is the load-bearing one: cert-manager has been seen reporting `Ready=True` on certificates that expired 45 minutes earlier, which is the signature of a livelocked controller. | certificates enabled |
+| `tls::alloy_components_healthy` | A component whose TLS config is rejected goes unhealthy while its pod stays `Ready` and its listener never binds. Nothing else in the suite would notice — the gateway's two OTLP ports were dark across a whole deploy cycle that way. | Alloy enabled, certificates or not |
+| `tls::loki_refuses_plaintext` | A hop configured for TLS that is still serving plaintext, because a value landed on a path nothing reads. Asks over TLS first (so a Loki that is simply down cannot pass the negative half), then asks in plaintext and requires to be turned away. | Loki's HTTP port serves TLS |
+| `tls::gateway_requires_client_certificate` | **The only assertion here about authentication rather than encryption.** Dials the gateway's log-ingest listener twice, presenting and not presenting, and requires the two answers to differ. Every other check passes identically on a listener that is encrypted and admits the whole cluster. | the listener is at phase 3 |
+| `tls::survives_renewal` | Material is renewed and a process that read it once at startup keeps using the old copy. Forces a reissue by deleting the Secret rather than provoking one with a short `renewBefore`, which has been observed to livelock cert-manager — a test that breaks the mechanism it measures is worse than no test. | `--allow-disruptive`, since this binary is pointed at real clusters too |
+
+The one hop-level gap left is a certificate signed by a CA nothing trusts, which is what would prove phase 2's `VerifyClientCertIfGiven` rejects rather than ignores.
+That needs a second CA, so it means provisioning a throwaway issuer rather than reading an existing Secret.
+
+**Still to build:** WAL durability across a gateway outage; NetworkPolicy enforcement, which is asserted nowhere and cannot be on kind at all, since kindnet does not enforce policy; a wrong-CA client, per the gap above; and a kind resource-sizing profile, without which "medium on main" has nowhere to run.
 
 `container_*` and `node_*` assertions are now writable — the gateway scrapes `/metrics/cadvisor` on every kubelet, and node-exporter installs behind `tags.node-exporter`. They belong at tier 2, where a metrics backend exists to query them out of; tier 1 discards metrics entirely.

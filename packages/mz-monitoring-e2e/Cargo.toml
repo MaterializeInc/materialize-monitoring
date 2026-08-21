@@ -33,6 +33,13 @@ percent-encoding = "2.3.2"
 # rustls refuses to pick one on its own and panics on the first TLS handshake —
 # which, against a real cluster, is the first thing this binary does.
 rustls = { version = "0.23.43", default-features = false, features = ["aws-lc-rs"] }
+# PEM decoding for the certificate material the suite reads out of a cert-manager
+# Secret, and the TLS layer it wraps a port-forwarded stream in. Both are already
+# in the tree behind `kube`'s rustls-tls feature; named here so the versions are
+# pinned to the same rustls the provider above is installed into. Two rustls
+# versions in one binary is a panic at the first handshake, not a build error.
+rustls-pki-types = { version = "1.14.1", features = ["std"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["aws-lc-rs"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time"] }

@@ -37,6 +37,7 @@ mod features;
 mod forward;
 mod promtext;
 mod retry;
+mod tls;
 
 use cli::Args;
 use cluster::Cluster;
@@ -112,6 +113,43 @@ async fn connect(args: &Args) -> Result<Ctx> {
         args.release,
     );
 
+    // Loaded once, and only when there is something to load: on a plaintext
+    // stack there is no Secret to read and nothing that would use it. Printed
+    // because the identity a run borrows decides what the servers log, and
+    // tracing a refused handshake back to the material should not need a guess.
+    //
+    // A discovery failure is a warning rather than a fatal error, and the
+    // difference matters: the usual cause is certificates that have not become
+    // Ready, and `tls::certificates_ready` is the assertion that says so. Exiting
+    // here would replace that diagnosis with a setup error from a step the reader
+    // did not ask for. The checks that need the material fail on their own, with
+    // a message naming it.
+    //
+    // An explicit --client-cert-secret is fatal, because that is the caller
+    // naming a Secret rather than the suite guessing, and silently proceeding
+    // without it would run a weaker suite than they asked for.
+    let tls = match (
+        features.certificates_enabled(),
+        args.client_cert_secret.as_deref(),
+    ) {
+        (_, Some(name)) => {
+            let loaded = tls::ClientTls::load(&cluster, Some(name)).await?;
+            eprintln!("client tls: trusting and presenting {}", loaded.source());
+            Some(loaded)
+        }
+        (true, None) => match tls::ClientTls::load(&cluster, None).await {
+            Ok(loaded) => {
+                eprintln!("client tls: trusting and presenting {}", loaded.source());
+                Some(loaded)
+            }
+            Err(err) => {
+                eprintln!("warning: no client TLS material ({err:#})");
+                None
+            }
+        },
+        (false, None) => None,
+    };
+
     Ok(Ctx {
         cluster,
         features,
@@ -120,6 +158,7 @@ async fn connect(args: &Args) -> Result<Ctx> {
         recent_window: args.recent_window(),
         allow_unhealthy: args.allow_unhealthy.clone(),
         allow_disruptive: args.allow_disruptive,
+        tls,
     })
 }
 
@@ -135,16 +174,13 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
     // Alloy roles as well as Loki itself. Missing any one of them makes the
     // assertion untestable rather than failing.
     //
-    // Every one of them queries Loki directly, and this suite has no TLS client
-    // — so a release that moved Loki's HTTP port to TLS makes them untestable
-    // rather than failing. They become ignored trials with that reason, which is
-    // honest; making them pass needs a TLS client over the forwarded stream, and
-    // until that lands `grafana::loki_datasource_query` is the only assertion
-    // covering the log read path on such a release.
+    // Not gated on whether Loki serves TLS: these dial it over the suite's own
+    // TLS client when it does, so a stack with certificates on gets the same
+    // coverage as one without. It briefly was gated, and the resulting run was
+    // green with the entire log read path unasserted.
     let logging = ctx.features.enabled("loki")
         && ctx.features.enabled("alloy-agent")
-        && ctx.features.enabled("alloy-gateway")
-        && !ctx.features.loki_server_tls();
+        && ctx.features.enabled("alloy-gateway");
 
     trials.push(trial(
         runtime,
@@ -290,6 +326,27 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         "tls::certificates_ready",
         certificates,
         checks::tls::certificates_ready,
+    ));
+    // Needs a TLS hop to point at, so it is gated on Loki actually serving TLS
+    // rather than on certificates merely being issued.
+    // The authentication assertion, gated on the hop actually being at phase 3:
+    // at phase 2 an anonymous client is *supposed* to be served, so running it
+    // there would fail a correctly-configured stack.
+    trials.push(trial(
+        runtime,
+        ctx,
+        "tls::gateway_requires_client_certificate",
+        certificates
+            && ctx.features.enabled("alloy-gateway")
+            && ctx.features.gateway_logs_requires_client_cert(),
+        checks::tls::gateway_requires_client_certificate,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "tls::loki_refuses_plaintext",
+        certificates && ctx.features.enabled("loki") && ctx.features.loki_server_tls(),
+        checks::tls::loki_refuses_plaintext,
     ));
     // Destructive: forces a reissue by deleting a Secret. Opt-in, because this
     // binary is pointed at real clusters too.

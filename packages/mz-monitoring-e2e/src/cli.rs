@@ -102,6 +102,16 @@ pub struct Args {
     #[arg(long = "allow-disruptive")]
     pub allow_disruptive: bool,
 
+    /// Secret to read the suite's own TLS material out of.
+    ///
+    /// Unset picks a cert-manager-issued Secret from the release namespace, which
+    /// is right whenever the chart issued the certificates. Set it when the trust
+    /// root the components use came from somewhere this suite cannot guess — a
+    /// `ClusterIssuer` shared with the rest of the platform, say, whose `ca.crt`
+    /// lives in a Secret the chart did not create.
+    #[arg(long = "client-cert-secret", value_name = "NAME")]
+    pub client_cert_secret: Option<String>,
+
     /// Directory to collect cluster diagnostics into when anything fails.
     ///
     /// Unset collects nothing. In CI this should always be set: the cluster is

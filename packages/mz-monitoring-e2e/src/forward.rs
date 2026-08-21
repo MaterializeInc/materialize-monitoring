@@ -27,6 +27,7 @@
 //! connection that goes stale between retries costs more than it saves.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
 use http_body_util::BodyExt;
@@ -34,6 +35,86 @@ use hyper_util::rt::TokioIo;
 use k8s_openapi::api::core::v1::{Pod, Service};
 use kube::Client;
 use kube::api::{Api, ListParams};
+use rustls::ClientConfig;
+use rustls::pki_types::ServerName;
+use tokio_rustls::TlsConnector;
+
+/// How to speak TLS over a forwarded stream.
+///
+/// `server_name` is asserted in the handshake and verified against the
+/// certificate's SANs. It is **`localhost`** for everything this suite dials,
+/// and that is the honest name rather than a convenient one: a port-forward is a
+/// loopback tunnel straight to one pod, so no Service DNS name is ever resolved
+/// and asserting one would verify a binding the transport did not use. The chart
+/// puts `localhost` and `127.0.0.1` on every certificate for exactly this case.
+///
+/// What the handshake therefore proves is the chain — that the server presents a
+/// certificate the internal CA signed. Whether the SAN ladder covers the Service
+/// names the *chart* dials is a render-time property, checked by
+/// `mzmon.certificates.validate` before anything is applied.
+#[derive(Clone)]
+pub struct TlsDial {
+    pub config: Arc<ClientConfig>,
+    pub server_name: String,
+}
+
+impl TlsDial {
+    pub fn new(config: Arc<ClientConfig>) -> Self {
+        Self {
+            config,
+            server_name: "localhost".to_string(),
+        }
+    }
+}
+
+/// Marks an error as coming from `TlsConnector::connect` itself.
+///
+/// A marker in the error chain rather than a string to match on: the
+/// distinction carries an assertion, and telling the cases apart by grepping a
+/// message would silently start passing the day the message is reworded.
+#[derive(Debug)]
+pub struct HandshakeFailed;
+
+impl std::fmt::Display for HandshakeFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TLS handshake failed")
+    }
+}
+
+impl std::error::Error for HandshakeFailed {}
+
+/// Whether the peer turned us away at the TLS layer, rather than answering over
+/// it.
+///
+/// **Not the same as "`connect` returned an error", and under TLS 1.3 it usually
+/// is not.** The client sends its Certificate and Finished in the same flight as
+/// its first application data, so `TlsConnector::connect` resolves *before* the
+/// server has looked at the certificate — or at its absence. A listener set to
+/// `RequireAndVerifyClientCert` therefore accepts the connection, then sends
+/// `CertificateRequired` as a fatal alert, and the client meets it on the first
+/// read. Measured against a phase-3 gateway, where it arrives as
+/// `connection error: received fatal alert: CertificateRequired` from hyper.
+///
+/// So the predicate is "a `rustls::Error` appears in the chain" — refused at the
+/// handshake and refused immediately after it are the same fact about the
+/// server's policy, and the difference between them is a protocol-version
+/// detail. An HTTP status, by contrast, never produces one: it means the request
+/// got past the policy.
+pub fn is_tls_refusal(err: &anyhow::Error) -> bool {
+    err.chain().any(|e| {
+        if e.is::<HandshakeFailed>() || e.is::<rustls::Error>() {
+            return true;
+        }
+        // A `rustls::Error` that travelled inside an `io::Error` is invisible to
+        // a plain chain walk, and this is the usual case rather than an edge
+        // one: `io::Error::source` delegates to the *inner* error's source
+        // instead of yielding the inner error, so the walk steps straight past
+        // it and ends. `get_ref` is the only way back to it.
+        e.downcast_ref::<std::io::Error>()
+            .and_then(|io| io.get_ref())
+            .is_some_and(|inner| inner.is::<rustls::Error>())
+    })
+}
 
 /// A Service resolved down to a specific pod and container port.
 pub struct Backend {
@@ -120,6 +201,7 @@ pub async fn get(
     backend: &Backend,
     path: &str,
     headers: &[(String, String)],
+    tls: Option<&TlsDial>,
 ) -> Result<Vec<u8>> {
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let mut forwarder = pods
@@ -131,7 +213,45 @@ pub async fn get(
         .take_stream(backend.port)
         .ok_or_else(|| anyhow!("port-forward to {} yielded no stream", backend.pod))?;
 
-    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+    match tls {
+        None => speak_http(TokioIo::new(stream), backend, path, headers).await,
+        Some(dial) => {
+            let name = ServerName::try_from(dial.server_name.clone()).with_context(|| {
+                format!("{:?} is not a usable TLS server name", dial.server_name)
+            })?;
+            let stream = TlsConnector::from(Arc::clone(&dial.config))
+                .connect(name, stream)
+                .await
+                .map_err(|err| anyhow::Error::new(err).context(HandshakeFailed))
+                .with_context(|| {
+                    format!(
+                        "TLS handshake with {} on port {}, asserting the name {:?}. \
+                         `CertificateRequired` here means the listener requires a client \
+                         certificate and this client presented none; `UnknownIssuer` means the \
+                         server's certificate did not chain to the CA in the Secret the suite \
+                         read; `NotValidForName` means the SAN ladder does not cover that name.",
+                        backend.pod, backend.port, dial.server_name,
+                    )
+                })?;
+            speak_http(TokioIo::new(stream), backend, path, headers).await
+        }
+    }
+}
+
+/// One request over an already-established stream, plaintext or TLS alike.
+///
+/// Generic over the stream so the TLS branch above is the only thing that knows
+/// TLS happened: everything from the HTTP handshake down is identical.
+async fn speak_http<S>(
+    io: S,
+    backend: &Backend,
+    path: &str,
+    headers: &[(String, String)],
+) -> Result<Vec<u8>>
+where
+    S: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
+{
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(io)
         .await
         .context("HTTP handshake over the forwarded stream")?;
 

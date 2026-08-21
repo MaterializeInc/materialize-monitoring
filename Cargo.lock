@@ -1541,9 +1541,11 @@ dependencies = [
  "libtest-mimic",
  "percent-encoding",
  "rustls",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
  "zip",
 ]
 
