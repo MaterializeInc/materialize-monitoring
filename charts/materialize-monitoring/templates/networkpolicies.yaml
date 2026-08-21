@@ -61,10 +61,7 @@ spec:
          key is simply omitted rather than emitted empty. */}}
   {{- $ingressRules := list }}
   {{- if $ingress.ports }}
-    {{- $ports := list }}
-    {{- range $port := $ingress.ports }}
-      {{- $ports = append $ports ( dict "port" $port "protocol" "TCP" ) }}
-    {{- end }}
+    {{- $ports := include "mzmon.networkPolicy.ports" $ingress.ports | fromYamlArray }}
     {{- $rule := dict "ports" $ports }}
     {{- /* No `from` at all means "from anywhere", which is what allowExternal
            asks for. Otherwise: any pod in this policy's own namespace. */}}
@@ -84,10 +81,7 @@ spec:
   {{- end }}
   {{- $external := $egress.external | default dict }}
   {{- if $external.ports }}
-    {{- $ports := list }}
-    {{- range $port := $external.ports }}
-      {{- $ports = append $ports ( dict "port" $port "protocol" "TCP" ) }}
-    {{- end }}
+    {{- $ports := include "mzmon.networkPolicy.ports" $external.ports | fromYamlArray }}
     {{- $rule := dict "ports" $ports }}
     {{- with $external.cidrs }}
       {{- $to := list }}

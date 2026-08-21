@@ -117,6 +117,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res := include "mzmon.networkPolicy.validate.grafanaOperatorEgress" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}
@@ -290,13 +294,18 @@ Usage:
 {{- /*
 Whether the Grafana gossip policy should render.
 
-Three conditions, and the third is what keeps it from being a permanently-open
-port on installs that never gossip:
+Four conditions, and the last two are each load-bearing for a different reason:
 
   1. The `grafana` subchart is part of this render.
   2. `networkPolicies.grafanaGossip.enabled` is on, or unset and following
      `networkPolicies.enabled`.
-  3. `grafana.ini.unified_alerting.ha_peers` is set. That is the value that makes
+  3. **`grafana.networkPolicy.enabled` is on.** This is a supplement to that
+     policy and is not safe on its own. A NetworkPolicy selecting a pod isolates
+     it for every direction it declares, so a lone `Ingress` policy opening 9094
+     would deny everything else — including the UI on `service.targetPort`. With
+     the main policy off there is nothing to supplement and nothing to isolate,
+     so the right answer is to render nothing.
+  4. `grafana.ini.unified_alerting.ha_peers` is set. That is the value that makes
      the replicas dial the gossip port; without it nothing connects to 9094 and
      the rule would be an allowance for traffic that does not exist.
 
@@ -311,11 +320,105 @@ Usage:
     {{- if not ( typeIs "<nil>" $cfg.enabled ) }}
       {{- $on = $cfg.enabled }}
     {{- end }}
-    {{- if $on }}
+    {{- $main := ( $.Values.grafana.networkPolicy | default dict ).enabled }}
+    {{- if and $on $main }}
       {{- $ha := ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "unified_alerting" ) | fromYaml ).ha_peers | default "" }}
       {{- if $ha }}
         {{- "true" }}
       {{- end }}
     {{- end }}
   {{- end }}
+{{- end }}
+
+{{- /*
+Normalize a port list into `NetworkPolicyPort` entries.
+
+Entries may be written either way, and both appear in `values.yaml`:
+
+  ports:
+    - 9093              # a bare number, which means TCP
+    - port: 9094        # a map, for anything that is not
+      protocol: UDP
+
+The bare form covers almost everything, and spelling `protocol: TCP` on every
+line would bury the one entry where the protocol is the point. The map form
+exists because a memberlist-style gossip port needs **both** transports — TCP
+for the join and for state pushes, UDP for the gossip itself — and a TCP-only
+rule produces a cluster that forms and then never converges. Alertmanager's
+`9094` is exactly that case.
+
+Returns a YAML array, so the caller reads it back with `fromYamlArray`.
+
+Usage:
+  {{- $ports := include "mzmon.networkPolicy.ports" $ingress.ports | fromYamlArray }}
+*/}}
+{{- define "mzmon.networkPolicy.ports" }}
+  {{- $out := list }}
+  {{- range $entry := . }}
+    {{- if kindIs "map" $entry }}
+      {{- $port := $entry.port | required "a networkPolicies port entry written as a map must set `port`." }}
+      {{- $out = append $out ( dict "port" $port "protocol" ( $entry.protocol | default "TCP" ) ) }}
+    {{- else }}
+      {{- $out = append $out ( dict "port" $entry "protocol" "TCP" ) }}
+    {{- end }}
+  {{- end }}
+  {{- $out | toYaml }}
+{{- end }}
+
+{{- /*
+Warn when grafana-operator's egress cannot reach the Grafana it is pointed at.
+
+Only fires under `connections.grafana.mode: external`, where the instance lives
+outside the cluster and `egress.external.ports` is the only rule that can reach
+it. The shipped list is `443`/`6443`, which covers an HTTPS Grafana on the
+default port and nothing else — so a self-hosted instance on `:3000`, or a plain
+`http://` one on `:80`, leaves the operator running, healthy, and reconciling
+into a connection that never opens.
+
+The port is read off the URL rather than assumed: an explicit `:port` wins, and
+otherwise the scheme decides. Anything this cannot parse confidently — an IPv6
+literal, a templated host — is left alone rather than guessed at, because a
+warning that fires on a working install is worse than no warning.
+
+Usage:
+  {{- $res := include "mzmon.networkPolicy.validate.grafanaOperatorEgress" $ | fromYaml }}
+*/}}
+{{- define "mzmon.networkPolicy.validate.grafanaOperatorEgress" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- if ( include "mzmon.networkPolicy.enabled" ( dict "context" $ "app" "grafana-operator" ) ) }}
+    {{- $conn := dig "grafana" "mode" "" ( $.Values.connections | default dict ) }}
+    {{- $url := dig "grafana" "external" "url" "" ( $.Values.connections | default dict ) }}
+    {{- if and ( eq $conn "external" ) $url }}
+      {{- $scheme := regexFind "^[a-zA-Z][a-zA-Z0-9+.-]*://" $url | trimSuffix "://" | lower }}
+      {{- $authority := regexReplaceAll "^[a-zA-Z][a-zA-Z0-9+.-]*://" $url "" | splitList "/" | first }}
+      {{- $port := "" }}
+      {{- if eq ( len ( splitList ":" $authority ) ) 2 }}
+        {{- $port = splitList ":" $authority | last }}
+      {{- else if not ( contains ":" $authority ) }}
+        {{- if eq $scheme "https" }}{{- $port = "443" }}{{- end }}
+        {{- if eq $scheme "http" }}{{- $port = "80" }}{{- end }}
+      {{- end }}
+      {{- /* `regexMatch` guards against a templated or otherwise non-numeric
+             authority segment, which `int` would silently turn into 0. */}}
+      {{- if and $port ( regexMatch "^[0-9]+$" $port ) }}
+        {{- $cfg := index $.Values.networkPolicies "grafana-operator" | default dict }}
+        {{- $allowed := list }}
+        {{- range $entry := ( dig "egress" "external" "ports" list $cfg ) }}
+          {{- if kindIs "map" $entry }}
+            {{- $allowed = append $allowed ( $entry.port | toString ) }}
+          {{- else }}
+            {{- $allowed = append $allowed ( $entry | toString ) }}
+          {{- end }}
+        {{- end }}
+        {{- if not ( has $port $allowed ) }}
+          {{- $warnings = append $warnings ( printf "connections.grafana.external.url points at port %s, but networkPolicies.grafana-operator.egress.external.ports is %v. The operator would come up healthy and reconcile nothing, because the connection to Grafana is denied rather than refused. Add %s to that list, or an equivalent networkPolicies.grafana-operator.egress.extra rule." $port $allowed $port ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}

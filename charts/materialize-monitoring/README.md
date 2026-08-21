@@ -420,7 +420,7 @@ what is particular to it — which ports, and why that egress is as wide as it i
 | Key | Meaning |
 | --- | --- |
 | `enabled` | Render this policy. Unset follows `networkPolicies.enabled`. |
-| `ingress.ports` | TCP ports opened to the rest of the component's namespace. |
+| `ingress.ports` | Ports opened to the rest of the component's namespace. A bare number means TCP; `{port, protocol}` spells out anything else. |
 | `ingress.allowExternal` | Drop the source restriction entirely, so the ports above accept connections from any namespace and from outside the cluster. |
 | `ingress.extra` | Raw `NetworkPolicyIngressRule` entries, appended verbatim. The hook for a cross-namespace source. |
 | `egress.inNamespace` | Reach the other pods of this release, on any port. |
@@ -465,7 +465,14 @@ what is particular to it — which ports, and why that egress is as wide as it i
     "extra": [],
     "ports": [
       9093,
-      9094
+      {
+        "port": 9094,
+        "protocol": "TCP"
+      },
+      {
+        "port": 9094,
+        "protocol": "UDP"
+      }
     ]
   }
 }</pre>
@@ -475,9 +482,18 @@ what is particular to it — which ports, and why that egress is as wide as it i
 Ingress covers `9093` (the API — Loki's ruler, the Alloy gateway's scrape,
 and Grafana's alerting all arrive here) and `9094`, the gossip port a
 multi-replica Alertmanager uses to deduplicate notifications between peers.
-`9094` is listed even at the default `replicaCount: 1`, where nothing dials
-it: the cost is an open port that no pod connects to, and the alternative is
-a cluster that silently sends every notification twice the day someone
+
+**`9094` is listed twice, TCP and UDP, and both are required.** Alertmanager's
+mesh is memberlist: it joins and pushes state over TCP and gossips over UDP,
+and the upstream chart's Service declares `clusterpeer-tcp` and
+`clusterpeer-udp` on the same port for exactly that reason. A TCP-only rule
+produces the worst version of this failure — the peers find each other, the
+cluster forms, and it never converges, so every notification goes out once
+per replica.
+
+Both are listed even at the default `replicaCount: 1`, where nothing dials
+either: the cost is an open port that no pod connects to, and the alternative
+is a cluster that silently sends every notification twice the day someone
 scales it up.
 
 Egress is deliberately wide. Alertmanager's job is to reach PagerDuty, Slack,
@@ -3710,6 +3726,35 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.pdb</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "maxUnavailable": 1
+}</pre>
+</td>
+      <td class="helm-value-desc">PodDisruptionBudgets for every Thanos component.
+
+Upstream ships these off. One switch turns them on for all components,
+and the per-component `pdb.enabled` cannot opt back out — the subchart
+templates test `or <component>.pdb.enabled global.pdb.enabled`.
+
+`maxUnavailable` rather than `minAvailable`, deliberately:
+
+  * It scales with replica count instead of pinning an absolute floor.
+  * On the single-replica Compactor, `minAvailable: 1` would block every
+    voluntary eviction and hang node drains indefinitely. `maxUnavailable: 1`
+    permits the eviction, so the singleton is a harmless no-op rather than
+    a drain deadlock.
+  * On Receive it must stay within what write quorum tolerates
+    (`replicationFactor - ((replicationFactor / 2) + 1)`), which is 1 at
+    the replication factor of 3 set below. A validator enforces this.
+
+This matches the Loki convention (ingester `maxUnavailable: 1`).
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.global<wbr>.networkPolicies</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -4901,12 +4946,18 @@ balancer's health-check and client ranges. `profiles/grafana-ingress.values.yaml
 is where that belongs.
 
 What it closes is the rest of the pod: `6060` (pprof) and `9094` (the
-unified-alerting gossip port) stop accepting connections. Neither is used by
-this chart's defaults, and pprof should not be reachable in production. The
-gossip port matters only if you run multiple replicas *and* configure
+unified-alerting gossip port) stop accepting connections. pprof should not be
+reachable in production, so that one is the point. `9094` is not — it matters
+as soon as you run multiple replicas *and* set
 `grafana.ini.unified_alerting.ha_peers`, which needs the pods to reach each
-other on `9094` — the subchart's policy cannot express that, so an HA
-alerting setup needs this off. The render warns when it sees that combination.
+other on it, and this template cannot express a second port.
+
+**You do not have to turn this off to get HA alerting.** The chart renders the
+missing rule itself, as `networkPolicies.grafanaGossip`, and it appears exactly
+when `ha_peers` is set. Policies are additive, so the two sit side by side.
+Turning *that* off while HA alerting is configured is what the render warns
+about; turning this one off takes the supplement with it, since a lone gossip
+policy would isolate the pods and leave only `9094` open.
 
 **Egress is left unrestricted** (`egress.enabled: false` renders a policy with
 no `Egress` policy type at all, rather than an empty allow). Grafana dials the

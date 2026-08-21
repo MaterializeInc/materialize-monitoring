@@ -85,11 +85,57 @@ tests:
           path: spec.ingress[0].ports[0].port
           value: 9093
       - equal:
-          path: spec.ingress[0].ports[1].port
-          value: 9094
+          path: spec.ingress[0].ports[0].protocol
+          value: TCP
       - equal:
           path: spec.ingress[0].from[0].podSelector
           value: {}
+
+  # Alertmanager's mesh is memberlist: TCP for the join and state pushes, UDP for
+  # the gossip. A TCP-only rule forms a cluster that never converges, so every
+  # notification goes out once per replica — the failure this whole port exists
+  # to prevent. The upstream chart's Service declares both for the same reason.
+  - it: should open the alertmanager mesh port on both TCP and UDP
+    template: templates/networkpolicies.yaml
+    documentIndex: 0
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].ports
+          count: 3
+      - equal:
+          path: spec.ingress[0].ports[1].port
+          value: 9094
+      - equal:
+          path: spec.ingress[0].ports[1].protocol
+          value: TCP
+      - equal:
+          path: spec.ingress[0].ports[2].port
+          value: 9094
+      - equal:
+          path: spec.ingress[0].ports[2].protocol
+          value: UDP
+
+  # A bare number is TCP; the map form is only for the entries where the protocol
+  # is the point. Both have to survive the same code path.
+  - it: should accept a port written either as a number or as a map
+    template: templates/networkpolicies.yaml
+    documentIndex: 2
+    set:
+      networkPolicies.grafana-operator.ingress.ports:
+        - 9090
+        - port: 9091
+          protocol: UDP
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0]
+          value:
+            port: 9090
+            protocol: TCP
+      - equal:
+          path: spec.ingress[0].ports[1]
+          value:
+            port: 9091
+            protocol: UDP
 
   # Notification providers are outside the cluster and unknowable here, so the
   # egress rule is broad by design — but it is still a rule, not an absence.
@@ -476,3 +522,78 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "select their peers by pod label alone"
+
+  # A NetworkPolicy isolates every direction it declares, so a lone Ingress policy
+  # opening only 9094 would deny the Grafana UI on 3000. The supplement has to
+  # disappear with the policy it supplements.
+  - it: should not render the gossip policy when the main Grafana policy is off
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        networkPolicy:
+          enabled: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/networkpolicies.yaml
+    asserts:
+      # Alertmanager and grafana-operator, with their DNS policies. No gossip.
+      - hasDocuments:
+          count: 4
+
+  - it: should not warn about the gossip port when the main Grafana policy is off
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        networkPolicy:
+          enabled: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "Port 9094 stays closed"
+
+  # The operator's egress allows 443/6443, which covers an HTTPS Grafana on the
+  # default port and nothing else. A self-hosted instance on another port leaves
+  # it healthy and reconciling into a connection that never opens.
+  - it: should warn when an external Grafana is on a port the operator cannot reach
+    set:
+      connections.grafana.mode: external
+      connections.grafana.external.url: http://grafana.example.com:3000
+      connections.grafana.external.apiKey:
+        name: grafana-api
+        key: token
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "external.url points at port 3000"
+
+  # No explicit port: the scheme decides, and http means 80, which is also not
+  # in the list.
+  - it: should read the port from the scheme when the URL does not name one
+    set:
+      connections.grafana.mode: external
+      connections.grafana.external.url: http://grafana.example.com/
+      connections.grafana.external.apiKey:
+        name: grafana-api
+        key: token
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "external.url points at port 80"
+
+  - it: should stay quiet when the external Grafana is on an allowed port
+    set:
+      connections.grafana.mode: external
+      connections.grafana.external.url: https://grafana.example.com
+      connections.grafana.external.apiKey:
+        name: grafana-api
+        key: token
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "external.url points at port"
