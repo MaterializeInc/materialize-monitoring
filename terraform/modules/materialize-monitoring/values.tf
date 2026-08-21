@@ -310,6 +310,12 @@ locals {
   # ----------------------------------------------------------------------------
   # Wiring
   # ----------------------------------------------------------------------------
+  # `internal_issuer_ref` overrides `issuer_ref` for in-cluster names; with
+  # neither set the chart bootstraps its own root. Mirrors materialize-instance,
+  # where the same override exists because a public ACME issuer cannot sign
+  # cluster-internal names.
+  internal_issuer = var.internal_issuer_ref != null ? var.internal_issuer_ref : var.issuer_ref
+
   wiring_values = {
     materialize-system = {
       namespace = var.materialize_instance_namespace
@@ -348,6 +354,53 @@ locals {
         passwordKey    = "admin-password"
       }
     }
+
+    # Certificates. The chart takes an issuer per trust domain; this module
+    # takes the `materialize-instance` shape (`issuer_ref` plus an optional
+    # `internal_issuer_ref` override) and resolves it here, so the two repos are
+    # configured the same way even though the charts underneath are not.
+    #
+    # `group` is not surfaced as a variable — it is always `cert-manager.io` for
+    # `Issuer`/`ClusterIssuer`, including issuers backed by an external CA — so it
+    # is supplied here rather than becoming a field a caller has to get right.
+    # A `for` comprehension rather than a `cond ? {} : {...}` ternary: the two
+    # branches of a conditional must unify to one type, and `{}` against an
+    # object carrying a nested attribute does not. The comprehension yields a
+    # map whose entries simply are or are not present.
+    certificates = merge(
+      { enabled = var.certificates_enabled },
+      { for k, v in {
+        internal = local.internal_issuer == null ? {
+          # No issuer named: the chart bootstraps a self-signed root scoped to
+          # this release. A ClusterIssuer, because split-namespace spreads the
+          # components across namespaces a namespaced Issuer cannot sign for.
+          selfSigned = { enabled = true }
+          } : {
+          issuerRef = {
+            name  = local.internal_issuer.name
+            kind  = local.internal_issuer.kind
+            group = "cert-manager.io"
+          }
+        }
+      } : k => v if var.certificates_enabled },
+
+      # Browser-facing. Only when both an issuer and a name exist — either alone
+      # issues nothing, and the chart refuses names without an issuer rather
+      # than silently doing nothing.
+      { for k, v in {
+        external = {
+          issuerRef = {
+            name  = try(var.issuer_ref.name, "")
+            kind  = try(var.issuer_ref.kind, "")
+            group = "cert-manager.io"
+          }
+          dnsNames = var.grafana_external_dns_names
+        }
+      } : k => v if var.certificates_enabled && var.issuer_ref != null && length(var.grafana_external_dns_names) > 0 },
+
+      { for k, v in { duration = var.certificate_duration } : k => v if var.certificates_enabled && var.certificate_duration != null },
+      { for k, v in { renewBefore = var.certificate_renew_before } : k => v if var.certificates_enabled && var.certificate_renew_before != null },
+    )
 
     # Loki's NetworkPolicy is on by default and the chart requires both
     # namespace selectors when it is — it refuses to render otherwise. They are

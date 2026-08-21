@@ -105,6 +105,16 @@ module "monitoring" {
     "x-honeycomb-team" = "example-not-a-real-honeycomb-key"
   }
 
+  # Certificates, on the recommended shape: no issuer named, so the chart
+  # bootstraps a self-signed root scoped to this release rather than reusing the
+  # cluster's general-purpose one. Requires cert-manager to already be installed.
+  #
+  # This issues the material; it does not turn TLS on. Each hop moves off
+  # plaintext under the chart's `profiles/mtls*.values.yaml`, composed through
+  # `additional_values`, because a component only leaves plaintext once its
+  # renewal behaviour is proven.
+  certificates_enabled = true
+
   node_selector = { workload = "generic" }
 
   tolerations = [

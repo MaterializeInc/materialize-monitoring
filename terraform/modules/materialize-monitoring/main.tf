@@ -254,3 +254,26 @@ resource "helm_release" "monitoring" {
     kubernetes_secret.alloy_gateway_env,
   ]
 }
+
+# Certificate wiring the chart can only complain about at render time, surfaced
+# at plan time instead. `check` blocks warn rather than fail, which is the right
+# severity here: every one of these is a configuration that installs cleanly and
+# then does nothing, so the operator needs to see it — but a hard failure would
+# be worse than the chart's own error, which is more specific.
+check "certificates" {
+  assert {
+    condition     = var.certificates_enabled || (var.issuer_ref == null && var.internal_issuer_ref == null && length(var.grafana_external_dns_names) == 0)
+    error_message = "issuer_ref / internal_issuer_ref / grafana_external_dns_names are set but certificates_enabled is false, so no Certificate resources are rendered and none of them do anything. Set certificates_enabled = true, or clear them."
+  }
+
+  assert {
+    condition     = length(var.grafana_external_dns_names) == 0 || var.issuer_ref != null
+    error_message = "grafana_external_dns_names is set with no issuer_ref, so no browser-facing certificate is issued. If your load balancer terminates TLS with a cloud-managed certificate that is correct — pass its ARN or resource ID through grafana.service.annotations in additional_values, and clear this list."
+  }
+
+  # The namespaced-Issuer-under-split-namespace case is deliberately not checked
+  # here: split-namespace is a chart profile a caller composes through
+  # `additional_values`, which this module cannot inspect. The chart refuses that
+  # combination at render time with a message naming the components affected,
+  # which is both more specific and closer to the mistake.
+}

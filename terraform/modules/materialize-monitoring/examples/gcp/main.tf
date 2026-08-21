@@ -88,6 +88,30 @@ module "monitoring" {
   # fan-out is complete. GCP carries it because C4/N4 take only Hyperdisk, so the
   # default class does not work there at all.
   storage_class = "render-check-storage-class"
+
+  # The other certificate shape: an issuer the operator already runs, plus a
+  # browser-facing name. The aws example covers the self-signed default; this one
+  # covers bring-your-own, so the render check sees both branches.
+  #
+  # `internal_issuer_ref` is separate because a public ACME issuer cannot sign
+  # in-cluster names — the same reason `materialize-instance` splits them, and
+  # why the two variables cannot collapse into one.
+  certificates_enabled = true
+
+  issuer_ref = {
+    name = "letsencrypt-production"
+    kind = "ClusterIssuer"
+  }
+
+  internal_issuer_ref = {
+    name = "mzmon-internal-ca"
+    kind = "ClusterIssuer"
+  }
+
+  # Only needed behind an L4 load balancer, which passes TCP through so TLS
+  # terminates at the pod. An L7 balancer holding a cloud-managed certificate
+  # needs none of this — see the variable's documentation.
+  grafana_external_dns_names = ["grafana.monitoring.example.com"]
 }
 
 output "grafana_url" {
