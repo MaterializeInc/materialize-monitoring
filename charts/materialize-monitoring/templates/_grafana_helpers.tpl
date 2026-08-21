@@ -844,36 +844,62 @@ Usage:
   {{- if $enabled }}
     {{- $caSecret := $cfg.caSecret | default dict }}
     {{- $jsonData = merge $jsonData ( dict "tlsAuthWithCACert" true ) }}
-    {{- /* Inline wins. A CA is public material, and it is the path verified
-           against a live Grafana; the reference path is offered but its
-           substitution is operator-version-dependent. */}}
+    {{- /* **The placeholder has to be the Secret *key*, not a name of our
+           choosing.** grafana-operator substitutes `${<key>}` — the key from the
+           `secretKeyRef`, verbatim, dots and all — and leaves anything else
+           alone. A mnemonic token like `${tlsCACert}` therefore reaches Grafana
+           unsubstituted, is stored as a literal, and every query fails with
+           "Unable to load TLS certificate". Measured on operator v5.24.0: the CR
+           is accepted, the operator logs nothing, and `secureJsonFields` reports
+           `tlsCACert: true` — so the only symptom is at query time.
+
+           Inline still wins when both are given: `caPem` needs no operator
+           involvement at all. But `caSecret` is the better default where the
+           caller can use it, because an inlined copy goes stale when the CA
+           rotates and a reference does not. */}}
     {{- if $cfg.caPem }}
       {{- $secureJsonData = merge $secureJsonData ( dict "tlsCACert" $cfg.caPem ) }}
     {{- else if $caSecret.name }}
-      {{- $secureJsonData = merge $secureJsonData ( dict "tlsCACert" "${tlsCACert}" ) }}
+      {{- $caKey := $caSecret.key | default "ca.crt" }}
+      {{- /* Templated like the URL beside it, so a profile can name a Secret
+             whose name depends on the release — `mzmon.certificates.secretName`
+             for one. Without it a profile can move a datasource to https but
+             cannot say what to trust, which leaves the operator to supply by
+             hand the one value the chart already knows. */}}
+      {{- $caName := tpl $caSecret.name $root }}
+      {{- $secureJsonData = merge $secureJsonData ( dict "tlsCACert" ( printf "${%s}" $caKey ) ) }}
       {{- $valuesFrom = append $valuesFrom ( dict
           "targetPath" "secureJsonData.tlsCACert"
           "valueFrom" ( dict "secretKeyRef" ( dict
-            "name" $caSecret.name
-            "key" ( $caSecret.key | default "ca.crt" ) ) ) ) }}
+            "name" $caName
+            "key" $caKey ) ) ) }}
     {{- end }}
 
     {{- $client := $cfg.clientCert | default dict }}
     {{- if $client.secretName }}
+      {{- $certKey := $client.certKey | default "tls.crt" }}
+      {{- $keyKey := $client.keyKey | default "tls.key" }}
+      {{- /* Same rule as the CA above. Distinct keys are required rather than
+             merely conventional: two targets sharing one placeholder would both
+             receive whichever value the operator substituted last. */}}
+      {{- if eq $certKey $keyKey }}
+        {{- fail ( printf "connections.datasources.%s.tls.clientCert sets certKey and keyKey to the same key (%q). grafana-operator substitutes by key name, so both the certificate and the private key would resolve to the same value." $name $certKey ) }}
+      {{- end }}
       {{- $jsonData = merge $jsonData ( dict "tlsAuth" true ) }}
       {{- $secureJsonData = merge $secureJsonData ( dict
-          "tlsClientCert" "${tlsClientCert}"
-          "tlsClientKey" "${tlsClientKey}" ) }}
+          "tlsClientCert" ( printf "${%s}" $certKey )
+          "tlsClientKey" ( printf "${%s}" $keyKey ) ) }}
+      {{- $clientName := tpl $client.secretName $root }}
       {{- $valuesFrom = append $valuesFrom ( dict
           "targetPath" "secureJsonData.tlsClientCert"
           "valueFrom" ( dict "secretKeyRef" ( dict
-            "name" $client.secretName
-            "key" ( $client.certKey | default "tls.crt" ) ) ) ) }}
+            "name" $clientName
+            "key" $certKey ) ) ) }}
       {{- $valuesFrom = append $valuesFrom ( dict
           "targetPath" "secureJsonData.tlsClientKey"
           "valueFrom" ( dict "secretKeyRef" ( dict
-            "name" $client.secretName
-            "key" ( $client.keyKey | default "tls.key" ) ) ) ) }}
+            "name" $clientName
+            "key" $keyKey ) ) ) }}
     {{- end }}
 
     {{- with $cfg.serverName }}

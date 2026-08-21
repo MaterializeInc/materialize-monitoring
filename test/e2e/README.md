@@ -83,6 +83,15 @@ It composes through the substrate's **state file** rather than instantiating it 
 
 Credentials go in through `object_storage_access_key_id` / `object_storage_secret_access_key`, the module's first-class static-credential path — not `additional_values`. That is deliberate: a tier-2 root wired through the escape hatch would validate a composition no customer uses, while this exercises exactly the path a deployment without workload identity takes in production.
 
+**Tier 2 runs mTLS phase 3 by default.** The substrate installs cert-manager, `certificates_enabled` follows that, and the composition layers the chart's own `mtls.values.yaml`, `mtls-phase2.values.yaml` and `mtls-phase3.values.yaml` — the shipped profiles rather than a copy, so a change to one is caught here instead of drifting.
+All three at once, deliberately: the phases exist to make a *rollout* order-independent, which is a live-cluster concern, and a fresh install has no running writers to strand.
+Phase 1 and phase 2 are both states where an anonymous client is still served, so phase 3 is the only one worth asserting.
+`--allow-disruptive` is on **under CI only**, which is what lets `tls::survives_renewal` force a reissue there — the job creates and destroys the cluster, so the worst case is a rebuild.
+Locally it reports `ignored`, because `KIND_CONTEXT` is only a default and someone who has pointed these targets at a longer-lived cluster should not find out by having a Secret deleted; pass `E2E_FLAGS=--allow-disruptive` when that is what you want.
+
+The ordering here is load-bearing and silent when wrong: the profiles arrive through `additional_values`, which the module puts last, so they override the sizing profile's `thanos.receive.extraArgs` rather than the reverse.
+Helm overwrites lists, and whichever side loses that merge does so without a word — either the TLS flags vanish or `--receive.replication-factor=3` does, and the second one drops write quorum to 1.
+
 **What tier 2 cannot cover:** workload identity. rustfs takes static credentials and kind has no OIDC issuer an IAM provider trusts, so IRSA and GKE Workload Identity are only exercised at tier 3 — after we have already tagged. The `workload_identity_available` output states this so a caller cannot miss it.
 
 ## Notes for whoever extends this

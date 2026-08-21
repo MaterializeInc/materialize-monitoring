@@ -306,18 +306,26 @@ pipeline:
 # effect when grafana-operator re-provisions the datasource — on
 # `connections.datasources.resyncPeriod` (5m by default), not on the
 # certificate's renewal. That is a property of Grafana's provisioning model.
-# **You must supply the CA**, and the profile cannot: the chart has no way to read
-# a Secret at render time. Compose one of these alongside it —
 #
-#   --set-file connections.datasources.loki.tls.caPem=ca.crt
+# The CA is named by reference below rather than inlined, and that is the only
+# form available to a profile: the chart cannot read a Secret at render time, so
+# there is no PEM here to inline. It is also the better form — `caPem` is a copy
+# that goes stale the moment the CA is re-issued, while a reference follows it.
 #
-# where `ca.crt` is the issuing CA (`kubectl -n <ns> get secret <release>-grafana-tls
-# -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt`). The render refuses an https
-# datasource with no CA rather than shipping one that renders empty panels.
+# If your Grafana is not the one this chart deploys, override
+# `connections.datasources.loki.tls.caSecret.name` with a Secret in *that*
+# instance's namespace: the operator resolves it there, not here.
 connections:
   datasources:
     loki:
       url: 'https://loki-query-frontend.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
+      tls:
+        caSecret:
+          # The Grafana component's own certificate Secret, which carries the
+          # issuing CA in `ca.crt` and lives in the Grafana instance's namespace
+          # by construction — including under `split-namespace`, where a
+          # hardcoded name would be in the wrong one.
+          name: '{{ include "mzmon.certificates.secretName" ( dict "context" $ "component" "grafana" ) }}'
     thanos:
       # Thanos Query is untouched by this profile — only Receive's remote-write
       # listener moved — so this URL stays plaintext. Named here so the asymmetry

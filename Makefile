@@ -462,6 +462,11 @@ e2e-verify: | $(E2E_BIN)
 # component-health assertion covers it for free. Resist adding another exemption
 # here without a ticket and a removal condition — the value of that assertion is
 # that it has none.
+#
+# `--allow-disruptive` under CI only, for the same reason as tier 2. Tier 1 has
+# no cert-manager and so nothing currently uses it; set anyway so the tier does
+# not quietly skip a disruptive assertion the day one applies to it.
+e2e-verify-tier1: E2E_FLAGS += $(if $(CI),--allow-disruptive)
 e2e-verify-tier1: e2e-verify
 .PHONY: e2e-verify-tier1
 
@@ -515,7 +520,23 @@ e2e-tier2: e2e-generic-cloud
 # Assert the tier-2 stack. Same binary and same target as tier 1 — the Thanos
 # assertions that report `ignored` there run here, because the values now enable
 # Thanos.
+#
+# `--allow-disruptive`, but **only under CI**. There the kind cluster is created
+# and destroyed by the job, so an assertion that deletes a Secret to force a
+# certificate reissue costs a rebuild at worst, and without it
+# `tls::survives_renewal` reports `ignored` — leaving the reload failure it
+# exists to catch (a process that read its keypair once at startup and kept
+# using it) to reach a real cluster unasserted.
+#
+# Off locally because `KIND_CONTEXT` is only a default: someone who has pointed
+# these targets at a longer-lived cluster should not discover the difference by
+# having a Secret deleted. Opt in by hand when that is what you want —
+#
+#   make e2e-verify-tier2 E2E_FLAGS=--allow-disruptive
+#
+# `CI` is set to `true` by GitHub Actions, so the workflow needs nothing.
 e2e-verify-tier2: E2E_DIAGNOSTICS_DIR = e2e-diagnostics-tier2
+e2e-verify-tier2: E2E_FLAGS += $(if $(CI),--allow-disruptive)
 e2e-verify-tier2: e2e-verify
 .PHONY: e2e-verify-tier2
 

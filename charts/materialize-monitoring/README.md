@@ -2720,11 +2720,13 @@ renders, from the wrong source.
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">The CA to trust, inline as PEM.
 A CA certificate is public material — it is the thing you hand out —
-so putting it in values is not the leak that an inline key would be,
-and this is the path verified end to end against a live Grafana.
+so putting it in values is not the leak that an inline key would be.
 
-Prefer it over `caSecret` unless you have checked what your
-grafana-operator does with a `valuesFrom` reference; see below.
+Takes precedence over `caSecret`, and needs no operator involvement at
+all, which makes it the right choice when the CA is already in hand at
+render time. It does **not** track a rotation: the PEM here is a copy,
+and re-issuing the CA means re-rendering. Prefer `caSecret` when the
+material lives in the cluster.
 </td>
     </tr>
     <tr>
@@ -2737,20 +2739,22 @@ grafana-operator does with a `valuesFrom` reference; see below.
 }</pre>
 </td>
       <td class="helm-value-desc">Secret holding the CA bundle, referenced rather than inlined.
-Rendered as a `valuesFrom` entry on the `GrafanaDatasource` plus the
-`${tlsCACert}` placeholder the operator substitutes into.
+Rendered as a `valuesFrom` entry on the `GrafanaDatasource` plus a
+placeholder for the operator to substitute into. Survives a CA
+rotation, which `caPem` does not, so this is the better default
+whenever the CA already lives in the cluster — a cert-manager issuer's
+own Secret, say.
 
-**Verify this end to end before relying on it.** Two things have to go
-right and neither is visible in the CR: the placeholder must exist at
-the target path (a `valuesFrom` entry pointing at a path that is not
-there is silently dropped), and the operator must substitute the raw
-PEM. On grafana-operator 5.24 the field arrives — `secureJsonFields`
-gains `tlsCACert` — but Grafana then reports `failed to parse TLS CA
-PEM certificate`, so something in the substitution is not a PEM. The
-same certificate inlined through `caPem` connects successfully.
+The Secret must be in the **Grafana instance's** namespace, which is
+not necessarily this release's under `split-namespace`.
 
-Left here because the reference shape is the right one and the
-behaviour may be version-specific; `caPem` is what is known to work.
+`key` is load-bearing beyond naming the field: grafana-operator
+substitutes `${<key>}` — the `secretKeyRef` key verbatim, dots and all
+— so the chart derives the placeholder from it. A mismatch there fails
+in the least visible way available: the CR applies, the operator logs
+nothing, `secureJsonFields` reports `tlsCACert: true`, and only at
+query time does Grafana say `failed to parse TLS CA PEM certificate`,
+because what it stored is the literal placeholder text.
 </td>
     </tr>
     <tr>
@@ -2898,11 +2902,13 @@ renders, from the wrong source.
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">The CA to trust, inline as PEM.
 A CA certificate is public material — it is the thing you hand out —
-so putting it in values is not the leak that an inline key would be,
-and this is the path verified end to end against a live Grafana.
+so putting it in values is not the leak that an inline key would be.
 
-Prefer it over `caSecret` unless you have checked what your
-grafana-operator does with a `valuesFrom` reference; see below.
+Takes precedence over `caSecret`, and needs no operator involvement at
+all, which makes it the right choice when the CA is already in hand at
+render time. It does **not** track a rotation: the PEM here is a copy,
+and re-issuing the CA means re-rendering. Prefer `caSecret` when the
+material lives in the cluster.
 </td>
     </tr>
     <tr>
@@ -2915,20 +2921,22 @@ grafana-operator does with a `valuesFrom` reference; see below.
 }</pre>
 </td>
       <td class="helm-value-desc">Secret holding the CA bundle, referenced rather than inlined.
-Rendered as a `valuesFrom` entry on the `GrafanaDatasource` plus the
-`${tlsCACert}` placeholder the operator substitutes into.
+Rendered as a `valuesFrom` entry on the `GrafanaDatasource` plus a
+placeholder for the operator to substitute into. Survives a CA
+rotation, which `caPem` does not, so this is the better default
+whenever the CA already lives in the cluster — a cert-manager issuer's
+own Secret, say.
 
-**Verify this end to end before relying on it.** Two things have to go
-right and neither is visible in the CR: the placeholder must exist at
-the target path (a `valuesFrom` entry pointing at a path that is not
-there is silently dropped), and the operator must substitute the raw
-PEM. On grafana-operator 5.24 the field arrives — `secureJsonFields`
-gains `tlsCACert` — but Grafana then reports `failed to parse TLS CA
-PEM certificate`, so something in the substitution is not a PEM. The
-same certificate inlined through `caPem` connects successfully.
+The Secret must be in the **Grafana instance's** namespace, which is
+not necessarily this release's under `split-namespace`.
 
-Left here because the reference shape is the right one and the
-behaviour may be version-specific; `caPem` is what is known to work.
+`key` is load-bearing beyond naming the field: grafana-operator
+substitutes `${<key>}` — the `secretKeyRef` key verbatim, dots and all
+— so the chart derives the placeholder from it. A mismatch there fails
+in the least visible way available: the CR applies, the operator logs
+nothing, `secureJsonFields` reports `tlsCACert: true`, and only at
+query time does Grafana say `failed to parse TLS CA PEM certificate`,
+because what it stored is the literal placeholder text.
 </td>
     </tr>
     <tr>

@@ -897,13 +897,56 @@ tests:
     asserts:
       - equal:
           path: spec.datasource.secureJsonData.tlsCACert
-          value: ${tlsCACert}
+          value: ${ca.crt}
       - equal:
           path: spec.valuesFrom[0].targetPath
           value: secureJsonData.tlsCACert
       - equal:
           path: spec.valuesFrom[0].valueFrom.secretKeyRef.name
           value: my-ca
+
+  # The placeholder is the Secret *key*, not a name of the chart's choosing.
+  # grafana-operator substitutes `${<key>}` verbatim and leaves anything else
+  # alone, so a mnemonic token reaches Grafana as literal text: the CR applies,
+  # the operator logs nothing, `secureJsonFields` reports the field as set, and
+  # the only symptom is `failed to parse TLS CA PEM certificate` at query time.
+  # Measured on grafana-operator v5.24.0.
+  - it: should key the placeholder on the secret key, not on the field name
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: null
+      connections.datasources.loki.tls.caSecret.name: my-ca
+      connections.datasources.loki.tls.caSecret.key: internal-root.pem
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.tlsCACert
+          value: ${internal-root.pem}
+      - equal:
+          path: spec.valuesFrom[0].valueFrom.secretKeyRef.key
+          value: internal-root.pem
+
+  # Same rule for the client keypair, where it also has to keep the two targets
+  # apart: one placeholder shared by both would resolve to whichever value the
+  # operator substituted last.
+  - it: should give the client certificate and key distinct placeholders
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: |
+        -----BEGIN CERTIFICATE-----
+        placeholder
+        -----END CERTIFICATE-----
+      connections.datasources.loki.tls.clientCert.secretName: my-client
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.tlsClientCert
+          value: ${tls.crt}
+      - equal:
+          path: spec.datasource.secureJsonData.tlsClientKey
+          value: ${tls.key}
 
   # Grafana does not fall back to the system trust store once it is verifying,
   # and the internal CA is private — so this fails as an empty dashboard rather

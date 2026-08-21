@@ -626,7 +626,7 @@ Usage:
       {{- end }}
       {{- if $on }}
         {{- if and ( not $tls.caPem ) ( not ( dig "caSecret" "name" "" $tls ) ) }}
-          {{- $errors = append $errors ( printf "connections.datasources.%s is https with no CA configured. Grafana does not fall back to the system trust store once it is verifying, and the internal CA is private, so every query fails with \"certificate signed by unknown authority\" — which shows up as an empty dashboard rather than an error. Set connections.datasources.%s.tls.caPem to the issuing CA (verified path), or caSecret.name to a Secret in the Grafana instance's namespace." $name $name ) }}
+          {{- $errors = append $errors ( printf "connections.datasources.%s is https with no CA configured. Grafana does not fall back to the system trust store once it is verifying, and the internal CA is private, so every query fails with \"certificate signed by unknown authority\" — which shows up as an empty dashboard rather than an error. Set connections.datasources.%s.tls.caSecret.name to a Secret in the Grafana instance's namespace holding the issuing CA, or caPem to the CA inline. Prefer caSecret: an inlined copy does not follow a CA rotation." $name $name ) }}
         {{- end }}
         {{- if dig "jsonData" "tlsSkipVerify" false $ds }}
           {{- $warnings = append $warnings ( printf "connections.datasources.%s sets jsonData.tlsSkipVerify, which overrides the CA and leaves this hop encrypted but unauthenticated — Grafana will talk to anything answering on that address. Supply the CA instead." $name ) }}
