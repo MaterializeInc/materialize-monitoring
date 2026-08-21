@@ -92,6 +92,16 @@ pub struct Args {
     #[arg(long = "allow-unhealthy", value_name = "COMPONENT_ID")]
     pub allow_unhealthy: Vec<String>,
 
+    /// Permit assertions that change cluster state.
+    ///
+    /// Off by default because this binary is explicitly usable against real
+    /// clusters — `make e2e-verify E2E_CONTEXT=<ctx>` — and the rotation
+    /// assertion works by deleting a Secret to force cert-manager to reissue.
+    /// That is fine on a kind tier and not something to do to a production
+    /// stack because someone ran the verifier.
+    #[arg(long = "allow-disruptive")]
+    pub allow_disruptive: bool,
+
     /// Directory to collect cluster diagnostics into when anything fails.
     ///
     /// Unset collects nothing. In CI this should always be set: the cluster is

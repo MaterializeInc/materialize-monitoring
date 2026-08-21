@@ -15,6 +15,9 @@ http = "1.5.0"
 http-body-util = "0.1.5"
 hyper = { version = "1.11.0", features = ["client", "http1"] }
 hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
+# Already in the tree via k8s-openapi; named directly so the expiry comparison
+# in checks/tls.rs does not hand-roll civil-time arithmetic for one field.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 k8s-openapi = { version = "0.28.0", features = ["latest"] }
 # `client` + `config` only: no `runtime`. Nothing here watches or reconciles, it
 # reads a kubeconfig and issues requests.

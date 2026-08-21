@@ -219,6 +219,35 @@ impl Features {
             .unwrap_or(false)
     }
 
+    /// Whether the release renders cert-manager `Certificate` resources.
+    ///
+    /// Gates the TLS assertions. Reading the switch rather than probing for the
+    /// CRD keeps this consistent with the rest of the suite: values are intent,
+    /// and a release that asked for certificates on a cluster without
+    /// cert-manager is a failure to report rather than a reason to skip.
+    pub fn certificates_enabled(&self) -> bool {
+        self.get("certificates.enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    /// Whether Loki is configured to serve TLS on its HTTP port.
+    ///
+    /// Gates every assertion that queries Loki **directly**, because this suite
+    /// has no TLS client: it speaks HTTP straight over the forwarded stream, and
+    /// against a TLS listener that returns `400 Client sent an HTTP request to
+    /// an HTTPS server`. Reads through Grafana are unaffected — Grafana holds
+    /// the CA and does the TLS itself, which is why that assertion is not
+    /// redundant with the direct ones.
+    ///
+    /// Read from the subchart passthrough rather than a switch of our own,
+    /// because `loki.server.http_tls_config` is what actually moves the listener.
+    pub fn loki_server_tls(&self) -> bool {
+        self.string("loki.loki.server.http_tls_config.cert_file")
+            .map(|f| !f.is_empty())
+            .unwrap_or(false)
+    }
+
     /// The stable UID a datasource is provisioned under.
     ///
     /// Read from values rather than hardcoded: the dashboards resolve their

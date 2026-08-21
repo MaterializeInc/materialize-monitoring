@@ -119,6 +119,7 @@ async fn connect(args: &Args) -> Result<Ctx> {
         interval: args.retry_interval(),
         recent_window: args.recent_window(),
         allow_unhealthy: args.allow_unhealthy.clone(),
+        allow_disruptive: args.allow_disruptive,
     })
 }
 
@@ -133,9 +134,17 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
     // Loki reads through the gateway's relabelling, so the round trip needs both
     // Alloy roles as well as Loki itself. Missing any one of them makes the
     // assertion untestable rather than failing.
+    //
+    // Every one of them queries Loki directly, and this suite has no TLS client
+    // — so a release that moved Loki's HTTP port to TLS makes them untestable
+    // rather than failing. They become ignored trials with that reason, which is
+    // honest; making them pass needs a TLS client over the forwarded stream, and
+    // until that lands `grafana::loki_datasource_query` is the only assertion
+    // covering the log read path on such a release.
     let logging = ctx.features.enabled("loki")
         && ctx.features.enabled("alloy-agent")
-        && ctx.features.enabled("alloy-gateway");
+        && ctx.features.enabled("alloy-gateway")
+        && !ctx.features.loki_server_tls();
 
     trials.push(trial(
         runtime,
@@ -256,6 +265,40 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         "grafana::thanos_datasource_query",
         datasources && thanos,
         checks::grafana::thanos_datasource_query,
+    ));
+
+    // TLS. Gated on the release having asked for certificates, so a stack
+    // without them yields ignored trials rather than absent ones.
+    //
+    // `alloy_components_healthy` runs whenever Alloy does, certificates or not:
+    // the failure it catches — a component that fails to build while the pod
+    // stays Ready — is not specific to TLS, and it is the only assertion in the
+    // suite that would notice a listener silently never binding.
+    let certificates = ctx.features.certificates_enabled();
+    let alloy = ctx.features.enabled("alloy-gateway") || ctx.features.enabled("alloy-agent");
+
+    trials.push(trial(
+        runtime,
+        ctx,
+        "tls::alloy_components_healthy",
+        alloy,
+        checks::tls::alloy_components_healthy,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "tls::certificates_ready",
+        certificates,
+        checks::tls::certificates_ready,
+    ));
+    // Destructive: forces a reissue by deleting a Secret. Opt-in, because this
+    // binary is pointed at real clusters too.
+    trials.push(trial(
+        runtime,
+        ctx,
+        "tls::survives_renewal",
+        certificates && logging && ctx.allow_disruptive,
+        checks::tls::survives_renewal,
     ));
 
     trials

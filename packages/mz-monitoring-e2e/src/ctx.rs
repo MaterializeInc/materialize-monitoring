@@ -26,4 +26,6 @@ pub struct Ctx {
     pub recent_window: Duration,
     /// Alloy component IDs allowed to be unhealthy; see `--allow-unhealthy`.
     pub allow_unhealthy: Vec<String>,
+    /// Whether assertions that change cluster state may run. See the CLI flag.
+    pub allow_disruptive: bool,
 }

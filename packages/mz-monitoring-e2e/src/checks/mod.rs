@@ -20,3 +20,4 @@ pub mod alloy;
 pub mod grafana;
 pub mod loki;
 pub mod thanos;
+pub mod tls;

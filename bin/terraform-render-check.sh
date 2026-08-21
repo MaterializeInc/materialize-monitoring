@@ -375,6 +375,69 @@ PYEOF
         echo "    static object-storage credentials reached loki, thanos, and a Secret"
     fi
 
+    # --- certificates ---------------------------------------------------------
+    # The class of bug tier 0 exists for: an issuer written to a path the chart
+    # does not read is valid HCL, plans clean, and issues nothing. Only a render
+    # shows whether the Certificate came out pointing at the right issuer.
+    if grep -q '^kind: Certificate$' "${rendered}"; then
+        cert_issuers="$(grep -A 3 '^[[:space:]]*issuerRef:$' "${rendered}" \
+            | grep -oE 'name: "[^"]+"' | sed -E 's/name: "//; s/"$//' | sort -u || true)"
+
+        if [ -z "${cert_issuers}" ]; then
+            echo "  !! ${example}: Certificates rendered with no issuerRef" >&2
+            status=1
+            continue
+        fi
+
+        # Every component certificate must carry the full SAN ladder. A wrong or
+        # short list installs clean and fails at the first handshake with a name
+        # mismatch that reads like a broken certificate.
+        if ! grep -q 'loki-distributor\.[a-z0-9-]*\.svc\.cluster\.local' "${rendered}"; then
+            echo "  !! ${example}: Loki certificate is missing the fully-qualified SAN rung" >&2
+            status=1
+            continue
+        fi
+        if ! grep -q '^[[:space:]]*- loki-distributor$' "${rendered}"; then
+            echo "  !! ${example}: Loki certificate is missing the bare-service SAN rung" >&2
+            status=1
+            continue
+        fi
+
+        echo "    certificates rendered, issuers: $(echo "${cert_issuers}" | tr '\n' ' ')"
+
+        # Whichever issuer shape the example chose has to be the one that lands.
+        if grep -q 'selfSigned' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
+            if ! grep -q 'kind: ClusterIssuer' "${rendered}"; then
+                echo "  !! ${example}: asked for a self-signed root and no ClusterIssuer rendered" >&2
+                status=1
+                continue
+            fi
+            echo "    self-signed root bootstrapped as a ClusterIssuer"
+        else
+            expected_issuer="$(grep -hoE '"name": *"[^"]*"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \
+                | sed -E 's/.*: *"//; s/"$//' | grep -E 'internal-ca|letsencrypt' | head -1 || true)"
+            if [ -n "${expected_issuer}" ] && ! echo "${cert_issuers}" | grep -qx "${expected_issuer}"; then
+                echo "  !! ${example}: issuer_ref ${expected_issuer} did not reach any Certificate" >&2
+                status=1
+                continue
+            fi
+            echo "    issuer_ref reached the component certificates"
+        fi
+
+        # The browser-facing certificate is the one that only exists behind an
+        # L4 balancer, and it is separate because a public issuer cannot sign
+        # in-cluster names.
+        if grep -hq 'grafana_external_dns_names\|dnsNames' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \
+            && grep -hq '"external"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
+            if ! grep -q 'grafana-external-tls' "${rendered}"; then
+                echo "  !! ${example}: an external issuer and DNS names were set but no external certificate rendered" >&2
+                status=1
+                continue
+            fi
+            echo "    browser-facing certificate rendered for the external name"
+        fi
+    fi
+
     if grep -q '^[[:space:]]*backend: s3$' "${rendered}"; then
         expected_ep="$(grep -hoE '"endpoint": *"[^"]+"' \
             "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null \

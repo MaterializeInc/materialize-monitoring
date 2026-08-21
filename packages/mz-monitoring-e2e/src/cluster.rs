@@ -198,6 +198,21 @@ impl Cluster {
         String::from_utf8(value.0).with_context(|| format!("Secret {name}/{key} is not UTF-8"))
     }
 
+    /// Delete a Secret, so cert-manager reissues the certificate behind it.
+    ///
+    /// The forced half of the rotation assertion. Deleting is used rather than a
+    /// short `renewBefore` because provoking renewal through lifetimes short
+    /// enough to fit a test run has been observed to livelock cert-manager —
+    /// after which it stops issuing and reports the expired certificates as
+    /// healthy, which is the failure the assertion is supposed to detect.
+    pub async fn delete_secret(&self, name: &str) -> Result<()> {
+        let api: Api<Secret> = Api::namespaced(self.client.clone(), &self.namespace);
+        api.delete(name, &kube::api::DeleteParams::default())
+            .await
+            .with_context(|| format!("deleting Secret {name} in {}", self.namespace))?;
+        Ok(())
+    }
+
     /// List custom resources of one kind in the release namespace.
     ///
     /// Typed against `DynamicObject` rather than generated structs: the suite
