@@ -23,6 +23,13 @@ set:
       kubernetes.io/metadata.name: test-monitoring
   thanos.global.objstore.config: |
     type: FILESYSTEM
+  # The mtls profile moves the Loki datasource to https, and the render refuses
+  # an https datasource with no CA. Supplied suite-wide so each profile test does
+  # not have to; the test that exercises the refusal clears it.
+  connections.datasources.loki.tls.caPem: |
+    -----BEGIN CERTIFICATE-----
+    placeholder
+    -----END CERTIFICATE-----
 tests:
   # --- the off switch ---------------------------------------------------------
   # cert-manager must not become a dependency of an install that did not ask for
@@ -700,3 +707,74 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "the canary's extraArgs carry no -tls flag"
+
+  # --- Grafana's datasources (the read path) ----------------------------------
+  # The scheme is the switch: moving the URL to https is one edit rather than
+  # two, so the URL and the TLS setting cannot disagree.
+  - it: should not configure datasource TLS on a plaintext URL
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.datasource.jsonData.tlsAuthWithCACert
+      - notExists:
+          path: spec.valuesFrom
+
+  - it: should verify the backend when the datasource URL is https
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: |
+        -----BEGIN CERTIFICATE-----
+        placeholder
+        -----END CERTIFICATE-----
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.tlsAuthWithCACert
+          value: true
+      - matchRegex:
+          path: spec.datasource.secureJsonData.tlsCACert
+          pattern: "BEGIN CERTIFICATE"
+
+  # `valuesFrom` substitutes into a placeholder rather than creating the field,
+  # so an entry with no placeholder at its target path is silently dropped —
+  # the datasource applies cleanly and simply never gains the key.
+  - it: should emit a placeholder alongside every secret reference
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: null
+      connections.datasources.loki.tls.caSecret.name: my-ca
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.tlsCACert
+          value: ${tlsCACert}
+      - equal:
+          path: spec.valuesFrom[0].targetPath
+          value: secureJsonData.tlsCACert
+      - equal:
+          path: spec.valuesFrom[0].valueFrom.secretKeyRef.name
+          value: my-ca
+
+  # Grafana does not fall back to the system trust store once it is verifying,
+  # and the internal CA is private — so this fails as an empty dashboard rather
+  # than as an error anyone sees.
+  - it: should refuse an https datasource with no CA at all
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "is https with no CA configured"
+
+  - it: should warn when tlsSkipVerify overrides the CA
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: "x"
+      connections.datasources.loki.jsonData.tlsSkipVerify: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "encrypted but unauthenticated"

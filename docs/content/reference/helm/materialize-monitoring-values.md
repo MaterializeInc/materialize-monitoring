@@ -2460,6 +2460,113 @@ reference chart helpers.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "caPem": "",
+  "caSecret": {
+    "key": "ca.crt",
+    "name": ""
+  },
+  "clientCert": {
+    "certKey": "tls.crt",
+    "keyKey": "tls.key",
+    "secretName": ""
+  },
+  "enabled": null,
+  "serverName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">TLS for Grafana's connection to this backend.
+Grafana does not read certificate material from files. It stores it in
+its own database as `secureJsonData`, provisioned through the datasource
+— which is why this is the one hop in the stack that **does not renew on
+its own**. cert-manager rewriting the Secret changes nothing until the
+datasource is re-provisioned; grafana-operator does that every
+`connections.datasources.resyncPeriod`, so the material is refreshed on
+that cadence rather than on the certificate's.
+
+`caSecret` names a Secret in the Grafana **instance's** namespace holding
+the roots to trust. Under `split-namespace` that is `grafana`, not the
+release namespace, and the certificate machinery already issues
+`<release>-grafana-tls` there — its `ca.crt` key is the internal CA, so
+the default below works as-is once `certificates.enabled` is on.
+
+**Prefer this over `jsonData.tlsSkipVerify`.** Skipping verification
+leaves the connection encrypted and unauthenticated, which on the read
+path means Grafana will happily talk to anything that answers on that
+address — and the failure mode of getting it wrong is a dashboard that
+renders, from the wrong source.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows the URL scheme</code></td>
+      <td class="helm-value-desc">Verify the backend's certificate against `caSecret`. Unset follows whether the datasource URL is `https://`, so moving the URL is enough and this does not become a second switch to forget.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.tls<wbr>.caPem</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">The CA to trust, inline as PEM.
+A CA certificate is public material — it is the thing you hand out —
+so putting it in values is not the leak that an inline key would be,
+and this is the path verified end to end against a live Grafana.
+
+Prefer it over `caSecret` unless you have checked what your
+grafana-operator does with a `valuesFrom` reference; see below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.tls<wbr>.caSecret</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "key": "ca.crt",
+  "name": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Secret holding the CA bundle, referenced rather than inlined.
+Rendered as a `valuesFrom` entry on the `GrafanaDatasource` plus the
+`${tlsCACert}` placeholder the operator substitutes into.
+
+**Verify this end to end before relying on it.** Two things have to go
+right and neither is visible in the CR: the placeholder must exist at
+the target path (a `valuesFrom` entry pointing at a path that is not
+there is silently dropped), and the operator must substitute the raw
+PEM. On grafana-operator 5.24 the field arrives — `secureJsonFields`
+gains `tlsCACert` — but Grafana then reports `failed to parse TLS CA
+PEM certificate`, so something in the substitution is not a PEM. The
+same certificate inlined through `caPem` connects successfully.
+
+Left here because the reference shape is the right one and the
+behaviour may be version-specific; `caPem` is what is known to work.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.tls<wbr>.clientCert</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "certKey": "tls.crt",
+  "keyKey": "tls.key",
+  "secretName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Present a client certificate as well. Only useful against a backend that requires one; Loki cannot (its port is probed by the kubelet), so this is here for an external backend that does.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">SNI to send, when it differs from the URL host.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.thanos<wbr>.jsonData</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -2528,6 +2635,113 @@ valuesFrom:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>follows `pipeline.logging.tenancy.staticTenant</code></td>
       <td class="helm-value-desc">Tenant to read as, sent in the `X-Scope-OrgID` header. The bundled Loki runs `auth_enabled: true`, so reads without this header fail with `no org id`. Unset follows the tenant the pipeline writes to. Set to `""` to send no header, which is only correct against a Loki with `auth_enabled: false`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "caPem": "",
+  "caSecret": {
+    "key": "ca.crt",
+    "name": ""
+  },
+  "clientCert": {
+    "certKey": "tls.crt",
+    "keyKey": "tls.key",
+    "secretName": ""
+  },
+  "enabled": null,
+  "serverName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">TLS for Grafana's connection to this backend.
+Grafana does not read certificate material from files. It stores it in
+its own database as `secureJsonData`, provisioned through the datasource
+— which is why this is the one hop in the stack that **does not renew on
+its own**. cert-manager rewriting the Secret changes nothing until the
+datasource is re-provisioned; grafana-operator does that every
+`connections.datasources.resyncPeriod`, so the material is refreshed on
+that cadence rather than on the certificate's.
+
+`caSecret` names a Secret in the Grafana **instance's** namespace holding
+the roots to trust. Under `split-namespace` that is `grafana`, not the
+release namespace, and the certificate machinery already issues
+`<release>-grafana-tls` there — its `ca.crt` key is the internal CA, so
+the default below works as-is once `certificates.enabled` is on.
+
+**Prefer this over `jsonData.tlsSkipVerify`.** Skipping verification
+leaves the connection encrypted and unauthenticated, which on the read
+path means Grafana will happily talk to anything that answers on that
+address — and the failure mode of getting it wrong is a dashboard that
+renders, from the wrong source.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows the URL scheme</code></td>
+      <td class="helm-value-desc">Verify the backend's certificate against `caSecret`. Unset follows whether the datasource URL is `https://`, so moving the URL is enough and this does not become a second switch to forget.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tls<wbr>.caPem</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">The CA to trust, inline as PEM.
+A CA certificate is public material — it is the thing you hand out —
+so putting it in values is not the leak that an inline key would be,
+and this is the path verified end to end against a live Grafana.
+
+Prefer it over `caSecret` unless you have checked what your
+grafana-operator does with a `valuesFrom` reference; see below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tls<wbr>.caSecret</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "key": "ca.crt",
+  "name": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Secret holding the CA bundle, referenced rather than inlined.
+Rendered as a `valuesFrom` entry on the `GrafanaDatasource` plus the
+`${tlsCACert}` placeholder the operator substitutes into.
+
+**Verify this end to end before relying on it.** Two things have to go
+right and neither is visible in the CR: the placeholder must exist at
+the target path (a `valuesFrom` entry pointing at a path that is not
+there is silently dropped), and the operator must substitute the raw
+PEM. On grafana-operator 5.24 the field arrives — `secureJsonFields`
+gains `tlsCACert` — but Grafana then reports `failed to parse TLS CA
+PEM certificate`, so something in the substitution is not a PEM. The
+same certificate inlined through `caPem` connects successfully.
+
+Left here because the reference shape is the right one and the
+behaviour may be version-specific; `caPem` is what is known to work.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tls<wbr>.clientCert</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "certKey": "tls.crt",
+  "keyKey": "tls.key",
+  "secretName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Present a client certificate as well. Only useful against a backend that requires one; Loki cannot (its port is probed by the kubelet), so this is here for an external backend that does.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">SNI to send, when it differs from the URL host.
 </td>
     </tr>
     <tr>

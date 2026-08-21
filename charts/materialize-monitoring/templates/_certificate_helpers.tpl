@@ -482,6 +482,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res := include "mzmon.certificates.validate.datasourceTls" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- /* Serving TLS from material this chart is not issuing is legitimate —
          someone else's PKI, mounted by hand — but it is also what a half-applied
          profile looks like, and the symptom is a pod that cannot read its own
@@ -585,6 +589,49 @@ Usage:
     {{- end }}
     {{- if not $hasClientCa }}
       {{- $warnings = append $warnings "The gateway presents a client certificate to Thanos Receive, but Receive has no --remote-write.server-tls-client-ca and therefore ignores it. That is exactly right mid-rollout — it is what makes phase 3 safe to apply in any order — and it means this hop is not authenticated yet. Finish with profiles/mtls-phase3.values.yaml." }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Refuse a Grafana datasource that verifies TLS with nothing to verify against.
+
+Grafana does not fall back to the system trust store once `tlsAuthWithCACert` is
+set, and the internal CA is private anyway — so an https datasource with no CA
+configured fails with `x509: certificate signed by unknown authority`, which
+surfaces as a dashboard that renders empty rather than as an error anyone sees.
+
+Neither CA source is defaulted on purpose. Defaulting to the Secret reference
+would make the broken-substitution path the silent default; defaulting to inline
+is impossible, since the chart cannot read a Secret at render time.
+
+Usage:
+  {{- $res := include "mzmon.certificates.validate.datasourceTls" $ | fromYaml }}
+*/}}
+{{- define "mzmon.certificates.validate.datasourceTls" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- range $name := ( list "loki" "thanos" ) }}
+    {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" $name ) ) }}
+      {{- $ds := dig "datasources" $name dict ( $.Values.connections | default dict ) }}
+      {{- $url := tpl ( $ds.url | default "" | toString ) $ }}
+      {{- $tls := $ds.tls | default dict }}
+      {{- $on := $tls.enabled }}
+      {{- if typeIs "<nil>" $on }}
+        {{- $on = hasPrefix "https://" $url }}
+      {{- end }}
+      {{- if $on }}
+        {{- if and ( not $tls.caPem ) ( not ( dig "caSecret" "name" "" $tls ) ) }}
+          {{- $errors = append $errors ( printf "connections.datasources.%s is https with no CA configured. Grafana does not fall back to the system trust store once it is verifying, and the internal CA is private, so every query fails with \"certificate signed by unknown authority\" — which shows up as an empty dashboard rather than an error. Set connections.datasources.%s.tls.caPem to the issuing CA (verified path), or caSecret.name to a Secret in the Grafana instance's namespace." $name $name ) }}
+        {{- end }}
+        {{- if dig "jsonData" "tlsSkipVerify" false $ds }}
+          {{- $warnings = append $warnings ( printf "connections.datasources.%s sets jsonData.tlsSkipVerify, which overrides the CA and leaves this hop encrypted but unauthenticated — Grafana will talk to anything answering on that address. Supply the CA instead." $name ) }}
+        {{- end }}
+      {{- end }}
     {{- end }}
   {{- end }}
 

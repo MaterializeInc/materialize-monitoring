@@ -261,20 +261,36 @@ pipeline:
 # error — the worst failure mode in this stack, because it looks like missing
 # data rather than a broken connection.
 #
-# The CA does not come from a file here. Grafana reads datasource TLS material
-# from `secureJsonData`, which is provisioned config, so this is the one place in
-# the profile that does not renew on its own: re-provisioning the datasource is
-# what picks up a new CA. Supply it with `valuesFrom` against a Secret you keep
-# in step with the issuer, or accept `tlsSkipVerify` and understand that it makes
-# this hop encryption without authentication.
+# Verification is real here — no `tlsSkipVerify`. `connections.datasources.*.tls`
+# follows the URL scheme, so moving the URL to `https://` is enough: the chart
+# points the datasource at the internal CA in `<release>-grafana-tls` through the
+# `GrafanaDatasource` CRD's `valuesFrom`, and the certificate Loki presents
+# carries `loki-query-frontend.<ns>.svc` as a SAN, so the name matches.
+#
+# **This is the one hop that does not renew on its own.** Grafana keeps the
+# material in its own database rather than reading a file, so a renewed CA takes
+# effect when grafana-operator re-provisions the datasource — on
+# `connections.datasources.resyncPeriod` (5m by default), not on the
+# certificate's renewal. That is a property of Grafana's provisioning model.
+# **You must supply the CA**, and the profile cannot: the chart has no way to read
+# a Secret at render time. Compose one of these alongside it —
+#
+#   --set-file connections.datasources.loki.tls.caPem=ca.crt
+#
+# where `ca.crt` is the issuing CA (`kubectl -n <ns> get secret <release>-grafana-tls
+# -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt`). The render refuses an https
+# datasource with no CA rather than shipping one that renders empty panels.
 connections:
   datasources:
     loki:
       url: 'https://loki-query-frontend.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
-      jsonData:
-        tlsSkipVerify: true
     thanos:
       # Thanos Query is untouched by this profile — only Receive's remote-write
-      # listener moved — so this URL stays plaintext. It is named here so the
-      # asymmetry is visible rather than looking like an oversight.
+      # listener moved — so this URL stays plaintext. Named here so the asymmetry
+      # is visible rather than looking like an oversight.
+      #
+      # Query cannot easily be moved: it has no `--http.tls-*` flags, only an
+      # [EXPERIMENTAL] `--http.config` file that would enable TLS on *all* its
+      # HTTP endpoints — including the ones the kubelet probes, which is the same
+      # dead end Loki's HTTP port hits at phase 3.
       url: 'http://thanos-query.{{ include "mzmon.thanos.namespace" $ }}.svc:9090'

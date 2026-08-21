@@ -361,6 +361,17 @@ Each hop therefore moves through four states:
 | 2 | `clientAuth: verifyIfGiven` | presenting a client certificate | Certificates that are presented are verified; clients that have not rolled yet still work. |
 | 3 | `clientAuth: requireAndVerify` | presenting a client certificate | Authenticated. Unauthenticated clients are rejected. |
 
+> [!WARNING]
+>   **Measured on a live cluster: this table is the model, not what every hop can do.** Three corrections, all found by running the rollout rather than by reading configuration references.
+>
+>   **Phase 3 is unreachable on any port the kubelet probes.** Loki serves `/ready` and `/loki/api/v1/status/buildinfo` on the same 3100 the gateway writes to, and a Kubernetes `httpGet` probe has no field for a client certificate. `RequireAndVerifyClientCert` fails every probe with `remote error: tls: certificate required`; the pods go unready and restart. There is no values-side fix, so **phase 2 is the terminal state for the Loki HTTP hop** and the same applies to any component whose probe and data ports coincide. Getting real authentication there needs an authenticating proxy or a listener the kubelet does not touch — neither is in scope here, and the design should stop implying phase 3 is universally reachable.
+>
+>   **Not every server has a phase 2.** Thanos Receive's `--remote-write.server-tls-client-ca` is require-and-verify the moment it is set — there is no verify-if-given, and the flag's help text does not say so. On that hop phase 2 is a *client-only* step: the writer starts presenting while the server still ignores it, which is what makes phase 3 order-independent. Receive does reach phase 3, because its probes are on a different port from the TLS'd listener.
+>
+>   **The two halves of Loki's client-auth config are not independent.** dskit refuses a `client_ca_file` with no `client_auth_type` policy: Loki exits at startup with `client CA's have been configured without a Client Auth Policy`, every microservice at once, with the reason inside a Go stack trace. The CA and the policy have to arrive in the same step, so phase 1 ships neither.
+>
+>   Shipped as `profiles/mtls.values.yaml` plus `mtls-phase2` / `mtls-phase3`, with a validator refusing each of the combinations above.
+
 Phase 2 is the one that makes this safe, and it is also the one an operator will be tempted to skip.
 The documentation should state that a stack sitting in phase 2 is **not** authenticated — it is a migration state, not a destination — because `verifyIfGiven` produces a config that looks like mTLS in every values file and rejects nothing.
 
@@ -494,7 +505,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | Typed `tls` blocks on `loki.source.api`, `otelcol.receiver.otlp`, **and `prometheus.receive_http`** in the Alloy schema, replacing `raw` | — | 1 |
 | `pipeline.logging.gateway.server.tls` **and `pipeline.metrics.gateway.server.tls`** values and rendering | above | 1 |
 | ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
-| Modeled `connections.datasources.*.tls` for Grafana → backends | — | 2 |
+| ~~Modeled `connections.datasources.*.tls` for Grafana → backends~~ **Shipped** and verified against a live Grafana: `tls.caPem` (inline; a CA is public material) or `tls.caSecret` (a `valuesFrom` reference). Neither is defaulted, because an https datasource with no CA fails as an empty dashboard — the render refuses it. **Caveat found on the cluster:** grafana-operator's `valuesFrom` substitutes into a `${...}` placeholder that must already exist at the target path, and on 5.24 the substituted CA arrives but Grafana reports `failed to parse TLS CA PEM certificate`; the same CA inlined connects. Grafana → Thanos Query is not shipped: Query has no `--http.tls-*` flags, only an experimental `--http.config` that would also TLS its probe endpoints | — | 2 |
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
@@ -516,7 +527,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 ## Open questions
 
 1. **Dedicated issuer or shared with `materialize-instance`?** *(Partly settled: the chart now offers `internal.selfSigned` as an opt-in dedicated root, default off, with consume-by-reference as the production path. The Terraform default is still open.)* Sharing keeps the variable story simple and makes any Materialize workload's certificate valid against our receivers. A dedicated issuer makes "signed by our CA" mean something. The proposal above recommends dedicated-by-default in Terraform with identical variable names; this deserves an explicit decision rather than inheriting one.
-2. **Which components actually reload certificate files?** Everything about the rotation story depends on this, and it has to be measured per component and per version rather than read off documentation.
+2. **Which components actually reload certificate files?** *(Partly answered, measured: with `duration: 1h` / `renewBefore: 55m` on a live cluster, cert-manager took every certificate to revision 6 — five renewals — while Loki served TLS and the pipeline kept delivering, with no restarts attributable to renewal. That covers Loki's server side and Alloy's client side. Thanos Receive, Grafana and the remaining hops are still unmeasured, and Grafana is known not to reload: it stores datasource material in its own database, so a new CA takes effect on grafana-operator's `resyncPeriod` rather than on renewal.)*
 3. **Should Loki tenancy derive from certificate identity in-cluster?** It would close the assert-vs-assign gap, and the only mechanism available is a proxy in front of Loki that the stack does not otherwise need. Probably not worth it — but the alternative is documenting that in-cluster tenancy is a convention, not a control.
 4. **Is `split-namespace` fully covered?** Cross-namespace SANs, `serverName` / SNI, and NetworkPolicy selectors that reference pod labels without a namespace selector all get harder when components are split. The `Certificate` SAN list has to be derived from the same namespace helpers the URLs use.
 5. **Does the pre-install validation hook need certificates?** It runs `alloy validate` on the assembled ConfigMap. If a rendered config references `cert_file` paths that do not exist in the validator pod, validation may fail for a reason that has nothing to do with the config's correctness.
