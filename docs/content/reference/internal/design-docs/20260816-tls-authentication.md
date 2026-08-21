@@ -92,7 +92,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | ⬜ Not wired | Each subchart exposes it through its own config passthrough; the umbrella models none of it |
 | **Grafana → backends client certificates** | ⚠️ Expressible, unmodeled | `connections.datasources.*.valuesFrom` can inject `secureJsonData`; nothing defaults or documents the cert keys |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
-| **NetworkPolicy coverage** | 🔨 Partial | Loki and node-exporter only ([DEP-192](https://linear.app/materializeinc/issue/DEP-192) covers the rest) |
+| **NetworkPolicy coverage** | ✅ Shipped | Every workload, on by default ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Ingress is narrowed to known peers; egress is narrowed only where the chart knows the destination set, which is node-exporter, kube-state-metrics and Loki |
 | **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) |
 
 The pattern in that table is worth stating directly: **the values surface implies more security than the deployment has.**
@@ -409,7 +409,7 @@ A NetworkPolicy that permits the gateway's pod label does not distinguish the ga
 Two asymmetries are worth writing down:
 
 - **node-exporter has NetworkPolicy that most CNIs will not enforce**, so mTLS (via `kubeRBACProxy`) is the only in-cluster control available there.
-- **NetworkPolicy covers only Loki and node-exporter today** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)), so for most components neither control is in place. Landing mTLS first is still worthwhile, but the 1.0 claim needs both.
+- **NetworkPolicy now covers every component** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)), which makes mTLS the remaining half rather than the first half. It also sharpens what mTLS is for here: the shipped policies answer *which pods* may open a socket, and several of them answer it with "any pod in the cluster" — the Alloy gateway's ingest ports and every Thanos service port. Identity on those hops is exactly what a NetworkPolicy cannot supply.
 
 ## Relationship to BYOC
 

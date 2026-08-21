@@ -1,0 +1,599 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# NetworkPolicies across the stack: the ones this chart renders itself
+# (`templates/networkpolicies.yaml`) and the ones it configures on subcharts that
+# ship their own.
+#
+# Warnings are asserted against `NOTES.txt` rather than `templates/validate.yaml`,
+# which emits them as YAML comments and so produces no document to match on.
+# Errors are asserted with `failedTemplate` against any template, since the
+# validator `fail`s the whole render.
+suite: network policies
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  loki.loki.storage.bucketNames.chunks: test-chunks
+  loki.loki.storage.bucketNames.ruler: test-ruler
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  thanos.global.objstore.config: |
+    type: FILESYSTEM
+tests:
+  # --- chart-rendered policies -----------------------------------------------
+  # Alertmanager and grafana-operator ship no networkpolicy.yaml of their own, so
+  # without this template they are the only unpoliced pods in the namespace.
+  # metrics-server is off by default (no `default` tag), so two components render
+  # four documents: one policy plus one DNS policy each.
+  - it: should render a policy and a DNS policy for each component with no upstream one
+    template: templates/networkpolicies.yaml
+    asserts:
+      - hasDocuments:
+          count: 4
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-alertmanager
+          namespace: test-monitoring
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-alertmanager-egress-dns
+          namespace: test-monitoring
+        documentIndex: 1
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-grafana-operator
+          namespace: test-monitoring
+        documentIndex: 2
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-grafana-operator-egress-dns
+          namespace: test-monitoring
+        documentIndex: 3
+
+  # The selector has to match the pods the subchart actually labels, or the
+  # policy is a valid object that governs nothing.
+  - it: should select the alertmanager pods by the labels its subchart sets
+    template: templates/networkpolicies.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/name"]
+          value: alertmanager
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/instance"]
+          value: test-mon
+
+  # 9094 is listed at replicaCount 1, where nothing dials it, so that scaling up
+  # later does not silently duplicate every notification.
+  - it: should open the alertmanager API and gossip ports to the release namespace
+    template: templates/networkpolicies.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 9093
+      - equal:
+          path: spec.ingress[0].ports[0].protocol
+          value: TCP
+      - equal:
+          path: spec.ingress[0].from[0].podSelector
+          value: {}
+
+  # Alertmanager's mesh is memberlist: TCP for the join and state pushes, UDP for
+  # the gossip. A TCP-only rule forms a cluster that never converges, so every
+  # notification goes out once per replica — the failure this whole port exists
+  # to prevent. The upstream chart's Service declares both for the same reason.
+  - it: should open the alertmanager mesh port on both TCP and UDP
+    template: templates/networkpolicies.yaml
+    documentIndex: 0
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].ports
+          count: 3
+      - equal:
+          path: spec.ingress[0].ports[1].port
+          value: 9094
+      - equal:
+          path: spec.ingress[0].ports[1].protocol
+          value: TCP
+      - equal:
+          path: spec.ingress[0].ports[2].port
+          value: 9094
+      - equal:
+          path: spec.ingress[0].ports[2].protocol
+          value: UDP
+
+  # A bare number is TCP; the map form is only for the entries where the protocol
+  # is the point. Both have to survive the same code path.
+  - it: should accept a port written either as a number or as a map
+    template: templates/networkpolicies.yaml
+    documentIndex: 2
+    set:
+      networkPolicies.grafana-operator.ingress.ports:
+        - 9090
+        - port: 9091
+          protocol: UDP
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0]
+          value:
+            port: 9090
+            protocol: TCP
+      - equal:
+          path: spec.ingress[0].ports[1]
+          value:
+            port: 9091
+            protocol: UDP
+
+  # Notification providers are outside the cluster and unknowable here, so the
+  # egress rule is broad by design — but it is still a rule, not an absence.
+  - it: should allow alertmanager egress in-namespace and to notification providers
+    template: templates/networkpolicies.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].podSelector
+          value: {}
+      - equal:
+          path: spec.egress[1].ports[0].port
+          value: 443
+      - equal:
+          path: spec.egress[1].to[0].ipBlock.cidr
+          value: 0.0.0.0/0
+
+  # pprof is a debugging surface; a policy that opens it by default defeats the
+  # point of having one.
+  - it: should open only the metrics port on grafana-operator, not pprof
+    template: templates/networkpolicies.yaml
+    documentIndex: 2
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].ports
+          count: 1
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 9090
+
+  # `namespaceSelector: {}` rather than a kube-system selector: CoreDNS is not
+  # always there, and a wrong selector reads as a DNS outage.
+  - it: should allow DNS to every namespace
+    template: templates/networkpolicies.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Egress
+      - equal:
+          path: spec.egress[0].ports[0].port
+          value: 53
+      - equal:
+          path: spec.egress[0].ports[0].protocol
+          value: UDP
+      - equal:
+          path: spec.egress[0].ports[1].protocol
+          value: TCP
+      - equal:
+          path: spec.egress[0].to[0].namespaceSelector
+          value: {}
+
+  # The aggregation layer dials metrics-server from the API server, which is not
+  # a pod and not selectable — closing that port breaks every HPA in the cluster.
+  - it: should let metrics-server accept the API server from outside the cluster
+    set:
+      tags.metrics-server: true
+    template: templates/networkpolicies.yaml
+    documentIndex: 4
+    asserts:
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-metrics-server
+          namespace: test-monitoring
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 10250
+      # No `from` at all is what "from anywhere" looks like.
+      - notExists:
+          path: spec.ingress[0].from
+
+  - it: should render nothing for a component switched off by tag
+    template: templates/networkpolicies.yaml
+    set:
+      tags.default: false
+      tags.grafana-operator: true
+    asserts:
+      # grafana-operator only; alertmanager and metrics-server are not in this
+      # render, so a policy selecting their pods would govern nothing.
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-grafana-operator
+        documentIndex: 0
+
+  - it: should honour the master switch and the per-component override
+    template: templates/networkpolicies.yaml
+    set:
+      networkPolicies.enabled: false
+      networkPolicies.alertmanager.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-alertmanager
+        documentIndex: 0
+
+  - it: should follow the subchart namespace override
+    template: templates/networkpolicies.yaml
+    values:
+      - ../profiles/split-namespace.values.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: alertmanager
+
+  # --- grafana gossip --------------------------------------------------------
+  # The subchart's policy opens service.targetPort and takes no second port, so
+  # 9094 is closed on exactly the pods that need it to form an alerting cluster.
+  # Four documents is the two components above plus their DNS policies; a fifth
+  # would be the gossip policy, and a single-replica Grafana never gossips.
+  - it: should not render the gossip policy when nothing gossips
+    template: templates/networkpolicies.yaml
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: should render the gossip policy when ha_peers is configured
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/networkpolicies.yaml
+    documentIndex: 4
+    asserts:
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: mzmon-grafana-gossip
+          namespace: test-monitoring
+      # memberlist joins over TCP and gossips over UDP; TCP alone forms a
+      # cluster that never converges.
+      - equal:
+          path: spec.ingress[0].ports[0].protocol
+          value: TCP
+      - equal:
+          path: spec.ingress[0].ports[1].protocol
+          value: UDP
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 9094
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/name"]
+          value: grafana
+
+  - it: should warn when HA alerting is on and the gossip policy is not
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+      networkPolicies.grafanaGossip.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Port 9094 stays closed"
+
+  # --- subchart-owned policies -----------------------------------------------
+  # The agent's 12345 serves /metrics and the live debugging UI, which shows the
+  # pipeline and samples of the data moving through it. Only the gateway scrapes.
+  - it: should restrict the alloy agent to a gateway scrape and leave egress open
+    template: ../charts/alloy-agent/templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 12345
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/name"]
+          value: alloy-gateway
+      - notExists:
+          path: spec.egress
+
+  # The ingest ports are the endpoints the stack exists to offer, so any pod in
+  # the cluster is a legitimate client. 12345 is not one of them.
+  - it: should open the gateway ingest ports cluster-wide but keep 12345 internal
+    template: ../charts/alloy-gateway/templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector
+          value: {}
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 3100
+      - equal:
+          path: spec.ingress[0].ports[1].port
+          value: 4317
+      - equal:
+          path: spec.ingress[0].ports[2].port
+          value: 4318
+      - equal:
+          path: spec.ingress[0].ports[3].port
+          value: 9090
+      - equal:
+          path: spec.ingress[1].ports[0].port
+          value: 12345
+      - equal:
+          path: spec.ingress[1].from[0].podSelector.matchLabels["app.kubernetes.io/name"]
+          value: alloy-gateway
+      # The gateway scrapes every ServiceMonitor target in the cluster and the
+      # kubelet on every node IP; there is no useful allowlist for that.
+      - notExists:
+          path: spec.egress
+
+  # kube-state-metrics is a watch on the API server and nothing else, so its
+  # egress is the one in the stack that is safe to narrow — and the one where
+  # forgetting to narrow it correctly loses every kube_* series silently.
+  - it: should let kube-state-metrics reach DNS and the API server and nothing else
+    template: ../charts/kube-state-metrics/templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/name"]
+          value: alloy-gateway
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8080
+      - equal:
+          path: spec.egress[0].ports[0].port
+          value: 53
+      - equal:
+          path: spec.egress[1].ports[0].port
+          value: 443
+      - equal:
+          path: spec.egress[1].ports[1].port
+          value: 6443
+
+  - it: should police thanos through the subchart's single switch
+    template: ../charts/thanos/templates/query/networkpolicy.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          name: thanos-query
+          namespace: test-monitoring
+
+  # allowExternal stays on because every way a human reaches Grafana — an
+  # ingress controller, a load balancer, port-forward — is unselectable here.
+  - it: should open only the Grafana service port, from any source
+    template: ../charts/grafana/templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 3000
+      - notExists:
+          path: spec.ingress[0].from
+
+  # --- validators ------------------------------------------------------------
+  - it: should warn when a chart-rendered policy is switched off
+    set:
+      networkPolicies.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "networkPolicies.alertmanager is off"
+      - matchRegexRaw:
+          pattern: "networkPolicies.grafana-operator is off"
+
+  - it: should warn for every subchart policy that is switched off
+    set:
+      alloy-agent.networkPolicy.enabled: false
+      alloy-gateway.networkPolicy.enabled: false
+      grafana.networkPolicy.enabled: false
+      kube-state-metrics.networkPolicy.enabled: false
+      node-exporter.networkPolicy.enabled: false
+      thanos.global.networkPolicies: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alloy-agent.networkPolicy.enabled is recommended"
+      - matchRegexRaw:
+          pattern: "alloy-gateway.networkPolicy.enabled is recommended"
+      - matchRegexRaw:
+          pattern: "grafana.networkPolicy.enabled is recommended"
+      - matchRegexRaw:
+          pattern: "kube-state-metrics.networkPolicy.enabled is recommended"
+      - matchRegexRaw:
+          pattern: "node-exporter.networkPolicy.enabled is recommended"
+      - matchRegexRaw:
+          pattern: "thanos.global.networkPolicies is recommended"
+
+  # The default install should be quiet: a warning that fires every time is a
+  # warning nobody reads.
+  - it: should raise nothing on the defaults
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "networkPolic\\w* .*recommended"
+
+  # The highest-value check in the set: kube-state-metrics stays Ready and stops
+  # producing every kube_* series.
+  - it: should fail when kube-state-metrics egress is denied outright
+    set:
+      kube-state-metrics.networkPolicy.egress: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "kube-state-metrics.networkPolicy.egress is empty"
+
+  # The subchart's template has no else branch, so any other flavor renders
+  # nothing at all and says nothing about it.
+  - it: should fail on an alloy networkPolicy flavor the subchart cannot render
+    set:
+      alloy-agent.networkPolicy.flavor: cilium
+    asserts:
+      - failedTemplate:
+          errorPattern: "renders a policy only for"
+
+  - it: should fail when alloy declares Egress with no rules
+    set:
+      alloy-gateway.networkPolicy.policyTypes:
+        - Ingress
+        - Egress
+    asserts:
+      - failedTemplate:
+          errorPattern: "denies all egress"
+
+  # policyTypes is built from these two flags alone, so both off is a real object
+  # that enforces nothing.
+  - it: should fail when the Grafana policy would enforce nothing
+    set:
+      grafana.networkPolicy.ingress: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "no policy types and no rules"
+
+  - it: should fail when a chart-rendered policy opens no ports at all
+    set:
+      networkPolicies.alertmanager.ingress.ports: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "opens no ports and adds no extra rules"
+
+  - it: should warn when DNS egress is turned off
+    set:
+      networkPolicies.alertmanager.egress.dns: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "networkPolicies.alertmanager.egress.dns is off"
+
+  # `ports` with no `cidrs` renders a rule with no `to`, which Kubernetes reads
+  # as "these ports, anywhere" — the opposite of what a cleared CIDR list looks
+  # like it means.
+  - it: should warn when external egress ports carry no CIDRs
+    set:
+      networkPolicies.alertmanager.egress.external.cidrs: null
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "is set with no cidrs"
+
+  - it: should warn when a policy is opened to sources outside the cluster
+    set:
+      networkPolicies.alertmanager.ingress.allowExternal: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "networkPolicies.alertmanager.ingress.allowExternal is on"
+
+  # Every default rule resolves within one namespace. Split the stack up and they
+  # match nothing — no error, just dropped traffic.
+  - it: should warn that pod-label rules do not survive split namespaces
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "select their peers by pod label alone"
+
+  # A NetworkPolicy isolates every direction it declares, so a lone Ingress policy
+  # opening only 9094 would deny the Grafana UI on 3000. The supplement has to
+  # disappear with the policy it supplements.
+  - it: should not render the gossip policy when the main Grafana policy is off
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        networkPolicy:
+          enabled: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/networkpolicies.yaml
+    asserts:
+      # Alertmanager and grafana-operator, with their DNS policies. No gossip.
+      - hasDocuments:
+          count: 4
+
+  - it: should not warn about the gossip port when the main Grafana policy is off
+    values:
+      - ../profiles/grafana-postgres.values.yaml
+    set:
+      grafana:
+        networkPolicy:
+          enabled: false
+        grafana.ini:
+          database:
+            host: db.example.internal:5432
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "Port 9094 stays closed"
+
+  # The operator's egress allows 443/6443, which covers an HTTPS Grafana on the
+  # default port and nothing else. A self-hosted instance on another port leaves
+  # it healthy and reconciling into a connection that never opens.
+  - it: should warn when an external Grafana is on a port the operator cannot reach
+    set:
+      connections.grafana.mode: external
+      connections.grafana.external.url: http://grafana.example.com:3000
+      connections.grafana.external.apiKey:
+        name: grafana-api
+        key: token
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "external.url points at port 3000"
+
+  # No explicit port: the scheme decides, and http means 80, which is also not
+  # in the list.
+  - it: should read the port from the scheme when the URL does not name one
+    set:
+      connections.grafana.mode: external
+      connections.grafana.external.url: http://grafana.example.com/
+      connections.grafana.external.apiKey:
+        name: grafana-api
+        key: token
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "external.url points at port 80"
+
+  - it: should stay quiet when the external Grafana is on an allowed port
+    set:
+      connections.grafana.mode: external
+      connections.grafana.external.url: https://grafana.example.com
+      connections.grafana.external.apiKey:
+        name: grafana-api
+        key: token
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "external.url points at port"

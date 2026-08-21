@@ -360,6 +360,280 @@ chart warns at render time when it can tell that has happened.
   </tbody>
 </table>
 
+### Network policies
+
+NetworkPolicies for the components whose own charts ship none.
+Most of the stack polices itself, and each component is configured in its own
+block further down:
+
+| Component            | Key                              |
+| -------------------- | -------------------------------- |
+| Alloy agent          | `alloy-agent.networkPolicy`      |
+| Alloy gateway        | `alloy-gateway.networkPolicy`    |
+| Loki                 | `loki.networkPolicy`             |
+| Thanos               | `thanos.global.networkPolicies`  |
+| Grafana              | `grafana.networkPolicy`          |
+| kube-state-metrics   | `kube-state-metrics.networkPolicy` |
+| node-exporter        | `node-exporter.networkPolicy`    |
+
+This block covers the three subcharts that render no `networkpolicy.yaml` at
+all — **Alertmanager**, **grafana-operator**, and **metrics-server** — so the
+stack does not leave three unpoliced pods in an otherwise policed namespace.
+The policies are rendered by this chart, from `templates/networkpolicies.yaml`.
+
+The shape mirrors Loki's, because Loki is the component whose policy set this
+repo has actually operated: allow the release to talk to itself, allow DNS,
+name the destinations that live outside the cluster, deny the rest. Each app
+gets one `Ingress`+`Egress` policy plus a separate DNS policy, for the same
+reason Loki splits them — a rule you have to disable should not take the rest
+of the policy with it.
+
+**A NetworkPolicy is a declaration, not always a control.** Four limits are
+worth knowing before treating any of this as a boundary:
+
+  * It does nothing unless the CNI enforces it. `kindnet` (the default in
+    `kind`, and therefore in the E2E tiers) ignores NetworkPolicy entirely;
+    Cilium and Calico enforce it.
+  * Most CNIs do not apply pod policy to host-networked pods. Nothing in this
+    block is host-networked today, but `node-exporter.networkPolicy` carries
+    the same caveat at greater length, and it is the same caveat.
+  * Rules written with `podSelector` alone stop at the namespace boundary.
+    Under `profiles/split-namespace.values.yaml` the components no longer share
+    a namespace, so those rules match nothing — add `namespaceSelector` entries
+    through the `extra` hooks below, or turn the affected policy off.
+  * Nothing here allows the kubelet's liveness and readiness probes, which
+    arrive from the node's own IP. Cilium and Calico both exempt host-to-pod
+    traffic so probes keep working; a CNI that does not would fail every pod in
+    the namespace, Loki's included, and that is the symptom to recognize.
+
+Egress is where a wrong rule hurts: it fails silently, minutes or hours later,
+somewhere other than the pod you changed. So egress is narrowed only where the
+destination set is knowable from the chart. Where it is not — the API server's
+address, kubelet ports on node IPs, an arbitrary notification provider — the
+rule is broad and says so, and `egress.extra` is where you narrow it against
+facts only your cluster has.
+
+Every component below takes the same eight keys, so they are described once
+here rather than three times over. Each component's own entry then says only
+what is particular to it — which ports, and why that egress is as wide as it is.
+
+| Key | Meaning |
+| --- | --- |
+| `enabled` | Render this policy. Unset follows `networkPolicies.enabled`. |
+| `ingress.ports` | Ports opened to the rest of the component's namespace. A bare number means TCP; `{port, protocol}` spells out anything else. |
+| `ingress.allowExternal` | Drop the source restriction entirely, so the ports above accept connections from any namespace and from outside the cluster. |
+| `ingress.extra` | Raw `NetworkPolicyIngressRule` entries, appended verbatim. The hook for a cross-namespace source. |
+| `egress.inNamespace` | Reach the other pods of this release, on any port. |
+| `egress.dns` | Reach cluster DNS. Rendered as a policy of its own. |
+| `egress.external.ports` / `.cidrs` | Ports and CIDRs outside the cluster. Ports with no CIDRs means those ports *anywhere*. |
+| `egress.extra` | Raw `NetworkPolicyEgressRule` entries, appended verbatim. |
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">networkPolicies<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Render the policies in this block. Off skips all three at once; the per-component `enabled` keys below override it either way.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networkPolicies<wbr>.alertmanager</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "egress": {
+    "dns": true,
+    "external": {
+      "cidrs": [
+        "0.0.0.0/0"
+      ],
+      "ports": [
+        443,
+        587,
+        465
+      ]
+    },
+    "extra": [],
+    "inNamespace": true
+  },
+  "enabled": null,
+  "ingress": {
+    "allowExternal": false,
+    "extra": [],
+    "ports": [
+      9093,
+      {
+        "port": 9094,
+        "protocol": "TCP"
+      },
+      {
+        "port": 9094,
+        "protocol": "UDP"
+      }
+    ]
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager: reachable from the release namespace, free to egress to notification providers.
+
+Ingress covers `9093` (the API — Loki's ruler, the Alloy gateway's scrape,
+and Grafana's alerting all arrive here) and `9094`, the gossip port a
+multi-replica Alertmanager uses to deduplicate notifications between peers.
+
+**`9094` is listed twice, TCP and UDP, and both are required.** Alertmanager's
+mesh is memberlist: it joins and pushes state over TCP and gossips over UDP,
+and the upstream chart's Service declares `clusterpeer-tcp` and
+`clusterpeer-udp` on the same port for exactly that reason. A TCP-only rule
+produces the worst version of this failure — the peers find each other, the
+cluster forms, and it never converges, so every notification goes out once
+per replica.
+
+Both are listed even at the default `replicaCount: 1`, where nothing dials
+either: the cost is an open port that no pod connects to, and the alternative
+is a cluster that silently sends every notification twice the day someone
+scales it up.
+
+Egress is deliberately wide. Alertmanager's job is to reach PagerDuty, Slack,
+an SMTP relay, or a webhook on someone's internal network, and this chart
+cannot know which — `443` and the SMTP ports are the defaults because they
+are what receivers use, not because they are a boundary.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networkPolicies<wbr>.grafana-operator</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "egress": {
+    "dns": true,
+    "external": {
+      "cidrs": [
+        "0.0.0.0/0"
+      ],
+      "ports": [
+        443,
+        6443
+      ]
+    },
+    "extra": [],
+    "inNamespace": true
+  },
+  "enabled": null,
+  "ingress": {
+    "allowExternal": false,
+    "extra": [],
+    "ports": [
+      9090
+    ]
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">grafana-operator: metrics scraped by the Alloy gateway, egress to the API server and to whichever Grafana it reconciles.
+
+Ingress is only the metrics port. `8888` (pprof) is deliberately left out —
+it is a debugging surface, and a policy that opens it by default defeats the
+point of having one.
+
+Egress carries `443`/`6443` to `0.0.0.0/0` because the operator is an API
+client first: it watches `Grafana`, `GrafanaDashboard` and `GrafanaDatasource`
+resources continuously, and a policy that cannot reach the API server leaves
+it running, healthy, and reconciling nothing. The API server's address is not
+something a chart can derive — in-cluster it is a Service ClusterIP that most
+CNIs evaluate against the real endpoint behind it, which on a managed control
+plane is outside the cluster network entirely.
+
+`connections.grafana.mode: external` puts the Grafana it writes to outside the
+cluster as well; `443` already covers the usual case, but a self-hosted
+Grafana on another port needs an `egress.extra` entry. The render warns when
+it can tell that applies.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networkPolicies<wbr>.grafanaGossip</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": null,
+  "port": 9094
+}</pre>
+</td>
+      <td class="helm-value-desc">Grafana's unified-alerting gossip port, which the `grafana` subchart's own policy cannot open.
+
+A supplement, not a replacement: `grafana.networkPolicy` stays on and keeps
+doing what it does. That template emits exactly one ingress rule, on
+`service.targetPort`, with no way to add a second port through values — so a
+multi-replica Grafana running HA alerting has its `9094` gossip closed by the
+very policy that protects its UI. The failure is quiet in the worst way: the
+replicas start healthy, never find each other, and every Grafana-managed alert
+notifies once per replica.
+
+This renders the missing rule from the umbrella chart, which can. TCP *and*
+UDP, because memberlist uses both — TCP for the join and for state pushes, UDP
+for the gossip itself — and a TCP-only rule produces a cluster that forms and
+then does not converge.
+
+It renders only when `grafana.ini.unified_alerting.ha_peers` is set, which is
+what makes the replicas dial `9094` in the first place;
+`profiles/grafana-postgres.values.yaml` is the shipped shape that sets it.
+Nothing is created for a single-replica Grafana that never gossips.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networkPolicies<wbr>.metrics-server</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "egress": {
+    "dns": true,
+    "external": {
+      "cidrs": [
+        "0.0.0.0/0"
+      ],
+      "ports": [
+        10250,
+        443,
+        6443
+      ]
+    },
+    "extra": [],
+    "inNamespace": true
+  },
+  "enabled": null,
+  "ingress": {
+    "allowExternal": true,
+    "extra": [],
+    "ports": [
+      10250
+    ]
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server: serves the metrics API to the API server, scrapes every kubelet.
+
+Both directions are broad, and both for the same reason: the peers are the
+control plane and the nodes, neither of which has an address this chart can
+select. `allowExternal` is **true** by default here, unlike the other two —
+the aggregation layer dials `10250` from the API server, which on a managed
+control plane is not a pod, not in the cluster's pod CIDR, and not reachable
+by any `podSelector`. A policy that closed that port would break every `kubectl
+top` and every HPA in the cluster, not just this release.
+
+What the policy still buys is the rest of the surface: no other port on the
+pod accepts a connection, and egress is limited to the kubelet port plus the
+API server rather than anywhere at all.
+
+Egress `10250` to `0.0.0.0/0` is the kubelet summary API on each node. Node
+IPs are not selectable either, and narrowing this to the node CIDR is a good
+idea wherever you know it — `egress.extra` with an `ipBlock`, and drop
+`10250` from `external.ports`.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Materialize Integration
 
 Materialize-specific configuration values.
@@ -2273,6 +2547,67 @@ equal to the request turns that into CFS throttling on the busiest nodes.
       <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Critical: this is a per-node singleton, so an eviction is a log gap on that node with no replica to cover it.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "egress": null,
+  "enabled": true,
+  "flavor": "kubernetes",
+  "ingress": [
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 12345,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "policyTypes": [
+    "Ingress"
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for the agent.
+
+Ingress is one port from one peer. `12345` is Alloy's HTTP server — it serves
+`/metrics` and the live debugging UI, which shows the running pipeline and
+samples of the data moving through it — and the only pod that needs to reach
+it is the gateway performing the `serviceMonitor` scrape.
+
+**Egress is not restricted**, and the `policyTypes` list says so rather than
+pairing an `Egress` type with an allow-everything rule. Two of the agent's
+three destinations are unaddressable from here: the API server backs
+`discovery.kubernetes`, and on a managed control plane it is not in the pod
+network at all. The third, the gateway, is in-namespace and would be easy —
+but a policy that allows only the parts we happen to know is a policy that
+breaks the first time someone adds a scrape to the agent pipeline, and does
+it silently. Narrow it deliberately, with `egress` and `policyTypes`, once you
+know what your agent actually collects.
+
+The default `from` selects by pod label within the release namespace. Running
+the gateway in a different namespace (see `profiles/split-namespace.values.yaml`)
+requires replacing this list with one that adds a `namespaceSelector`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-agent<wbr>.networkPolicy<wbr>.egress</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">Null rather than `[]`: an empty list still merges as "no rules", but null is what the subchart documents for "do not render this direction", and it keeps `egress` out of a spec whose `policyTypes` omits `Egress`.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -2494,6 +2829,100 @@ Upstream reference:
 {}</pre>
 </td>
       <td class="helm-value-desc">Extra annotations to set on the alloy-gateway service account. Use `eks.amazonaws.com/role-arn` to set up IRSA. Use `iam.gke.io/gcp-service-account` to set up Workload Identity Federation.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "egress": null,
+  "enabled": true,
+  "flavor": "kubernetes",
+  "ingress": [
+    {
+      "from": [
+        {
+          "namespaceSelector": {}
+        }
+      ],
+      "ports": [
+        {
+          "port": 3100,
+          "protocol": "TCP"
+        },
+        {
+          "port": 4317,
+          "protocol": "TCP"
+        },
+        {
+          "port": 4318,
+          "protocol": "TCP"
+        },
+        {
+          "port": 9090,
+          "protocol": "TCP"
+        }
+      ]
+    },
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 12345,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "policyTypes": [
+    "Ingress"
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for the gateway.
+
+Two ingress rules, because the gateway's ports fall into two groups with very
+different audiences.
+
+**The ingest ports — `3100` (Loki push), `4317`/`4318` (OTLP), `9090`
+(Prometheus remote write) — are open to every pod in the cluster.** That is
+deliberate and it is not laziness: these are the endpoints the stack exists to
+offer. The agent pushes logs to `3100`, and anything in the cluster with
+telemetry to send — a Materialize workload emitting OTLP, an application
+remote-writing metrics — is a legitimate client this chart cannot enumerate.
+`namespaceSelector: {}` still means *in-cluster*: a sender outside the pod
+network is denied, and the gateway is not meant to be internet-facing.
+
+**`12345` is not an ingest port and is closed to everything but the gateway
+itself.** It carries the clustering gossip between gateway replicas
+(`alloy.clustering.enabled`) and serves `/metrics` and the debugging UI, which
+exposes the pipeline and samples of the telemetry passing through it. The
+gateway scrapes its own `serviceMonitor`, so its own pods are the only peer.
+
+**Egress is not restricted, and cannot usefully be.** The gateway scrapes the
+kubelet cAdvisor endpoint on every node — port `10250` on a *node* IP, which
+no `podSelector` matches — and it discovers `ServiceMonitor` and `PodMonitor`
+targets cluster-wide, so its destination set is every pod and every port that
+anyone in the cluster has ever pointed a monitor at. On top of that it is the
+stack's egress point for external backends: Amazon Managed Prometheus,
+Honeycomb, a Datadog or OTLP destination under `connections`. Enumerating that
+is not a policy, it is a copy of the cluster's inventory that goes stale.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.networkPolicy<wbr>.egress</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>nil</code></td>
+      <td class="helm-value-desc">See the note above: unrestricted, deliberately.
 </td>
     </tr>
   </tbody>
@@ -3323,6 +3752,31 @@ templates test `or <component>.pdb.enabled global.pdb.enabled`.
     the replication factor of 3 set below. A validator enforces this.
 
 This matches the Loki convention (ingester `maxUnavailable: 1`).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.networkPolicies</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">NetworkPolicies for every enabled Thanos component.
+
+One switch, no per-component knobs and no selectors — the subchart renders a
+fixed policy per component and exposes nothing to tune. What each one says
+is: **ingress on that component's own service ports, from anywhere; egress
+unrestricted.**
+
+So this is the weakest policy in the stack, and worth being clear about what
+it does and does not buy. It does not restrict *who* may reach Query, Receive
+or Store Gateway — any pod in the cluster still can. It does close every port
+that is not a declared service port, which is the surface an unrelated
+workload would otherwise find on these pods.
+
+It is on because it costs nothing to be right about. The rules cannot break a
+working install: Receive's `grpc`, `http` and `remote-write` ports are all in
+its own ingress list, so hashring replication between Receive pods and the
+gateway's writes both keep working, and unrestricted egress leaves the object
+store reachable. Narrowing the ingress sources needs an upstream change, or
+your own policy layered on top.
 </td>
     </tr>
     <tr>
@@ -4460,6 +4914,100 @@ Every provider, the role-mapping rules, and the break-glass path are in
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowExternal": true,
+  "egress": {
+    "enabled": false
+  },
+  "enabled": true,
+  "explicitIpBlocks": [],
+  "explicitNamespacesSelector": {},
+  "ingress": true
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for Grafana.
+
+The subchart's policy is rigid: it emits exactly one ingress rule, on
+`service.targetPort`, and either allows every source or a fixed set of them.
+There is no way to add a second port through values. That constrains what this
+can say, so it is worth being precise about what it does say.
+
+**Ingress: `3000` from anywhere, everything else closed.** `allowExternal`
+stays true because Grafana is the one component in this stack a human is meant
+to reach, and the ways they reach it are all things a `podSelector` cannot see
+— an ingress-controller pod in another namespace, a cloud load balancer's
+source IPs, `kubectl port-forward`, which arrives from the API server.
+Turning it off is worthwhile once you know your path in; `explicitNamespacesSelector`
+takes the ingress controller's namespace and `explicitIpBlocks` takes a load
+balancer's health-check and client ranges. `profiles/grafana-ingress.values.yaml`
+is where that belongs.
+
+What it closes is the rest of the pod: `6060` (pprof) and `9094` (the
+unified-alerting gossip port) stop accepting connections. pprof should not be
+reachable in production, so that one is the point. `9094` is not — it matters
+as soon as you run multiple replicas *and* set
+`grafana.ini.unified_alerting.ha_peers`, which needs the pods to reach each
+other on it, and this template cannot express a second port.
+
+**You do not have to turn this off to get HA alerting.** The chart renders the
+missing rule itself, as `networkPolicies.grafanaGossip`, and it appears exactly
+when `ha_peers` is set. Policies are additive, so the two sit side by side.
+Turning *that* off while HA alerting is configured is what the render warns
+about; turning this one off takes the supplement with it, since a lone gossip
+policy would isolate the pods and leave only `9094` open.
+
+**Egress is left unrestricted** (`egress.enabled: false` renders a policy with
+no `Egress` policy type at all, rather than an empty allow). Grafana dials the
+things it is configured to dial: Loki and Thanos in-namespace, a PostgreSQL
+state database wherever it lives, an OIDC provider on the internet, `grafana.com`
+if `plugins` is non-empty. The first two are knowable here and the rest are
+not, and a partial allowlist would fail as a dashboard that renders empty with
+no error — the worst failure mode this stack has.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.networkPolicy<wbr>.ingress</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Emit the ingress rule. False renders a policy with no rules at all, which — with egress off too — is an empty spec, not a deny.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.networkPolicy<wbr>.allowExternal</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Accept from any source. See the note above before turning this off.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.networkPolicy<wbr>.explicitNamespacesSelector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Namespaces allowed in when `allowExternal` is false. The ingress controller's namespace goes here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.networkPolicy<wbr>.explicitIpBlocks</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">CIDRs allowed in when `allowExternal` is false. Load-balancer client and health-check ranges go here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.networkPolicy<wbr>.egress<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Leave off. See the note above: a partial egress allowlist for Grafana fails as empty panels rather than as an error.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana<wbr>.plugins</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -4561,6 +5109,94 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "egress": [
+    {
+      "ports": [
+        {
+          "port": 53,
+          "protocol": "UDP"
+        },
+        {
+          "port": 53,
+          "protocol": "TCP"
+        }
+      ],
+      "to": [
+        {
+          "namespaceSelector": {}
+        }
+      ]
+    },
+    {
+      "ports": [
+        {
+          "port": 443,
+          "protocol": "TCP"
+        },
+        {
+          "port": 6443,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "enabled": true,
+  "ingress": [
+    {
+      "from": [
+        {
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/name": "alloy-gateway"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 8080,
+          "protocol": "TCP"
+        },
+        {
+          "port": 8081,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for kube-state-metrics.
+
+Ingress is narrowed to the Alloy gateway, which is what scrapes it
+(`prometheus.operator.servicemonitors` in the gateway pipeline) — the same
+shape as `node-exporter.networkPolicy`, and unlike that one it is actually
+enforced, because these pods are not host-networked.
+
+`8081` is listed alongside `8080` even though nothing serves it at the default
+`selfMonitor.enabled: false`. A closed port that nothing dials costs nothing;
+the alternative is that turning `selfMonitor` on produces a scrape that fails
+silently against a policy nobody thought to update.
+
+**Egress is restricted, and this is the one component where that is safe to
+do**, because its destination set is closed: DNS, and the API server. It reads
+nothing else — the whole workload is a watch on the API and an exposition
+endpoint. Deny egress outright (as `node-exporter` does) and it never lists a
+single object; the pod stays Ready and every `kube_*` series simply disappears.
+
+`443`/`6443` to `0.0.0.0/0` rather than something tighter because the API
+server's address is the one thing a chart cannot derive. In-cluster it is the
+`kubernetes.default.svc` ClusterIP, which most CNIs evaluate against the
+endpoint behind it — and on a managed control plane that endpoint is outside
+the cluster network entirely. Narrow the CIDR to your control plane's where
+you know it.
 </td>
     </tr>
   </tbody>

@@ -194,7 +194,7 @@ The load balancer needs **only the verifier CA public key** — no private mater
 **The receiver cannot check revocation, so the load balancer is the only place revocation is enforced.**
 That has a consequence worth writing in the operational runbook rather than discovering later: *any* network path that reaches the gateway pod while bypassing the LB also bypasses revocation.
 The mitigations are ordinary and must all be present — the gateway's Service is internal, a NetworkPolicy admits only the LB's source, and no second ingress object targets it.
-This is one of the strongest arguments for the NetworkPolicy work already queued for the gateway in OO-M1.
+That work has since landed for the gateway, but not in the shape this needs: the shipped policy accepts the ingest ports from any pod in the cluster, which is right for a customer-side install and is not "only the LB". The control-plane overlay has to replace that rule.
 
 Certificate verification at the receiver is expressible today only through the schema's `raw` escape hatch, since the `grpc` and `http` blocks accept nested blocks as raw text. Typing the `tls` block is listed in the [prerequisites](#chart-side-prerequisites).
 
@@ -439,7 +439,7 @@ Work in **this** repo. Ordered roughly by dependency.
 | **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | **Blocking** for any renewing credential |
 | **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | Blocking for delivery |
 | **Control-plane values overlay** — OTLP mTLS ingress on, kubelet and events collection off, egress to our backends | Lets the control-plane gateway be this repo's artifact rather than a fork | Blocking for the control plane |
-| **NetworkPolicy for the gateway** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) | The receiver cannot check revocation, so "the LB is the only path" must be enforced rather than assumed | **Blocking** — it is the revocation guarantee |
+| **NetworkPolicy for the gateway** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) | The receiver cannot check revocation, so "the LB is the only path" must be enforced rather than assumed | **Partly landed.** `alloy-gateway.networkPolicy` ships on by default, but its ingest ports (`3100`, `4317`, `4318`, `9090`) accept any pod in the cluster — correct for a customer-side install, where those endpoints exist for the customer's own workloads, and not the guarantee this needs. The control-plane overlay has to replace that first ingress rule with one naming the load balancer, which is a values change rather than new chart machinery |
 | **Per-tenant Loki limits** in the control-plane overlay | One environment's crash loop must not degrade ingestion for the fleet | Blocking for the control plane |
 | `thanos-large` sizing plus a per-environment series budget for the `essential` tier | Control-plane sizing is a fleet-count function nobody has computed | Blocking for capacity planning, not for the first environment |
 | Alertmanager routing ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) with a per-tenant dimension | Without routing the control plane collects signal nobody is paged on | Blocking for the value, not the pipeline |

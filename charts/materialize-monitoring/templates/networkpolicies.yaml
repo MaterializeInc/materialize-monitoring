@@ -1,0 +1,184 @@
+{{/*
+NetworkPolicies this chart renders, where a subchart's own template cannot.
+
+Two kinds, and the second is the smaller of the two:
+
+  * **Whole policies** for Alertmanager, grafana-operator and metrics-server,
+    which ship no `networkpolicy.yaml` upstream. Without this they would be the
+    only unpoliced pods in a namespace where everything else — Loki, Thanos,
+    both Alloy releases, Grafana, kube-state-metrics, node-exporter — carries a
+    policy, which is the kind of gap that survives review precisely because
+    nothing about it looks wrong.
+  * **One supplementary rule** for Grafana, at the bottom: the alerting gossip
+    port, which the subchart's policy template has no way to open.
+
+Shape follows Loki's, deliberately: one policy per component covering both
+directions, and DNS split into a policy of its own. NetworkPolicies are additive,
+so splitting them means an operator can drop the DNS rule, or add one of their
+own alongside, without editing a rule that is doing other work.
+
+Configured under `networkPolicies` in values.yaml, which is where the reasoning
+about each component's peers lives.
+*/}}
+{{- $apps := include "mzmon.networkPolicy.apps" $ | fromYaml }}
+{{- range $app, $meta := $apps }}
+  {{- if ( include "mzmon.networkPolicy.enabled" ( dict "context" $ "app" $app ) ) }}
+    {{- $cfg := index $.Values.networkPolicies $app | required ( printf "networkPolicies.%s is missing from values." $app ) }}
+    {{- $ingress := $cfg.ingress | required ( printf "networkPolicies.%s.ingress is missing." $app ) }}
+    {{- $egress := $cfg.egress | required ( printf "networkPolicies.%s.egress is missing." $app ) }}
+    {{- /* Each subchart resolves its own namespace, and two of the three can be
+           moved out of the release namespace. A policy is namespaced, so one
+           rendered into the wrong namespace selects nothing at all. */}}
+    {{- /* An if/else rather than `ternary`, which evaluates both branches — the
+           empty helper name would be an `include ""` and blow up. */}}
+    {{- $namespace := include "mzmon.namespace" $ }}
+    {{- if $meta.namespaceHelper }}
+      {{- $namespace = include $meta.namespaceHelper $ }}
+    {{- end }}
+    {{- $selector := dict "app.kubernetes.io/name" $meta.name "app.kubernetes.io/instance" $.Release.Name }}
+    {{- $name := printf "%s-%s" ( include "mzmon.fullname" $ ) $app }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $selector | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- /* An empty rule list is not an empty policy: with the type declared and no
+         rule to match, the direction is denied outright. That is a legitimate
+         thing to ask for (node-exporter does exactly this for egress), so the
+         key is simply omitted rather than emitted empty. */}}
+  {{- $ingressRules := list }}
+  {{- if $ingress.ports }}
+    {{- $ports := include "mzmon.networkPolicy.ports" $ingress.ports | fromYamlArray }}
+    {{- $rule := dict "ports" $ports }}
+    {{- /* No `from` at all means "from anywhere", which is what allowExternal
+           asks for. Otherwise: any pod in this policy's own namespace. */}}
+    {{- if not $ingress.allowExternal }}
+      {{- $rule = set $rule "from" ( list ( dict "podSelector" dict ) ) }}
+    {{- end }}
+    {{- $ingressRules = append $ingressRules $rule }}
+  {{- end }}
+  {{- $ingressRules = concat $ingressRules ( $ingress.extra | default list ) }}
+  {{- with $ingressRules }}
+  ingress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- $egressRules := list }}
+  {{- if $egress.inNamespace }}
+    {{- $egressRules = append $egressRules ( dict "to" ( list ( dict "podSelector" dict ) ) ) }}
+  {{- end }}
+  {{- $external := $egress.external | default dict }}
+  {{- if $external.ports }}
+    {{- $ports := include "mzmon.networkPolicy.ports" $external.ports | fromYamlArray }}
+    {{- $rule := dict "ports" $ports }}
+    {{- with $external.cidrs }}
+      {{- $to := list }}
+      {{- range $cidr := . }}
+        {{- $to = append $to ( dict "ipBlock" ( dict "cidr" $cidr ) ) }}
+      {{- end }}
+      {{- $rule = set $rule "to" $to }}
+    {{- end }}
+    {{- $egressRules = append $egressRules $rule }}
+  {{- end }}
+  {{- $egressRules = concat $egressRules ( $egress.extra | default list ) }}
+  {{- with $egressRules }}
+  egress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+    {{- if $egress.dns }}
+---
+{{/*
+DNS, on its own policy.
+
+Split out for the same reason Loki splits it: it is the one egress rule that is
+never wrong, it applies to every component equally, and an operator narrowing the
+policy above should not have to remember to carry it along.
+
+`namespaceSelector: {}` rather than a selector on kube-system, because the DNS
+Service is not always there — a cluster running NodeLocal DNSCache, or CoreDNS
+under an add-on manager in its own namespace, would resolve nothing under a
+kube-system rule and the failure would look like a DNS outage.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-egress-dns" $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $selector | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector: {}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- if ( include "mzmon.networkPolicy.grafanaGossip.enabled" $ ) }}
+---
+{{/*
+Grafana's unified-alerting gossip, which the subchart's own policy cannot open.
+
+`grafana.networkPolicy` emits one ingress rule on `service.targetPort` and takes
+no second port, so it closes 9094 on the same pods that need it to form an
+alerting cluster. This adds the rule alongside it — NetworkPolicies are additive,
+so the subchart's policy is untouched and keeps protecting everything else.
+
+TCP and UDP both: memberlist joins and pushes state over TCP and gossips over
+UDP, so a TCP-only rule yields a cluster that forms and never converges.
+*/}}
+{{- $gossip := ( $.Values.networkPolicies | default dict ).grafanaGossip | default dict }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-grafana-gossip" ( include "mzmon.fullname" $ ) }}
+  namespace: {{ include "mzmon.grafana.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: {{ $gossip.port | default 9094 }}
+          protocol: TCP
+        - port: {{ $gossip.port | default 9094 }}
+          protocol: UDP
+      from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+              app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
