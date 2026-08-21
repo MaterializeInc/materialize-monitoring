@@ -226,6 +226,38 @@ Set `global.clusterDomain` if yours differs — it propagates into Loki and Than
 - [ ] `[operator]` **Set `metrics-server.tls.clusterDomain` too** if you change the global. metrics-server reads its own key, and the render warns when the two disagree.
 - [x] `[chart]` A render check asserts that every in-cluster destination URL the chart writes matches a SAN on the corresponding certificate. A wrong `services` list is valid YAML and installs clean, so this is the cheapest guard against the failure the ladder exists to prevent.
 
+### Turning a backend onto TLS
+
+`profiles/mtls.values.yaml` moves two hops off plaintext — gateway → Loki and gateway → Thanos Receive — and is the supported way to do it:
+
+```bash
+helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+  -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+  -f charts/materialize-monitoring/profiles/mtls.values.yaml \
+  --set certificates.enabled=true \
+  --set certificates.internal.selfSigned.enabled=true
+```
+
+**It is a profile rather than a switch because the change is not one setting.**
+Turning on Loki's listener is one key; keeping the deployment working is six, spread across three subcharts and two of this chart's own trees — the writer, the reader, the kubelet probes, the metrics scrape, and the canary all dial the port that just moved.
+Every one of them fails quietly, and none of the symptoms names TLS:
+
+| Left behind | What you see |
+|---|---|
+| The gateway's destination | Writes fail with a protocol error that reads like Loki is broken |
+| `loki.defaults.readinessProbe` scheme | Every Loki pod fails readiness at once — presents as a crashloop |
+| `loki.monitoring.serviceMonitor` scheme | Loki's own metrics vanish, and `up` goes *absent* rather than 0, so an alert on `up == 0` does not fire either |
+| The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
+| The canary's flags | The end-to-end check reports the log store as broken when it is not |
+
+The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
+
+Thanos Receive is narrower by construction: its TLS flags scope to the remote-write listener, so probes, metrics and the ServiceMonitor are untouched and Thanos Query stays plaintext.
+
+- [ ] `[operator]` **Phase 1 is encryption, not authentication.** Neither server requires a client certificate yet. Moving to `VerifyClientCertIfGiven` and then `RequireAndVerifyClientCert` is an ordered, per-hop step, and the profile documents it — a stack left at `VerifyClientCertIfGiven` looks like mTLS in every values file and rejects nothing.
+- [ ] `[operator]` **Roll the server and its clients in either order at phase 1, never at phase 3.** Kubernetes does not order them, so a server that starts requiring certificates before its clients present them stops ingesting until they catch up.
+- [ ] `[operator]` **Grafana's datasource TLS does not renew like the rest.** It reads from `secureJsonData`, which is provisioned config rather than a file mount, so a new CA means re-provisioning the datasource.
+
 ### Renewal is the failure that matters
 
 Certificate material is **mounted from a Secret**, not injected through environment variables.
@@ -243,11 +275,12 @@ Stated plainly, because the values surface implies more than the deployment has 
 | Gap | Status |
 |---|---|
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
-| **In-cluster TLS, gateway → Loki and gateway → Thanos** | 🔨 Wired, off by default. The client half renders (`pipeline.*.gateway.destination.*.tls`, with the scheme derived); the **server half of each is not yet configured through the subcharts**, so turning the client on alone would talk TLS at a plaintext port |
+| **In-cluster TLS, gateway → Loki and gateway → Thanos** | ✅ Both halves shipped, off by default. `profiles/mtls.values.yaml` assembles them; a validator refuses a half-applied config. **Phase 1 — encrypted, not authenticated** |
 | **In-cluster TLS, agent → gateway** | ❌ Blocked on the listener. The gateway's `loki.source.api` lives in the pre-rendered pipeline, which is emitted verbatim, so its `tls` block cannot be made conditional on a value. The render refuses this hop rather than half-enabling it |
 | **Mutual TLS between components** | ❌ Not shipped. Certificates carry `client auth`, and nothing requires one yet. NetworkPolicy answers *which pods* may connect; nothing answers *who is on the other end*, and several policies answer the first question with "any pod in the cluster" |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
 | **A trust bundle for a private CA** | 🔨 Modeled, unwired. `certificates.trustBundle` names the Secret or ConfigMap; mounting it into Loki and Thanos is outstanding |
+| **Intra-Loki and intra-Thanos TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store — all real hops inside a single subchart's trust boundary |
 | **Redaction in the pipeline** | ❌ Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
 
 **Nothing in the stack requires a certificate today**, so none of the above is authentication yet. Issuance and use are separate switches on purpose: a hop only leaves plaintext once that component's renewal behaviour has been proven, because a component that does not reload a renewed certificate works for exactly one certificate lifetime and then fails with no deploy nearby to blame.

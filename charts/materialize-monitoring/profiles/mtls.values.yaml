@@ -1,0 +1,239 @@
+# Profile: in-cluster TLS on the two hops whose server half the chart can reach.
+#
+# Compose it after your platform profile:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/mtls.values.yaml
+#
+# ---------------------------------------------------------------------------
+# What this turns on, and what it does not
+# ---------------------------------------------------------------------------
+# Two hops, both of which have a Helm-rendered client and a server this chart
+# can configure through its subchart:
+#
+#   alloy-gateway -> Loki distributor      (Loki serves TLS on 3100)
+#   alloy-gateway -> Thanos Receive        (Receive serves TLS on remote-write)
+#
+# **This is phase 1, not mTLS.** Traffic is encrypted and the client verifies the
+# server; neither server requires a client certificate yet, so nothing here
+# authenticates anyone. `client_auth_type` is deliberately left at the permissive
+# end — see the phase table below for why moving it is a separate, ordered step.
+#
+# Not covered, and deliberately so:
+#
+#   * **agent -> gateway.** The gateway's `loki.source.api` listener lives in the
+#     pre-rendered pipeline, which is emitted verbatim, so its `tls` block cannot
+#     be made conditional on a value. The chart refuses that hop rather than
+#     enabling a client that would talk TLS at a plaintext port.
+#   * **Intra-Loki and intra-Thanos.** Distributor->ingester gRPC, the memberlist
+#     ring, query->store: all real hops, all inside a single subchart's trust
+#     boundary, none of them reachable from here.
+#   * **Grafana -> backends.** The datasource URLs below move to `https://`, but
+#     the CA has to reach Grafana through `connections.datasources.*.valuesFrom`,
+#     which is provisioned config rather than a file mount — so it does not renew
+#     the way everything else here does. Supply it yourself.
+#
+# ---------------------------------------------------------------------------
+# Prerequisite
+# ---------------------------------------------------------------------------
+# `certificates.enabled` must be on, with an issuer, before this profile does
+# anything but break pods: every path below points at material the certificate
+# machinery mounts. Either compose it in the same command:
+#
+#   --set certificates.enabled=true \
+#   --set certificates.internal.selfSigned.enabled=true
+#
+# or point `certificates.internal.issuerRef` at your own PKI. The render warns if
+# a backend is told to serve TLS while nothing is issuing it.
+#
+# ---------------------------------------------------------------------------
+# Rolling this out without dropping telemetry
+# ---------------------------------------------------------------------------
+# Kubernetes does not order a server's rollout against its clients', so a hop
+# where the server starts *requiring* certificates before the clients present
+# them stops ingesting until they catch up. Each hop moves through four states,
+# and this profile lands you in phase 1:
+#
+#   | Phase | Server                        | Client                | Effect |
+#   | ----- | ----------------------------- | --------------------- | ------ |
+#   | 0     | plaintext                     | plaintext             | the default |
+#   | 1     | TLS, `NoClientCert`           | TLS, verifies server  | **this profile** — encrypted, either rollout order works |
+#   | 2     | `VerifyClientCertIfGiven`     | presents a client cert| certificates that are presented are checked; clients that have not rolled still work |
+#   | 3     | `RequireAndVerifyClientCert`  | presents a client cert| authenticated |
+#
+# **Phase 2 is not a destination.** `VerifyClientCertIfGiven` produces a config
+# that looks like mTLS in every values file and rejects nothing. It exists so the
+# two halves can roll in either order; a stack left sitting there is encrypted and
+# unauthenticated, and the values will not tell you.
+#
+# To go further, change `client_auth_type` below and add `certFile`/`keyFile` to
+# each destination's `tls` block. Do it one hop at a time, and confirm the client
+# is presenting before you require it.
+
+# ---------------------------------------------------------------------------
+# Loki: serve TLS on the HTTP port
+# ---------------------------------------------------------------------------
+# Six settings move together here and every one of them fails quietly on its own.
+# A validator checks the set; the comments say what each one is preventing.
+loki:
+  loki:
+    server:
+      # The listener itself.
+      #
+      # `client_auth_type` is Go's `tls.ClientAuthType`, not a Loki invention:
+      # NoClientCert | RequestClientCert | RequireAnyClientCert |
+      # VerifyClientCertIfGiven | RequireAndVerifyClientCert. Phase 1 keeps it
+      # permissive; `client_ca_file` is supplied anyway so moving to phase 2 is a
+      # one-word change rather than a re-plumb.
+      http_tls_config:
+        cert_file: /etc/mzmon/tls/tls.crt
+        key_file: /etc/mzmon/tls/tls.key
+        client_ca_file: /etc/mzmon/tls/ca.crt
+        client_auth_type: NoClientCert
+
+  # The mount. `defaults` rather than a per-component list because Loki's
+  # `_pod.tpl` coalesces component -> defaults -> loki, so this one entry reaches
+  # every microservice; setting it per component means remembering all of them
+  # every time the topology changes.
+  defaults:
+    extraVolumes:
+      - name: mzmon-tls
+        secret:
+          secretName: mzmon-loki-tls
+          optional: true
+    extraVolumeMounts:
+      - name: mzmon-tls
+        mountPath: /etc/mzmon/tls
+        readOnly: true
+
+    # The probes. The kubelet dials the same port Loki just moved to TLS, and a
+    # plaintext probe against a TLS listener fails — on every pod, at once, which
+    # presents as a crashloop rather than as a TLS problem.
+    #
+    # `scheme: HTTPS` makes the kubelet speak TLS; it does not make it verify,
+    # which is correct here — the probe connects to the pod IP, and no
+    # certificate in the ladder carries that.
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: http-metrics
+        scheme: HTTPS
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+
+  # The scrape. Without this the gateway scrapes a TLS listener over plaintext
+  # and Loki's own metrics disappear — and because the target errors rather than
+  # returns zero, `up` goes *absent* rather than 0, so an alert on `up == 0` does
+  # not fire either. The one failure here that hides itself twice.
+  monitoring:
+    serviceMonitor:
+      scheme: https
+      tlsConfig:
+        # The scrape targets pod IPs, which no SAN covers, so verification is off
+        # and the CA is not supplied. That is the same trade the kubelet cAdvisor
+        # scrape already makes, and the reason mTLS rather than TLS is what
+        # actually secures this hop.
+        insecureSkipVerify: true
+
+  # The canary renders from its own template rather than `_pod.tpl`, so nothing
+  # in `defaults` reaches it — the same asymmetry that forces an explicit
+  # `priorityClassName` on it in the base values. Left to fail loudly rather than
+  # silently: a canary that cannot reach Loki reports the log store as broken,
+  # which is worse than no canary during the incident you are trusting it in.
+  lokiCanary:
+    extraArgs:
+      - -tls
+      - -ca-file=/etc/mzmon/tls/ca.crt
+    extraVolumes:
+      - name: mzmon-tls
+        secret:
+          secretName: mzmon-loki-tls
+          optional: true
+    extraVolumeMounts:
+      - name: mzmon-tls
+        mountPath: /etc/mzmon/tls
+        readOnly: true
+
+# ---------------------------------------------------------------------------
+# Thanos Receive: serve TLS on the remote-write listener
+# ---------------------------------------------------------------------------
+# Narrower than Loki by construction: these flags scope to the remote-write
+# server, so Receive's HTTP port — probes, metrics, the ServiceMonitor — is
+# untouched and needs no matching change.
+thanos:
+  receive:
+    # **`--receive.replication-factor=3` is restated, and must be.** Helm
+    # overwrites lists rather than merging them, so setting `extraArgs` at all
+    # replaces the base chart's entry — and dropping it silently falls back to
+    # Thanos's default of 1, which is write quorum 1 and no tolerated losses. The
+    # base values call this out; this profile is the case they mean.
+    extraArgs:
+      - --receive.replication-factor=3
+      - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+      - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
+      # Supplied at phase 1 so moving to client verification later does not need
+      # a new mount. Thanos verifies a presented certificate against this; it
+      # does not require one until `--remote-write.server-tls-client-ca` is
+      # paired with a client that presents.
+      - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
+
+    extraVolumes:
+      - name: mzmon-tls
+        secret:
+          secretName: mzmon-thanos-tls
+          optional: true
+    extraVolumeMounts:
+      - name: mzmon-tls
+        mountPath: /etc/mzmon/tls
+        readOnly: true
+
+# ---------------------------------------------------------------------------
+# The clients
+# ---------------------------------------------------------------------------
+# The scheme is derived from `tls.enabled`, so the URLs above stay as written and
+# render as `https://`. The file carriers are used rather than the inline PEMs
+# because cert-manager renews by rewriting the Secret, and an env-injected PEM is
+# read once at process start — it works for exactly one certificate lifetime.
+pipeline:
+  logging:
+    gateway:
+      destination:
+        loki:
+          tls:
+            enabled: true
+            caFile: /etc/mzmon/tls/ca.crt
+            # Phase 2+: add certFile and keyFile here, then move Loki's
+            # client_auth_type to VerifyClientCertIfGiven.
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          tls:
+            enabled: true
+            caFile: /etc/mzmon/tls/ca.crt
+
+# ---------------------------------------------------------------------------
+# Grafana's datasources
+# ---------------------------------------------------------------------------
+# The URLs have to move with the listeners or every panel renders empty with no
+# error — the worst failure mode in this stack, because it looks like missing
+# data rather than a broken connection.
+#
+# The CA does not come from a file here. Grafana reads datasource TLS material
+# from `secureJsonData`, which is provisioned config, so this is the one place in
+# the profile that does not renew on its own: re-provisioning the datasource is
+# what picks up a new CA. Supply it with `valuesFrom` against a Secret you keep
+# in step with the issuer, or accept `tlsSkipVerify` and understand that it makes
+# this hop encryption without authentication.
+connections:
+  datasources:
+    loki:
+      url: 'https://loki-query-frontend.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
+      jsonData:
+        tlsSkipVerify: true
+    thanos:
+      # Thanos Query is untouched by this profile — only Receive's remote-write
+      # listener moved — so this URL stays plaintext. It is named here so the
+      # asymmetry is visible rather than looking like an oversight.
+      url: 'http://thanos-query.{{ include "mzmon.thanos.namespace" $ }}.svc:9090'

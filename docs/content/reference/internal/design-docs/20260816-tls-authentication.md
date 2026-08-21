@@ -394,7 +394,17 @@ The values shape must let each listener and each destination name its own CA and
 
 **Loki and Thanos.**
 Both expose server TLS and a client CA through their own configuration — Loki via its server block's HTTP and gRPC TLS config, Thanos receive via its remote-write server TLS flags.
-The umbrella models neither today.
+
+> [!NOTE]
+>   **Measured during implementation: the two are not the same size of job.**
+>
+>   **Thanos Receive is narrow.** `--remote-write.server-tls-*` scopes to the remote-write listener, so the HTTP port — probes, metrics, the ServiceMonitor — is untouched. Two keys (`extraArgs`, `extraVolumes`) and it is done. The one trap is that Helm overwrites lists, so `extraArgs` has to restate `--receive.replication-factor=3` or write quorum silently drops to 1.
+>
+>   **Loki is wide, and every part of it fails quietly.** `server.http_tls_config` moves port 3100, which is also the readiness probe, the metrics scrape, the Grafana datasource, and the canary's target. Six settings across three subcharts move together, and none of the symptoms names TLS: a plaintext probe reads as a crashloop, a plaintext scrape makes `up` go *absent* rather than 0, and a plaintext datasource renders empty panels with no error.
+>
+>   Two things made it tractable. `loki.defaults` is coalesced ahead of the per-component values in the subchart's `_pod.tpl`, so one `extraVolumeMounts` and one `readinessProbe` reach every microservice. And the canary is the exception — it renders from its own template, so nothing in `defaults` reaches it, the same asymmetry that already forces an explicit `priorityClassName` on it.
+>
+>   The conclusion for the remaining hops: **the validator is the deliverable, not the values.** A profile can assemble six coupled settings; only a render-time check stops someone applying four of them.
 These go through the existing subchart passthrough, and the exact keys should be pinned by snapshot tests, because a value written to a path the subchart does not read is still valid YAML and still renders green.
 Both are also the components that need the [object-store trust bundle](#object-storage-is-in-scope-in-one-direction), so their mounts carry two unrelated roots and should be built as a bundle from the start rather than retrofitted from a single `caFile`.
 
@@ -483,9 +493,9 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Scheme derivation from `tls.enabled`~~ **Shipped** (`mzmon.alloy.destUrl`), with unit coverage; a tier-0 assertion is still worth adding | — | 1 |
 | Typed `tls` blocks on `loki.source.api`, `otelcol.receiver.otlp`, **and `prometheus.receive_http`** in the Alloy schema, replacing `raw` | — | 1 |
 | `pipeline.logging.gateway.server.tls` **and `pipeline.metrics.gateway.server.tls`** values and rendering | above | 1 |
-| Loki and Thanos server TLS through subchart passthrough, with snapshot tests pinning the keys | — | 1–2 |
+| ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
 | Modeled `connections.datasources.*.tls` for Grafana → backends | — | 2 |
-| `profiles/mtls.values.yaml` | most of the above | 2 |
+| ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
 | A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |

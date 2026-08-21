@@ -476,3 +476,136 @@ tests:
     asserts:
       - notMatchRegexRaw:
           pattern: "metrics-server does not read the global"
+
+  # --- the mtls profile, and the surface that moves with it -------------------
+  # Turning on a server's TLS is one key; keeping the deployment working is six,
+  # across three subcharts and two of this chart's own trees. Each assertion here
+  # is one of them, and each fails quietly in production without it.
+  - it: should assemble a coherent server side from the mtls profile
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # loki.defaults reaches every microservice through _pod.tpl's coalesce; a
+  # per-component probe would not, and forgetting one fails only that pod.
+  - it: should put the probe scheme where it reaches every Loki component
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/distributor/workload.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-loki-tls
+              optional: true
+
+  # Helm overwrites lists, so setting extraArgs at all drops the base entry —
+  # and a missing replication factor is write quorum 1 with no tolerated losses.
+  - it: should keep the Thanos replication factor when adding TLS args
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+
+  - it: should fail when the Loki client is left plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "would send plaintext at a TLS port"
+
+  # The failure that presents as a crashloop rather than as a TLS problem.
+  - it: should fail when the Loki probes are left on HTTP
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.defaults.readinessProbe.httpGet.scheme: HTTP
+    asserts:
+      - failedTemplate:
+          errorPattern: "Every Loki pod fails readiness at once"
+
+  # The failure that hides itself twice: metrics vanish, and `up` goes absent
+  # rather than 0, so an alert on `up == 0` does not fire either.
+  - it: should fail when the Loki ServiceMonitor is left on http
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.monitoring.serviceMonitor.scheme: http
+    asserts:
+      - failedTemplate:
+          errorPattern: "`up` is absent rather than 0"
+
+  - it: should fail when Grafana's datasource is left plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      connections.datasources.loki.url: http://loki-query-frontend.test-monitoring.svc:3100
+    asserts:
+      - failedTemplate:
+          errorPattern: "renders every log panel empty with no error"
+
+  - it: should fail when the Thanos client is left plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "every metric write fails"
+
+  # A backend told to serve TLS from material nothing is issuing. Legitimate with
+  # your own PKI, and otherwise the signature of a half-applied profile.
+  - it: should warn when a backend serves TLS with no issuer behind it
+    values:
+      - ../profiles/mtls.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "this chart is not issuing the material it references"
+
+  # The canary renders from its own template, so loki.defaults does not reach it.
+  - it: should warn when the canary cannot follow Loki onto TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.lokiCanary.extraArgs: null
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "the canary's extraArgs carry no -tls flag"

@@ -261,6 +261,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res := include "mzmon.certificates.validate.serverTls" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}
@@ -337,6 +341,143 @@ Usage:
     {{- $ms := dig "tls" "clusterDomain" "" ( index $.Values "metrics-server" | default dict ) }}
     {{- if and $ms ( ne $ms $domain ) }}
       {{- $warnings = append $warnings ( printf "global.clusterDomain is %q but metrics-server.tls.clusterDomain is %q. metrics-server does not read the global, so its certificate would carry SANs for a domain the cluster does not use and the APIService would fail to verify it. Set both." $domain $ms ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Whether Loki is configured to serve TLS on its HTTP port.
+
+Read from the subchart passthrough rather than from a switch of our own: Loki's
+`server.http_tls_config` is the thing that actually changes the listener, so
+anything else would be a second source of truth that can disagree with it.
+
+Usage:
+  {{- if ( include "mzmon.certificates.lokiServerTls" $ ) }}
+*/}}
+{{- define "mzmon.certificates.lokiServerTls" }}
+  {{- if hasKey $.Subcharts "loki" }}
+    {{- if dig "loki" "server" "http_tls_config" "cert_file" "" ( $.Values.loki | default dict ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Whether Thanos Receive is configured to serve TLS on its remote-write listener.
+
+`extraArgs` is a flat list of strings, so this looks for the flag rather than a
+structured key. Narrower than Loki's case by nature: the flag scopes to the
+remote-write server, so Receive's HTTP port — probes, metrics — is untouched.
+
+Usage:
+  {{- if ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
+*/}}
+{{- define "mzmon.certificates.thanosReceiveServerTls" }}
+  {{- if hasKey $.Subcharts "thanos" }}
+    {{- range $arg := ( dig "receive" "extraArgs" list ( $.Values.thanos | default dict ) ) }}
+      {{- if hasPrefix "--remote-write.server-tls-cert" ( $arg | toString ) }}
+        {{- "true" }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate the surface that moves together when a backend starts serving TLS.
+
+This is the part of the feature that is worth a validator at all. Turning on a
+server's TLS is one key; keeping the deployment working is six, spread across
+three subcharts and two of this chart's own trees, and **every one of them fails
+quietly**:
+
+  * a client still on `http://` gets a protocol error that reads like the server
+    is broken,
+  * a probe still on HTTP fails readiness on every pod at once, so the rollout
+    stalls and looks like a crashloop,
+  * a ServiceMonitor still on `http` makes the backend's own metrics vanish
+    while `up` stays absent rather than zero,
+  * a Grafana datasource still on `http://` renders empty panels with no error —
+    the worst failure mode this stack has.
+
+None of those name TLS in the symptom. Hence errors rather than warnings for
+each: a half-converted stack is not a degraded stack, it is a broken one, and it
+is better to refuse the render than to hand someone four separate outages to
+correlate.
+
+Usage:
+  {{- $res := include "mzmon.certificates.validate.serverTls" $ | fromYaml }}
+*/}}
+{{- define "mzmon.certificates.validate.serverTls" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $loki := $.Values.loki | default dict }}
+  {{- $pipeline := $.Values.pipeline | default dict }}
+
+  {{- if ( include "mzmon.certificates.lokiServerTls" $ ) }}
+    {{- /* The writer. */}}
+    {{- if dig "logging" "gateway" "destination" "loki" "enabled" false $pipeline }}
+      {{- if not ( dig "logging" "gateway" "destination" "loki" "tls" "enabled" false $pipeline ) }}
+        {{- $errors = append $errors "loki.loki.server.http_tls_config is set, so Loki serves TLS on 3100 — but pipeline.logging.gateway.destination.loki.tls.enabled is off, so the gateway would send plaintext at a TLS port. Every write fails with a protocol error that reads like Loki is broken. Turn the destination's TLS on, and point its caFile at the mounted CA." }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* The probes. Loki's `_pod.tpl` coalesces component, defaults, and loki
+           level, so `defaults` is the one place that covers every component. */}}
+    {{- $probeScheme := dig "defaults" "readinessProbe" "httpGet" "scheme" "" $loki }}
+    {{- if ne ( $probeScheme | upper ) "HTTPS" }}
+      {{- $errors = append $errors "loki.loki.server.http_tls_config is set but loki.defaults.readinessProbe.httpGet.scheme is not HTTPS, so the kubelet probes a TLS listener over plaintext. Every Loki pod fails readiness at once and the rollout stalls looking like a crashloop. Set the scheme on loki.defaults so it reaches every component — a per-component probe does not." }}
+    {{- end }}
+
+    {{- /* The scrape. */}}
+    {{- if dig "monitoring" "serviceMonitor" "enabled" false $loki }}
+      {{- $smScheme := dig "monitoring" "serviceMonitor" "scheme" "http" $loki }}
+      {{- if ne ( $smScheme | lower ) "https" }}
+        {{- $errors = append $errors "loki.loki.server.http_tls_config is set but loki.monitoring.serviceMonitor.scheme is not https, so the gateway scrapes a TLS listener over plaintext. Loki's own metrics disappear — and because the target fails rather than reports zero, `up` is absent rather than 0, so an alert on `up == 0` does not fire either. Set the scheme and loki.monitoring.serviceMonitor.tlsConfig." }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* The reader. */}}
+    {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) ) }}
+      {{- $url := tpl ( dig "datasources" "loki" "url" "" ( $.Values.connections | default dict ) | toString ) $ }}
+      {{- if hasPrefix "http://" $url }}
+        {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config is set but connections.datasources.loki.url is %q. Grafana would dial plaintext at a TLS port, and a datasource that cannot connect renders every log panel empty with no error on the dashboard. Use https:// and supply the CA through connections.datasources.loki.valuesFrom." $url ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* The canary renders from its own template rather than `_pod.tpl`, so
+           nothing in `defaults` reaches it — the same asymmetry the
+           priorityClassName note next to it already calls out. */}}
+    {{- if dig "lokiCanary" "enabled" false $loki }}
+      {{- $canaryArgs := dig "lokiCanary" "extraArgs" list $loki }}
+      {{- $hasTls := false }}
+      {{- range $arg := $canaryArgs }}
+        {{- if hasPrefix "-tls" ( $arg | toString ) }}{{- $hasTls = true }}{{- end }}
+      {{- end }}
+      {{- if not $hasTls }}
+        {{- $warnings = append $warnings "loki.lokiCanary is enabled and Loki serves TLS, but the canary's extraArgs carry no -tls flag. It renders from its own template, so loki.defaults does not reach it. The canary will fail its write→read loop and report the log store as broken when it is not — which is worse than having no canary, because it is the check you trust during an incident." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- if ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
+    {{- if dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "enabled" false $pipeline }}
+      {{- if not ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "tls" "enabled" false $pipeline ) }}
+        {{- $errors = append $errors "thanos.receive.extraArgs enables remote-write TLS, but pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled is off, so the gateway would send plaintext at a TLS port and every metric write fails. Turn the destination's TLS on." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* Serving TLS from material this chart is not issuing is legitimate —
+         someone else's PKI, mounted by hand — but it is also what a half-applied
+         profile looks like, and the symptom is a pod that cannot read its own
+         cert. */}}
+  {{- if or ( include "mzmon.certificates.lokiServerTls" $ ) ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
+    {{- if not ( dig "enabled" false ( $.Values.certificates | default dict ) ) }}
+      {{- $warnings = append $warnings "A backend is configured to serve TLS while certificates.enabled is off, so this chart is not issuing the material it references. That is correct if you mount your own, and is otherwise the signature of a half-applied mtls profile — the pods will not start, because the cert file they are pointed at does not exist." }}
     {{- end }}
   {{- end }}
 
