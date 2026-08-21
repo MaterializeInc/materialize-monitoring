@@ -1060,7 +1060,11 @@ Usage:
   {{- if $tls.enabled }}
     {{- $pad := repeat ( .indent | default 8 | int ) " " }}
     {{- $lines := list }}
-    {{- if not ( $tls.verify | default true ) }}
+    {{- /* `not ( $tls.verify | default true )` would be dead: `default` returns
+           its default for any *falsy* input, so `false | default true` is
+           `true` and the negation is always false. Test presence and value
+           separately. */}}
+    {{- if and ( hasKey $tls "verify" ) ( not $tls.verify ) }}
       {{- $lines = append $lines "insecure_skip_verify = true" }}
     {{- end }}
     {{- if $tls.caFile }}

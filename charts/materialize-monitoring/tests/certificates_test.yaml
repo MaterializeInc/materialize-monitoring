@@ -357,6 +357,34 @@ tests:
           path: data["config.alloy"]
           pattern: "cert_file"
 
+  # Regression: this shipped as `not ( $tls.verify | default true )`, which is
+  # dead for every input — `default` returns its default for any *falsy* value,
+  # so `false | default true` is `true` and the negation never fires. Setting
+  # verify: false silently did nothing. Both directions are asserted because
+  # only checking the default would still have passed against the broken form.
+  - it: should honour verify false
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.destination.loki.tls.verify: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "insecure_skip_verify = true"
+
+  - it: should not skip verification by default
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # Scoped to the literal the helper emits: the kubelet scrape in the
+      # pre-rendered pipeline has its own env-driven insecure_skip_verify.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: "insecure_skip_verify = true"
+
   # The agent's hop has a client half ready and no server half: the gateway's
   # listener is pre-rendered and cannot yet be told to serve TLS. Refusing is
   # better than sending TLS at a plaintext port.
