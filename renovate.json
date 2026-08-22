@@ -52,15 +52,15 @@
       "versioning": "helm"
     },
     {
-      "description": "A Chart.yaml `version:` must stay a semver range, but the `docker:pinDigests` preset matches on datasource alone and would try to pin a digest onto the OCI subchart entries now that they resolve. The existing helm-values rule above does not cover them (different manager).",
+      "description": "A Chart.yaml `version:` cannot carry an image digest, but the `docker:pinDigests` preset matches on datasource alone and would try to append one to the OCI subchart entries now that they resolve. The existing helm-values rule above does not cover them (different manager). This matters more now that the subchart versions are exact rather than ranges: a bare `31.0.0` is exactly the shape the preset would try to pin.",
       "matchManagers": ["helmv3"],
       "matchDatasources": ["docker"],
       "pinDigests": false
     },
     {
-      "description": "Bump Chart.yaml subchart ranges (e.g. ^1.8.0 -> ^1.11.0) so in-range releases still open PRs; helmUpdateSubChartArchives then refreshes Chart.lock",
+      "description": "Subchart versions in Chart.yaml are exact, not ranges, so that Chart.lock is a function of Chart.yaml alone — see the pinning note in charts/materialize-monitoring/Chart.yaml. `pin` keeps them that way and re-pins anything that reintroduces a range. Renovate moves Chart.yaml only; the `auto-format` label on these PRs is what refreshes Chart.lock and the LFS-tracked archives under charts/*/charts/ (`make helm-deps`), which Renovate cannot do because it would push LFS pointers with no objects behind them.",
       "matchManagers": ["helmv3"],
-      "rangeStrategy": "bump"
+      "rangeStrategy": "pin"
     },
     {
       "matchUpdateTypes": ["minor", "patch"],

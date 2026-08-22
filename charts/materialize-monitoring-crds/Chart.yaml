@@ -37,9 +37,13 @@ annotations:
 # manifest, and we vendor a deflated copy here (a local subchart resolved by
 # path) so this chart owns their lifecycle. Regenerate that copy with
 # `make grafana-operator-crds` after bumping the vendored operator.
+#
+# Dependency versions are exact rather than `^` ranges, so Chart.lock is a
+# function of this file alone and Renovate owns the bumping. See the umbrella
+# chart's Chart.yaml for the reasoning.
 dependencies:
   - name: prometheus-operator-crds
-    version: "^31.0.0"
+    version: "31.0.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: prometheus-operator-crds.enabled
     tags:

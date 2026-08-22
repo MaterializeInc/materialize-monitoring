@@ -5,5 +5,5 @@ dependencies:
 - name: grafana-operator-crds
   repository: ""
   version: 0.0.0
-digest: sha256:279f14379bb55608a561f485a5133d9fd0ddf47e32a488436910903e32b14f4f
-generated: "2026-08-08T15:03:08.335994-04:00"
+digest: sha256:4980a8a13492a2b8d1b74723e3b80f1303f5a394dd80cda21e4fde7551896fec
+generated: "2026-08-22T10:57:25.474695-04:00"

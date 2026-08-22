@@ -306,19 +306,11 @@ HELM_DEP_CHARTS = \
 # has to run whenever Chart.yaml or Chart.lock moves or the checked-in archives
 # go stale against the lock.
 #
-# `build` is preferred: it installs exactly the locked versions, so a bump PR
-# gets the version its lock names rather than whatever is newest in the range
-# at CI time. It refuses to run when Chart.lock has drifted from Chart.yaml,
-# which is what a PR that edits only the version range looks like — fall back to
-# `update` there, which re-resolves the range and rewrites the lock.
+# The script registers the dependency repositories, installs the locked
+# versions, and only re-resolves when the lock has genuinely drifted from
+# Chart.yaml. See bin/helm-deps.sh for why each of those matters.
 helm-deps:
-	@for c in $(HELM_DEP_CHARTS); do \
-		echo "==> helm dependency build $$c"; \
-		helm dependency build "$$c" || { \
-			echo "==> Chart.lock out of sync with Chart.yaml; falling back to update"; \
-			helm dependency update "$$c"; \
-		}; \
-	done
+	./bin/helm-deps.sh $(HELM_DEP_CHARTS)
 .PHONY: helm-deps
 
 HELM_UNITTEST_ARGS ?=

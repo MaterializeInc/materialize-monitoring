@@ -37,11 +37,8 @@ jobs:
 
   helm-tests:
     name: helm unittest
-    # Skip on version-update/* PRs. The umbrella chart version is not embedded in
-    # the unittest snapshots (those carry subchart versions like `loki-15.0.1`),
-    # so a version bump can't change the output. Subchart bumps arrive on
-    # renovate/* branches and still run here. head_ref is empty on push.
-    if: ${{ !startsWith(github.head_ref, 'version-update/') }}
+    # Safe to run on version-update PRs (it's quick, and ensures we don't break a chart test)
+    # if: ${{ !startsWith(github.head_ref, 'version-update/') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
