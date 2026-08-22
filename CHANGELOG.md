@@ -8,9 +8,14 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.18.1 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.19.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.18.1
+
+* Fix snapshots and memcached registry in latest loki
+    * [materialize-monitoring#257](https://github.com/MaterializeInc/materialize-monitoring/pull/257)
 
 ## Pipelines v0.12.0 (Unreleased)
 
