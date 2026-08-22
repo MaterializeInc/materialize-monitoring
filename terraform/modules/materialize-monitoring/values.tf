@@ -52,6 +52,30 @@ locals {
   ]
 
   # ----------------------------------------------------------------------------
+  # In-cluster TLS
+  # ----------------------------------------------------------------------------
+  # The chart's own profiles, read from this repository for the same reason the
+  # sizing ones are: a profile and the chart version that ships it cannot then
+  # disagree. Composed in order — each stage builds on the one before rather
+  # than replacing it, which is why this is a prefix of a list and not a lookup.
+  #
+  # Note these are *chart* surface with no module equivalent, deliberately: which
+  # hops are encrypted is a property of the workload, not of the cloud a wrapper
+  # is provisioning. The module's job here is to make the staged rollout one
+  # input instead of three files a caller has to find.
+  mtls_stages = {
+    off          = []
+    encrypt      = ["mtls"]
+    present      = ["mtls", "mtls-phase2"]
+    authenticate = ["mtls", "mtls-phase2", "mtls-phase3"]
+  }
+
+  mtls_documents = [
+    for name in local.mtls_stages[var.internal_tls] :
+    file("${local.profile_dir}/${name}.values.yaml")
+  ]
+
+  # ----------------------------------------------------------------------------
   # Object storage
   # ----------------------------------------------------------------------------
   storage = var.object_storage
@@ -429,6 +453,13 @@ locals {
   module_documents = concat(
     [yamlencode(local.wiring_values)],
     local.sizing_profiles,
+    # After sizing, because the phase-3 profile restates
+    # `thanos.receive.extraArgs` and Helm overwrites lists rather than merging
+    # them. Either way round one side loses silently — the TLS flags vanish, or
+    # `--receive.replication-factor=3` does and write quorum drops to 1 with
+    # nothing said. The mTLS profiles restate the replication factor, so they are
+    # the safe side to have win.
+    local.mtls_documents,
     local.grafana_database_documents,
     local.storage_documents,
     local.azure_identity_document,

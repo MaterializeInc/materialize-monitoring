@@ -109,11 +109,16 @@ module "monitoring" {
   # bootstraps a self-signed root scoped to this release rather than reusing the
   # cluster's general-purpose one. Requires cert-manager to already be installed.
   #
-  # This issues the material; it does not turn TLS on. Each hop moves off
-  # plaintext under the chart's `profiles/mtls*.values.yaml`, composed through
-  # `additional_values`, because a component only leaves plaintext once its
-  # renewal behaviour is proven.
+  # Issuance and use are separate inputs: this one creates the material, and
+  # `internal_tls` below decides how far the hops move off plaintext.
   certificates_enabled = true
+
+  # All the way to client-certificate authentication, which is safe here because
+  # this is an example of a *fresh* install. Stepping through `present` first is
+  # what a running stack needs — Kubernetes does not order a server's rollout
+  # against its clients', so a one-shot cutover stops ingestion on any hop where
+  # the server pod happens to roll first.
+  internal_tls = "authenticate"
 
   node_selector = { workload = "generic" }
 

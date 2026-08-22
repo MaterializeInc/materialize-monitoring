@@ -254,6 +254,20 @@ The render refuses each of those rather than letting you find out, which is most
 
 Thanos Receive is narrower by construction: its TLS flags scope to the remote-write listener, so probes, metrics and the ServiceMonitor are untouched and Thanos Query stays plaintext.
 
+#### Through Terraform
+
+The Terraform module composes the same profiles from one input, because a consumer of the module has no copy of the chart directory to point `-f` at:
+
+```hcl
+certificates_enabled = true
+internal_tls         = "authenticate"   # off | encrypt | present | authenticate
+```
+
+The stages map to the profiles in order — `encrypt` is `mtls.values.yaml`, `present` adds `mtls-phase2`, `authenticate` adds `mtls-phase3` — so the table in the next section describes both paths.
+`internal_tls` needs `certificates_enabled`, and the module refuses the combination without it rather than installing a stack that mounts Secrets nothing created.
+
+In `materialize-terraform-self-managed` both are on by default, since every example there installs cert-manager.
+
 ### The phases, and where each hop can actually end up
 
 Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.

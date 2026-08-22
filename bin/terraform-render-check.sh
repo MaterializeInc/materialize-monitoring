@@ -436,6 +436,83 @@ PYEOF
             fi
             echo "    browser-facing certificate rendered for the external name"
         fi
+
+        # `internal_tls` is the lever that composes the chart's mTLS profiles,
+        # and every part of it is invisible to `terraform validate`: the profiles
+        # are files this module reads at plan time, and a stage that failed to
+        # compose renders a chart that installs perfectly and speaks plaintext.
+        #
+        # Read from the example's own HCL, not from the composed values: this is
+        # a *module input*, and the values documents are its output. Grepping the
+        # output for it would assert nothing — the whole question is whether the
+        # input reached them.
+        stage="$(grep -hoE '^[[:space:]]*internal_tls[[:space:]]*=[[:space:]]*"[^"]+"' \
+            "${example_dir}"*.tf 2>/dev/null \
+            | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
+        if [ -n "${stage}" ] && [ "${stage}" != "off" ]; then
+            # Every marker below is matched as a *rendered setting*, never as a
+            # bare substring. The chart emits validator warnings as YAML comments
+            # that quote these same flag names back at the reader, so a loose
+            # grep passes on the warning that says the flag is absent.
+            #
+            # Phase 1 is the floor for every non-`off` stage: Loki serves TLS on
+            # its HTTP port and Thanos Receive on its remote-write listener.
+            if ! grep -q '^[[:space:]]*cert_file: /etc/mzmon/tls/tls.crt$' "${rendered}"; then
+                echo "  !! ${example}: internal_tls=${stage} but Loki's server TLS did not render" >&2
+                status=1
+                continue
+            fi
+            if ! grep -qE '^[[:space:]]*- "--remote-write.server-tls-cert=' "${rendered}"; then
+                echo "  !! ${example}: internal_tls=${stage} but Thanos Receive's server TLS did not render" >&2
+                status=1
+                continue
+            fi
+            # The sizing profile also sets `thanos.receive.extraArgs`, and Helm
+            # overwrites lists. Whichever document loses that merge does so
+            # silently, and losing this line drops write quorum to 1.
+            if ! grep -qE '^[[:space:]]*- "--receive.replication-factor=3"' "${rendered}"; then
+                echo "  !! ${example}: internal_tls=${stage} clobbered the Thanos replication factor — the sizing profile and the mTLS profile are fighting over extraArgs" >&2
+                status=1
+                continue
+            fi
+
+            # Only `authenticate` refuses a client that presents nothing.
+            # Asserting the negative for the earlier stages is the point of
+            # having stages at all: `present` looks like mTLS in every values
+            # file and rejects nothing, so a bug that skipped ahead to phase 3
+            # would otherwise read as the feature working.
+            alloy_requires='client_auth_type = "RequireAndVerifyClientCert"'
+            thanos_requires='^[[:space:]]*- "--remote-write.server-tls-client-ca='
+            if [ "${stage}" = "authenticate" ]; then
+                if ! grep -qF "${alloy_requires}" "${rendered}"; then
+                    echo "  !! ${example}: internal_tls=authenticate but no gateway listener requires a client certificate" >&2
+                    status=1
+                    continue
+                fi
+                if ! grep -qE "${thanos_requires}" "${rendered}"; then
+                    echo "  !! ${example}: internal_tls=authenticate but Thanos Receive has no client CA, so it authenticates nobody" >&2
+                    status=1
+                    continue
+                fi
+            else
+                if grep -qF "${alloy_requires}" "${rendered}" || grep -qE "${thanos_requires}" "${rendered}"; then
+                    echo "  !! ${example}: internal_tls=${stage} should still serve a client presenting no certificate, but a listener requires one" >&2
+                    status=1
+                    continue
+                fi
+            fi
+
+            # Loki's own hop tops out at verify-if-given, whatever the stage —
+            # the kubelet probes that port and a httpGet probe cannot present a
+            # certificate. `present` is where it arrives.
+            if [ "${stage}" != "encrypt" ] \
+                && ! grep -q '^[[:space:]]*client_auth_type: VerifyClientCertIfGiven$' "${rendered}"; then
+                echo "  !! ${example}: internal_tls=${stage} but Loki's client CA policy did not render" >&2
+                status=1
+                continue
+            fi
+            echo "    internal_tls=${stage} composed the mTLS profiles onto the hops"
+        fi
     fi
 
     if grep -q '^[[:space:]]*backend: s3$' "${rendered}"; then

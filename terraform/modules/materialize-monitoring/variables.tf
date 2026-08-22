@@ -717,14 +717,66 @@ variable "certificates_enabled" {
     cert-manager owns the default; flipping it here today would break every
     existing consumer's next apply.
 
-    Issuing certificates does not turn TLS on anywhere. Each hop moves off
-    plaintext under its own values (see the chart's `profiles/mtls*.values.yaml`),
+    Issuing certificates does not turn TLS on anywhere — `var.internal_tls` is
+    what moves the hops off plaintext, and it needs this. The two are separate
     because a component only leaves plaintext once its renewal behaviour is
-    proven.
+    proven, so the material exists before every hop is ready to use it.
   EOT
   type        = bool
   default     = false
   nullable    = false
+}
+
+variable "internal_tls" {
+  description = <<-EOT
+    How far the in-cluster hops move off plaintext. Requires
+    `certificates_enabled`, which is what issues the material these settings
+    point at.
+
+    The stages are the chart's own `profiles/mtls*.values.yaml`, composed in
+    order, and they exist because Kubernetes does not order a server's rollout
+    against its clients'. On a **fresh install** there is nothing to strand, so
+    go straight to `authenticate`. On a **running stack** step through
+    `present` first, or on any hop where the server pod happens to roll before
+    the writers, ingestion stops until they catch up — which on a busy pipeline
+    is data loss rather than latency.
+
+    | Value | Profiles | State |
+    |---|---|---|
+    | `off` | none | plaintext everywhere |
+    | `encrypt` | `mtls` | servers serve TLS, clients verify them; no client certificates anywhere |
+    | `present` | `+ mtls-phase2` | clients also present a certificate; servers still serve anyone. **A way-station, not a destination** — nothing is rejected on the Thanos hop, and only a wrong-CA certificate is on the Loki one |
+    | `authenticate` | `+ mtls-phase3` | servers require a client certificate from their CA |
+
+    `authenticate` is authentication, not authorization: none of these components
+    can express "this identity may write and that one may not", so the size of
+    the trust domain is the security property. That is the argument for leaving
+    `issuer_ref` null and letting the chart bootstrap a root scoped to this
+    release.
+
+    Two hops stop short of `authenticate` by nature rather than by choice, and
+    the chart refuses to configure them otherwise: Loki's HTTP port is probed by
+    the kubelet, and a `httpGet` probe has no field for a client certificate, so
+    that hop's terminal state is `present`. Grafana's datasource verifies the
+    backend but presents nothing.
+  EOT
+  type        = string
+  default     = "off"
+  nullable    = false
+
+  validation {
+    condition     = contains(["off", "encrypt", "present", "authenticate"], var.internal_tls)
+    error_message = "internal_tls must be one of: off, encrypt, present, authenticate."
+  }
+
+  validation {
+    # Caught here rather than at render because the failure is otherwise a
+    # crash loop: the profiles mount `/etc/mzmon/tls` from Secrets that only
+    # `certificates_enabled` creates, and Loki exits at startup when the cert
+    # file it was told to serve is not there.
+    condition     = var.internal_tls == "off" || var.certificates_enabled
+    error_message = "internal_tls is set but certificates_enabled is false, so nothing issues the material the TLS settings point at. Turn certificates on, or supply the Secrets yourself through additional_values and leave this off."
+  }
 }
 
 variable "issuer_ref" {

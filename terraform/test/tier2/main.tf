@@ -22,32 +22,6 @@ data "terraform_remote_state" "substrate" {
 locals {
   substrate = data.terraform_remote_state.substrate.outputs
 
-  # `abspath`, because helm resolves this itself rather than relative to the
-  # Terraform working directory. Hoisted so the mTLS profiles below are read out
-  # of the same chart tree that is being installed — a profile from one version
-  # against a chart from another renders values onto paths that moved.
-  chart_registry = coalesce(var.chart_registry, abspath("${path.module}/../../../charts"))
-
-  # The mTLS rollout, in order. Composed rather than restated: tier 2 qualifies
-  # the profiles the chart actually ships, so a change to one of them is caught
-  # here instead of drifting away from a copy.
-  #
-  # All three, so the tier lands on **phase 3** — the servers require a client
-  # certificate. The phases exist to make a *rollout* order-independent, which is
-  # a live-cluster concern; a fresh install has no running writers to strand, so
-  # applying them together is safe and is the only state worth asserting. Phase 1
-  # and phase 2 alone are both states where an anonymous client is still served.
-  #
-  # `additional_values` is last in the module's value list, so these override the
-  # sizing profile's `thanos.receive.extraArgs` rather than the reverse. That
-  # matters more than it looks: Helm overwrites lists, and the losing side of
-  # that merge is silent — either the TLS flags vanish or
-  # `--receive.replication-factor=3` does, and the second one degrades write
-  # quorum to 1 without erroring.
-  mtls_profiles = [
-    for name in ["mtls", "mtls-phase2", "mtls-phase3"] :
-    file("${local.chart_registry}/materialize-monitoring/profiles/${name}.values.yaml")
-  ]
 }
 
 # CNPG generates the application role's password and publishes it in a Secret, so
@@ -66,7 +40,7 @@ module "monitoring" {
 
   # `abspath`, because helm resolves this itself rather than relative to the
   # Terraform working directory.
-  chart_registry = local.chart_registry
+  chart_registry = coalesce(var.chart_registry, abspath("${path.module}/../../../charts"))
 
   namespace = var.namespace
   sizing    = var.sizing
@@ -133,6 +107,16 @@ module "monitoring" {
   # above, capable of breaking the thing it is meant to test.
   certificates_enabled = local.substrate.cert_manager_available
 
+  # Phase 3 — the servers require a client certificate. All the way rather than a
+  # step, deliberately: the intermediate stages exist to keep a *rollout* on a
+  # running stack order-independent, and a tier that creates its cluster has no
+  # writers to strand. `encrypt` and `present` are both states where an anonymous
+  # client is still served, so `authenticate` is the only one worth asserting.
+  #
+  # This is also the configuration Terraform consumers get, which is the argument
+  # for it being the tier's default rather than an opt-in variant.
+  internal_tls = local.substrate.cert_manager_available ? "authenticate" : "off"
+
   # metrics-server is not part of what tier 2 is testing, and a second one fights
   # the cluster's own over the same APIService.
   install_metrics_server = false
@@ -157,12 +141,6 @@ module "monitoring" {
         }
       })
     ],
-    # The mTLS rollout itself, when the substrate installed cert-manager. Issuance
-    # is a module variable — see `certificates_enabled` above — but the per-hop
-    # server and client settings are chart surface with no module equivalent, and
-    # deliberately so: which hops are encrypted is a property of the workload, not
-    # of the cloud a wrapper is provisioning.
-    local.substrate.cert_manager_available ? local.mtls_profiles : []
   )
 
   depends_on = [data.terraform_remote_state.substrate]

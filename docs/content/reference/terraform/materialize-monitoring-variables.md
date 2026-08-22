@@ -100,10 +100,10 @@ secure by default, and that becomes safe once a wrapper that installs
 cert-manager owns the default; flipping it here today would break every
 existing consumer's next apply.
 
-Issuing certificates does not turn TLS on anywhere. Each hop moves off
-plaintext under its own values (see the chart's `profiles/mtls*.values.yaml`),
+Issuing certificates does not turn TLS on anywhere — `var.internal_tls` is
+what moves the hops off plaintext, and it needs this. The two are separate
 because a component only leaves plaintext once its renewal behaviour is
-proven.
+proven, so the material exists before every hop is ready to use it.
 </td>
         <td class="tf-var-default"><code>false</code></td>
     </tr>
@@ -386,6 +386,42 @@ spread across several. The chart refuses that combination at render time.
     name = string
     kind = string
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="internal_tls" href="#internal_tls">internal_<wbr>tls</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">How far the in-cluster hops move off plaintext. Requires
+`certificates_enabled`, which is what issues the material these settings
+point at.
+
+The stages are the chart's own `profiles/mtls*.values.yaml`, composed in
+order, and they exist because Kubernetes does not order a server's rollout
+against its clients'. On a **fresh install** there is nothing to strand, so
+go straight to `authenticate`. On a **running stack** step through
+`present` first, or on any hop where the server pod happens to roll before
+the writers, ingestion stops until they catch up — which on a busy pipeline
+is data loss rather than latency.
+
+| Value | Profiles | State |
+|---|---|---|
+| `off` | none | plaintext everywhere |
+| `encrypt` | `mtls` | servers serve TLS, clients verify them; no client certificates anywhere |
+| `present` | `+ mtls-phase2` | clients also present a certificate; servers still serve anyone. **A way-station, not a destination** — nothing is rejected on the Thanos hop, and only a wrong-CA certificate is on the Loki one |
+| `authenticate` | `+ mtls-phase3` | servers require a client certificate from their CA |
+
+`authenticate` is authentication, not authorization: none of these components
+can express "this identity may write and that one may not", so the size of
+the trust domain is the security property. That is the argument for leaving
+`issuer_ref` null and letting the chart bootstrap a root scoped to this
+release.
+
+Two hops stop short of `authenticate` by nature rather than by choice, and
+the chart refuses to configure them otherwise: Loki's HTTP port is probed by
+the kubelet, and a `httpGet` probe has no field for a client certificate, so
+that hop's terminal state is `present`. Grafana's datasource verifies the
+backend but presents nothing.
+</td>
+        <td class="tf-var-default"><code>off</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="issuer_ref" href="#issuer_ref">issuer_<wbr>ref</a></td>
