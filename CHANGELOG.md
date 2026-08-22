@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.12.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.18.0 (Unreleased)
 
 _Changes Pending_
@@ -48,9 +52,20 @@ _Changes Pending_
 * DEP-227 DEP-197 Fix s3 endpoint; agent tolerations; relax gateway HPA; add pre-delete for GFx resources
     * [materialize-monitoring#231](https://github.com/MaterializeInc/materialize-monitoring/pull/231)
 
-## Pipelines v0.11.0 (Unreleased)
+## Pipelines v0.11.0
 
-_Changes Pending_
+* DEP-195 Implement TLS across stack
+    * [materialize-monitoring#254](https://github.com/MaterializeInc/materialize-monitoring/pull/254)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * Update Rust crate jsonschema to v0.49.9
+        * [materialize-monitoring#209](https://github.com/MaterializeInc/materialize-monitoring/pull/209)
+    * Provide Datadog queries in documentation
+        * [materialize-monitoring#249](https://github.com/MaterializeInc/materialize-monitoring/pull/249)
+    * DEP-185 Add an E2E test suite
+        * [materialize-monitoring#233](https://github.com/MaterializeInc/materialize-monitoring/pull/233)
 
 ## Container Images v0.3.0
 
