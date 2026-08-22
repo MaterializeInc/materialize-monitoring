@@ -8,9 +8,16 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.19.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.20.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.19.0
+
+* Ensure auto-format on version-update PRs does not update Chart.lock
+    * [materialize-monitoring#262](https://github.com/MaterializeInc/materialize-monitoring/pull/262)
+* Update Helm release metrics-server to ^3.14.0
+    * [materialize-monitoring#260](https://github.com/MaterializeInc/materialize-monitoring/pull/260)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.18.1
 
