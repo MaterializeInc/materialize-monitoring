@@ -105,6 +105,21 @@ module "monitoring" {
     "x-honeycomb-team" = "example-not-a-real-honeycomb-key"
   }
 
+  # Certificates, on the recommended shape: no issuer named, so the chart
+  # bootstraps a self-signed root scoped to this release rather than reusing the
+  # cluster's general-purpose one. Requires cert-manager to already be installed.
+  #
+  # Issuance and use are separate inputs: this one creates the material, and
+  # `internal_tls` below decides how far the hops move off plaintext.
+  certificates_enabled = true
+
+  # All the way to client-certificate authentication, which is safe here because
+  # this is an example of a *fresh* install. Stepping through `present` first is
+  # what a running stack needs — Kubernetes does not order a server's rollout
+  # against its clients', so a one-shot cutover stops ingestion on any hop where
+  # the server pod happens to roll first.
+  internal_tls = "authenticate"
+
   node_selector = { workload = "generic" }
 
   tolerations = [

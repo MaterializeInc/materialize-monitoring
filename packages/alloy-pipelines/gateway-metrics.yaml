@@ -9,13 +9,11 @@ description: |
 blocks:
   # --- metric ingress -------
 
-  - prometheus.receive_http:
-      label: gateway
-      forward_to:
-        - "otelcol.receiver.prometheus.inputBridge.receiver"
-      blocks:
-        - http:
-            listen_port: 9090
+  # NOTE: `prometheus.receive_http "gateway"` used to live here. It moved to
+  # gateway-sources-stub.yaml with the other two ingress listeners, because the
+  # deployed version is rendered by Helm (`mzmon.alloyGateway.pipeline.sources`)
+  # so that its `tls` block can follow values. Leaving it here would define the
+  # component twice at install time.
 
   # Bridge: turns Prometheus metrics into OTLP metrics and feeds the main processor.
   - otelcol.receiver.prometheus:

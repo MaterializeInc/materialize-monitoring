@@ -1530,6 +1530,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "chrono",
  "clap",
  "http",
  "http-body-util",
@@ -1540,9 +1541,11 @@ dependencies = [
  "libtest-mimic",
  "percent-encoding",
  "rustls",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
  "zip",
 ]
 

@@ -1,0 +1,1018 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# cert-manager issuance and the client half of in-cluster TLS.
+#
+# Warnings are asserted against `NOTES.txt`; `templates/validate.yaml` emits them
+# as YAML comments and produces no document to match on. Errors use
+# `failedTemplate`, since the validator fails the whole render.
+suite: certificates
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+set:
+  loki.loki.storage.bucketNames.chunks: test-chunks
+  loki.loki.storage.bucketNames.ruler: test-ruler
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  thanos.global.objstore.config: |
+    type: FILESYSTEM
+  # The mtls profile moves the Loki datasource to https, and the render refuses
+  # an https datasource with no CA. Supplied suite-wide so each profile test does
+  # not have to; the test that exercises the refusal clears it.
+  connections.datasources.loki.tls.caPem: |
+    -----BEGIN CERTIFICATE-----
+    placeholder
+    -----END CERTIFICATE-----
+tests:
+  # --- the off switch ---------------------------------------------------------
+  # cert-manager must not become a dependency of an install that did not ask for
+  # it, so the default has to render nothing at all rather than something inert.
+  - it: should render no cert-manager resources by default
+    template: templates/certificates.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should raise nothing on the defaults
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "certificates\\."
+
+  # --- the self-signed bootstrap ---------------------------------------------
+  # cert-manager has no single "give me a private CA" primitive: a selfSigned
+  # issuer signs leaves directly, so a private CA is three resources.
+  - it: should bootstrap a self-signed root as an issuer, a CA, and a CA issuer
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          name: mzmon-selfsigned
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-internal-ca
+        documentIndex: 1
+      - equal:
+          path: spec.isCA
+          value: true
+        documentIndex: 1
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          name: mzmon-internal-ca
+        documentIndex: 2
+      - equal:
+          path: spec.ca.secretName
+          value: mzmon-internal-ca
+        documentIndex: 2
+
+  # The trap in the self-signed path. A ClusterIssuer with a `ca` backend reads
+  # its Secret from cert-manager's cluster resource namespace, not from wherever
+  # the Certificate was created — put the CA in the release namespace and the
+  # issuer sits False with `secret not found` while the Secret is one namespace
+  # over.
+  - it: should put a ClusterIssuer CA in cert-manager's namespace
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: cert-manager
+
+  # A namespaced Issuer has the opposite rule, so the CA follows it home.
+  - it: should put a namespaced Issuer CA in the release namespace
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.internal.selfSigned.kind: Issuer
+    template: templates/certificates.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+
+  - it: should rotate the key with the certificate rather than around it
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.privateKey.rotationPolicy
+          value: Always
+
+  # --- the SAN ladder ---------------------------------------------------------
+  # All four rungs, because the chart's own URLs disagree about which one to use:
+  # every in-cluster destination stops at `$svc.$ns.svc`, while the Terraform
+  # substrate writes `…svc.cluster.local`. A certificate carrying only the
+  # fully-qualified form fails against the endpoints the chart itself ships.
+  - it: should issue every rung of the SAN ladder
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-alloy-gateway-tls
+          namespace: test-monitoring
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc.cluster.local
+      - contains:
+          path: spec.dnsNames
+          content: localhost
+      - contains:
+          path: spec.ipAddresses
+          content: 127.0.0.1
+
+  # The gateway replicas gossip over a second, headless Service, which is a
+  # different name and needs its own rungs.
+  - it: should cover every Service a component answers on
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway-cluster.test-monitoring.svc
+
+  - it: should follow the cluster domain into the last rung
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      global.clusterDomain: cluster.internal
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc.cluster.internal
+      - notContains:
+          path: spec.dnsNames
+          content: alloy-gateway.test-monitoring.svc.cluster.local
+
+  # Certificates are namespaced, so one issued into the wrong namespace is
+  # mounted by nothing. The ladder has to come from the same namespace helpers
+  # the URLs use, or split-namespace produces certificates for the wrong host.
+  - it: should follow a component into its own namespace under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: alloy-gateway
+      - contains:
+          path: spec.dnsNames
+          content: alloy-gateway.alloy-gateway.svc.cluster.local
+
+  # Each component is both ends of some hop — the gateway serves the agent and
+  # dials Loki — so one certificate has to be valid for both roles.
+  - it: should issue for both server and client auth
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentIndex: 5
+    asserts:
+      - equal:
+          path: spec.usages
+          value:
+            - server auth
+            - client auth
+
+  # --- the external certificate ----------------------------------------------
+  # An L4 load balancer passes TCP through, so TLS terminates at the pod and the
+  # material has to exist in the cluster. An L7 LB with a cloud-managed
+  # certificate is the other shape, and renders nothing here.
+  - it: should issue a Grafana certificate for the external name
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/certificates.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-grafana-external-tls
+          namespace: test-monitoring
+        documentIndex: 9
+      - equal:
+          path: spec.dnsNames
+          value:
+            - grafana.example.com
+        documentIndex: 9
+      - equal:
+          path: spec.issuerRef.name
+          value: letsencrypt
+        documentIndex: 9
+      # Browser-facing only; nothing dials out with it.
+      - equal:
+          path: spec.usages
+          value:
+            - server auth
+        documentIndex: 9
+
+  # The public name also lands on Grafana's internal certificate, so one mount
+  # serves both a browser arriving through the LB and the operator dialing the
+  # Service.
+  - it: should add the external name to Grafana's internal certificate too
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/certificates.yaml
+    documentIndex: 6
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: mzmon-grafana-tls
+      - contains:
+          path: spec.dnsNames
+          content: grafana.example.com
+
+  # --- mounts -----------------------------------------------------------------
+  # `optional: true` is what lets the mount be unconditional: the Secret does not
+  # exist until cert-manager has signed, and an optional volume that is missing
+  # mounts empty rather than blocking the pod. So the same values work before,
+  # during and after issuance.
+  - it: should mount certificate material optionally on the gateway
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-alloy-gateway-tls
+              optional: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: mzmon-tls
+            mountPath: /etc/mzmon/tls
+            readOnly: true
+
+  - it: should mount certificate material optionally on the agent
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-alloy-agent-tls
+              optional: true
+
+  # --- the client half --------------------------------------------------------
+  # Every in-cluster destination default is `http://`, and TLS against an
+  # `http://` URL is a plaintext request to a TLS port — which reports as a
+  # protocol error rather than a configuration one.
+  - it: should derive the scheme from tls.enabled
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_LOKI_DEST
+          pattern: "^https://loki-distributor"
+
+  - it: should leave the scheme alone when tls is off
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_LOKI_DEST
+          pattern: "^http://loki-distributor"
+
+  - it: should render a tls_config from the file carriers
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.destination.loki.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.destination.loki.tls.keyFile: /etc/mzmon/tls/tls.key
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'ca_file = "/etc/mzmon/tls/ca\.crt"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'cert_file = "/etc/mzmon/tls/tls\.crt"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'key_file = "/etc/mzmon/tls/tls\.key"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'min_version = "TLS13"'
+
+  # Phase 1 of a rollout is server TLS with no client certificate, so a CA
+  # without a keypair has to render — emitting empty cert_file/key_file would
+  # make alloy reject the config instead of skipping them.
+  - it: should render a CA-only tls_config for a server-verification-only phase
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled: true
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'ca_file = "/etc/mzmon/tls/ca\.crt"'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: "cert_file"
+
+  # Regression: this shipped as `not ( $tls.verify | default true )`, which is
+  # dead for every input — `default` returns its default for any *falsy* value,
+  # so `false | default true` is `true` and the negation never fires. Setting
+  # verify: false silently did nothing. Both directions are asserted because
+  # only checking the default would still have passed against the broken form.
+  - it: should honour verify false
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.destination.loki.tls.verify: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "insecure_skip_verify = true"
+
+  - it: should not skip verification by default
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # Scoped to the literal the helper emits: the kubelet scrape in the
+      # pre-rendered pipeline has its own env-driven insecure_skip_verify.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: "insecure_skip_verify = true"
+
+  # --- the agent hop, now that the gateway's listeners render from Helm -------
+  # Both halves have to move in one release: Kubernetes does not order them, and
+  # either direction alone is a protocol error that reads like the peer is broken.
+  - it: should refuse the agent client half without the gateway server half
+    set:
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "would send TLS at a plaintext listener"
+
+  - it: should refuse the gateway server half without the agent client half
+    set:
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+    asserts:
+      - failedTemplate:
+          errorPattern: "would send plaintext at a TLS listener"
+
+  # `loki.source.api` takes client_auth_type; `otelcol.receiver.otlp` rejects it
+  # and treats a client CA as require-and-verify. One value, two behaviours, in
+  # the same process — measured against the pinned alloy binary.
+  - it: should render the dskit flavour on the Loki listener
+    set: &agentHopTls
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.logging.gateway.server.tls.clientCAFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.server.tls.clientAuth: VerifyClientCertIfGiven
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+      pipeline.logging.agent.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'client_auth_type = "VerifyClientCertIfGiven"'
+      # otelcol has no such attribute, so exactly one listener carries it.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'reload_interval = "1m"'
+
+  - it: should warn that one clientAuth means two things across the listeners
+    set: *agentHopTls
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "the OTLP listeners cannot express"
+
+  # A security switch that silently does nothing is worse than one that refuses.
+  # The third listener now renders from Helm, so it takes TLS from values like
+  # the other two. Exactly one definition of it — it used to live in the
+  # pre-rendered metrics pipeline, and defining it twice would fail at load.
+  - it: should render receive_http from Helm exactly once
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus.receive_http "gateway"'
+
+  # An optional Secret volume that is missing mounts empty rather than blocking
+  # the pod. That is right while nothing reads the material and wrong the moment
+  # a config names a path inside it: Alloy fails its initial load and enters
+  # CrashLoopBackOff, backing off to five minutes, on an error naming a file
+  # rather than the Secret behind it. Required, the kubelet holds the container
+  # in ContainerCreating with a FailedMount event and starts it on the next
+  # volume re-sync — 16s on kind, with no backoff. Observed on the agent during
+  # a fresh install before this was fixed.
+  - it: should make the certificate Secrets required once a config reads them
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    templates:
+      - ../charts/alloy-agent/templates/controllers/daemonset.yaml
+      - ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[?(@.name=="mzmon-tls")].secret.optional
+          value: false
+
+  # The profile has to restate Alloy's whole `volumes.extra` list, because Helm
+  # overwrites lists rather than merging them. Dropping an entry is silent and
+  # specific: without these two the agent keeps collecting pod logs and simply
+  # never reports journal entries, so nothing fails — there are just no journal
+  # logs, on a stack where that reads as "this host has none".
+  - it: should not lose the agent's journal volumes to the restated list
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: runlogjournal
+            hostPath:
+              path: /run/log/journal
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: machineid
+            hostPath:
+              path: /etc/machine-id
+
+  - it: should secure the metrics ingest listener too
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # dskit flavour, like loki.source.api: takes client_auth_type, and
+      # `VersionTLS13` rather than `TLS13`.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'min_version = "VersionTLS13"'
+
+  # Three vocabularies for one concept, and two of the three fail differently:
+  # the dskit listeners crashloop the pod, otelcol goes silently unhealthy with
+  # its port unbound. All measured against the pinned binary.
+  - it: should translate min_version per listener flavour
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # otelcol wants OpenTelemetry's dotted form.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'min_version = "1.3"'
+      # the dskit listeners want the Version-prefixed name
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'min_version = "VersionTLS13"'
+      # and the client blocks want the bare name
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'min_version = "TLS13"'
+
+  - it: should warn when only one of the two ingress trees is secured
+    set:
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+      pipeline.logging.agent.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "prometheus.receive_http on 9090 stays plaintext"
+
+  # Phase 3 on the listener, with an agent that presents nothing.
+  - it: should refuse requiring a client cert before the agent presents one
+    set:
+      pipeline.logging.gateway.server.tls.enabled: true
+      pipeline.logging.gateway.server.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.logging.gateway.server.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.logging.gateway.server.tls.clientCAFile: /etc/mzmon/tls/ca.crt
+      pipeline.logging.gateway.server.tls.clientAuth: RequireAndVerifyClientCert
+      pipeline.logging.agent.destination.loki.tls.enabled: true
+      pipeline.logging.agent.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    asserts:
+      - failedTemplate:
+          errorPattern: "refused at the TLS handshake"
+
+  # The agent's write is fully specified now, not a stub: retries, tenant, and
+  # a bare (not quoted) receiver reference.
+  - it: should render the agent destination fully
+    template: templates/pipelines/cm-alloy-agent.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "forward_to = \\[\\n\\s+loki.write.gateway.receiver,"
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'tenant_id = "loki"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "retry_on_http_429 = true"
+
+  # --- validators -------------------------------------------------------------
+  - it: should fail when certificates are on with no issuer
+    set:
+      certificates.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "no internal issuer is configured"
+
+  - it: should fail when both issuer paths are set
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.internal.issuerRef.name: my-issuer
+    asserts:
+      - failedTemplate:
+          errorPattern: "They are alternatives"
+
+  # A namespaced Issuer signs only for its own namespace, and split-namespace
+  # puts components in six.
+  - it: should fail on a namespaced Issuer under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.internal.selfSigned.kind: Issuer
+    asserts:
+      - failedTemplate:
+          errorPattern: "namespaced Issuer signs only for Certificates in its own namespace"
+
+  # The cheapest guard against the failure the ladder exists to prevent: a wrong
+  # `services` list is valid YAML and installs clean.
+  - it: should fail when a destination URL is not covered by a SAN
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.logging.gateway.destination.loki.url: http://somewhere-else.test-monitoring.svc:3100/loki/api/v1/push
+    asserts:
+      - failedTemplate:
+          errorPattern: "which is not a SAN on the loki certificate"
+
+  - it: should fail when an external issuer names no hosts
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+    asserts:
+      - failedTemplate:
+          errorPattern: "dnsNames is empty"
+
+  - it: should warn when external hosts are set with no external issuer
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no external certificate is issued"
+
+  # metrics-server reads its own clusterDomain, so a consumer who sets the global
+  # and nothing else gets SANs for a domain the cluster does not use.
+  - it: should warn when metrics-server's cluster domain disagrees with the global
+    set:
+      tags.metrics-server: true
+      global.clusterDomain: cluster.internal
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "metrics-server does not read the global"
+
+  - it: should stay quiet when both cluster domains agree
+    set:
+      tags.metrics-server: true
+      global.clusterDomain: cluster.internal
+      metrics-server.tls.clusterDomain: cluster.internal
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "metrics-server does not read the global"
+
+  # --- the mtls profile, and the surface that moves with it -------------------
+  # Turning on a server's TLS is one key; keeping the deployment working is six,
+  # across three subcharts and two of this chart's own trees. Each assertion here
+  # is one of them, and each fails quietly in production without it.
+  - it: should assemble a coherent server side from the mtls profile
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # loki.defaults reaches every microservice through _pod.tpl's coalesce; a
+  # per-component probe would not, and forgetting one fails only that pod.
+  - it: should put the probe scheme where it reaches every Loki component
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/distributor/workload.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-loki-tls
+              optional: false
+
+  # Helm overwrites lists, so setting extraArgs at all drops the base entry —
+  # and a missing replication factor is write quorum 1 with no tolerated losses.
+  - it: should keep the Thanos replication factor when adding TLS args
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+
+  - it: should fail when the Loki client is left plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "would send plaintext at a TLS port"
+
+  # The failure that presents as a crashloop rather than as a TLS problem.
+  - it: should fail when the Loki readiness probe is left on HTTP
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.defaults.readinessProbe.httpGet.scheme: HTTP
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.defaults.readinessProbe.httpGet.scheme is not HTTPS"
+
+  # Liveness is the one that gets forgotten: it hits a different path on the same
+  # port, returns 400 in plaintext, and restarts containers *after* readiness has
+  # already gone green — so it reads as an unrelated flap. Found on a live cluster.
+  - it: should fail when the Loki liveness probe is left on HTTP
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.defaults.livenessProbe.httpGet.scheme: HTTP
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.defaults.livenessProbe.httpGet.scheme is not HTTPS"
+
+  # dskit refuses a client CA with no policy and Loki exits at startup, with the
+  # reason buried in a Go stack trace. Found on a live cluster.
+  - it: should fail on a Loki client CA with no client auth policy
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.server.http_tls_config.client_ca_file: /etc/mzmon/tls/ca.crt
+    asserts:
+      - failedTemplate:
+          errorPattern: "without a Client Auth Policy"
+
+  # The kubelet is a client of Loki's HTTP port and an httpGet probe cannot
+  # present a certificate, so this is unreachable rather than merely out of
+  # order. Verified on a live cluster: every pod goes unready with
+  # `tls: certificate required`.
+  - it: should refuse RequireAndVerifyClientCert on Loki's probed HTTP port
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.server.http_tls_config.client_auth_type: RequireAndVerifyClientCert
+    asserts:
+      - failedTemplate:
+          errorPattern: "cannot work on Loki's HTTP port"
+
+  # Thanos Receive does reach phase 3, because its probes are on a different port
+  # from the listener the TLS flags cover.
+  - it: should let Thanos Receive reach phase 3
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+
+  # Phase 3 without phase 2 is the outage this ordering exists to prevent. The
+  # gateway listener trips first — its client CA also comes from phase 2 — and
+  # the message names the phase rather than the missing key.
+  - it: should refuse phase 3 composed without phase 2
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "composing phase 3 without phase 2 is what produces this"
+
+  # The Thanos half of the same ordering rule, isolated from the gateway's.
+  - it: should refuse the Thanos client CA before the client presents
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=3
+        - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+        - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
+        - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
+    asserts:
+      - failedTemplate:
+          errorPattern: "puts Receive into require-and-verify immediately"
+
+  # The canary's -tls flag means mTLS: it builds an mTLS transport and will not
+  # start without a keypair, even against a server that requires none.
+  - it: should give the canary a client keypair from phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -cert-file=/etc/mzmon/tls/tls.crt
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -key-file=/etc/mzmon/tls/tls.key
+
+  # The failure that hides itself twice: metrics vanish, and `up` goes absent
+  # rather than 0, so an alert on `up == 0` does not fire either.
+  - it: should fail when the Loki ServiceMonitor is left on http
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.monitoring.serviceMonitor.scheme: http
+    asserts:
+      - failedTemplate:
+          errorPattern: "`up` is absent rather than 0"
+
+  - it: should fail when Grafana's datasource is left plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      connections.datasources.loki.url: http://loki-query-frontend.test-monitoring.svc:3100
+    asserts:
+      - failedTemplate:
+          errorPattern: "renders every log panel empty with no error"
+
+  - it: should fail when the Thanos client is left plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "every metric write fails"
+
+  # A backend told to serve TLS from material nothing is issuing. Legitimate with
+  # your own PKI, and otherwise the signature of a half-applied profile.
+  - it: should warn when a backend serves TLS with no issuer behind it
+    values:
+      - ../profiles/mtls.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "this chart is not issuing the material it references"
+
+  # The canary renders from its own template, so loki.defaults does not reach it.
+  - it: should warn when the canary cannot follow Loki onto TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.lokiCanary.extraArgs: null
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "the canary's extraArgs carry no -tls flag"
+
+  # --- Grafana's datasources (the read path) ----------------------------------
+  # The scheme is the switch: moving the URL to https is one edit rather than
+  # two, so the URL and the TLS setting cannot disagree.
+  - it: should not configure datasource TLS on a plaintext URL
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.datasource.jsonData.tlsAuthWithCACert
+      - notExists:
+          path: spec.valuesFrom
+
+  - it: should verify the backend when the datasource URL is https
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: |
+        -----BEGIN CERTIFICATE-----
+        placeholder
+        -----END CERTIFICATE-----
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.tlsAuthWithCACert
+          value: true
+      - matchRegex:
+          path: spec.datasource.secureJsonData.tlsCACert
+          pattern: "BEGIN CERTIFICATE"
+
+  # `valuesFrom` substitutes into a placeholder rather than creating the field,
+  # so an entry with no placeholder at its target path is silently dropped —
+  # the datasource applies cleanly and simply never gains the key.
+  - it: should emit a placeholder alongside every secret reference
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: null
+      connections.datasources.loki.tls.caSecret.name: my-ca
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.tlsCACert
+          value: ${ca.crt}
+      - equal:
+          path: spec.valuesFrom[0].targetPath
+          value: secureJsonData.tlsCACert
+      - equal:
+          path: spec.valuesFrom[0].valueFrom.secretKeyRef.name
+          value: my-ca
+
+  # The placeholder is the Secret *key*, not a name of the chart's choosing.
+  # grafana-operator substitutes `${<key>}` verbatim and leaves anything else
+  # alone, so a mnemonic token reaches Grafana as literal text: the CR applies,
+  # the operator logs nothing, `secureJsonFields` reports the field as set, and
+  # the only symptom is `failed to parse TLS CA PEM certificate` at query time.
+  # Measured on grafana-operator v5.24.0.
+  - it: should key the placeholder on the secret key, not on the field name
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: null
+      connections.datasources.loki.tls.caSecret.name: my-ca
+      connections.datasources.loki.tls.caSecret.key: internal-root.pem
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.tlsCACert
+          value: ${internal-root.pem}
+      - equal:
+          path: spec.valuesFrom[0].valueFrom.secretKeyRef.key
+          value: internal-root.pem
+
+  # Same rule for the client keypair, where it also has to keep the two targets
+  # apart: one placeholder shared by both would resolve to whichever value the
+  # operator substituted last.
+  - it: should give the client certificate and key distinct placeholders
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: |
+        -----BEGIN CERTIFICATE-----
+        placeholder
+        -----END CERTIFICATE-----
+      connections.datasources.loki.tls.clientCert.secretName: my-client
+    template: templates/grafana-datasources.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.datasource.secureJsonData.tlsClientCert
+          value: ${tls.crt}
+      - equal:
+          path: spec.datasource.secureJsonData.tlsClientKey
+          value: ${tls.key}
+
+  # Grafana does not fall back to the system trust store once it is verifying,
+  # and the internal CA is private — so this fails as an empty dashboard rather
+  # than as an error anyone sees.
+  - it: should refuse an https datasource with no CA at all
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "is https with no CA configured"
+
+  - it: should warn when tlsSkipVerify overrides the CA
+    set:
+      connections.datasources.loki.url: https://loki-query-frontend.test-monitoring.svc:3100
+      connections.datasources.loki.tls.caPem: "x"
+      connections.datasources.loki.jsonData.tlsSkipVerify: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "encrypted but unauthenticated"

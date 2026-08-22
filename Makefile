@@ -19,7 +19,7 @@ SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 SOURCES_mz-monitoring-e2e = $(shell find packages/mz-monitoring-e2e -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub agent
+ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub gateway-sources-stub agent agent-dest-stub
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -133,25 +133,22 @@ charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana
 
 ALLOY_TARGET = $(patsubst %.alloy,%,$(notdir $@))
 
+PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
+
 # Render each target. Validation happens in the aggregate target below, because
 # gateway.alloy is not a standalone config (it references loki.process.egress,
 # supplied by gateway-dest-stub.alloy) and must be validated joined with it.
-charts/materialize-monitoring/pre-rendered/pipelines/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
+$(PIPELINES_DIR)/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monitoring-build
 	mkdir -p "$(@D)"
 	target/debug/mz-monitoring-build gen-pipelines --output-dir "$(@D)" --target "$(ALLOY_TARGET)"
 
-charts/materialize-monitoring/pre-rendered/pipelines: $(addprefix charts/materialize-monitoring/pre-rendered/pipelines/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
+$(PIPELINES_DIR): $(addprefix $(PIPELINES_DIR)/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
 	$(MAKE) alloy-pipelines-validate
 	touch "$@"
 
-# Validate rendered pipelines. agent is currently a self-contained config; the
-# gateway is not — gateway.alloy forwards to loki.process.egress, defined in the
-# destination stub — so validate the two together the way alloy loads a config
-# directory.
-PIPELINES_DIR = charts/materialize-monitoring/pre-rendered/pipelines
 alloy-pipelines-validate:
-	alloy validate "$(PIPELINES_DIR)/agent.alloy"
-	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
+	cat "$(PIPELINES_DIR)/agent.alloy" "$(PIPELINES_DIR)/agent-dest-stub.alloy" | alloy validate /dev/stdin
+	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-sources-stub.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
 .PHONY: alloy-pipelines-validate
 
 ### SCRAPER SYNC ###
@@ -450,6 +447,16 @@ E2E_DIAGNOSTICS_DIR ?= e2e-diagnostics-tier1
 
 E2E_FLAGS ?=
 
+# `--allow-disruptive`, but only under CI. See the tier targets for why.
+#
+# An allowlist rather than `$(if $(CI),...)`, because make's `if` tests
+# *emptiness*: `CI=false` and `CI=0` are both non-empty and would have enabled
+# the flag, which is the opposite of what either says. A safety gate should fail
+# closed on a value it does not recognise, so anything but `true` or `1` — a
+# typo, a shell that exports `CI=""`, some other runner's convention — leaves it
+# off rather than guessing. GitHub Actions sets `CI=true`.
+CI_ONLY_DISRUPTIVE := $(if $(filter true 1,$(CI)),--allow-disruptive)
+
 e2e-verify: | $(E2E_BIN)
 	$(E2E_BIN) --context $(E2E_CONTEXT) --namespace $(E2E_NAMESPACE) \
 		--release $(E2E_RELEASE) --diagnostics-dir $(E2E_DIAGNOSTICS_DIR) $(E2E_FLAGS)
@@ -465,6 +472,11 @@ e2e-verify: | $(E2E_BIN)
 # component-health assertion covers it for free. Resist adding another exemption
 # here without a ticket and a removal condition — the value of that assertion is
 # that it has none.
+#
+# `--allow-disruptive` under CI only, for the same reason as tier 2. Tier 1 has
+# no cert-manager and so nothing currently uses it; set anyway so the tier does
+# not quietly skip a disruptive assertion the day one applies to it.
+e2e-verify-tier1: E2E_FLAGS += $(CI_ONLY_DISRUPTIVE)
 e2e-verify-tier1: e2e-verify
 .PHONY: e2e-verify-tier1
 
@@ -518,7 +530,23 @@ e2e-tier2: e2e-generic-cloud
 # Assert the tier-2 stack. Same binary and same target as tier 1 — the Thanos
 # assertions that report `ignored` there run here, because the values now enable
 # Thanos.
+#
+# `--allow-disruptive`, but **only under CI**. There the kind cluster is created
+# and destroyed by the job, so an assertion that deletes a Secret to force a
+# certificate reissue costs a rebuild at worst, and without it
+# `tls::survives_renewal` reports `ignored` — leaving the reload failure it
+# exists to catch (a process that read its keypair once at startup and kept
+# using it) to reach a real cluster unasserted.
+#
+# Off locally because `KIND_CONTEXT` is only a default: someone who has pointed
+# these targets at a longer-lived cluster should not discover the difference by
+# having a Secret deleted. Opt in by hand when that is what you want —
+#
+#   make e2e-verify-tier2 E2E_FLAGS=--allow-disruptive
+#
+# `CI` is set to `true` by GitHub Actions, so the workflow needs nothing.
 e2e-verify-tier2: E2E_DIAGNOSTICS_DIR = e2e-diagnostics-tier2
+e2e-verify-tier2: E2E_FLAGS += $(CI_ONLY_DISRUPTIVE)
 e2e-verify-tier2: e2e-verify
 .PHONY: e2e-verify-tier2
 

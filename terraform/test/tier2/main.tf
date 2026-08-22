@@ -21,6 +21,7 @@ data "terraform_remote_state" "substrate" {
 
 locals {
   substrate = data.terraform_remote_state.substrate.outputs
+
 }
 
 # CNPG generates the application role's password and publishes it in a Secret, so
@@ -81,6 +82,41 @@ module "monitoring" {
   # A single-zone kind cluster cannot satisfy a zone-spread constraint.
   min_zones = 0
 
+  # Certificates, when the substrate installed cert-manager.
+  #
+  # No issuer named, so the chart bootstraps its own self-signed root. That is
+  # the path a consumer without existing PKI takes, and the one worth having
+  # under test; a real deployment points `internal_issuer_ref` at its own CA
+  # instead, and that path renders the same Certificates against a different
+  # issuer. The `issuer_ref` branch is covered at tier 0 by
+  # `bin/terraform-render-check.sh`, which has no cluster to need one on.
+  #
+  # Chart-default lifetimes, deliberately — `certificate_duration` and
+  # `certificate_renew_before` are left unset. An earlier version of this used
+  # `1h`/`55m` to make renewal happen inside the run, and that turned out to be
+  # pathological. renewBefore at 92% of duration means cert-manager renews every
+  # ~5 minutes; with six certificates on one small cluster the controller
+  # livelocked in an optimistic-locking re-queue loop, stopped renewing entirely,
+  # and then reported `Ready=True: "Certificate is up to date and has not
+  # expired"` on certificates that had expired 45 minutes earlier. Every TLS hop
+  # failed with `certificate has expired` while cert-manager insisted it was fine.
+  #
+  # Keep renewBefore well under duration (cert-manager's own guidance is a third
+  # or less). `tls::survives_renewal` **forces** renewal by deleting the Secret
+  # rather than provoking it with a short lifetime, which is both slower and, as
+  # above, capable of breaking the thing it is meant to test.
+  certificates_enabled = local.substrate.cert_manager_available
+
+  # Phase 3 — the servers require a client certificate. All the way rather than a
+  # step, deliberately: the intermediate stages exist to keep a *rollout* on a
+  # running stack order-independent, and a tier that creates its cluster has no
+  # writers to strand. `encrypt` and `present` are both states where an anonymous
+  # client is still served, so `authenticate` is the only one worth asserting.
+  #
+  # This is also the configuration Terraform consumers get, which is the argument
+  # for it being the tier's default rather than an opt-in variant.
+  internal_tls = local.substrate.cert_manager_available ? "authenticate" : "off"
+
   # metrics-server is not part of what tier 2 is testing, and a second one fights
   # the cluster's own over the same APIService.
   install_metrics_server = false
@@ -93,15 +129,19 @@ module "monitoring" {
   # Scoped to this test root on purpose: it is a property of kind, not advice for
   # a real cluster, where leaving verification on is correct (EKS and GKE both
   # scrape cAdvisor fine as shipped).
-  additional_values = [
-    yamlencode({
-      pipeline = {
-        metrics = {
-          kubelet = {
-            tlsInsecureSkipVerify = true
+  additional_values = concat(
+    [
+      yamlencode({
+        pipeline = {
+          metrics = {
+            kubelet = {
+              tlsInsecureSkipVerify = true
+            }
           }
         }
-      }
-    })
-  ]
+      })
+    ],
+  )
+
+  depends_on = [data.terraform_remote_state.substrate]
 }

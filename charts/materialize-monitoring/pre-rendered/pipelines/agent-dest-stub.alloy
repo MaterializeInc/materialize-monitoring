@@ -1,0 +1,14 @@
+// BUILD-TIME egress stand-in for the alloy-agent pipeline. This is NOT what
+// deploys.
+
+loki.process "egress" {
+	forward_to = [
+		loki.write.gateway.receiver,
+	]
+}
+
+loki.write "gateway" {
+	endpoint {
+		url = coalesce(sys.env("AGENT_LOKI_DEST"), "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push")
+	}
+}

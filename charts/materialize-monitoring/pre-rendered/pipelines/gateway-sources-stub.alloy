@@ -1,0 +1,38 @@
+// BUILD-TIME ingress stand-in for the alloy-gateway pipeline. This is NOT what
+// deploys.
+
+loki.source.api "gateway" {
+	forward_to = [
+		loki.process.sampleDebug.receiver,
+		loki.process.inputProcessor.receiver,
+	]
+
+	http {
+		listen_port = encoding.from_json(coalesce(sys.env("ALLOY_LOKI_PORT"), "3100"))
+	}
+}
+
+otelcol.receiver.otlp "gateway" {
+	grpc { }
+
+	http { }
+
+	output {
+		metrics = [
+			otelcol.processor.filter.inputMetricProcessor.input,
+		]
+		logs = [
+			otelcol.exporter.loki.bridge.input,
+		]
+	}
+}
+
+prometheus.receive_http "gateway" {
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+
+	http {
+		listen_port = 9090
+	}
+}

@@ -687,3 +687,191 @@ variable "additional_values" {
     )
   }
 }
+
+# ==============================================================================
+# Certificates
+# ==============================================================================
+# The variable names and types mirror `materialize-instance` in
+# materialize-terraform-self-managed deliberately: an operator who has configured
+# certificates for their Materialize instance should not have to learn a second
+# vocabulary to configure them for the monitoring stack, and the two are usually
+# pointed at the same issuers by the same wrapper.
+#
+# `object({ name, kind })` with no `group` matches that module. cert-manager's
+# `issuerRef.group` is always `cert-manager.io` for `Issuer` / `ClusterIssuer`,
+# and an external issuer is still referenced through one of those kinds — so the
+# field buys nothing and would be one more thing to keep in step. The chart
+# accepts it; this module does not surface it.
+
+variable "certificates_enabled" {
+  description = <<-EOT
+    Render cert-manager `Certificate` resources for in-cluster TLS.
+
+    **Requires cert-manager to already be installed**, with its CRDs present.
+    This module does not install it — the same shared-responsibility split as
+    buckets and workload identity — so with the flag on and cert-manager absent
+    the apply fails on an unknown `cert-manager.io/v1` kind.
+
+    Off by default rather than on. The design calls for the Terraform path to be
+    secure by default, and that becomes safe once a wrapper that installs
+    cert-manager owns the default; flipping it here today would break every
+    existing consumer's next apply.
+
+    Issuing certificates does not turn TLS on anywhere — `var.internal_tls` is
+    what moves the hops off plaintext, and it needs this. The two are separate
+    because a component only leaves plaintext once its renewal behaviour is
+    proven, so the material exists before every hop is ready to use it.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "internal_tls" {
+  description = <<-EOT
+    How far the in-cluster hops move off plaintext. Requires
+    `certificates_enabled`, which is what issues the material these settings
+    point at.
+
+    The stages are the chart's own `profiles/mtls*.values.yaml`, composed in
+    order, and they exist because Kubernetes does not order a server's rollout
+    against its clients'. On a **fresh install** there is nothing to strand, so
+    go straight to `authenticate`. On a **running stack** step through
+    `present` first, or on any hop where the server pod happens to roll before
+    the writers, ingestion stops until they catch up — which on a busy pipeline
+    is data loss rather than latency.
+
+    | Value | Profiles | State |
+    |---|---|---|
+    | `off` | none | plaintext everywhere |
+    | `encrypt` | `mtls` | servers serve TLS, clients verify them; no client certificates anywhere |
+    | `present` | `+ mtls-phase2` | clients also present a certificate; servers still serve anyone. **A way-station, not a destination** — nothing is rejected on the Thanos hop, and only a wrong-CA certificate is on the Loki one |
+    | `authenticate` | `+ mtls-phase3` | servers require a client certificate from their CA |
+
+    `authenticate` is authentication, not authorization: none of these components
+    can express "this identity may write and that one may not", so the size of
+    the trust domain is the security property. That is the argument for leaving
+    `issuer_ref` null and letting the chart bootstrap a root scoped to this
+    release.
+
+    Two hops stop short of `authenticate` by nature rather than by choice, and
+    the chart refuses to configure them otherwise: Loki's HTTP port is probed by
+    the kubelet, and a `httpGet` probe has no field for a client certificate, so
+    that hop's terminal state is `present`. Grafana's datasource verifies the
+    backend but presents nothing.
+  EOT
+  type        = string
+  default     = "off"
+  nullable    = false
+
+  validation {
+    condition     = contains(["off", "encrypt", "present", "authenticate"], var.internal_tls)
+    error_message = "internal_tls must be one of: off, encrypt, present, authenticate."
+  }
+
+  validation {
+    # Caught here rather than at render because the failure is otherwise a
+    # crash loop: the profiles mount `/etc/mzmon/tls` from Secrets that only
+    # `certificates_enabled` creates, and Loki exits at startup when the cert
+    # file it was told to serve is not there.
+    condition     = var.internal_tls == "off" || var.certificates_enabled
+    error_message = "internal_tls is set but certificates_enabled is false, so nothing issues the material the TLS settings point at. Turn certificates on, or supply the Secrets yourself through additional_values and leave this off."
+  }
+}
+
+variable "issuer_ref" {
+  description = <<-EOT
+    Default cert-manager (Cluster)Issuer used for the monitoring stack's TLS
+    certificates. Used for both the external (browser-facing) certificate and
+    the internal ones unless overridden by `var.internal_issuer_ref`.
+
+    Leave null with `certificates_enabled` on and the chart bootstraps a
+    self-signed root of its own, scoped to this release — which is the
+    recommended shape rather than a fallback. None of the receiving components
+    here implement per-client authorization, so "signed by the CA we trust" is
+    the entire authorization decision; an issuer shared with every workload in
+    the cluster reduces that to "has any certificate".
+  EOT
+  type = object({
+    name = string
+    kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
+  })
+  default = null
+}
+
+variable "internal_issuer_ref" {
+  description = <<-EOT
+    Optional override for the issuer signing cluster-internal certificates
+    (those carrying `*.svc.<cluster domain>` SANs).
+
+    Required when `var.issuer_ref` points at a public ACME issuer such as Let's
+    Encrypt, since a public CA cannot sign in-cluster names. When null,
+    `var.issuer_ref` is used for both.
+
+    Under the chart's `split-namespace` layout this must be a `ClusterIssuer`: a
+    namespaced `Issuer` signs only for its own namespace, and the components are
+    spread across several. The chart refuses that combination at render time.
+  EOT
+  type = object({
+    name = string
+    kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
+  })
+  default = null
+}
+
+variable "grafana_external_dns_names" {
+  description = <<-EOT
+    Public DNS names to put on a browser-facing certificate for Grafana, issued
+    from `var.issuer_ref`.
+
+    Only needed behind an **L4** load balancer, which passes TCP through and
+    leaves TLS to terminate at the pod, so the material has to exist in the
+    cluster. An L7 load balancer terminating with a cloud-managed certificate
+    (ACM, Google Certificate Manager, Azure Key Vault) attaches it by ARN or
+    resource ID and the key never enters the cluster — for that shape leave this
+    empty and pass the annotation through `grafana.service.annotations` in
+    `additional_values`.
+
+    Setting this with no `var.issuer_ref` issues nothing, and the render says so.
+  EOT
+  type        = list(string)
+  default     = []
+  nullable    = false
+}
+
+variable "certificate_duration" {
+  description = <<-EOT
+    Lifetime of each issued certificate, as a Go duration (e.g. `2160h`). Null
+    keeps the chart's default of 90 days.
+
+    Keep `certificate_renew_before` well under this — a third or less.
+    cert-manager renews at `duration - renewBefore`, so a value close to
+    `duration` renews continuously; on a small cluster that has been observed to
+    livelock the controller, after which it stops renewing and reports
+    certificates as healthy while they expire.
+  EOT
+  type        = string
+  default     = null
+}
+
+variable "certificate_renew_before" {
+  description = "How long before expiry cert-manager renews, as a Go duration (e.g. `720h`). Null keeps the chart's default of 30 days. See the warning on `certificate_duration`."
+  type        = string
+  default     = null
+}

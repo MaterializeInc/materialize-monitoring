@@ -221,8 +221,71 @@ Usage:
   {{- /* Metric processors */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
 
+  {{- /* Output rendered sources */}}
+  {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
+
   {{- /* Output rendered destination */}}
   {{- include "mzmon.alloyGateway.pipeline.destination" $ }}
+{{- end }}
+
+{{/*
+Generate the alloy-gateway pipeline sources.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.sources" }}
+  {{- /* Two server blocks, because the listeners belong to two pipeline trees
+         and an operator securing one should not silently secure the other. The
+         logs tree covers loki.source.api and otelcol.receiver.otlp; the metrics
+         tree covers prometheus.receive_http. */}}
+  {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+  {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+loki.source.api "gateway" {
+    forward_to = [
+        loki.process.sampleDebug.receiver,
+        loki.process.inputProcessor.receiver,
+    ]
+
+    http {
+        listen_port = encoding.from_json(coalesce(sys.env("ALLOY_LOKI_PORT"), "3100"))
+      {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "indent" 8 ) }}
+    }
+}
+
+otelcol.receiver.otlp "gateway" {
+    grpc {
+      {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
+    }
+
+    http {
+      {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
+    }
+
+    output {
+        metrics = [
+            otelcol.processor.filter.inputMetricProcessor.input,
+        ]
+        logs = [
+            otelcol.exporter.loki.bridge.input,
+        ]
+    }
+}
+
+{{- /* The third listener. It lived in the pre-rendered metrics pipeline until
+       this moved here, which is why it was the one ingress port that could not
+       be given TLS from values — a secured logs path in front of a plaintext
+       metrics path. Same dskit-flavoured server block as loki.source.api. */}}
+prometheus.receive_http "gateway" {
+    forward_to = [
+        otelcol.receiver.prometheus.inputBridge.receiver,
+    ]
+
+    http {
+        listen_port = 9090
+      {{- include "mzmon.alloy.serverTls" ( dict "tls" $metricTls "flavor" "alloy" "indent" 8 ) }}
+    }
+}
 {{- end }}
 
 {{/*
@@ -317,6 +380,7 @@ loki.write "destination" {
       {{- else }}
         {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
       {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $gatewayLogValues.destination.loki.tls "indent" 8 ) }}
     }
 }
 {{- end }}
@@ -362,6 +426,7 @@ prometheus.remote_write "destination" {
       {{- else }}
         {{- printf "Unsupported authType: %s" $gatewayMetricsValues.destination.prometheusRemoteWrite.authType | fail }}
       {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $gatewayMetricsValues.destination.prometheusRemoteWrite.tls "indent" 8 ) }}
     }
 }
 {{- end }}
@@ -670,6 +735,60 @@ Usage:
 
   {{- /* Output main snippet */}}
   {{- $.Files.Get "pre-rendered/pipelines/agent.alloy" }}
+
+  {{- /* Output rendered destination */}}
+  {{- include "mzmon.alloyAgent.pipeline.destination" $ }}
+{{- end }}
+
+{{/*
+Generate the alloy-agent pipeline destinations.
+
+Usage:
+  {{- include "mzmon.alloyAgent.pipeline.destination" $ }}
+*/}}
+{{- define "mzmon.alloyAgent.pipeline.destination" }}
+  {{- $dest := dig "logging" "agent" "destination" "loki" dict ( $.Values.pipeline | default dict ) }}
+  {{- $tenancy := dig "logging" "tenancy" dict ( $.Values.pipeline | default dict ) }}
+loki.process "egress" {
+    forward_to = [
+        loki.write.gateway.receiver,
+    ]
+}
+
+loki.write "gateway" {
+    endpoint {
+        url = sys.env("AGENT_LOKI_DEST")
+      {{- with $dest.retries }}
+        max_backoff_period = {{ .maxBackoffPeriod | quote }}
+        max_backoff_retries = {{ .maxBackoffRetries }}
+        min_backoff_period = {{ .minBackoffPeriod | quote }}
+        retry_on_http_429 = {{ .retryOnHttp429 }}
+      {{- end }}
+      {{- /* The agent stamps the tenant so the gateway does not have to infer
+             it from a connection it cannot attribute. Static only: the agent
+             has no per-stream tenancy of its own. */}}
+      {{- if eq ( dig "tenantMap" "default" "" $tenancy ) "static" }}
+        tenant_id = {{ $tenancy.staticTenant | quote }}
+      {{- end }}
+      {{- if eq ( $dest.authType | default "none" ) "none" }}
+      {{- else if eq $dest.authType "basicAuth" }}
+
+        basic_auth {
+            username = sys.env({{ $dest.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
+            password = sys.env({{ $dest.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+        }
+      {{- else if eq $dest.authType "bearer" }}
+
+        authorization {
+            type = "Bearer"
+            credentials = sys.env({{ $dest.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+        }
+      {{- else }}
+        {{- printf "Unsupported .Values.pipeline.logging.agent.destination.loki.authType (%s)" $dest.authType | fail }}
+      {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
+    }
+}
 {{- end }}
 
 {{- /*
@@ -687,6 +806,10 @@ Usage:
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
   {{- $res := include "mzmon.alloy.validate.destinations" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- $res := include "mzmon.alloy.validate.serverTls" $ | fromYaml }}
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
@@ -1008,6 +1131,240 @@ Usage:
     {{- end }}
   {{- else }}
     {{- $warnings = append $warnings ( printf "%s.networkPolicy.enabled is recommended in production." $release ) }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Derive a destination URL's scheme from whether TLS is on.
+
+Every in-cluster destination default is written `http://`, and `tls.enabled: true`
+against an `http://` URL is either ignored or fails confusingly depending on the
+component — a plaintext request to a TLS port, which reports as a protocol error
+rather than as a configuration one. Deriving the scheme is what stops a correct
+TLS config from presenting as a broken endpoint.
+
+An explicit `https://` is left alone, and so is any scheme the operator wrote
+that is not `http://`: the point is to fix the chart's own default, not to
+second-guess a URL someone typed.
+
+Usage:
+  {{ include "mzmon.alloy.destUrl" ( dict "url" $rendered "tls" $dest.tls ) }}
+*/}}
+{{- define "mzmon.alloy.destUrl" -}}
+  {{- $url := .url | toString }}
+  {{- $tls := .tls | default dict }}
+  {{- if and $tls.enabled ( hasPrefix "http://" $url ) -}}
+    {{- printf "https://%s" ( trimPrefix "http://" $url ) -}}
+  {{- else -}}
+    {{- $url -}}
+  {{- end -}}
+{{- end }}
+
+{{- /*
+Render an alloy `tls_config` block from a destination's `tls` values.
+
+Emits nothing when TLS is off, so a caller can include it unconditionally.
+
+File carriers win over the inline/env ones when both are set, and the block is
+built so that only what is configured appears: a server-only TLS hop (phase 1 of
+a rollout) has a CA and no client keypair, and emitting empty `cert_file` /
+`key_file` attributes would make alloy reject the config rather than skip them.
+
+Usage:
+  {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
+*/}}
+{{- define "mzmon.alloy.tlsConfig" }}
+  {{- $tls := .tls | default dict }}
+  {{- if $tls.enabled }}
+    {{- $pad := repeat ( .indent | default 8 | int ) " " }}
+    {{- $lines := list }}
+    {{- /* `not ( $tls.verify | default true )` would be dead: `default` returns
+           its default for any *falsy* input, so `false | default true` is
+           `true` and the negation is always false. Test presence and value
+           separately. */}}
+    {{- if and ( hasKey $tls "verify" ) ( not $tls.verify ) }}
+      {{- $lines = append $lines "insecure_skip_verify = true" }}
+    {{- end }}
+    {{- if $tls.caFile }}
+      {{- $lines = append $lines ( printf "ca_file = %s" ( $tls.caFile | quote ) ) }}
+    {{- else if $tls.ca }}
+      {{- $lines = append $lines ( printf "ca_pem = sys.env(%s)" ( $tls.caEnv | required "tls.caEnv is required when tls.ca is set" | quote ) ) }}
+    {{- end }}
+    {{- if $tls.certFile }}
+      {{- $lines = append $lines ( printf "cert_file = %s" ( $tls.certFile | quote ) ) }}
+    {{- else if $tls.cert }}
+      {{- $lines = append $lines ( printf "cert_pem = sys.env(%s)" ( $tls.certEnv | required "tls.certEnv is required when tls.cert is set" | quote ) ) }}
+    {{- end }}
+    {{- if $tls.keyFile }}
+      {{- $lines = append $lines ( printf "key_file = %s" ( $tls.keyFile | quote ) ) }}
+    {{- else if $tls.key }}
+      {{- $lines = append $lines ( printf "key_pem = sys.env(%s)" ( $tls.keyEnv | required "tls.keyEnv is required when tls.key is set" | quote ) ) }}
+    {{- end }}
+    {{- with $tls.serverName }}
+      {{- $lines = append $lines ( printf "server_name = %s" ( . | quote ) ) }}
+    {{- end }}
+    {{- with $tls.minVersion }}
+      {{- $lines = append $lines ( printf "min_version = %s" ( . | quote ) ) }}
+    {{- end }}
+{{ $pad }}tls_config {
+    {{- range $line := $lines }}
+{{ $pad }}    {{ $line }}
+    {{- end }}
+{{ $pad }}}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Render a server-side `tls` block for one of the gateway's listeners.
+
+The mirror of `mzmon.alloy.tlsConfig`, which configures Alloy as a client. Emits
+nothing when TLS is off, so a caller can include it unconditionally.
+
+**Two flavours, because the listeners do not share a TLS schema** — measured
+against the alloy binary this chart pins, not read off documentation:
+
+  * `flavor: alloy` — `loki.source.api`'s `http` block. dskit-style, and the only
+    one that takes `client_auth_type`, so it is the only listener with a real
+    verify-if-given state.
+  * `flavor: otelcol` — `otelcol.receiver.otlp`'s `grpc` / `http` blocks. Rejects
+    `client_auth_type` outright; **client auth is implied by the presence of
+    `client_ca_file`**, and that means require-and-verify. Same shape as Thanos
+    Receive, and the same trap: there is no middle state, so the CA must not
+    appear until every client already presents one. It does take
+    `reload_interval`, which is the best renewal behaviour of anything here —
+    the CA and keypair are re-read on a timer rather than only on new
+    connections.
+
+So one `clientAuth` value produces different behaviour on different listeners of
+the same process. `mzmon.alloy.validate.serverTls` says so out loud rather than
+leaving it to be discovered.
+
+Usage:
+  {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
+*/}}
+{{- define "mzmon.alloy.serverTls" }}
+  {{- $tls := .tls | default dict }}
+  {{- if $tls.enabled }}
+    {{- $flavor := .flavor | default "alloy" }}
+    {{- $pad := repeat ( .indent | default 8 | int ) " " }}
+    {{- $auth := $tls.clientAuth | default "NoClientCert" }}
+    {{- $lines := list }}
+    {{- $lines = append $lines ( printf "cert_file = %s" ( $tls.certFile | required "pipeline.*.gateway.server.tls.certFile is required when server TLS is enabled" | quote ) ) }}
+    {{- $lines = append $lines ( printf "key_file = %s" ( $tls.keyFile | required "pipeline.*.gateway.server.tls.keyFile is required when server TLS is enabled" | quote ) ) }}
+    {{- if ne $auth "NoClientCert" }}
+      {{- $lines = append $lines ( printf "client_ca_file = %s" ( $tls.clientCAFile | required ( printf "pipeline.*.gateway.server.tls.clientAuth is %q but clientCAFile is unset, so the listener has nothing to verify presented certificates against. The CA and the policy arrive together in profiles/mtls-phase2.values.yaml — composing phase 3 without phase 2 is what produces this." $auth ) | quote ) ) }}
+      {{- /* Only the dskit-flavoured listener can be told *how hard* to insist;
+             on otelcol the CA above has already said "require". */}}
+      {{- if eq $flavor "alloy" }}
+        {{- $lines = append $lines ( printf "client_auth_type = %s" ( $auth | quote ) ) }}
+      {{- end }}
+    {{- end }}
+    {{- with $tls.minVersion }}
+      {{- /* **The same concept has three vocabularies in one binary**, and two
+             of them fail in different ways. Client blocks (`tls_config`) take
+             `TLS13`. The dskit server block takes `VersionTLS13` and rejects
+             `TLS13` at load, crashlooping the pod. otelcol takes `1.3` and
+             rejects the other two *silently* — the component goes unhealthy,
+             the listener never binds, and the process stays up. `alloy validate`
+             catches none of it. Values use one vocabulary and this translates. */}}
+      {{- $version := . | toString | trimPrefix "Version" }}
+      {{- if eq $flavor "alloy" }}
+        {{- $version = printf "Version%s" $version }}
+      {{- else }}
+        {{- /* otelcol speaks OpenTelemetry's dotted form and rejects both other
+               spellings — and it does so *silently*: the component goes
+               unhealthy with `unsupported TLS version`, the listener never
+               binds, and alloy keeps running. Nothing crashes and nothing in
+               `alloy validate` or the pod's status says so. */}}
+        {{- $version = get ( dict "TLS10" "1.0" "TLS11" "1.1" "TLS12" "1.2" "TLS13" "1.3" ) $version | default $version }}
+      {{- end }}
+      {{- $lines = append $lines ( printf "min_version = %s" ( $version | quote ) ) }}
+    {{- end }}
+    {{- if eq $flavor "otelcol" }}
+      {{- with $tls.reloadInterval }}
+        {{- $lines = append $lines ( printf "reload_interval = %s" ( . | quote ) ) }}
+      {{- end }}
+    {{- end }}
+{{ $pad }}tls {
+    {{- range $line := $lines }}
+{{ $pad }}    {{ $line }}
+    {{- end }}
+{{ $pad }}}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate the gateway's server-side TLS against what its listeners can express.
+
+Three things go wrong here and none of them is visible in the values:
+
+  * **The agent and the gateway have to move together.** A client on TLS against
+    a plaintext listener, or the reverse, fails as a protocol error that reads
+    like the peer is broken.
+  * **One `clientAuth` means different things on different listeners of the same
+    process.** `loki.source.api` honours it; `otelcol.receiver.otlp` has no such
+    attribute and treats the presence of a client CA as require-and-verify. So
+    at `VerifyClientCertIfGiven` the logs listener tolerates a client that
+    presents nothing while the OTLP listeners reject it.
+
+Usage:
+  {{- $res := include "mzmon.alloy.validate.serverTls" $ | fromYaml }}
+*/}}
+{{- define "mzmon.alloy.validate.serverTls" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $pipeline := $.Values.pipeline | default dict }}
+  {{- $logServer := dig "logging" "gateway" "server" "tls" dict $pipeline }}
+  {{- $metricServer := dig "metrics" "gateway" "server" "tls" dict $pipeline }}
+  {{- $agentDest := dig "logging" "agent" "destination" "loki" dict $pipeline }}
+  {{- $agentTls := $agentDest.tls | default dict }}
+
+  {{- /* Only the four names the translation understands. An unrecognized value
+         reaches the listener verbatim and fails at load, not at render. */}}
+  {{- range $side := ( list ( dict "path" "logging" "tls" $logServer ) ( dict "path" "metrics" "tls" $metricServer ) ) }}
+    {{- $v := ( $side.tls.minVersion | default "" ) | toString | trimPrefix "Version" }}
+    {{- if and $side.tls.enabled $v ( not ( has $v ( list "TLS10" "TLS11" "TLS12" "TLS13" ) ) ) }}
+      {{- $errors = append $errors ( printf "pipeline.%s.gateway.server.tls.minVersion is %q, which is not one of TLS10/TLS11/TLS12/TLS13. An unrecognized version reaches the listener verbatim and fails at load rather than at render — the gateway crashloops with `TLS version ... not recognized`, which alloy validate does not catch." $side.path $side.tls.minVersion ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The two ingress trees can be secured independently, which is a real
+         choice — the metrics port has different clients from the logs ports —
+         but securing only one is almost always an oversight rather than that
+         choice, so it warns in both directions. */}}
+  {{- if and $logServer.enabled ( not $metricServer.enabled ) }}
+    {{- $warnings = append $warnings "pipeline.logging.gateway.server.tls is on but pipeline.metrics.gateway.server.tls is not, so the gateway's logs listeners (3100, 4317, 4318) serve TLS while prometheus.receive_http on 9090 stays plaintext. Anything that can reach 9090 can still write arbitrary series. Secure both, or keep the NetworkPolicy on that port and say why." }}
+  {{- end }}
+  {{- if and $metricServer.enabled ( not $logServer.enabled ) }}
+    {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on but pipeline.logging.gateway.server.tls is not, so the remote-write listener on 9090 serves TLS while the log-ingest listeners on 3100/4317/4318 stay plaintext." }}
+  {{- end }}
+
+  {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
+    {{- if $logServer.enabled }}
+      {{- $auth := $logServer.clientAuth | default "NoClientCert" }}
+      {{- if eq $auth "VerifyClientCertIfGiven" }}
+        {{- $warnings = append $warnings "pipeline.logging.gateway.server.tls.clientAuth is VerifyClientCertIfGiven, which the OTLP listeners cannot express: otelcol.receiver.otlp has no client_auth_type and treats the client CA as require-and-verify. So loki.source.api will serve a client that presents nothing while 4317/4318 reject it. That is safe for the agent hop (the agent presents once phase 2 is applied) and will break any other OTLP sender that has not rolled." }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* Both halves of the agent hop. */}}
+    {{- if ( include "mzmon.alloyAgent.enabled" $ ) }}
+      {{- if and $agentTls.enabled ( not $logServer.enabled ) }}
+        {{- $errors = append $errors "pipeline.logging.agent.destination.loki.tls.enabled is on but pipeline.logging.gateway.server.tls.enabled is off, so the agent would send TLS at a plaintext listener. Every log push fails with a protocol error that reads like the gateway is broken." }}
+      {{- end }}
+      {{- if and $logServer.enabled ( not $agentTls.enabled ) }}
+        {{- $errors = append $errors "pipeline.logging.gateway.server.tls.enabled is on but pipeline.logging.agent.destination.loki.tls.enabled is off, so the agent would send plaintext at a TLS listener and every log push fails. Turn the agent's destination TLS on in the same release." }}
+      {{- end }}
+      {{- /* Phase 3 on the listener with a client that presents nothing. */}}
+      {{- if and ( has ( $logServer.clientAuth | default "NoClientCert" ) ( list "RequireAndVerifyClientCert" "RequireAnyClientCert" ) ) $agentTls.enabled }}
+        {{- if not ( and $agentTls.certFile $agentTls.keyFile ) }}
+          {{- $errors = append $errors ( printf "pipeline.logging.gateway.server.tls.clientAuth is %q but the agent presents no client certificate (no certFile/keyFile on pipeline.logging.agent.destination.loki.tls). Every log push would be refused at the TLS handshake. Give the agent its keypair first and let the DaemonSet roll before requiring one." ( $logServer.clientAuth ) ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}

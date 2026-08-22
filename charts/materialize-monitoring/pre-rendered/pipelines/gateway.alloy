@@ -57,32 +57,6 @@ livedebugging {
 	enabled = encoding.from_json(coalesce(sys.env("GATEWAY_LIVEDEBUGGING"), "false"))
 }
 
-loki.source.api "gateway" {
-	forward_to = [
-		loki.process.sampleDebug.receiver,
-		loki.process.inputProcessor.receiver,
-	]
-
-	http {
-		listen_port = encoding.from_json(coalesce(sys.env("ALLOY_LOKI_PORT"), "3100"))
-	}
-}
-
-otelcol.receiver.otlp "gateway" {
-	grpc { }
-
-	http { }
-
-	output {
-		metrics = [
-			otelcol.processor.filter.inputMetricProcessor.input,
-		]
-		logs = [
-			otelcol.exporter.loki.bridge.input,
-		]
-	}
-}
-
 loki.source.kubernetes_events "k8sEvents" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,

@@ -25,21 +25,25 @@ in first so user `jsonData` / `secureJsonData` merges over them.
       "prometheusType" "Thanos"
       "httpMethod" "POST"
     ) }}
+  {{- $thanosUrl := tpl $thanos.url $ }}
+  {{- $thanosTls := include "mzmon.grafana.datasource.tls" ( dict "root" $ "name" "thanos" "url" $thanosUrl ) | fromYaml }}
   {{- $specs = append $specs ( dict
     "key" "thanos"
     "name" $thanos.name
     "uid" $thanos.uid
     "type" "prometheus"
-    "url" ( tpl $thanos.url $ )
+    "url" $thanosUrl
     "isDefault" $thanos.isDefault
-    "jsonData" $jsonData
-    "secureJsonData" ( $thanos.secureJsonData | default dict )
-    "valuesFrom" ( $thanos.valuesFrom | default list )
+    "jsonData" ( merge $jsonData ( $thanosTls.jsonData | default dict ) )
+    "secureJsonData" ( merge ( deepCopy ( $thanos.secureJsonData | default dict ) ) ( $thanosTls.secureJsonData | default dict ) )
+    "valuesFrom" ( concat ( $thanos.valuesFrom | default list ) ( $thanosTls.valuesFrom | default list ) )
   ) }}
 {{- end }}
 
 {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) ) }}
   {{- $loki := $ds.loki }}
+  {{- $lokiUrl := tpl $loki.url $ }}
+  {{- $lokiTls := include "mzmon.grafana.datasource.tls" ( dict "root" $ "name" "loki" "url" $lokiUrl ) | fromYaml }}
   {{- $tenant := include "mzmon.grafana.loki.tenant" $ }}
   {{- $defaults := dict "timeout" 60 }}
   {{- $secure := deepCopy ( $loki.secureJsonData | default dict ) }}
@@ -56,11 +60,11 @@ in first so user `jsonData` / `secureJsonData` merges over them.
     "name" $loki.name
     "uid" $loki.uid
     "type" "loki"
-    "url" ( tpl $loki.url $ )
+    "url" $lokiUrl
     "isDefault" false
-    "jsonData" ( merge ( deepCopy ( $loki.jsonData | default dict ) ) $defaults )
-    "secureJsonData" $secure
-    "valuesFrom" ( $loki.valuesFrom | default list )
+    "jsonData" ( merge ( deepCopy ( $loki.jsonData | default dict ) ) $defaults ( $lokiTls.jsonData | default dict ) )
+    "secureJsonData" ( merge $secure ( $lokiTls.secureJsonData | default dict ) )
+    "valuesFrom" ( concat ( $loki.valuesFrom | default list ) ( $lokiTls.valuesFrom | default list ) )
   ) }}
 {{- end }}
 

@@ -67,3 +67,30 @@ variable "postgres_storage_size" {
   default     = "2Gi"
   nullable    = false
 }
+
+variable "cert_manager_available" {
+  description = <<-EOT
+    Whether cert-manager is usable in this cluster, independent of whether this
+    root installs it.
+
+    Null follows `install_cert_manager`, which is right for the default path.
+    Set it true alongside `install_cert_manager = false` on a cluster that
+    already has cert-manager, or tier 2 reads the substrate as having none and
+    quietly runs without certificates or any TLS hop.
+  EOT
+  type        = bool
+  default     = null
+}
+
+variable "install_cert_manager" {
+  type        = bool
+  default     = true
+  description = <<-EOT
+    Install cert-manager into the substrate.
+
+    On by default because the monitoring module's certificate support is off
+    unless an issuer exists, and tier 2 is where that path is meant to be
+    exercised. Turn it off for a run that only cares about storage, or on a
+    cluster that already has cert-manager.
+  EOT
+}

@@ -219,6 +219,37 @@ impl Features {
             .unwrap_or(false)
     }
 
+    /// Whether the release renders cert-manager `Certificate` resources.
+    ///
+    /// Gates the TLS assertions. Reading the switch rather than probing for the
+    /// CRD keeps this consistent with the rest of the suite: values are intent,
+    /// and a release that asked for certificates on a cluster without
+    /// cert-manager is a failure to report rather than a reason to skip.
+    pub fn certificates_enabled(&self) -> bool {
+        self.get("certificates.enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    /// Whether Loki is configured to serve TLS on its HTTP port.
+    ///
+    /// Decides how the direct Loki assertions *dial*, not whether they run:
+    /// `checks::loki::loki_target` gives them the suite's TLS client when this is
+    /// true, so a TLS release gets the same coverage as a plaintext one. It
+    /// briefly gated them off instead, and the resulting run was green with the
+    /// whole log read path unasserted.
+    ///
+    /// Also gates `tls::survives_renewal`, which is only meaningful where a
+    /// process actually opens the certificate.
+    ///
+    /// Read from the subchart passthrough rather than a switch of our own,
+    /// because `loki.server.http_tls_config` is what actually moves the listener.
+    pub fn loki_server_tls(&self) -> bool {
+        self.string("loki.loki.server.http_tls_config.cert_file")
+            .map(|f| !f.is_empty())
+            .unwrap_or(false)
+    }
+
     /// The stable UID a datasource is provisioned under.
     ///
     /// Read from values rather than hardcoded: the dashboards resolve their
@@ -242,6 +273,26 @@ impl Features {
     /// split reads and writes across several. Resolved by probing this list
     /// rather than trusting the mode alone, because a profile can repoint the
     /// Services independently of it — `loki-test` does exactly that.
+    /// The client-auth policy on the gateway's log-ingest listener.
+    ///
+    /// Read as a string rather than as a boolean because the three states are
+    /// not a toggle: absent is phase 1, `VerifyClientCertIfGiven` is phase 2 and
+    /// still serves an anonymous client, and only the `Require*` values turn one
+    /// away. An assertion that treats "a policy is set" as "authentication is
+    /// on" would pass on phase 2, which is exactly the confusion the phases
+    /// exist to prevent.
+    pub fn gateway_logs_client_auth(&self) -> Option<&str> {
+        self.string("pipeline.logging.gateway.server.tls.clientAuth")
+    }
+
+    /// Whether that listener refuses a client presenting no certificate.
+    pub fn gateway_logs_requires_client_cert(&self) -> bool {
+        matches!(
+            self.gateway_logs_client_auth(),
+            Some("RequireAndVerifyClientCert" | "RequireAnyClientCert")
+        )
+    }
+
     pub fn loki_service_candidates(&self) -> LokiServices {
         match self.loki_deployment_mode() {
             "SingleBinary" => LokiServices {
@@ -273,6 +324,36 @@ pub struct LokiServices {
 mod tests {
     use super::{COMPONENTS, Features};
     use serde_json::json;
+
+    fn with_gateway_client_auth(policy: Option<&str>) -> Features {
+        let tls = match policy {
+            Some(policy) => json!({ "clientAuth": policy }),
+            None => json!({}),
+        };
+        Features::from_values(json!({
+            "pipeline": { "logging": { "gateway": { "server": { "tls": tls } } } }
+        }))
+    }
+
+    /// The distinction the mTLS phases turn on: only `Require*` refuses a client
+    /// that presents nothing. Reading "a policy is set" as "authentication is on"
+    /// would make the phase-3 assertion pass against a phase-2 stack, which is
+    /// the exact confusion the phases exist to prevent.
+    #[test]
+    fn only_require_policies_count_as_client_authentication() {
+        for phase2 in [None, Some("VerifyClientCertIfGiven"), Some("NoClientCert")] {
+            assert!(
+                !with_gateway_client_auth(phase2).gateway_logs_requires_client_cert(),
+                "{phase2:?} still serves an anonymous client"
+            );
+        }
+        for phase3 in ["RequireAndVerifyClientCert", "RequireAnyClientCert"] {
+            assert!(
+                with_gateway_client_auth(Some(phase3)).gateway_logs_requires_client_cert(),
+                "{phase3} refuses an anonymous client"
+            );
+        }
+    }
 
     fn with_tags(tags: serde_json::Value) -> Features {
         Features::from_values(json!({ "tags": tags }))

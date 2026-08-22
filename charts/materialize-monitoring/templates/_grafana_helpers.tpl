@@ -787,3 +787,125 @@ Usage:
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}
+
+{{- /*
+Render a datasource's TLS settings into the pair Grafana actually reads.
+
+Grafana splits one logical setting across two places and names neither of them
+after TLS in an obvious way:
+
+  * `jsonData.tlsAuthWithCACert` / `tlsAuth` / `tlsSkipVerify` / `serverName`
+    are the switches, and
+  * `secureJsonData.tlsCACert` / `tlsClientCert` / `tlsClientKey` carry the PEM.
+
+The PEM is never written inline here. It comes from a Secret through the
+`GrafanaDatasource` CRD's `valuesFrom`, so the material stays in a Secret and the
+rendered manifest carries a reference rather than a certificate.
+
+**`valuesFrom` substitutes into a placeholder; it does not create the field.**
+grafana-operator replaces a `${...}` token found at `targetPath`, so a
+`valuesFrom` entry whose target path does not already exist in the datasource
+body is silently dropped — the datasource applies cleanly, `secureJsonFields`
+simply never gains the key, and the first symptom is
+`x509: certificate signed by unknown authority` from a datasource that looks
+correctly configured in the CR. Every reference below therefore emits its
+placeholder alongside. Found on a live cluster.
+
+**This hop does not renew like the others.** Grafana stores what it is given in
+its own database, so new material takes effect when grafana-operator
+re-provisions the datasource — on `resyncPeriod`, not on the certificate's
+renewal. That is a property of Grafana's provisioning model, not something the
+chart can route around, and it is the reason the docs call this hop out
+separately.
+
+Returns `{jsonData: {...}, secureJsonData: {...}, valuesFrom: [...]}`; the caller
+merges all three.
+
+Usage:
+  {{- $tls := include "mzmon.grafana.datasource.tls" ( dict "root" $ "name" "loki" "url" $url ) | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.datasource.tls" }}
+  {{- $root := .root | required ".root must be specified" }}
+  {{- $name := .name | required ".name must be specified" }}
+  {{- $url := .url | default "" }}
+  {{- $cfg := dig "datasources" $name "tls" dict ( $root.Values.connections | default dict ) }}
+
+  {{- /* Unset follows the URL scheme, so moving a URL to https is one edit
+         rather than two, and the two cannot disagree. */}}
+  {{- $enabled := $cfg.enabled }}
+  {{- if typeIs "<nil>" $enabled }}
+    {{- $enabled = hasPrefix "https://" $url }}
+  {{- end }}
+
+  {{- $jsonData := dict }}
+  {{- $secureJsonData := dict }}
+  {{- $valuesFrom := list }}
+
+  {{- if $enabled }}
+    {{- $caSecret := $cfg.caSecret | default dict }}
+    {{- $jsonData = merge $jsonData ( dict "tlsAuthWithCACert" true ) }}
+    {{- /* **The placeholder has to be the Secret *key*, not a name of our
+           choosing.** grafana-operator substitutes `${<key>}` — the key from the
+           `secretKeyRef`, verbatim, dots and all — and leaves anything else
+           alone. A mnemonic token like `${tlsCACert}` therefore reaches Grafana
+           unsubstituted, is stored as a literal, and every query fails with
+           "Unable to load TLS certificate". Measured on operator v5.24.0: the CR
+           is accepted, the operator logs nothing, and `secureJsonFields` reports
+           `tlsCACert: true` — so the only symptom is at query time.
+
+           Inline still wins when both are given: `caPem` needs no operator
+           involvement at all. But `caSecret` is the better default where the
+           caller can use it, because an inlined copy goes stale when the CA
+           rotates and a reference does not. */}}
+    {{- if $cfg.caPem }}
+      {{- $secureJsonData = merge $secureJsonData ( dict "tlsCACert" $cfg.caPem ) }}
+    {{- else if $caSecret.name }}
+      {{- $caKey := $caSecret.key | default "ca.crt" }}
+      {{- /* Templated like the URL beside it, so a profile can name a Secret
+             whose name depends on the release — `mzmon.certificates.secretName`
+             for one. Without it a profile can move a datasource to https but
+             cannot say what to trust, which leaves the operator to supply by
+             hand the one value the chart already knows. */}}
+      {{- $caName := tpl $caSecret.name $root }}
+      {{- $secureJsonData = merge $secureJsonData ( dict "tlsCACert" ( printf "${%s}" $caKey ) ) }}
+      {{- $valuesFrom = append $valuesFrom ( dict
+          "targetPath" "secureJsonData.tlsCACert"
+          "valueFrom" ( dict "secretKeyRef" ( dict
+            "name" $caName
+            "key" $caKey ) ) ) }}
+    {{- end }}
+
+    {{- $client := $cfg.clientCert | default dict }}
+    {{- if $client.secretName }}
+      {{- $certKey := $client.certKey | default "tls.crt" }}
+      {{- $keyKey := $client.keyKey | default "tls.key" }}
+      {{- /* Same rule as the CA above. Distinct keys are required rather than
+             merely conventional: two targets sharing one placeholder would both
+             receive whichever value the operator substituted last. */}}
+      {{- if eq $certKey $keyKey }}
+        {{- fail ( printf "connections.datasources.%s.tls.clientCert sets certKey and keyKey to the same key (%q). grafana-operator substitutes by key name, so both the certificate and the private key would resolve to the same value." $name $certKey ) }}
+      {{- end }}
+      {{- $jsonData = merge $jsonData ( dict "tlsAuth" true ) }}
+      {{- $secureJsonData = merge $secureJsonData ( dict
+          "tlsClientCert" ( printf "${%s}" $certKey )
+          "tlsClientKey" ( printf "${%s}" $keyKey ) ) }}
+      {{- $clientName := tpl $client.secretName $root }}
+      {{- $valuesFrom = append $valuesFrom ( dict
+          "targetPath" "secureJsonData.tlsClientCert"
+          "valueFrom" ( dict "secretKeyRef" ( dict
+            "name" $clientName
+            "key" $certKey ) ) ) }}
+      {{- $valuesFrom = append $valuesFrom ( dict
+          "targetPath" "secureJsonData.tlsClientKey"
+          "valueFrom" ( dict "secretKeyRef" ( dict
+            "name" $clientName
+            "key" $keyKey ) ) ) }}
+    {{- end }}
+
+    {{- with $cfg.serverName }}
+      {{- $jsonData = merge $jsonData ( dict "serverName" . ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- dict "jsonData" $jsonData "secureJsonData" $secureJsonData "valuesFrom" $valuesFrom | toYaml }}
+{{- end }}

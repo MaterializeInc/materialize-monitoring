@@ -45,7 +45,7 @@ use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
-use crate::forward;
+use crate::forward::{self, TlsDial};
 
 /// How to reach an in-cluster Service.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -198,6 +198,53 @@ impl Cluster {
         String::from_utf8(value.0).with_context(|| format!("Secret {name}/{key} is not UTF-8"))
     }
 
+    /// Names of the cert-manager-issued TLS Secrets in the release namespace.
+    ///
+    /// Filtered on the annotation rather than on the name, because the chart
+    /// lets every component override `secretName` and a name-shaped guess would
+    /// then miss. Filtered on the *type* as well, so a Secret someone
+    /// hand-created with that annotation and no keypair is not offered as an
+    /// identity.
+    pub async fn issued_tls_secrets(&self) -> Result<Vec<String>> {
+        let api: Api<Secret> = Api::namespaced(self.client.clone(), &self.namespace);
+        let list = api
+            .list(&ListParams::default())
+            .await
+            .with_context(|| format!("listing Secrets in namespace {}", self.namespace))?;
+
+        let mut names: Vec<String> = list
+            .items
+            .into_iter()
+            .filter(|s| s.type_.as_deref() == Some("kubernetes.io/tls"))
+            .filter(|s| {
+                s.metadata
+                    .annotations
+                    .as_ref()
+                    .is_some_and(|a| a.contains_key("cert-manager.io/certificate-name"))
+            })
+            .filter_map(|s| s.metadata.name)
+            .collect();
+        // Stable order, so the identity a run borrows does not depend on what
+        // the API server felt like returning first.
+        names.sort();
+        Ok(names)
+    }
+
+    /// Delete a Secret, so cert-manager reissues the certificate behind it.
+    ///
+    /// The forced half of the rotation assertion. Deleting is used rather than a
+    /// short `renewBefore` because provoking renewal through lifetimes short
+    /// enough to fit a test run has been observed to livelock cert-manager —
+    /// after which it stops issuing and reports the expired certificates as
+    /// healthy, which is the failure the assertion is supposed to detect.
+    pub async fn delete_secret(&self, name: &str) -> Result<()> {
+        let api: Api<Secret> = Api::namespaced(self.client.clone(), &self.namespace);
+        api.delete(name, &kube::api::DeleteParams::default())
+            .await
+            .with_context(|| format!("deleting Secret {name} in {}", self.namespace))?;
+        Ok(())
+    }
+
     /// List custom resources of one kind in the release namespace.
     ///
     /// Typed against `DynamicObject` rather than generated structs: the suite
@@ -276,11 +323,26 @@ impl Cluster {
             &backend,
             path,
             &target.headers,
+            target.tls.as_ref(),
         )
         .await
     }
 
     async fn proxy_bytes(&self, target: &ServiceTarget, path: &str) -> Result<Vec<u8>> {
+        // The proxy subresource terminates at the API server, which dials the
+        // backend itself over plaintext HTTP. There is no way to hand it a
+        // client certificate or a trust root, so a TLS target over this
+        // transport is not a degraded path — it simply cannot work, and it fails
+        // as a 503 from the API server that says nothing about TLS.
+        if target.tls.is_some() {
+            bail!(
+                "svc {} serves TLS on port {}, which the API server's Service proxy cannot reach. \
+                 Re-run without `--transport proxy`; port-forward is the default and speaks TLS \
+                 end to end.",
+                target.service,
+                target.port
+            );
+        }
         let uri = self.proxy_uri(target, path);
         let mut builder = http::Request::get(&uri);
         for (name, value) in &target.headers {
@@ -340,6 +402,12 @@ pub struct ServiceTarget {
     pub service: String,
     pub port: u16,
     pub headers: Vec<(String, String)>,
+    /// Set when the port serves TLS. Absent means plaintext, which is still the
+    /// case for most of the stack — only the hops the chart configures for TLS
+    /// need it, and dialling one of those without it fails with
+    /// `400 Client sent an HTTP request to an HTTPS server` rather than
+    /// anything that names TLS.
+    pub tls: Option<TlsDial>,
 }
 
 impl ServiceTarget {
@@ -348,7 +416,15 @@ impl ServiceTarget {
             service: service.into(),
             port,
             headers: Vec::new(),
+            tls: None,
         }
+    }
+
+    /// Speak TLS to this port, with `config` deciding what is trusted and
+    /// whether a client certificate is presented.
+    pub fn with_tls(mut self, config: std::sync::Arc<rustls::ClientConfig>) -> Self {
+        self.tls = Some(TlsDial::new(config));
+        self
     }
 
     pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {

@@ -159,18 +159,173 @@ Data that reaches the stack is stored as it arrives.
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
 - [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/#9-tenancy--auth).
 
+## Certificates {#certificates}
+
+`certificates.enabled` renders cert-manager `Certificate` resources for the stack.
+It is **off by default and cert-manager is never a hard dependency** — with it off, nothing in this section renders at all.
+
+It is gated on a value rather than on an API-server capability probe, deliberately.
+A probe would make the same chart render differently under `helm template`, the Terraform render check, and an ArgoCD diff than it does under a live install, which is exactly the class of bug those checks exist to catch.
+A missing CRD with the flag on is an apply-time failure with a resource name in it, which is a better error than silently rendering nothing.
+
+### Two issuers, because they cannot be one
+
+| | `certificates.internal` | `certificates.external` |
+|---|---|---|
+| Names | `$svc`, `$svc.$ns`, `$svc.$ns.svc`, `$svc.$ns.svc.$clusterDomain`, `localhost` | the public DNS name the load balancer answers on |
+| Typical issuer | a self-signed root, or your private CA | ACME, or a private CA that signs your public names |
+| Verified by | the stack's own components | a browser |
+
+A public ACME issuer cannot sign `loki-distributor.monitoring.svc`, and a self-signed root means nothing to a browser.
+Collapsing these into one key would make one of the two unusable.
+
+**The external certificate is only needed behind an L4 load balancer**, which passes TCP through and leaves TLS to terminate at the pod — so the material has to exist in the cluster.
+An L7 load balancer terminating with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault) attaches it by ARN or resource ID and the private key never enters the cluster; for that shape leave `external` unset and pass the annotation through `grafana.service.annotations`.
+The render warns if you set `external.dnsNames` without an issuer, since that combination looks configured and issues nothing.
+
+### Where the root comes from
+
+Either you supply one, or the chart makes one:
+
+```yaml
+# Consume your own PKI. The production path.
+certificates:
+  enabled: true
+  internal:
+    issuerRef:
+      name: my-ca-issuer
+      kind: ClusterIssuer
+```
+
+```yaml
+# Bootstrap a self-signed root. Renders a selfSigned issuer, a CA Certificate
+# signed by it, and a CA issuer every component certificate then references.
+certificates:
+  enabled: true
+  internal:
+    selfSigned:
+      enabled: true
+```
+
+Setting both is an error — component certificates can reference only one issuer, so one of the two things you asked for would silently not happen.
+
+- [ ] `[operator]` **Prefer an issuer scoped to this stack over the cluster's general-purpose one.** None of the receiving components implement per-client authorization, so the whole authorization decision is "is this signed by the CA we trust". Reusing a `ClusterIssuer` that signs for every workload in the cluster reduces mTLS to "has any certificate" — real, and much narrower than it sounds. See [What a certificate means](#rbac) for why the trust domain is the security property.
+- [ ] `[operator]` **Use `kind: ClusterIssuer` if you run [split-namespace](../production-best-practices/#namespace-layout).** A namespaced `Issuer` signs only for `Certificate` resources in its own namespace, so components elsewhere sit `Pending` forever. The render refuses that combination rather than letting you find out.
+- [ ] `[operator]` **A bootstrapped `ClusterIssuer`'s CA Secret lands in cert-manager's namespace, not yours.** cert-manager reads a `ca` issuer's Secret from its *cluster resource namespace* (`cert-manager` by default), so the chart renders the CA `Certificate` there. Override with `certificates.internal.selfSigned.caSecretNamespace` if your cert-manager uses a different one; get it wrong and the issuer sits `False` with `secret not found` while the Secret is one namespace over.
+
+### The SAN ladder, and why `clusterDomain` matters
+
+Every internal certificate carries four rungs per Service — `$svc`, `$svc.$ns`, `$svc.$ns.svc`, and `$svc.$ns.svc.$clusterDomain` — plus `localhost` and `127.0.0.1`.
+
+All four, because **the chart's own URLs disagree about which form to use**: every in-cluster destination it writes stops at `$svc.$ns.svc`, while the Terraform test substrate writes `…svc.cluster.local`.
+A certificate carrying only the fully-qualified name therefore fails verification against endpoints the chart itself ships, and the error reads as a broken certificate rather than as a mismatch in name form.
+
+`cluster.local` is a default, not a fact.
+Set `global.clusterDomain` if yours differs — it propagates into Loki and Thanos, which build their own internal addresses from it, so one value covers all three.
+
+- [ ] `[operator]` **Set `metrics-server.tls.clusterDomain` too** if you change the global. metrics-server reads its own key, and the render warns when the two disagree.
+- [x] `[chart]` A render check asserts that every in-cluster destination URL the chart writes matches a SAN on the corresponding certificate. A wrong `services` list is valid YAML and installs clean, so this is the cheapest guard against the failure the ladder exists to prevent.
+
+### Turning a backend onto TLS
+
+`profiles/mtls.values.yaml` moves two hops off plaintext — gateway → Loki and gateway → Thanos Receive — and is the supported way to do it:
+
+```bash
+helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+  -f charts/materialize-monitoring/profiles/aws-example.values.yaml \
+  -f charts/materialize-monitoring/profiles/mtls.values.yaml \
+  --set certificates.enabled=true \
+  --set certificates.internal.selfSigned.enabled=true
+```
+
+**It is a profile rather than a switch because the change is not one setting.**
+Turning on Loki's listener is one key; keeping the deployment working is six, spread across three subcharts and two of this chart's own trees — the writer, the reader, the kubelet probes, the metrics scrape, and the canary all dial the port that just moved.
+Every one of them fails quietly, and none of the symptoms names TLS:
+
+| Left behind | What you see |
+|---|---|
+| The gateway's destination | Writes fail with a protocol error that reads like Loki is broken |
+| `loki.defaults.readinessProbe` scheme | Every Loki pod fails readiness at once — presents as a crashloop |
+| `loki.monitoring.serviceMonitor` scheme | Loki's own metrics vanish, and `up` goes *absent* rather than 0, so an alert on `up == 0` does not fire either |
+| The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
+| The canary's flags | The end-to-end check reports the log store as broken when it is not |
+
+The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
+
+Thanos Receive is narrower by construction: its TLS flags scope to the remote-write listener, so probes, metrics and the ServiceMonitor are untouched and Thanos Query stays plaintext.
+
+#### Through Terraform
+
+The Terraform module composes the same profiles from one input, because a consumer of the module has no copy of the chart directory to point `-f` at:
+
+```hcl
+certificates_enabled = true
+internal_tls         = "authenticate"   # off | encrypt | present | authenticate
+```
+
+The stages map to the profiles in order — `encrypt` is `mtls.values.yaml`, `present` adds `mtls-phase2`, `authenticate` adds `mtls-phase3` — so the table in the next section describes both paths.
+`internal_tls` needs `certificates_enabled`, and the module refuses the combination without it rather than installing a stack that mounts Secrets nothing created.
+
+In `materialize-terraform-self-managed` both are on by default, since every example there installs cert-manager.
+
+### The phases, and where each hop can actually end up
+
+Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
+
+| Phase | Profile | Gateway ingress | Loki | Thanos Receive |
+|---|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA |
+| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it |
+| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** |
+
+The gateway's own ingress reaches phase 3 because its listeners are not the ports the kubelet probes — readiness is on `12345`. That is the difference between it and Loki.
+
+**Loki's HTTP port cannot require client certificates, ever.** The kubelet's readiness and liveness probes dial the same port 3100 that the gateway does, and a Kubernetes `httpGet` probe has no field for a client certificate. Setting `RequireAndVerifyClientCert` fails every probe with `remote error: tls: certificate required`, and every Loki pod goes unready and then restarts. The render refuses it. **Phase 2 is the ceiling for that hop**: a certificate from the wrong CA is refused, an anonymous client is still served. Real authentication there needs an authenticating proxy in front of Loki, or a listener the kubelet does not touch.
+
+**Thanos Receive does reach phase 3**, because its probes are on the HTTP port while the TLS flags scope to the separate remote-write listener. Verified: a client presenting no certificate is refused at the TLS handshake; one presenting a certificate from the trusted CA is served.
+
+**`min_version` has three vocabularies in one binary, and two of them fail differently.** Client blocks (`tls_config`) take `TLS13`; the dskit-flavoured listeners (`loki.source.api`, `prometheus.receive_http`) take `VersionTLS13` and reject anything else at load, crashlooping the pod; `otelcol.receiver.otlp` takes OpenTelemetry's `1.3` and rejects the others **silently** — the component goes unhealthy, its port never binds, and the process stays up reporting Ready. `alloy validate` catches none of the three. Values use one vocabulary and the chart translates per listener; that silent case is why `kubectl get pods` is not enough to confirm this feature is working.
+
+Two more measured constraints the profiles encode, both of which crashloop the stack if you get them wrong:
+
+- **Loki's `client_ca_file` and `client_auth_type` must arrive together.** dskit refuses a client CA with no policy — Loki exits at startup with `client CA's have been configured without a Client Auth Policy`, buried in a Go stack trace, on every microservice at once. That is why phase 1 ships neither.
+- **Both probes need the scheme, not just readiness.** Liveness hits a different path on the same port; left plaintext it returns 400 and the kubelet restarts the container *after* readiness has gone green, which reads as an unrelated flap.
+
+- [ ] `[operator]` **Phase 1 is encryption, not authentication**, and phase 2 only rejects the wrong CA. Phase 3 is where a client presenting nothing is refused — on Thanos Receive's remote-write listener and all four gateway ingress ports. Loki's HTTP port stops at phase 2 and cannot go further, because the kubelet probes it.
+- [ ] `[operator]` **Roll the server and its clients in either order at phase 1 and 2, never at phase 3.** Kubernetes does not order them, so a server that starts requiring certificates before its clients present them stops ingesting until they catch up. Phase 2 exists to make phase 3 order-independent; the render refuses phase 3 applied without it.
+- [ ] `[operator]` **Grafana's datasource TLS does not renew like the rest.** It reads from `secureJsonData`, which is provisioned config rather than a file mount, so a new CA means re-provisioning the datasource.
+
+### Renewal is the failure that matters
+
+Certificate material is **mounted from a Secret**, not injected through environment variables.
+Env vars are captured once at process start and cert-manager renews by rewriting the Secret in place, so an env-carried PEM works for exactly one certificate lifetime and then fails on every hop simultaneously — months after the change that caused it.
+Prefer the `tls.*File` carriers on every destination over the inline `ca`/`cert`/`key`, which remain supported for bring-your-own-PKI.
+
+The mount is unconditional and marked `optional: true`, so the same values work before, during and after issuance: a Secret that does not exist yet mounts empty rather than blocking the pod.
+
+- [ ] `[operator]` **Do not set `renewBefore` near `duration`.** It looks like a way to exercise renewal and it is a way to break cert-manager: at 92% of duration (a 1h certificate with 55m of headroom) renewal fires every few minutes, and on a small cluster with six certificates the controller livelocked in an optimistic-locking re-queue loop, stopped renewing, and then reported `Ready=True: "Certificate is up to date and has not expired"` on certificates that had expired 45 minutes earlier — every TLS hop failing with `certificate has expired` while the Certificate resource looked healthy. Keep `renewBefore` to a third of `duration` or less, and force renewal explicitly (delete the Secret, or `cmctl renew`) if you want to test it.
+- [ ] `[operator]` **A mounted file is not a reloaded file.** The kubelet refreshes Secret contents atomically, but the process still has to notice, and reload support differs per component. That is why no hop turns on by default, and why enabling one is a decision to make per component rather than per stack.
+
 ## What is not there yet {#gaps}
 
 Stated plainly, because the values surface implies more than the deployment has — `minVersion: TLS13` sitting next to `enabled: false` reads like a switch rather than a project.
 
 | Gap | Status |
 |---|---|
-| **In-cluster TLS on every hop** | Not shipped. Every internal URL is `http://` — agent → gateway, gateway → Loki and Thanos, Grafana → both. Traffic between components is plaintext on the pod network |
-| **Certificate issuance** | Not shipped. No `Certificate` templates and no cert-manager integration ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)) |
-| **Mutual TLS between components** | Not shipped. NetworkPolicy answers *which pods* may connect; nothing answers *who is on the other end*, and several policies answer the first question with "any pod in the cluster" |
+| **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
+| **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
+| **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
+| **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
+| **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
+| **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port is the exception and stays at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
-| **A trust bundle for a private CA** | Not shipped. Nothing lets you add a CA to Loki, Thanos or Alloy for an S3-compatible endpoint with a private certificate |
-| **Redaction in the pipeline** | Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
+| **A trust bundle for a private CA** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)). Needed for an S3-compatible store behind a private CA, and for images that ship no CA bundle at all |
+| **Intra-Loki and intra-Thanos TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store — all real hops inside a single subchart's trust boundary |
+| **Redaction in the pipeline** | ❌ Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
+
+**Issuance and use are separate switches on purpose**, and a default install turns on neither. A hop only leaves plaintext once that component's renewal behaviour has been proven, because a component that does not reload a renewed certificate works for exactly one certificate lifetime and then fails with no deploy nearby to blame — which is why `tls::survives_renewal` forces a reissue and asserts delivery across it rather than trusting a freshly-installed stack.
+
+Where the phases land is therefore your choice, not the chart's. A stack sitting at phase 1 or 2 is **encrypted and not authenticated**, and phase 2 is the state most likely to be mistaken for mTLS: every values file carries a `certFile`, the servers name a client CA, and a client presenting nothing is still served. Only phase 3 refuses it.
 
 The design for the first three is written up in the [TLS and authentication design doc](../../reference/internal/design-docs/20260816-tls-authentication/) (internal), including the two-phase rollout that gets there without an outage.
 

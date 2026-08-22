@@ -1,0 +1,191 @@
+{{/*
+cert-manager resources for in-cluster TLS.
+
+Everything here is gated on `certificates.enabled`, which defaults false — with
+it off this file renders nothing and cert-manager is not a dependency of this
+chart in any sense.
+
+Deliberately **not** gated on `.Capabilities.APIVersions.Has "cert-manager.io/v1"`.
+A capability probe makes the same chart render differently depending on what is
+talking to the cluster: `helm template` with no cluster, the tier-0 Terraform
+render check, and an ArgoCD server-side diff would each produce output a live
+`helm install` does not. Tier 0 exists to assert that values land where they are
+aimed, which requires the render to be a pure function of the values. A missing
+CRD with the flag on is an apply-time failure with a resource name in it, which
+is a better error than silently rendering nothing.
+
+Issuing a certificate does not turn TLS on anywhere. The two are separate
+switches on purpose: a component's hop only moves off plaintext once its renewal
+behaviour has been proven, and that is a per-component property.
+
+Configured under `certificates` in values.yaml.
+*/}}
+{{- if $.Values.certificates.enabled }}
+{{- $fullname := include "mzmon.fullname" $ }}
+{{- $certs := $.Values.certificates }}
+{{- $issuerRef := include "mzmon.certificates.internalIssuerRef" $ | fromYaml }}
+
+{{- if ( include "mzmon.certificates.selfSigned" $ ) }}
+{{- $selfSigned := $certs.internal.selfSigned }}
+{{- $kind := $selfSigned.kind | default "ClusterIssuer" }}
+{{- $caNamespace := include "mzmon.certificates.caNamespace" $ }}
+---
+{{/*
+The bootstrap root: a self-signed issuer, a CA certificate signed by it, and an
+issuer backed by that CA. Three resources because cert-manager has no single
+"give me a private CA" primitive — `selfSigned` signs leaves directly, so a
+certificate issued from it is its own root and nothing else can verify a peer
+against it.
+*/}}
+apiVersion: cert-manager.io/v1
+kind: {{ $kind }}
+metadata:
+  name: {{ printf "%s-selfsigned" $fullname }}
+  {{- if eq $kind "Issuer" }}
+  namespace: {{ include "mzmon.namespace" $ }}
+  {{- end }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: certificate
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+{{/*
+The CA itself.
+
+**The namespace is load-bearing and is not the release namespace by default.**
+A `ClusterIssuer` with a `ca` backend reads its Secret from cert-manager's
+cluster resource namespace (`cert-manager` unless the install overrides it), not
+from wherever the Certificate was created. Render this into the release
+namespace with a ClusterIssuer and the issuer sits `False` with `secret not
+found` while the Secret it wants is one namespace away. A namespaced `Issuer`
+has the opposite rule, and `mzmon.certificates.caNamespace` encodes both.
+*/}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ printf "%s-internal-ca" $fullname }}
+  namespace: {{ $caNamespace }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: certificate
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ $selfSigned.commonName | default "mzmon-internal-ca" | quote }}
+  secretName: {{ $selfSigned.secretName | default "mzmon-internal-ca" | quote }}
+  duration: {{ $selfSigned.duration | default "43800h" | quote }}
+  renewBefore: {{ $selfSigned.renewBefore | default "2160h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    # Rotate the key with the certificate. The default (`Never`) renews the
+    # certificate around the original key, which makes a key compromise
+    # survive every renewal.
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ printf "%s-selfsigned" $fullname }}
+    kind: {{ $kind }}
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: {{ $kind }}
+metadata:
+  name: {{ printf "%s-internal-ca" $fullname }}
+  {{- if eq $kind "Issuer" }}
+  namespace: {{ include "mzmon.namespace" $ }}
+  {{- end }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: certificate
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ $selfSigned.secretName | default "mzmon-internal-ca" | quote }}
+{{- end }}
+
+{{- /* One Certificate per component, in whichever namespace that component runs
+       in. Sorted by `mzmon.certificates.components` key order, which Go
+       templates iterate alphabetically, so the rendered order is stable. */}}
+{{- range $component, $nsHelper := ( include "mzmon.certificates.components" $ | fromYaml ) }}
+  {{- if ( include "mzmon.certificates.enabled" ( dict "context" $ "component" $component ) ) }}
+    {{- $cfg := index $certs.components $component | default dict }}
+    {{- $sans := include "mzmon.certificates.sans" ( dict "context" $ "component" $component ) | fromYamlArray }}
+    {{- $ips := concat ( list "127.0.0.1" ) ( $cfg.extraIpAddresses | default list ) }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ printf "%s-%s-tls" $fullname $component }}
+  namespace: {{ include $nsHelper $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: certificate
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  secretName: {{ include "mzmon.certificates.secretName" ( dict "context" $ "component" $component ) | quote }}
+  duration: {{ $cfg.duration | default $certs.duration | quote }}
+  renewBefore: {{ $cfg.renewBefore | default $certs.renewBefore | quote }}
+  {{- /* Both, because each component is both ends of some hop: the gateway
+         serves the agent and dials Loki, and Loki serves the gateway and dials
+         nothing. Issuing one certificate valid for both roles is what lets a
+         single mount cover a component's whole surface. */}}
+  usages:
+    - server auth
+    - client auth
+  dnsNames:
+    {{- toYaml $sans | nindent 4 }}
+  ipAddresses:
+    {{- toYaml $ips | nindent 4 }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $issuerRef.name | quote }}
+    kind: {{ $issuerRef.kind }}
+    group: {{ $issuerRef.group }}
+  {{- end }}
+{{- end }}
+
+{{- /* The browser-facing certificate, for a Grafana behind an L4 load balancer
+       that passes TLS through to the pod. Separate from Grafana's internal
+       certificate because the issuer is different by necessity — a public ACME
+       issuer cannot sign `grafana.monitoring.svc`, and a self-signed root means
+       nothing to a browser. */}}
+{{- $external := $certs.external | default dict }}
+{{- if and ( dig "issuerRef" "name" "" $external ) ( $external.dnsNames ) }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ printf "%s-grafana-external-tls" $fullname }}
+  namespace: {{ include "mzmon.grafana.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: certificate
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+spec:
+  secretName: {{ printf "%s-grafana-external-tls" $fullname | quote }}
+  duration: {{ $certs.duration | quote }}
+  renewBefore: {{ $certs.renewBefore | quote }}
+  usages:
+    - server auth
+  dnsNames:
+    {{- toYaml $external.dnsNames | nindent 4 }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ ( $external.issuerRef ).name | quote }}
+    kind: {{ ( $external.issuerRef ).kind | default "ClusterIssuer" }}
+    group: {{ ( $external.issuerRef ).group | default "cert-manager.io" }}
+{{- end }}
+{{- end }}

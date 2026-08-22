@@ -167,6 +167,70 @@ engine (highlight.js).
 {{- end -}}
 ```
 
+### GOTCHA — `default` swallows every falsy value, so `not ( $x | default true )` is dead code
+
+`default` returns its default whenever the input is **empty**, and Go templates
+count `false`, `0` and `""` as empty alongside `nil`. So an explicit `false` is
+indistinguishable from an unset key:
+
+```handlebars
+{{- /* WRONG: this branch never runs, for any input. */}}
+{{- if not ( $tls.verify | default true ) }}
+```
+
+`false | default true` evaluates to `true`, and `not true` is `false` — so the
+condition is false when the value is `false`, and false when it is `true`. The
+render is valid, the tests pass, and the flag silently does nothing.
+
+Test presence and value separately instead:
+
+```handlebars
+{{- /* RIGHT: fires only when the key is present and falsy. */}}
+{{- if and ( hasKey $tls "verify" ) ( not $tls.verify ) }}
+```
+
+Verify it yourself rather than trusting the reading — `helm template` on a
+scratch chart settles it in seconds:
+
+| Expression | `verify: false` | `verify: true` | absent |
+|---|---|---|---|
+| `not ( $tls.verify \| default true )` | `false` | `false` | `false` |
+| `and ( hasKey $tls "verify" ) ( not $tls.verify )` | `true` | `false` | `false` |
+
+**Where this bites.** Any boolean whose default is `true` — `verify`,
+`enabled` on an opt-out, `create`. It is invisible in review because the
+expression reads exactly like what it is meant to do, and invisible in testing
+unless the test asserts the **`false` case**: a test that only checks the
+default passes against the broken form too. Pair the assertions.
+
+Related shapes with the same root cause:
+
+- `$x | default 5` on a numeric knob discards a deliberate `0`.
+- `$x | default "foo"` discards a deliberate `""` — which is how someone clears
+  an inherited value.
+- **`dig` does not have this problem, and is the better tool for a boolean.**
+  Measured, because the two functions read alike and behave differently:
+
+  | `dig "a" "b" true $v` | result |
+  |---|---|
+  | stored `false` | `false` — the value wins |
+  | stored `true` | `true` |
+  | key missing | `true` — the default fires |
+  | key present but `null` | **empty**, not the default |
+
+  So prefer `dig "a" "b" <default> $values` over `$values.a.b | default
+  <default>` whenever the leaf can legitimately be `false` or `0`. Note the
+  last row: `dig` treats an explicit `null` as a value, not as absence, so it
+  is not a drop-in for "unset means default" when Helm's merge may have
+  written a `null`.
+
+When a values key genuinely distinguishes "unset" from `false` — a tri-state
+opt-out, where `null` means "follow the parent switch" — test with `typeIs
+"<nil>"` rather than `hasKey`. `hasKey` is true for a key that is present and
+explicitly `null`, which is exactly how Helm records a cleared value, so the two
+disagree on the case the tri-state exists for. `networkPolicies.<app>.enabled`
+and `certificates.components.<name>.enabled` both use the `typeIs` form.
+
 ## Testing Helm Charts
 
 Consult [references/testing.md](references/testing.md) for implementation details

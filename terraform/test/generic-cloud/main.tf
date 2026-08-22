@@ -61,6 +61,46 @@ resource "random_password" "s3_secret_key" {
   special = false
 }
 
+# ==============================================================================
+# cert-manager
+# ==============================================================================
+
+# Cluster plumbing rather than substrate storage, and it lives here for the same
+# reason rustfs does: it is what a cloud wrapper would already have installed. The
+# monitoring module consumes an issuer; it does not install the thing that serves
+# one.
+#
+# Only cert-manager itself is installed. The issuer is deliberately left to the
+# chart's own `certificates.internal.selfSigned` path, so tier 2 exercises the
+# code we ship rather than a `ClusterIssuer` written by hand here that no consumer
+# would have.
+resource "helm_release" "cert_manager" {
+  count = var.install_cert_manager ? 1 : 0
+
+  name             = "cert-manager"
+  namespace        = "cert-manager"
+  create_namespace = true
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  version          = "v1.19.1"
+  timeout          = 600
+
+  # cert-manager ships its own CRDs and does not install them by default. Nothing
+  # else in this repo installs them either — the monitoring CRDs chart carries
+  # Prometheus Operator and Grafana CRDs and has no business carrying another
+  # ecosystem's.
+  set {
+    name  = "crds.enabled"
+    value = "true"
+  }
+
+  # kind runs the control plane on the same node, and cert-manager's webhook has
+  # to be reachable from the API server before any Certificate can be admitted.
+  # Waiting here is what stops the monitoring release racing it and failing on a
+  # webhook that is not serving yet.
+  wait = true
+}
+
 resource "helm_release" "rustfs" {
   name       = "rustfs"
   namespace  = local.namespace

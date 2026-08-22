@@ -66,6 +66,48 @@ additional_values = [
         <td class="tf-var-default"><code>[]</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="certificate_duration" href="#certificate_duration">certificate_<wbr>duration</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Lifetime of each issued certificate, as a Go duration (e.g. `2160h`). Null
+keeps the chart's default of 90 days.
+
+Keep `certificate_renew_before` well under this — a third or less.
+cert-manager renews at `duration - renewBefore`, so a value close to
+`duration` renews continuously; on a small cluster that has been observed to
+livelock the controller, after which it stops renewing and reports
+certificates as healthy while they expire.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="certificate_renew_before" href="#certificate_renew_before">certificate_<wbr>renew_<wbr>before</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">How long before expiry cert-manager renews, as a Go duration (e.g. `720h`). Null keeps the chart's default of 30 days. See the warning on `certificate_duration`.</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="certificates_enabled" href="#certificates_enabled">certificates_<wbr>enabled</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Render cert-manager `Certificate` resources for in-cluster TLS.
+
+**Requires cert-manager to already be installed**, with its CRDs present.
+This module does not install it — the same shared-responsibility split as
+buckets and workload identity — so with the flag on and cert-manager absent
+the apply fails on an unknown `cert-manager.io/v1` kind.
+
+Off by default rather than on. The design calls for the Terraform path to be
+secure by default, and that becomes safe once a wrapper that installs
+cert-manager owns the default; flipping it here today would break every
+existing consumer's next apply.
+
+Issuing certificates does not turn TLS on anywhere — `var.internal_tls` is
+what moves the hops off plaintext, and it needs this. The two are separate
+because a component only leaves plaintext once its renewal behaviour is
+proven, so the material exists before every hop is ready to use it.
+</td>
+        <td class="tf-var-default"><code>false</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="chart_registry" href="#chart_registry">chart_<wbr>registry</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">OCI registry holding the materialize-monitoring charts. Override for a mirrored or air-gapped registry.</td>
@@ -277,6 +319,24 @@ supply `grafana.ini.database.ca_cert_path` and the matching `grafana.extraSecret
         <td class="tf-var-default"><code>grafana</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="grafana_external_dns_names" href="#grafana_external_dns_names">grafana_<wbr>external_<wbr>dns_<wbr>names</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Public DNS names to put on a browser-facing certificate for Grafana, issued
+from `var.issuer_ref`.
+
+Only needed behind an **L4** load balancer, which passes TCP through and
+leaves TLS to terminate at the pod, so the material has to exist in the
+cluster. An L7 load balancer terminating with a cloud-managed certificate
+(ACM, Google Certificate Manager, Azure Key Vault) attaches it by ARN or
+resource ID and the key never enters the cluster — for that shape leave this
+empty and pass the annotation through `grafana.service.annotations` in
+`additional_values`.
+
+Setting this with no `var.issuer_ref` issues nothing, and the render says so.
+</td>
+        <td class="tf-var-default"><code>[]</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="install_metrics_server" href="#install_metrics_server">install_<wbr>metrics_<wbr>server</a></td>
         <td class="tf-var-type"><code>bool</code></td>
       <td class="tf-var-desc">Install metrics-server as part of this stack.
@@ -307,6 +367,96 @@ OR'd, so `tags.node-exporter = false` would not turn it off while `tags.default`
         <td class="tf-var-type"><code>number</code></td>
       <td class="tf-var-desc">Timeout for each Helm release, in seconds. Well above Helm's 300s default: a first install brings up Loki, Thanos, Grafana, and both Alloy roles together.</td>
         <td class="tf-var-default"><code>900</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="internal_issuer_ref" href="#internal_issuer_ref">internal_<wbr>issuer_<wbr>ref</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Optional override for the issuer signing cluster-internal certificates
+(those carrying `*.svc.<cluster domain>` SANs).
+
+Required when `var.issuer_ref` points at a public ACME issuer such as Let's
+Encrypt, since a public CA cannot sign in-cluster names. When null,
+`var.issuer_ref` is used for both.
+
+Under the chart's `split-namespace` layout this must be a `ClusterIssuer`: a
+namespaced `Issuer` signs only for its own namespace, and the components are
+spread across several. The chart refuses that combination at render time.
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    name = string
+    kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
+  })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="internal_tls" href="#internal_tls">internal_<wbr>tls</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">How far the in-cluster hops move off plaintext. Requires
+`certificates_enabled`, which is what issues the material these settings
+point at.
+
+The stages are the chart's own `profiles/mtls*.values.yaml`, composed in
+order, and they exist because Kubernetes does not order a server's rollout
+against its clients'. On a **fresh install** there is nothing to strand, so
+go straight to `authenticate`. On a **running stack** step through
+`present` first, or on any hop where the server pod happens to roll before
+the writers, ingestion stops until they catch up — which on a busy pipeline
+is data loss rather than latency.
+
+| Value | Profiles | State |
+|---|---|---|
+| `off` | none | plaintext everywhere |
+| `encrypt` | `mtls` | servers serve TLS, clients verify them; no client certificates anywhere |
+| `present` | `+ mtls-phase2` | clients also present a certificate; servers still serve anyone. **A way-station, not a destination** — nothing is rejected on the Thanos hop, and only a wrong-CA certificate is on the Loki one |
+| `authenticate` | `+ mtls-phase3` | servers require a client certificate from their CA |
+
+`authenticate` is authentication, not authorization: none of these components
+can express "this identity may write and that one may not", so the size of
+the trust domain is the security property. That is the argument for leaving
+`issuer_ref` null and letting the chart bootstrap a root scoped to this
+release.
+
+Two hops stop short of `authenticate` by nature rather than by choice, and
+the chart refuses to configure them otherwise: Loki's HTTP port is probed by
+the kubelet, and a `httpGet` probe has no field for a client certificate, so
+that hop's terminal state is `present`. Grafana's datasource verifies the
+backend but presents nothing.
+</td>
+        <td class="tf-var-default"><code>off</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="issuer_ref" href="#issuer_ref">issuer_<wbr>ref</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Default cert-manager (Cluster)Issuer used for the monitoring stack's TLS
+certificates. Used for both the external (browser-facing) certificate and
+the internal ones unless overridden by `var.internal_issuer_ref`.
+
+Leave null with `certificates_enabled` on and the chart bootstraps a
+self-signed root of its own, scoped to this release — which is the
+recommended shape rather than a fallback. None of the receiving components
+here implement per-client authorization, so "signed by the CA we trust" is
+the entire authorization decision; an issuer shared with every workload in
+the cluster reduces that to "has any certificate".
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    name = string
+    kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
+  })</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="materialize_instance_namespace" href="#materialize_instance_namespace">materialize_<wbr>instance_<wbr>namespace</a></td>

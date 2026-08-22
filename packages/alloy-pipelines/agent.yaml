@@ -37,7 +37,7 @@ blocks:
   # Process journal entries: tag with the node's hostname, forward to gateway.
   - loki.process:
       label: node_logs
-      forward_to: ["loki.write.gateway.receiver"]
+      forward_to: ["loki.process.egress.receiver"]
       blocks:
         - stage.static_labels:
             values:
@@ -173,7 +173,7 @@ blocks:
   # Process pod logs: parse CRI, rate-limit, drop noisy labels, tag cluster.
   - loki.process:
       label: pod_logs
-      forward_to: ["loki.write.gateway.receiver"]
+      forward_to: ["loki.process.egress.receiver"]
       blocks:
         # Parse CRI-formatted log lines (empty block — presence is the config).
         - stage.cri: {}
@@ -242,16 +242,5 @@ blocks:
   # move will re-add one), `controller.hostPid`, the `process` collector it
   # needed, and the four host mounts.
 
-  # --- forwarding sink ------------------------------------------------------
-
-  # Static stub: forwards everything to the alloy-gateway. This endpoint will
-  # gain richer (per-tenant / configurable) wiring later.
-  - loki.write:
-      label: gateway
-      blocks:
-        - endpoint:
-            url:
-              function: coalesce
-              arguments:
-                - env: AGENT_LOKI_DEST
-                - "http://alloy-gateway.alloy.svc:3100/loki/api/v1/push"
+  # --- egress ------------------------------------------------------
+  # The egress seam and write destination live in agent-dest-stub.yaml.
