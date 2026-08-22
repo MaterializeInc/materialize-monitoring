@@ -54,6 +54,30 @@ release:
   namespace: my-namespace
 ```
 
+### `chart:` propagates to subcharts — pick `version` and `appVersion` separately
+
+`ModifyChartMetadata` applies the `chart:` stub to the chart under test **and to
+every dependency**, so in a snapshot suite over subchart templates the stub is
+what freezes the subchart's own metadata. The two fields are worth deciding
+independently, because they surface in different places:
+
+| Field | Where it surfaces | Bump churn is |
+|---|---|---|
+| `version` | `helm.sh/chart: <name>-<version>` on every rendered object | noise — no reviewable content |
+| `appVersion` | `app.kubernetes.io/version`, and the default image tags | signal — the thing you want to read |
+
+So for a subchart snapshot suite, stub `version` and **leave `appVersion`
+real**. A chart-version bump then needs no snapshot update at all, while an
+appVersion bump still trips every affected snapshot and puts the image diff in
+front of a reviewer. The `loki_snapshots*_test.yaml` suites do exactly this;
+before the `version` stub, a loki chart bump churned 123 pure-noise
+`helm.sh/chart:` lines across the three `.snap` files.
+
+`matchSnapshot` cannot substitute for this. It takes only `path`,
+`matchRegex.pattern`, and `notMatchRegex.pattern` — there is no ignore or mask —
+and scoping with `path: spec` does not help, because the chart label sits in both
+`metadata.labels` and `spec.template.metadata.labels`.
+
 ## BDD Unit Testing
 
 Behavior Driven Development (BDD) unit tests are used to test the logic of

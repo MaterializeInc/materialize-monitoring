@@ -3,8 +3,15 @@
 # Small and large workloads/services live in their own suites
 # (loki_snapshots_{small,large}_test.yaml) to keep each .snap file manageable.
 suite: loki snapshots (medium + shared resources)
-# NOTE: no `chart:` stub here — we deliberately do NOT override appVersion, so
-# the loki subchart renders its real appVersion (it appears in image tags).
+# `chart.version` is stubbed; `appVersion` is deliberately left real.
+# helm-unittest propagates both to every dependency, so the version stub freezes
+# the loki subchart's `helm.sh/chart:` label — a loki chart bump no longer churns
+# ~40 snapshot lines per suite for no reviewable content. appVersion is left
+# alone because it reaches `app.kubernetes.io/version` and the image tags, where
+# the churn is signal: that is how the memcached registry change in loki 18.11.0
+# surfaced.
+chart:
+  version: 1.2.3
 release:
   name: t
   namespace: loki
