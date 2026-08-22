@@ -47,7 +47,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `materialize-monitoring/`: umbrella chart
       * `Chart.yaml` / `Chart.lock`: chart metadata; lock pins subchart versions
       * `values.yaml` / `README.md` / `README.md.gotmpl`: profile-driven defaults; README generated from the template via `helm-docs`
-      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `metrics-server`
+      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`
       * `pre-rendered/`: generated artifacts loaded via `{{ .Files.Get }}`; never hand-edited
         * `dashboards/`: `grafana/` and `datadog/`
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`, `gateway-metrics.alloy`, `gateway-dest-stub.alloy`)

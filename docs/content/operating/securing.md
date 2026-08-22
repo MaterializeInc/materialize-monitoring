@@ -71,6 +71,22 @@ Loki runs with `auth_enabled: true`, which is worth reading correctly: it makes 
 It does not authenticate anything — the header is a string any client can send.
 Tenancy here is a data-partitioning boundary, not a security one, and the hard isolation boundary remains the install.
 
+#### The Materialize metrics endpoint {#materialize-metrics-endpoint}
+
+One endpoint the stack *scrapes* rather than serves belongs here too, because it looks authenticated and is not.
+
+`environmentd` serves its SQL metrics routes — `/metrics/mz_compute`, `/metrics/mz_frontier`, `/metrics/mz_storage`, `/metrics/mz_usage` — on a listener configured with **no authenticator**.
+That holds in every authentication mode: on a deployment using password, OIDC, or SASL auth, Materialize creates a dedicated metrics-only listener with authentication off, specifically so scraping keeps working without a scrape credential.
+
+So the Basic-auth credential the scrapers send is not a credential.
+The **username selects the role** the underlying queries run as, which scopes which objects those queries can see; the **password is never read**.
+Two things keep this narrower than it first sounds — the listener still constrains which role names it will accept, and the routes serve fixed query sets rather than arbitrary SQL — but access to that port is governed by the network and nothing else.
+
+- [ ] `[operator]` **Treat the `environmentd` metrics port as unauthenticated.** It is Materialize's internal HTTP port and should not be reachable from outside the cluster. Scoping which pods reach it is a NetworkPolicy question, the same as every row in the table above.
+
+This is upstream behavior in the Materialize product, not something this chart configures.
+See [Scraping](../../metrics/scraping/#authenticating-the-sql-metrics-endpoint) for the Secret it implies.
+
 Every workload now ships a NetworkPolicy, on by default.
 [Production Best Practices > Network policies](../production-best-practices/#network-policies) has the per-component table, the reasoning behind the ingress/egress asymmetry, and the three limits worth knowing — chiefly that a NetworkPolicy does nothing unless your CNI enforces it, and that `kindnet` does not.
 

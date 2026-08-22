@@ -10,14 +10,23 @@ technologies.
 
 ## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
-| materialize-terraform-self-managed | materialize-monitoring | Clouds |
-|---|---|---|
-| _unreleased_ | 0.9.0 | AWS, GCP |
-| ≤ v8.0.0 | none (a vendored copy of the `env-top` dashboard only) | — |
+| materialize-terraform-self-managed | materialize-monitoring | Clouds | Observability default |
+|---|---|---|---|
+| v11.0.0+ | 0.17.0 | AWS, GCP, Azure | **On** — `enable_observability` defaults to `true` |
+| v10.0.0 – v10.1.1 | 0.12.0 – 0.15.0 | AWS, GCP, Azure | Off — opt-in |
+| ≤ v9.0.2 | none (a vendored copy of the `env-top` dashboard only) | — | — |
 
 The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.
 
-Azure has no wrapper module yet and still uses the previous Prometheus + Grafana modules.
+v11 made the monitoring stack **opt-out rather than opt-in** and completed the per-cloud rollout, so Azure no longer uses the previous Prometheus + Grafana modules.
+
+## [Kubernetes](https://kubernetes.io/)
+
+**We support the non-EOL Kubernetes releases — v1.34 and newer.**
+
+The charts declare `kubeVersion: ">=1.27.0-0"`, but that is a floor rather than a support statement: older releases *may* work and are not supported.
+
+Cloud-provided distributions offering extended support past a release's upstream EOL are supported on a **best-effort** basis, and may run into issues.
 
 ## [Materialize product](https://github.com/MaterializeInc/materialize)
 
@@ -33,10 +42,10 @@ Grafana v12 is generally known to work, but may run into issues.
 
 ## [Google Kubernetes Engine (GKE)](https://cloud.google.com/kubernetes-engine)
 
-GKE (v1.29+ known to work) is known to work generally with the dashboards if [metric collection is enabled](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#enable-mgdcoll-gke) (on by default starting in v1.27).
-GKE does not expose all cAdvisor and kube-state-metrics metrics, so
-the GCP-optimized dashboards do not include some %-based metrics that
-would normally be available.
+GKE works generally with the dashboards. Managed collection ([enabling it](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#enable-mgdcoll-gke)) is on by default from v1.27 and provides the `PodMonitoring` CRDs the GMP scrapers use.
+
+**Container metrics no longer depend on what GMP exposes.** The Alloy gateway scrapes `/metrics/cadvisor` on every kubelet itself, which yields a fuller set than GMP's default collection — so the GCP-optimized dashboards now carry the same `container_*` and `kube_*` families as the standard ones, percentage-based panels included.
+See [Container metrics from the kubelet](../../metrics/scraping/#kubelet).
 
 ## [Google Cloud Monitoring Dashboards](https://cloud.google.com/monitoring/dashboards)
 

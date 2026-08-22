@@ -332,6 +332,7 @@ main.container {
   background: rgba(238, 134, 96, 0.05);
   border: 1px solid rgba(238, 134, 96, 0.2);
 
+  // dog ear triangle in the top right corner
   &::after {
     content: "";
     border-color: var(--body-background) var(--body-background) #fbe2d9 #fbe2d9;
@@ -346,6 +347,7 @@ main.container {
 .info, .note {
   border: 1px solid rgba(63, 169, 224, 0.2);
 
+  // dog ear triangle in the top right corner
   &::after {
     content: "";
     border-color: var(--body-background) var(--body-background) #bfe4ff #bfe4ff;
@@ -353,9 +355,21 @@ main.container {
   }
 }
 
+.tip {
+  border: 1px solid #3bad3b;
+
+  // dog ear triangle in the top right corner
+  &::after {
+    content: "";
+    border-color: var(--body-background) var(--body-background) rgba(59, 173, 59, 0.1) rgba(59, 173, 59, 0.1);
+    background: rgba(59, 173, 59, 0.1);
+  }
+}
+
 .success {
   border: 1px solid rgba(46, 161, 82, 0.2);
 
+  // dog ear triangle in the top right corner
   &::after {
     content: "";
     border-color: var(--body-background) var(--body-background) #bff3c9 #bff3c9;

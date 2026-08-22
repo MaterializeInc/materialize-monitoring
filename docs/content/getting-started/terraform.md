@@ -8,10 +8,9 @@ weight: 30
 For teams standing up self-managed Materialize with [`materialize-terraform-self-managed`](https://github.com/MaterializeInc/materialize-terraform-self-managed).
 The observability stack comes up with the cluster, from the same modules, with no separate install step.
 
-> [!WARNING]
->  **Preview.** The Terraform modules are built and validated, but have not yet shipped in a tagged release of `materialize-terraform-self-managed`.
->  Until they do, the module `source` cannot resolve — see [Before the first release](#before-the-first-release).
->  AWS and GCP are wired; Azure still uses the previous Prometheus + Grafana modules.
+> [!SUCCESS]
+>  **Shipped, and on by default.** Since `materialize-terraform-self-managed` **v11** the monitoring stack is **opt-out rather than opt-in** — `enable_observability` defaults to `true` in every example root.
+>  All three clouds are wired: AWS, GCP, and Azure. The legacy Prometheus + Grafana modules are retired.
 
 ## What you get
 
@@ -56,10 +55,11 @@ module "monitoring" {
 }
 ```
 
-If you start from an example root, that block is already there. Turn it on in your `terraform.tfvars`:
+If you start from an example root, that block is already there and already on.
+To opt out, set this in your `terraform.tfvars`:
 
 ```hcl
-enable_observability = true
+enable_observability = false
 ```
 
 See the [tfvars reference](#tfvars-reference) below for the rest.
@@ -69,11 +69,11 @@ See the [tfvars reference](#tfvars-reference) below for the rest.
 Variables you would realistically set in a `terraform.tfvars` at an example root.
 Everything else has a default that suits the supported topology.
 
-### Turning it on
+### Turning it off
 
 | Variable | Default | Notes |
 |---|---|---|
-| `enable_observability` | `false` in `simple`, `true` in `enterprise` | The switch. Everything below is inert without it |
+| `enable_observability` | `true` in both `simple` and `enterprise`, on all three clouds | The switch, on by default since v11. Everything below is inert without it |
 
 ### Sizing and placement
 
@@ -259,9 +259,9 @@ On AWS that means the address is a Terraform attribute rather than something rea
 The examples pass it unconditionally, alongside the Materialize console and balancerd load balancers, and `host` is optional — the load balancer answers on an address of its own either way, and the hostname only fixes `root_url`.
 
 > [!WARNING]
-> **None of these terminate TLS.** An L4 load balancer passes bytes through, so Grafana serves plain HTTP — its session cookie and admin password included — until it is given a certificate of its own. That is [DEP-195](https://linear.app/materializeinc/issue/DEP-195)'s work; treat exposure before then as internal-only.
+> **The load balancer does not terminate TLS.** An L4 load balancer passes bytes through, so TLS terminates at the Grafana pod or not at all — and until Grafana has a certificate it serves plain HTTP, session cookie and admin password included.
 >
-> Do not set `security.cookie_secure` in the meantime. It marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
+> The modules can issue that certificate; see [Giving Grafana a certificate](#grafana-certificate) below. Until it is in place, treat exposure as internal-only, and **do not set `security.cookie_secure`** — it marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
 
 L7 — an ALB, a GCP Application Load Balancer, an Azure Application Gateway — is the intended end state for public exposure, because a WAF and authentication at the edge are the two things L4 cannot do. It is deferred rather than rejected: Azure has no ingress-controller module yet, and the chart's Gateway API support is still BETA, so adopting Ingress now would mean migrating twice. See [Ingress and Service are not interchangeable](../../dashboards/grafana/architecture/#ingress-and-service-are-not-interchangeable).
 
@@ -273,8 +273,8 @@ Both are **internal by default**, and both read the `internal_load_balancer` and
 # At an example root
 enable_observability = true
 
-# Optional on GCP and Azure, where the load balancer exists either way; required
-# on AWS before an ALB is created at all.
+# Optional on all three — the load balancer answers on an address of its own
+# either way, and this only fixes `root_url` and the certificate name.
 grafana_host = "grafana.example.com"
 
 # Public instead of internal. Narrow the allowlist yourself: it defaults to
@@ -284,12 +284,34 @@ internal_load_balancer = false
 ingress_cidr_blocks    = ["203.0.113.0/24"]
 ```
 
-Two things the modules cannot do for you:
+**DNS is the one thing the modules cannot do for you.** Neither the Ingress nor the Service publishes the hostname, and Terraform has no view of your zone.
+An ACME challenge against a name that does not resolve is the usual way this gets noticed.
 
-- **DNS.** Neither the Ingress nor the Service publishes the hostname, and Terraform has no view of your zone. An ACME challenge against a name that does not resolve is the usual way this gets noticed.
-- **TLS.** Nothing here terminates it; see the warning above.
+### 3. Give Grafana a certificate {#grafana-certificate}
 
-### 3. Configure an identity provider
+Behind an L4 load balancer the certificate has to exist in the cluster, because the pod is the only thing left that can terminate TLS.
+The module issues it from cert-manager:
+
+```hcl
+certificates_enabled       = true
+issuer_ref                 = { name = "letsencrypt-prod", kind = "ClusterIssuer" }
+grafana_external_dns_names = ["grafana.example.com"]
+```
+
+`issuer_ref` covers both the browser-facing certificate and the in-cluster ones, unless `internal_issuer_ref` overrides the latter.
+Leaving it null with `certificates_enabled = true` bootstraps a self-signed root scoped to the release — right for the internal mesh, but meaningless to a browser, so a public name needs a real issuer.
+
+Setting `grafana_external_dns_names` with no `issuer_ref` issues nothing, and the plan says so. That combination is a **validation error**, not a silent no-op, precisely because it looks configured.
+
+If instead an L7 load balancer terminates with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault), the key never enters the cluster — leave this empty and attach the certificate by annotation through `grafana.service.annotations` in `additional_values`.
+
+> [!INFO]
+>   The module issues the certificate; wiring Grafana to *serve* it is `grafana.ini.server` plus a secret mount, through `additional_values`.
+>   See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
+
+Separately, `internal_tls` (`off` / `encrypt` / `present` / `authenticate`) moves the **in-cluster** hops off plaintext. It also requires `certificates_enabled`. On a fresh install go straight to `authenticate`; on a running stack step through `present` first, or a server that rolls before its writers stops ingestion until they catch up.
+
+### 4. Configure an identity provider
 
 Until you do, the generated admin password is the whole of the access control.
 Everything under `grafana.ini` is passed through verbatim, so any provider Grafana supports is reachable — through `additional_values` on the Terraform path.
@@ -324,15 +346,16 @@ Three that catch people out on a first production install:
 - **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/#metrics-thanos).
 - **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/#grafana).
 
-## Before the first release
+## Pinning a different version
 
-The wrapper modules pin the common module to a released tag, and that tag does not yet contain it.
-Until the first release, point `source` at a branch or a local checkout:
+Each wrapper module pins the common module to a released tag:
 
 ```hcl
-# In {aws,gcp}/modules/monitoring/main.tf
-source = "github.com/MaterializeInc/materialize-monitoring//terraform/modules/materialize-monitoring?ref=my-branch"
+# In {aws,gcp,azure}/modules/monitoring/main.tf
+source = "github.com/MaterializeInc/materialize-monitoring//terraform/modules/materialize-monitoring?ref=materialize-monitoring/v0.17.0"
 ```
+
+To try an unreleased change, point `source` at a branch instead — `?ref=my-branch`.
 
 The ref is the only version you set. The module reads its chart version from the `Chart.yaml` shipped beside it, so the two cannot disagree — `chart_version` exists only to pin something different deliberately.
 

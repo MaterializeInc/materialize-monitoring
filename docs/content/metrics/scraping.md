@@ -5,34 +5,35 @@ weight: 15
 
 # Scraping Metrics with `materialize-monitoring`
 
-{{< wip >}}
-
 By default, `materialize-monitoring` is configured to scrape metrics from any ServiceMonitor or PodMonitor resources in the cluster.
 This allows you to easily add new metrics to your monitoring stack by simply creating a new ServiceMonitor resources.
 
 ## Scrape Architecture with Grafana Alloy
-
-{{< wip >}}
 
 `materialize-monitoring` runs Grafana Alloy with `prometheus.operator` components on `alloy-gateway` instances (Deployment) which read ServiceMonitors and PodMonitors in order to determine what targets to scrape.
 
 `alloy-gateway` runs in [clustering mode](https://grafana.com/docs/alloy/latest/get-started/clustering/) by default, which means that
 scraping is distributed across all replicas of `alloy-gateway` and the scrape state is shared between them.
 
-<!--
-## ServiceMonitor (monitoring.coreos.com/v1)
+For what each monitor kind is and how they differ, see [Custom Resource Definitions](../../reference/crds/#servicemonitor-vs-podmonitor).
 
-ServiceMonitors can be written by any application which indicates
-that it should have metrics scraped by Prometheus Operator / Alloy.
+### Container metrics from the kubelet {#kubelet}
 
-By default, `materialize-monitoring` runs Grafana Alloy with
-`prometheus.operator.*` components on alloy-gateway instances which read ServiceMonitors and PodMonitors in order to determine what targets to scrape.
+One target is not discovered from a monitor resource: `alloy-gateway` scrapes `/metrics/cadvisor` on **every kubelet** directly, on by default.
 
-ServiceMonitors are preferred over PodMonitors, but both work
-relatively the same.
-ServiceMonitors just instead look at Service resources for their
-EndpointSlices instead of looking at Pods directly.
--->
+The kubelet already computes these statistics, so running an in-process cAdvisor on each agent would compute them twice — measured at roughly 750Mi per agent against a 200Mi logs-only envelope.
+Scraping the kubelet removes that cost and puts the remaining scrape cost on the gateway, where it is shared across replicas rather than reserved on every node.
+
+Coverage does not suffer for it: a GKE kubelet serves 69 distinct `container_*` metrics against the 70 an in-process cAdvisor produced, and every `container_*` metric this chart's queries reference is present.
+
+| Value | Default | Notes |
+|---|---|---|
+| `pipeline.metrics.kubelet.scrapeInterval` | `60s` | The dominant cost lever — roughly 6.7k series per node per scrape |
+| `pipeline.metrics.kubelet.tlsInsecureSkipVerify` | `false` | On GKE and EKS the kubelet certificate verifies against the in-cluster CA, which the chart passes as `ca_file` |
+
+> [!WARNING]
+>   A distribution that signs kubelet certificates with a CA the pods do not trust **fails this scrape quietly** — container metrics simply stop, and nothing errors at install.
+>   `kind` is the known case. Check `up{job="cadvisor"}` when bringing up a new distribution, and set `tlsInsecureSkipVerify: true` only where you must.
 
 ## Manually Configured Scraping
 
@@ -46,7 +47,12 @@ The `materialize-sql` scrapers collect SQL-derived metrics from the environmentd
 The **Classic** and **Google Cloud Managed Prometheus** configs carry `username: mz_support` inline, so they need no extra setup.
 Prometheus Operator `basicAuth` can only reference a Kubernetes Secret — it has no inline fields — so the `materialize-sql` `PodMonitor` reads its credentials from a Secret named `materialize-sql-monitor`.
 It needs a `username` key (`mz_support`) and an **empty** `password` key.
-`mz_support` is password-less, but alloy's `prometheus.operator.*` scrapeconfig generation rejects an absent password reference with `resource name may not be empty`; an empty password produces the same `mz_support:` Basic header the username-only configs already send.
+
+The empty password is not a placeholder to fill in later.
+**This endpoint does not validate passwords**: the Basic-auth username selects the role the underlying queries run as — which scopes what those queries can see — and the password field is never read.
+It has to be present at all only because alloy's `prometheus.operator.*` scrapeconfig generation rejects an absent password reference with `resource name may not be empty`.
+An empty value produces the same `mz_support:` Basic header the username-only configs already send.
+See [Securing](../../operating/securing/#materialize-metrics-endpoint) for what that means for network access to the port.
 Create it in the namespace the scrapers run in (for example, `materialize`):
 
 ```bash
@@ -64,8 +70,8 @@ if you have `PodMonitor` or `ServiceMonitor` CRDs in your cluster:
 ```bash
 # Get the CRD resource directly:
 kubectl get crd podmonitors.monitoring.coreos.com servicemonitors.monitoring.coreos.com
-# This may fail with NotFound if you you do not have Prometheus Operator.
-# If you get an kind of permission error, you should try the api-resources command:
+# This may fail with NotFound if you do not have Prometheus Operator.
+# If you get a permission error, try the api-resources command instead:
 kubectl api-resources | grep monitoring.coreos.com
 # This is empty if you do not have Prometheus Operator
 ```
@@ -97,9 +103,10 @@ The following distributions are known to not work at this time:
 * Cortex
 {{< /details >}}
 
-> [!WARNING]
->   If you are using an OpenTelemetry Database (Honeycomb, Datadog, etc.), you should not use these scrape configurations.
->   Native OTLP collection will be provided in a future release.
+> [!INFO]
+>   If your metrics backend is an OpenTelemetry database, these scrape configurations are not the path you want.
+>   The Alloy gateway forwards over OTLP natively today — see [Metrics > Storing](../storing/#otlp) for a generic OTLP backend such as Honeycomb, or [Google Cloud Monitoring](../storing/#gcm) and [Datadog](../storing/#datadog) for those exporters.
+>   The `otlp-metrics-honeycomb` and `otel-metrics-fanout` profiles assemble both shapes.
 
 ### Prometheus Operator Scrape Downloads {#prometheus-operator}
 
@@ -116,7 +123,7 @@ to `kubectl apply` directly.
 The namespace isn't generally too important, but you may elect to
 put them alongside your materialize-operator resource.
 
-If your `materialize-operator` is in the `materialize` namespace, you can download each into a direcotory and apply like:
+If your `materialize-operator` is in the `materialize` namespace, you can download each into a directory and apply like:
 ```bash
 kubectl apply -f scrapers/ -n materialize
 ```
@@ -145,4 +152,5 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
 {{< scrapers pattern="prometheus-scrapers/gmp/*.yaml" >}}
 
 > [!INFO]
->   cAdvisor metrics are collected by Google Cloud Managed Service for Prometheus by default.
+>   GMP collects a subset of cAdvisor metrics by default, but the chart does not depend on it.
+>   `alloy-gateway` scrapes each kubelet's `/metrics/cadvisor` endpoint itself, which yields a fuller set than GMP's default collection — see [Container metrics from the kubelet](#kubelet).
