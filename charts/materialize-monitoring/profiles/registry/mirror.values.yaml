@@ -37,13 +37,12 @@
 # ---------------------------------------------------------------------------
 # It looks like it should be, and for a *flat* mirror — one that serves every
 # upstream under a single path-preserving namespace — it gets you most of the
-# way. It still misses four things, and each one fails by pulling from the
+# way. It still misses two things, and each one fails by pulling from the
 # internet rather than by erroring:
 #
 #   * **Alloy** reads `global.image.registry`, not `global.imageRegistry`.
 #   * **Alertmanager** and **metrics-server** carry the host inside
 #     `image.repository` and have no `registry` key to override.
-#   * **Loki's memcached and memcached-exporter** have no `registry` key either.
 #
 # It is also actively wrong for the far more common shape, one project per
 # upstream registry: this stack pulls from four of them, so a single value
@@ -54,10 +53,14 @@
 # ---------------------------------------------------------------------------
 # The four upstreams, and the two shapes of key
 # ---------------------------------------------------------------------------
-# Anchors cover every key that takes a bare `registry`. Four images spell the
-# host inside `repository` instead, and YAML cannot concatenate, so those four
-# are written out in full and must be edited by hand — they are marked at the
-# line. Missing one is the likely way to get this half-applied.
+# Anchors cover every key that takes a bare `registry`. Three images spell the
+# host inside `repository` instead, and YAML cannot concatenate, so those three
+# are written out in full and must be edited by hand — they are marked
+# `HAND-EDIT` at the line. Missing one is the likely way to get this
+# half-applied.
+#
+# Loki's memcached pair used to be in that group and no longer is: 18.11.0 gave
+# both a `registry` key, so the anchors reach them.
 #
 # Note that `node-exporter.image.distroless` stays `true` here, unlike in the
 # hardened-image profiles. A mirror preserves upstream tags, so the
@@ -96,16 +99,16 @@ loki:
   lokiCanary:
     image:
       registry: *dockerHub
-  # HAND-EDIT: no `registry` key — the host lives in `repository`.
-  # `memcached` is a Docker Official Image, so a proxy cache usually exposes it
-  # under `library/`, matching how the upstream registry namespaces it.
+  # Anchor-covered as of Loki 18.11.0, which gave these two a `registry` key.
+  # Their repositories stay at the chart's defaults — `library/memcached` and
+  # `prom/memcached-exporter` — so the anchor composes the same full path a proxy
+  # cache exposes upstream. Nothing to hand-edit here any more.
   memcached:
     image:
-      repository: "<REGISTRY>/dockerhub/library/memcached"
-  # HAND-EDIT: same shape as memcached above.
+      registry: *dockerHub
   memcachedExporter:
     image:
-      repository: "<REGISTRY>/dockerhub/prom/memcached-exporter"
+      registry: *dockerHub
   # Inert unless `loki.gateway.enabled` is turned on.
   gateway:
     image:

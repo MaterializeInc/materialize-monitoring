@@ -209,7 +209,7 @@ Setting only `global.imagePullSecrets` leaves Loki — the largest pod count in 
 
 > [!WARNING]
 >   `global.imageRegistry` is not the one-line version of the mirror profile.
->   It misses Alloy (which reads `global.image.registry`), Alertmanager and metrics-server (which carry the host inside `image.repository`), and Loki's memcached pair (which have no `registry` key) — each of which then keeps pulling from the internet rather than erroring.
+>   It misses Alloy (which reads `global.image.registry`) and Alertmanager and metrics-server (which carry the host inside `image.repository` and have no `registry` key) — each of which then keeps pulling from the internet rather than erroring.
 >   In the Loki chart it also outranks every per-component `image.registry`, so setting it alongside a profile silently overrides everything that profile chose.
 
 Each vendor profile's header lists what it deliberately leaves on an upstream registry.
