@@ -557,6 +557,19 @@ certificates:
       renewBefore: 2160h
       # -- Secret the generated root's key pair lands in.
       secretName: mzmon-internal-ca
+      # -- Namespace that Secret is created in.
+      # @raw
+      # **cert-manager's cluster resource namespace, not this release's.** A
+      # `ClusterIssuer` of kind `ca` reads its Secret from wherever cert-manager
+      # was told its cluster resources live — `cert-manager` unless the install
+      # overrode `--cluster-resource-namespace` — regardless of where the
+      # `Certificate` that produced it was created. Render the CA into the
+      # release namespace and the issuer sits `False` with `secret not found`
+      # while the Secret it wants is one namespace away.
+      #
+      # Only read for `kind: ClusterIssuer`. A namespaced `Issuer` has the
+      # opposite rule and takes its own namespace; the chart handles both.
+      caSecretNamespace: cert-manager
 
   # -- The browser-facing name, for a Grafana behind an L4 load balancer.
   # @raw
@@ -589,35 +602,6 @@ certificates:
   # point rather than a researched one.
   duration: 2160h
   renewBefore: 720h
-
-  # -- Where certificate material is mounted in every consuming pod.
-  # `tls.crt`, `tls.key` and `ca.crt` appear under this path.
-  mountPath: /etc/mzmon/tls
-
-  # -- Additional roots to trust, merged with the internal CA rather than
-  # replacing it.
-  # @raw
-  # Trust is plural, and `caFile` singular is the wrong model for it. A Loki
-  # ingester may need the internal issuer's CA to verify the gateway *and* an
-  # unrelated private CA to write chunks to an on-prem object store — those are
-  # different roots and both have to be present.
-  #
-  # Two cases this exists for, both real:
-  #
-  #   * **An S3-compatible store behind a private CA.** The endpoint is already
-  #     configurable, so the stack fully supports pointing at one and has no way
-  #     to trust it; the failure is a verification error at startup on every
-  #     component that touches storage, and the only workarounds without this are
-  #     disabling verification or rebuilding images.
-  #   * **An image that ships no CA bundle.** Distroless and minimal bases often
-  #     do not, so even a genuinely public endpoint can fail to verify.
-  #
-  # Name a Secret or a ConfigMap holding PEM roots. Both may be set.
-  trustBundle:
-    secretName: ""
-    configMapName: ""
-    # -- Key within that Secret or ConfigMap holding the PEM bundle.
-    key: ca.crt
 
   # -- Per-component certificates.
   # @raw
@@ -858,7 +842,7 @@ pipeline:
             # A mounted file does not have that problem: the kubelet refreshes
             # Secret contents atomically, and Alloy's client paths pick up the new
             # material on the next connection. Set these to paths under
-            # `certificates.mountPath`, which is where the chart mounts the
+            # `/etc/mzmon/tls`, which is where the chart mounts the
             # certificate it issues for this component.
             #
             # Inline PEM stays supported as the bring-your-own-PKI escape hatch.
@@ -1001,7 +985,7 @@ pipeline:
             # A mounted file does not have that problem: the kubelet refreshes
             # Secret contents atomically, and Alloy's client paths pick up the new
             # material on the next connection. Set these to paths under
-            # `certificates.mountPath`, which is where the chart mounts the
+            # `/etc/mzmon/tls`, which is where the chart mounts the
             # certificate it issues for this component.
             #
             # Inline PEM stays supported as the bring-your-own-PKI escape hatch.
@@ -1212,7 +1196,7 @@ pipeline:
             # A mounted file does not have that problem: the kubelet refreshes
             # Secret contents atomically, and Alloy's client paths pick up the new
             # material on the next connection. Set these to paths under
-            # `certificates.mountPath`, which is where the chart mounts the
+            # `/etc/mzmon/tls`, which is where the chart mounts the
             # certificate it issues for this component.
             #
             # Inline PEM stays supported as the bring-your-own-PKI escape hatch.

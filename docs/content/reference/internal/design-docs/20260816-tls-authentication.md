@@ -88,7 +88,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | **Certificate issuance** | ✅ Shipped | `templates/certificates.yaml`, gated on `certificates.enabled` (default false). Per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root chain, and a separate external issuer for a Grafana behind an L4 LB |
 | **Server-side TLS on all three gateway listeners** | ⚠️ `raw` only | `loki.source.api` `http`, `otelcol.receiver.otlp` `grpc` / `http`, and `prometheus.receive_http` `http` — every one reaches `tls` only through the `raw` escape hatch. The `receive_http` schema says so outright: *"`http` configures the server; a `tls` block uses the `raw:` escape"* |
 | **A configurable cluster domain** | ✅ Shipped | `global.clusterDomain`. Placed under `global` rather than top-level because Loki and Thanos already read `global.clusterDomain` and build real addresses from it, so Helm's propagation makes one value cover all three — this settles [open question 9](#open-questions). `metrics-server` reads its own `tls.clusterDomain` and is covered by a validator instead |
-| **A trust-bundle surface for non-public CAs** | 🔨 Modeled | `certificates.trustBundle` names a Secret and/or ConfigMap. Mounting it into Loki and Thanos is outstanding |
+| **A trust-bundle surface for non-public CAs** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)) | The `certificates.trustBundle` values were modeled and never read, so they have been removed rather than left as a silent no-op |
 | **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | ⬜ Not wired | Each subchart exposes it through its own config passthrough; the umbrella models none of it |
 | **Grafana → backends client certificates** | ⚠️ Expressible, unmodeled | `connections.datasources.*.valuesFrom` can inject `secureJsonData`; nothing defaults or documents the cert keys |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
@@ -253,14 +253,6 @@ certificates:
     group: cert-manager.io
   duration: 2160h    # 90d
   renewBefore: 720h  # 30d
-  # Where the material is mounted in every consuming pod.
-  mountPath: /etc/mzmon/tls
-  # Additional roots to trust, merged with the internal CA rather than
-  # replacing it — an on-prem object store's private CA, a customer PKI, a
-  # public bundle for images that ship none. Mounted and concatenated.
-  trustBundle:
-    secretName: ""
-    configMapName: ""
   # Per-component overrides; each renders one Certificate with the full SAN
   # ladder for that component's Service, in whichever namespace it runs in.
   components:
@@ -500,7 +492,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~`clusterDomain` value, threaded through the namespace helpers~~ **Shipped** as `global.clusterDomain` | — | 1 |
 | ~~`certificates.*` values block and `Certificate` templates, gated on `certificates.enabled`, carrying the full SAN ladder~~ **Shipped**, plus an opt-in self-signed root and an external issuer for the L4-LB case | `clusterDomain` | 1 |
 | ~~Render assertion that every destination URL matches a SAN on the corresponding `Certificate`~~ **Shipped** (`mzmon.certificates.validate.sans`) | above | 1 |
-| `certificates.trustBundle` — additional roots mounted and concatenated with the internal CA, reaching Loki, Thanos, and both Alloy roles | — | 1 |
+| ~~`certificates.trustBundle` — additional roots mounted and concatenated with the internal CA, reaching Loki, Thanos, and both Alloy roles~~ **Split out to [DEP-236](https://linear.app/materializeinc/issue/DEP-236).** The values were modeled and never read; they are removed rather than shipped inert, because a security switch that does nothing is worse than an absent one | — | 1 |
 | ~~Mount rendering for each component, on the existing `mounts.extra` / `volumes.extra` convention~~ **Shipped for both Alloy roles**, as an unconditional `optional: true` secret volume — so the same values work before, during and after issuance. Loki and Thanos outstanding | above | 1 |
 | ~~`*File` carriers on every destination `tls` block~~ **Shipped** | — | 1 |
 | ~~Scheme derivation from `tls.enabled`~~ **Shipped** (`mzmon.alloy.destUrl`), with unit coverage; a tier-0 assertion is still worth adding | — | 1 |

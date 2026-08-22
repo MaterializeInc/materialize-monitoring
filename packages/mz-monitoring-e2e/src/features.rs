@@ -233,12 +233,14 @@ impl Features {
 
     /// Whether Loki is configured to serve TLS on its HTTP port.
     ///
-    /// Gates every assertion that queries Loki **directly**, because this suite
-    /// has no TLS client: it speaks HTTP straight over the forwarded stream, and
-    /// against a TLS listener that returns `400 Client sent an HTTP request to
-    /// an HTTPS server`. Reads through Grafana are unaffected — Grafana holds
-    /// the CA and does the TLS itself, which is why that assertion is not
-    /// redundant with the direct ones.
+    /// Decides how the direct Loki assertions *dial*, not whether they run:
+    /// `checks::loki::loki_target` gives them the suite's TLS client when this is
+    /// true, so a TLS release gets the same coverage as a plaintext one. It
+    /// briefly gated them off instead, and the resulting run was green with the
+    /// whole log read path unasserted.
+    ///
+    /// Also gates `tls::survives_renewal`, which is only meaningful where a
+    /// process actually opens the certificate.
     ///
     /// Read from the subchart passthrough rather than a switch of our own,
     /// because `loki.server.http_tls_config` is what actually moves the listener.

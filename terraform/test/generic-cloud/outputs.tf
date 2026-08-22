@@ -60,6 +60,14 @@ output "workload_identity_available" {
 }
 
 output "cert_manager_available" {
-  description = "Whether cert-manager is installed, and therefore whether the monitoring module can be asked to render Certificates."
-  value       = var.install_cert_manager
+  description = "Whether cert-manager is usable in this cluster, and therefore whether the monitoring module can be asked to render Certificates. Independent of whether this root installed it."
+  # Not `var.install_cert_manager`. That conflated "this root owns the release"
+  # with "cert-manager exists", and `install_cert_manager`'s own documentation
+  # tells you to turn it off on a cluster that already has one — in exactly which
+  # case tier 2 read this as `false` and silently dropped certificate rendering
+  # *and* every mTLS profile. A much weaker run that still reports success is the
+  # worst failure mode a test harness has.
+  #
+  # A conditional rather than `coalesce`, which treats `false` as absent.
+  value = var.cert_manager_available != null ? var.cert_manager_available : var.install_cert_manager
 }

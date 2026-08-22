@@ -179,11 +179,18 @@ pub async fn alloy_components_healthy(ctx: &Ctx) -> Result<()> {
                     .iter()
                     .filter_map(|c| {
                         let state = c.pointer("/health/state")?.as_str()?;
-                        // `unknown` is the pre-evaluation state; only genuine
-                        // failures are interesting.
-                        if state == "healthy" || state == "unknown" {
+                        if state == "healthy" {
                             return None;
                         }
+                        // **`unknown` keeps the retry going rather than ending
+                        // it.** It is the pre-evaluation state, so accepting it
+                        // meant the first poll of a freshly-rolled Alloy
+                        // returned success — the trial could pass before a
+                        // component with a rejected TLS config had even been
+                        // evaluated, which is precisely the failure this exists
+                        // to catch. Measured on settled clusters, nothing sits
+                        // here: gateway 26/26 and agent 11/11 report healthy, so
+                        // waiting costs a poll rather than the whole deadline.
                         let id = c
                             .get("localID")
                             .and_then(Value::as_str)

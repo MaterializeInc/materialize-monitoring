@@ -403,7 +403,7 @@ locals {
           issuerRef = {
             name  = local.internal_issuer.name
             kind  = local.internal_issuer.kind
-            group = "cert-manager.io"
+            group = local.internal_issuer.group
           }
         }
       } : k => v if var.certificates_enabled },
@@ -416,7 +416,7 @@ locals {
           issuerRef = {
             name  = try(var.issuer_ref.name, "")
             kind  = try(var.issuer_ref.kind, "")
-            group = "cert-manager.io"
+            group = try(var.issuer_ref.group, "cert-manager.io")
           }
           dnsNames = var.grafana_external_dns_names
         }

@@ -10,9 +10,10 @@
 #     --set certificates.enabled=true \
 #     --set certificates.internal.selfSigned.enabled=true
 #
-# **This is the one that authenticates — on the Thanos hop only.** After this, a
-# client with no certificate, or one signed by a CA Receive does not trust, is
-# refused at the TLS handshake rather than served.
+# **This is the one that authenticates.** After this, a client with no
+# certificate, or one signed by a CA the server does not trust, is refused at the
+# TLS handshake rather than served — on Thanos Receive's remote-write listener
+# and on all four of the gateway's ingress ports (3100, 4317, 4318, 9090).
 #
 # The Loki hop stops at phase 2 and cannot go further; see the section below for
 # why, which is a property of Kubernetes probes rather than of Loki.

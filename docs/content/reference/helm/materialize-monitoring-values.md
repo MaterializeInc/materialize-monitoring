@@ -717,6 +717,7 @@ ARN or resource ID and the key never enters the cluster; for that shape, leave
     "name": ""
   },
   "selfSigned": {
+    "caSecretNamespace": "cert-manager",
     "commonName": "mzmon-internal-ca",
     "duration": "43800h",
     "enabled": false,
@@ -762,6 +763,7 @@ sounds.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
+  "caSecretNamespace": "cert-manager",
   "commonName": "mzmon-internal-ca",
   "duration": "43800h",
   "enabled": false,
@@ -811,6 +813,23 @@ default; the render warns when it sees the combination that does not work.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">certificates<wbr>.internal<wbr>.selfSigned<wbr>.caSecretNamespace</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"cert-manager"</code></td>
+      <td class="helm-value-desc">Namespace that Secret is created in.
+**cert-manager's cluster resource namespace, not this release's.** A
+`ClusterIssuer` of kind `ca` reads its Secret from wherever cert-manager
+was told its cluster resources live — `cert-manager` unless the install
+overrode `--cluster-resource-namespace` — regardless of where the
+`Certificate` that produced it was created. Render the CA into the
+release namespace and the issuer sits `False` with `secret not found`
+while the Secret it wants is one namespace away.
+
+Only read for `kind: ClusterIssuer`. A namespaced `Issuer` has the
+opposite rule and takes its own namespace; the chart handles both.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">certificates<wbr>.external</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -855,49 +874,6 @@ means re-issuing the CA. They also raise the cost of a component that does
 not reload its certificate cleanly, which is why no hop turns on until its
 rotation behaviour is proven. 90 days with 30 days of headroom is a starting
 point rather than a researched one.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">certificates<wbr>.mountPath</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"/etc/mzmon/tls"</code></td>
-      <td class="helm-value-desc">Where certificate material is mounted in every consuming pod. `tls.crt`, `tls.key` and `ca.crt` appear under this path.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">certificates<wbr>.trustBundle</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "configMapName": "",
-  "key": "ca.crt",
-  "secretName": ""
-}</pre>
-</td>
-      <td class="helm-value-desc">Additional roots to trust, merged with the internal CA rather than replacing it.
-Trust is plural, and `caFile` singular is the wrong model for it. A Loki
-ingester may need the internal issuer's CA to verify the gateway *and* an
-unrelated private CA to write chunks to an on-prem object store — those are
-different roots and both have to be present.
-
-Two cases this exists for, both real:
-
-  * **An S3-compatible store behind a private CA.** The endpoint is already
-    configurable, so the stack fully supports pointing at one and has no way
-    to trust it; the failure is a verification error at startup on every
-    component that touches storage, and the only workarounds without this are
-    disabling verification or rebuilding images.
-  * **An image that ships no CA bundle.** Distroless and minimal bases often
-    do not, so even a genuinely public endpoint can fail to verify.
-
-Name a Secret or a ConfigMap holding PEM roots. Both may be set.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">certificates<wbr>.trustBundle<wbr>.key</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"ca.crt"</code></td>
-      <td class="helm-value-desc">Key within that Secret or ConfigMap holding the PEM bundle.
 </td>
     </tr>
     <tr>
@@ -1425,7 +1401,7 @@ nearby to blame.
 A mounted file does not have that problem: the kubelet refreshes
 Secret contents atomically, and Alloy's client paths pick up the new
 material on the next connection. Set these to paths under
-`certificates.mountPath`, which is where the chart mounts the
+`/etc/mzmon/tls`, which is where the chart mounts the
 certificate it issues for this component.
 
 Inline PEM stays supported as the bring-your-own-PKI escape hatch.
@@ -1673,7 +1649,7 @@ nearby to blame.
 A mounted file does not have that problem: the kubelet refreshes
 Secret contents atomically, and Alloy's client paths pick up the new
 material on the next connection. Set these to paths under
-`certificates.mountPath`, which is where the chart mounts the
+`/etc/mzmon/tls`, which is where the chart mounts the
 certificate it issues for this component.
 
 Inline PEM stays supported as the bring-your-own-PKI escape hatch.
@@ -2019,7 +1995,7 @@ nearby to blame.
 A mounted file does not have that problem: the kubelet refreshes
 Secret contents atomically, and Alloy's client paths pick up the new
 material on the next connection. Set these to paths under
-`certificates.mountPath`, which is where the chart mounts the
+`/etc/mzmon/tls`, which is where the chart mounts the
 certificate it issues for this component.
 
 Inline PEM stays supported as the bring-your-own-PKI escape hatch.

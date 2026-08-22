@@ -350,11 +350,18 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
     ));
     // Destructive: forces a reissue by deleting a Secret. Opt-in, because this
     // binary is pointed at real clusters too.
+    //
+    // Gated on the hop actually serving TLS, not merely on certificates being
+    // issued. Issuance and use are separate switches, and on a release with the
+    // first and not the second this deleted a Secret, waited for cert-manager to
+    // reissue, then passed a **plaintext** Loki query — reporting that delivery
+    // survived a certificate renewal on a path where no process had opened the
+    // certificate at all.
     trials.push(trial(
         runtime,
         ctx,
         "tls::survives_renewal",
-        certificates && logging && ctx.allow_disruptive,
+        certificates && logging && ctx.features.loki_server_tls() && ctx.allow_disruptive,
         checks::tls::survives_renewal,
     ));
 

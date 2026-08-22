@@ -21,19 +21,24 @@
 # one — see the phase table below, which records what each backend actually does
 # rather than what its flags suggest.
 #
+# **agent -> gateway is covered**, and used to say otherwise here. All four
+# gateway ingress listeners — `loki.source.api` on 3100, OTLP on 4317 and 4318,
+# and `prometheus.receive_http` on 9090 — render from Helm and take their TLS
+# from values. `receive_http` was the last holdout, and moving it out of the
+# pre-rendered pipeline is what made the metrics ingest port configurable at all.
+#
 # Not covered, and deliberately so:
 #
-#   * **agent -> gateway.** The gateway's `loki.source.api` listener lives in the
-#     pre-rendered pipeline, which is emitted verbatim, so its `tls` block cannot
-#     be made conditional on a value. The chart refuses that hop rather than
-#     enabling a client that would talk TLS at a plaintext port.
 #   * **Intra-Loki and intra-Thanos.** Distributor->ingester gRPC, the memberlist
 #     ring, query->store: all real hops, all inside a single subchart's trust
 #     boundary, none of them reachable from here.
-#   * **Grafana -> backends.** The datasource URLs below move to `https://`, but
-#     the CA has to reach Grafana through `connections.datasources.*.valuesFrom`,
-#     which is provisioned config rather than a file mount — so it does not renew
-#     the way everything else here does. Supply it yourself.
+#   * **Grafana -> backends.** The datasource URLs below move to `https://` and
+#     the CA reaches Grafana by reference — see `connections.datasources.*.tls`
+#     at the bottom of this file, which the profile now wires to Grafana's own
+#     certificate Secret. What is still not covered is *renewal*: Grafana keeps
+#     the material in its database rather than reading a file, so a new CA takes
+#     effect when grafana-operator re-provisions the datasource rather than when
+#     the certificate rotates.
 #
 # ---------------------------------------------------------------------------
 # Prerequisite
@@ -56,12 +61,21 @@
 # them stops ingesting until they catch up. Each hop moves through four states,
 # and this profile lands you in phase 1:
 #
-#   | Phase | Loki server                  | Thanos Receive server | Client                 |
-#   | ----- | ---------------------------- | --------------------- | ---------------------- |
-#   | 0     | plaintext                    | plaintext             | plaintext              |
-#   | 1     | TLS, `NoClientCert`          | TLS, no client CA     | verifies the server    |
-#   | 2     | `VerifyClientCertIfGiven`    | TLS, no client CA     | **presents** a cert    |
-#   | 3     | `RequireAndVerifyClientCert` | TLS, **client CA set**| presents a cert        |
+#   | Phase | Loki server                  | Thanos Receive server  | Gateway ingress              | Client              |
+#   | ----- | ---------------------------- | ---------------------- | ---------------------------- | ------------------- |
+#   | 0     | plaintext                    | plaintext              | plaintext                    | plaintext           |
+#   | 1     | TLS, `NoClientCert`          | TLS, no client CA      | TLS, no client CA            | verifies the server |
+#   | 2     | `VerifyClientCertIfGiven`    | TLS, no client CA      | `VerifyClientCertIfGiven`*   | **presents** a cert |
+#   | 3     | `RequireAndVerifyClientCert` | TLS, **client CA set** | `RequireAndVerifyClientCert` | presents a cert     |
+#
+#   * `loki.source.api` and `prometheus.receive_http` honour verify-if-given.
+#     `otelcol.receiver.otlp` has no equivalent, so setting a client CA puts
+#     4317/4318 straight into require-and-verify at phase 2 — safe for the agent,
+#     which presents from that phase on, and a step any *other* OTLP sender has
+#     to roll before.
+#
+# Loki's own HTTP port stops at phase 2 and cannot go further: the kubelet probes
+# it and a `httpGet` probe has no field for a client certificate.
 #
 # Compose the next phase over this one:
 #

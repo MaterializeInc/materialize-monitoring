@@ -1309,11 +1309,6 @@ Three things go wrong here and none of them is visible in the values:
     attribute and treats the presence of a client CA as require-and-verify. So
     at `VerifyClientCertIfGiven` the logs listener tolerates a client that
     presents nothing while the OTLP listeners reject it.
-  * **The third listener is not here yet.** `prometheus.receive_http` still
-    renders from `pre-rendered/pipelines/gateway-metrics.alloy`, which is emitted
-    verbatim, so `pipeline.metrics.gateway.server.tls` cannot reach it. Setting
-    it does nothing at all, which is the worst possible outcome for a security
-    switch.
 
 Usage:
   {{- $res := include "mzmon.alloy.validate.serverTls" $ | fromYaml }}

@@ -385,6 +385,14 @@ spread across several. The chart refuses that combination at render time.
         <td class="tf-var-schema"><pre><code>object({
     name = string
     kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
   })</code></pre></td>
     </tr>
     <tr>
@@ -440,6 +448,14 @@ the cluster reduces that to "has any certificate".
         <td class="tf-var-schema"><pre><code>object({
     name = string
     kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
   })</code></pre></td>
     </tr>
     <tr>

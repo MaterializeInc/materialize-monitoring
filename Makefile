@@ -447,6 +447,16 @@ E2E_DIAGNOSTICS_DIR ?= e2e-diagnostics-tier1
 
 E2E_FLAGS ?=
 
+# `--allow-disruptive`, but only under CI. See the tier targets for why.
+#
+# An allowlist rather than `$(if $(CI),...)`, because make's `if` tests
+# *emptiness*: `CI=false` and `CI=0` are both non-empty and would have enabled
+# the flag, which is the opposite of what either says. A safety gate should fail
+# closed on a value it does not recognise, so anything but `true` or `1` — a
+# typo, a shell that exports `CI=""`, some other runner's convention — leaves it
+# off rather than guessing. GitHub Actions sets `CI=true`.
+CI_ONLY_DISRUPTIVE := $(if $(filter true 1,$(CI)),--allow-disruptive)
+
 e2e-verify: | $(E2E_BIN)
 	$(E2E_BIN) --context $(E2E_CONTEXT) --namespace $(E2E_NAMESPACE) \
 		--release $(E2E_RELEASE) --diagnostics-dir $(E2E_DIAGNOSTICS_DIR) $(E2E_FLAGS)
@@ -466,7 +476,7 @@ e2e-verify: | $(E2E_BIN)
 # `--allow-disruptive` under CI only, for the same reason as tier 2. Tier 1 has
 # no cert-manager and so nothing currently uses it; set anyway so the tier does
 # not quietly skip a disruptive assertion the day one applies to it.
-e2e-verify-tier1: E2E_FLAGS += $(if $(CI),--allow-disruptive)
+e2e-verify-tier1: E2E_FLAGS += $(CI_ONLY_DISRUPTIVE)
 e2e-verify-tier1: e2e-verify
 .PHONY: e2e-verify-tier1
 
@@ -536,7 +546,7 @@ e2e-tier2: e2e-generic-cloud
 #
 # `CI` is set to `true` by GitHub Actions, so the workflow needs nothing.
 e2e-verify-tier2: E2E_DIAGNOSTICS_DIR = e2e-diagnostics-tier2
-e2e-verify-tier2: E2E_FLAGS += $(if $(CI),--allow-disruptive)
+e2e-verify-tier2: E2E_FLAGS += $(CI_ONLY_DISRUPTIVE)
 e2e-verify-tier2: e2e-verify
 .PHONY: e2e-verify-tier2
 

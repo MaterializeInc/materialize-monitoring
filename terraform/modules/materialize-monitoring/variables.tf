@@ -795,6 +795,14 @@ variable "issuer_ref" {
   type = object({
     name = string
     kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
   })
   default = null
 }
@@ -815,6 +823,14 @@ variable "internal_issuer_ref" {
   type = object({
     name = string
     kind = string
+    # Defaulted rather than required, because every in-tree issuer is
+    # `cert-manager.io` and making callers restate it would be noise. It has to
+    # exist, though: an external issuer — AWS Private CA
+    # (`awspca.cert-manager.io`), Google CAS (`cas-issuer.jetstack.io`) — lives
+    # in its own API group, and cert-manager resolves `issuerRef` by group as
+    # well as kind. Hardcoding the default group made those unreachable through
+    # Terraform even though the chart has always taken the field.
+    group = optional(string, "cert-manager.io")
   })
   default = null
 }

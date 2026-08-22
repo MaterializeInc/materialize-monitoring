@@ -424,6 +424,33 @@ PYEOF
             echo "    issuer_ref reached the component certificates"
         fi
 
+        # cert-manager resolves `issuerRef` by group as well as by kind, so a
+        # missing or wrong group silently points at nothing. The module used to
+        # hardcode `cert-manager.io`, which made every external issuer — AWS
+        # Private CA, Google CAS — unreachable through Terraform even though the
+        # chart had always taken the field.
+        #
+        # Read the expectation from the example's own HCL, defaulting to
+        # `cert-manager.io` when it names no group, so this catches the field
+        # being dropped as well as being ignored.
+        want_group="$(grep -hoE '^[[:space:]]*group[[:space:]]*=[[:space:]]*"[^"]+"' \
+            "${example_dir}"*.tf 2>/dev/null \
+            | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
+        want_group="${want_group:-cert-manager.io}"
+        cert_groups="$(grep -A 3 '^[[:space:]]*issuerRef:$' "${rendered}" \
+            | grep -oE 'group: [^[:space:]]+' | sed -E 's/group: //' | sort -u || true)"
+        if [ -z "${cert_groups}" ]; then
+            echo "  !! ${example}: Certificates rendered with an issuerRef carrying no group" >&2
+            status=1
+            continue
+        fi
+        if ! echo "${cert_groups}" | grep -qx "${want_group}"; then
+            echo "  !! ${example}: expected issuerRef group ${want_group}, rendered: $(echo "${cert_groups}" | tr '\n' ' ')" >&2
+            status=1
+            continue
+        fi
+        echo "    issuerRef group ${want_group} reached the certificates"
+
         # The browser-facing certificate is the one that only exists behind an
         # L4 balancer, and it is separate because a public issuer cannot sign
         # in-cluster names.
