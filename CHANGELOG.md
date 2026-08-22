@@ -8,13 +8,35 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.19.0 (Unreleased)
+
+_Changes Pending_
+
 ## Pipelines v0.12.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.18.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.18.0
 
-_Changes Pending_
+* DEP-195 Implement TLS across stack
+    * [materialize-monitoring#254](https://github.com/MaterializeInc/materialize-monitoring/pull/254)
+* DEP-192 Implement networkpolicies across applications
+    * [materialize-monitoring#252](https://github.com/MaterializeInc/materialize-monitoring/pull/252)
+* Update docker.io/grafana/grafana Docker tag to v13.2.0
+    * [materialize-monitoring#253](https://github.com/MaterializeInc/materialize-monitoring/pull/253)
+* Update astral-sh/setup-uv action to v10
+    * [materialize-monitoring#240](https://github.com/MaterializeInc/materialize-monitoring/pull/240)
+* Provide Datadog queries in documentation
+    * [materialize-monitoring#249](https://github.com/MaterializeInc/materialize-monitoring/pull/249)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.11.0..v0.12.0
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * Update Rust crate jsonschema to v0.49.9
+        * [materialize-monitoring#209](https://github.com/MaterializeInc/materialize-monitoring/pull/209)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.17.0
 
