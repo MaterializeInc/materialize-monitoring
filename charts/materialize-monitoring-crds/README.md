@@ -34,7 +34,7 @@ Kubernetes: `>=1.27.0-0`
 | Repository | Name | Version |
 |------------|------|---------|
 |  | grafana-operator-crds | 0.0.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-operator-crds | ^31.0.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-operator-crds | 31.0.0 |
 
 ## Values {#values}
 

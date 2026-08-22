@@ -29,6 +29,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `extract-crd-schemas.sh`: pull CRD schemas out of upstream charts
     * `extract-grafana-operator-crds.sh`: deflate the Grafana Operator CRDs into the CRDs chart (`make grafana-operator-crds`)
     * `grafonnet-render`: grafonnet rendering helper
+    * `helm-deps.sh`: vendor each chart's locked subchart tarballs into `charts/*/charts/` (`make helm-deps`)
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))

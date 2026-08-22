@@ -39,11 +39,17 @@ annotations:
 # is intentionally excluded as a chart source.
 #
 # Registries currently in use:
-#   oci://ghcr.io/grafana/helm-charts          → alloy, loki, grafana
-#   oci://ghcr.io/thanos-community/helm-charts → thanos
-#   oci://ghcr.io/prometheus-community/charts  → alertmanager, kube-state-metrics,
-#                                                prometheus-node-exporter, prometheus-operator-crds
+#   oci://ghcr.io/grafana-community/helm-charts → loki, grafana
+#   oci://ghcr.io/grafana/helm-charts           → grafana-operator
+#   oci://ghcr.io/thanos-community/helm-charts  → thanos
+#   oci://ghcr.io/prometheus-community/charts   → alertmanager, kube-state-metrics,
+#                                                 prometheus-node-exporter
+#   https://grafana.github.io/helm-charts       → alloy
 #   https://kubernetes-sigs.github.io/metrics-server → metrics-server (TODO: switch to OCI when upstream publishes one)
+#
+# The two `https://` entries are the ones `helm dependency build` needs
+# registered up front; the OCI ones it resolves without a repository entry.
+# bin/helm-deps.sh reads them back out of this file and registers them.
 #
 # Alloy is declared twice via `alias` so the same upstream chart powers
 # both the agent (scrape / collection / pre-egress shaping) and the
@@ -68,10 +74,20 @@ annotations:
 # out in `values.yaml`, so the default behavior is tag-driven; uncommenting
 # `<chart>.enabled: true|false` force-includes or force-excludes that
 # chart regardless of any tag state.
+#
+# Version pinning
+# ---------------
+# Dependency versions are exact, not `^` ranges. The resolved archives under
+# `charts/` are what actually ships, so a range buys nothing at install time —
+# it only decides what CI happens to resolve. And any path that reaches
+# `helm dependency update` re-resolves *every* range at once, so under ranges a
+# bump to one subchart could silently carry the others forward with it; that is
+# how v0.18.0 shipped an unintended Loki bump. Exact pins make Chart.lock a
+# function of this file alone. Renovate owns the bumping.
 dependencies:
   - name: alloy
     alias: alloy-agent
-    version: "^1.11.1"
+    version: "1.11.1"
     repository: https://grafana.github.io/helm-charts
     condition: alloy-agent.enabled
     tags:
@@ -80,7 +96,7 @@ dependencies:
       - alloy-agent
   - name: alloy
     alias: alloy-gateway
-    version: "^1.11.1"
+    version: "1.11.1"
     repository: https://grafana.github.io/helm-charts
     condition: alloy-gateway.enabled
     tags:
@@ -88,7 +104,7 @@ dependencies:
       - pipeline
       - alloy-gateway
   - name: loki
-    version: "^18.8.0"
+    version: "18.11.0"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: loki.enabled
     tags:
@@ -96,7 +112,7 @@ dependencies:
       - bundled-backends
       - loki
   - name: thanos
-    version: "^0.30.0"
+    version: "0.30.0"
     repository: oci://ghcr.io/thanos-community/helm-charts
     condition: thanos.enabled
     tags:
@@ -104,7 +120,7 @@ dependencies:
       - bundled-backends
       - thanos
   - name: grafana
-    version: "^12.10.4"
+    version: "12.11.1"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:
@@ -112,7 +128,7 @@ dependencies:
       - managed-grafana
       - grafana-standalone
   - name: grafana-operator
-    version: "^5.24.0"
+    version: "5.24.0"
     repository: oci://ghcr.io/grafana/helm-charts
     condition: grafana-operator.enabled
     tags:
@@ -120,7 +136,7 @@ dependencies:
       - managed-grafana
       - grafana-operator
   - name: alertmanager
-    version: "^1.41.0"
+    version: "1.42.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: alertmanager.enabled
     tags:
@@ -128,7 +144,7 @@ dependencies:
       - bundled-backends
       - alertmanager
   - name: kube-state-metrics
-    version: "^8.2.0"
+    version: "8.4.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: kube-state-metrics.enabled
     tags:
@@ -137,7 +153,7 @@ dependencies:
       - kube-state-metrics
   - name: prometheus-node-exporter
     alias: node-exporter
-    version: "^4.56.1"
+    version: "4.56.1"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: node-exporter.enabled
     tags:
@@ -145,7 +161,7 @@ dependencies:
       - cluster-metrics
       - node-exporter
   - name: metrics-server
-    version: "^3.14.0"
+    version: "3.14.0"
     repository: https://kubernetes-sigs.github.io/metrics-server
     condition: metrics-server.enabled
     tags:
