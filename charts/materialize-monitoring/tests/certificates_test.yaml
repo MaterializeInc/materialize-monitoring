@@ -451,6 +451,54 @@ tests:
           path: data["config.alloy"]
           pattern: 'prometheus.receive_http "gateway"'
 
+  # An optional Secret volume that is missing mounts empty rather than blocking
+  # the pod. That is right while nothing reads the material and wrong the moment
+  # a config names a path inside it: Alloy fails its initial load and enters
+  # CrashLoopBackOff, backing off to five minutes, on an error naming a file
+  # rather than the Secret behind it. Required, the kubelet holds the container
+  # in ContainerCreating with a FailedMount event and starts it on the next
+  # volume re-sync — 16s on kind, with no backoff. Observed on the agent during
+  # a fresh install before this was fixed.
+  - it: should make the certificate Secrets required once a config reads them
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    templates:
+      - ../charts/alloy-agent/templates/controllers/daemonset.yaml
+      - ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[?(@.name=="mzmon-tls")].secret.optional
+          value: false
+
+  # The profile has to restate Alloy's whole `volumes.extra` list, because Helm
+  # overwrites lists rather than merging them. Dropping an entry is silent and
+  # specific: without these two the agent keeps collecting pod logs and simply
+  # never reports journal entries, so nothing fails — there are just no journal
+  # logs, on a stack where that reads as "this host has none".
+  - it: should not lose the agent's journal volumes to the restated list
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: runlogjournal
+            hostPath:
+              path: /run/log/journal
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: machineid
+            hostPath:
+              path: /etc/machine-id
+
   - it: should secure the metrics ingest listener too
     values:
       - ../profiles/mtls.values.yaml
@@ -646,7 +694,7 @@ tests:
             name: mzmon-tls
             secret:
               secretName: mzmon-loki-tls
-              optional: true
+              optional: false
 
   # Helm overwrites lists, so setting extraArgs at all drops the base entry —
   # and a missing replication factor is write quorum 1 with no tolerated losses.

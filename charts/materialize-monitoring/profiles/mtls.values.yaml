@@ -121,7 +121,7 @@ loki:
       - name: mzmon-tls
         secret:
           secretName: mzmon-loki-tls
-          optional: true
+          optional: false
     extraVolumeMounts:
       - name: mzmon-tls
         mountPath: /etc/mzmon/tls
@@ -191,7 +191,7 @@ loki:
       - name: mzmon-tls
         secret:
           secretName: mzmon-loki-tls
-          optional: true
+          optional: false
     extraVolumeMounts:
       - name: mzmon-tls
         mountPath: /etc/mzmon/tls
@@ -224,7 +224,7 @@ thanos:
       - name: mzmon-tls
         secret:
           secretName: mzmon-thanos-tls
-          optional: true
+          optional: false
     extraVolumeMounts:
       - name: mzmon-tls
         mountPath: /etc/mzmon/tls
@@ -336,3 +336,62 @@ connections:
       # HTTP endpoints — including the ones the kubelet probes, which is the same
       # dead end Loki's HTTP port hits at phase 3.
       url: 'http://thanos-query.{{ include "mzmon.thanos.namespace" $ }}.svc:9090'
+
+# ---------------------------------------------------------------------------
+# The certificate Secrets stop being optional here
+# ---------------------------------------------------------------------------
+# Every `mzmon-tls` volume in this file is `optional: false`, and the base chart
+# leaves them `optional: true`. The flag belongs with the phase, not with the
+# mount: unmounted-and-optional is right while nothing reads the material, and
+# wrong the moment a config names a path inside it.
+#
+# With `optional: true` and a config that reads the files, a pod that starts
+# before cert-manager has signed fails its initial load and enters
+# CrashLoopBackOff — backing off to five minutes, on an error that names a file
+# rather than the Secret behind it. Observed on the agent during a fresh
+# install; it recovered after two restarts, which is the good case.
+#
+# With `optional: false` the kubelet refuses to start the container at all,
+# holds it in `ContainerCreating` with a `FailedMount` event naming the Secret,
+# and starts it on the next volume re-sync once the Secret exists — measured at
+# 16s on kind, with no backoff to escalate. The failure that remains is the one
+# worth having: a wedged issuer leaves pods visibly waiting on a named Secret
+# instead of crashlooping on a Go build error.
+#
+# Alloy's two volumes have to be restated in full because Helm overwrites lists
+# rather than merging them. Dropping an entry here is silent and specific:
+# without `runlogjournal` and `machineid` the agent keeps collecting pod logs
+# and simply never reports journal entries. `certificates_test.yaml` asserts the
+# whole set survives.
+
+alloy-agent:
+  controller:
+    volumes:
+      extra:
+        - name: tmp
+          emptyDir: {}
+        # Untyped `hostPath` on both journal volumes, matching the base chart: a
+        # typed mount makes the pod unschedulable on a host without the path,
+        # and this DaemonSet also carries pod log collection — so a strict type
+        # trades "no journal logs" for "no logs at all".
+        - name: runlogjournal
+          hostPath:
+            path: /run/log/journal
+        - name: machineid
+          hostPath:
+            path: /etc/machine-id
+        - name: mzmon-tls
+          secret:
+            secretName: mzmon-alloy-agent-tls
+            optional: false
+
+alloy-gateway:
+  controller:
+    volumes:
+      extra:
+        - name: tmp
+          emptyDir: {}
+        - name: mzmon-tls
+          secret:
+            secretName: mzmon-alloy-gateway-tls
+            optional: false

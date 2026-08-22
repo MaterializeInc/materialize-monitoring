@@ -2104,9 +2104,17 @@ alloy-agent:
         # not exist until `certificates.enabled` is on and cert-manager has
         # signed, and an optional secret volume that is missing mounts empty
         # rather than blocking the pod — so the same values work before, during
-        # and after issuance, and a certificate that has not been signed yet is
-        # a pod that starts and serves plaintext rather than one stuck
-        # `ContainerCreating`.
+        # and after issuance.
+        #
+        # **That holds only while nothing reads the material, which is why the
+        # mTLS profiles flip it to `optional: false`.** Once a config names a
+        # path inside this mount, an empty mount is not a pod serving plaintext:
+        # Alloy fails its initial load and enters CrashLoopBackOff, backing off
+        # to five minutes, on an error naming a file rather than the Secret
+        # behind it. Required, the same race is a container the kubelet holds in
+        # `ContainerCreating` with a `FailedMount` event, started on the next
+        # volume re-sync. Do not set this to false here — with certificates off
+        # there is no Secret to wait for and the pod would never start.
         #
         # The kubelet refreshes the contents in place on renewal, which is why
         # the `tls.*File` carriers are preferred over the inline PEMs.
@@ -2384,9 +2392,17 @@ alloy-gateway:
         # not exist until `certificates.enabled` is on and cert-manager has
         # signed, and an optional secret volume that is missing mounts empty
         # rather than blocking the pod — so the same values work before, during
-        # and after issuance, and a certificate that has not been signed yet is
-        # a pod that starts and serves plaintext rather than one stuck
-        # `ContainerCreating`.
+        # and after issuance.
+        #
+        # **That holds only while nothing reads the material, which is why the
+        # mTLS profiles flip it to `optional: false`.** Once a config names a
+        # path inside this mount, an empty mount is not a pod serving plaintext:
+        # Alloy fails its initial load and enters CrashLoopBackOff, backing off
+        # to five minutes, on an error naming a file rather than the Secret
+        # behind it. Required, the same race is a container the kubelet holds in
+        # `ContainerCreating` with a `FailedMount` event, started on the next
+        # volume re-sync. Do not set this to false here — with certificates off
+        # there is no Secret to wait for and the pod would never start.
         #
         # The kubelet refreshes the contents in place on renewal, which is why
         # the `tls.*File` carriers are preferred over the inline PEMs.
