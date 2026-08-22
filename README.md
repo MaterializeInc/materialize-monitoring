@@ -1,85 +1,96 @@
 # Unified Monitoring for Materialize
 
-This customer-facing repository provides common observability (o11y)
-infrastructure and configurations for Materialize Deployments, including
-Self-Managed and Materialize Cloud.
+First-class observability for Materialize deployments — metrics, logs, events, dashboards, and alerts.
+This repository packages the whole stack as a Helm chart and a Terraform module, so an operator gets a working observability deployment instead of a pile of parts to assemble.
 
-## WORK IN PROGRESS
+**📖 [Documentation](https://materializeinc.github.io/materialize-monitoring/)** — installation, architecture, operations, and reference.
 
-**This repository is being actively developed!**
+Nothing here is required to run Materialize.
+The goal is a one-stop shop for teams who want one, without forcing this stack on teams who already run their own.
 
-This readme will try to track changes with dates, but expect
-some amount of flux as this repository stabilizes.
+## Status
 
-## Roadmap and Layout
+**Pre-1.0 and under active development.**
+Interfaces are still moving: until 1.0 is stamped, breaking changes can ride a minor release — see [Choosing the next version](docs/content/reference/internal/releasing.md#choosing-the-next-version).
 
-* [Roadmap](docs/content/reference/internal/roadmap.md) — the current source of truth for what is built, in flight, and planned next.
+* [CHANGELOG.md](CHANGELOG.md) — the source of truth for what has shipped.
+* [Roadmap](docs/content/reference/internal/roadmap.md) — the source of truth for what is built, in flight, and planned next.
 * [Repository Layout](docs/content/reference/internal/repo-layout.md) — where things live in the repo.
 
-## Getting Started
+## Getting started
 
-This will be automatically (TODO: implement) deployed by our
-[recommended terraform module](https://github.com/MaterializeInc/materialize-terraform-self-managed)
-for deploying Materialize.
+### Terraform (recommended)
 
-For more bespoke configurations, please see our documentation: TODO LINK.
+If you stand up Materialize with [`materialize-terraform-self-managed`](https://github.com/MaterializeInc/materialize-terraform-self-managed), observability comes up with the cluster — **on by default since v11**, on AWS, GCP, and Azure alike.
+The per-cloud wrapper modules create the buckets and workload identity, then install these charts at a pinned version.
+The cloud-agnostic module they wrap lives in this repo at [`terraform/modules/materialize-monitoring`](terraform/modules/materialize-monitoring).
 
-## About This Repository
+Set `enable_observability = false` to opt out.
+See [Installing via Terraform](https://materializeinc.github.io/materialize-monitoring/getting-started/terraform/).
 
-The primary Artifacts are:
+### Helm
 
-* (TODO) A published, versioned helm umbrella chart for deploying an observability stack
-    alongside Materialize.
-* (WIP) Documentation about the intricacies of the observability stack and how to use it.
-* (WIP) Dashboards that customers can use to manage their own Deployments and that we
-    use for our own internal monitoring of Materialize Cloud.
+The charts are the full-fidelity surface — everything Terraform does is a layer over them — and are published to GHCR as OCI artifacts:
 
-## Supported Dashboards
+```bash
+helm install mzmon-crds oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-crds --namespace monitoring
+helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --namespace monitoring --skip-crds
+```
 
-### Materialize Overview
+That is the shape, not a complete install: object storage and credentials come first, and the backend has to be named in your values.
+See [Installing via Helm](https://materializeinc.github.io/materialize-monitoring/getting-started/helm/) for the real procedure, and [Production Best Practices](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/) before running it anywhere that matters.
 
-Day 2 Operations for Materialize environments.
+### Dashboards only
 
-Supported Materialize Versions:
-* v26.0 - v26.24 (new-promsql v2_mz / unstable mz_)
+The Grafana dashboards are usable against an observability stack you already run.
+Download them from [Importing Dashboards](https://materializeinc.github.io/materialize-monitoring/dashboards/grafana/importing/), or point your own collector at the shipped [scrape configs](https://materializeinc.github.io/materialize-monitoring/metrics/scraping/).
 
-Targets:
-* (Alpha) Grafana 13
-    * generated: `docs/static/dashboards/grafana/` (TODO: docsite link)
-    * grafana-operator template: TODO
-    * source (Python SDK): `packages/grafana-dashboards/dashboards/`
-* (TODO) Grafana 12
-* (TODO) Grafana 10-11
-* (TODO) Datadog
-* (TODO) Google Cloud Operations
+## What this repository provides
 
-### Materialize Fleet View
+Each artifact carries its own SemVer stream, declared in [`packages/components.yaml`](packages/components.yaml) and released on a monthly cadence.
 
-Day 2 Operations across many Materialize environments.
+| Artifact | What it is |
+|---|---|
+| `materialize-monitoring` | Helm umbrella chart, plus the Terraform module that installs it |
+| `materialize-monitoring-crds` | Optional CRDs chart, so CRD lifecycle is managed separately |
+| Dashboards | Grafana dashboards-as-code, generated from Python (`grafana-foundation-sdk`) |
+| Pipelines | Alloy agent and gateway pipelines, generated from a typed Rust model |
+| Scrapers | ScrapeConfigs, PodMonitors/ServiceMonitors, and GCP `PodMonitoring` |
+| Container images | A distroless, multi-arch, non-root Alloy image (FIPS boringcrypto) |
+| Documentation | The [docsite](https://materializeinc.github.io/materialize-monitoring/), covering the stack and how to operate it |
 
-TODO
+The umbrella chart bundles the stack itself — Alloy (an agent DaemonSet and a gateway), Loki for logs, Thanos for metrics, Grafana with grafana-operator, Alertmanager, kube-state-metrics, node-exporter, and metrics-server — and layers the generated dashboards, pipelines, scrape configs, and rules on top.
+Each component can be disabled to integrate with infrastructure you already run.
+See [Architecture](https://materializeinc.github.io/materialize-monitoring/architecture/) for how the pieces fit together.
 
-### Materialize Troubleshooting
+## Dashboards
 
-Guided troubleshooting dashboards for common issues.
+**Materialize Environment Overview (`env-top`)** ships today: Day 2 operations for a Materialize environment, across Summary, Kubernetes, Cluster, Connections, Compute, and Storage tabs — including Hydration, Freshness, Sources, and Sinks summaries.
+The same sources render cloud and self-managed variants, and a GCP/GMP-optimized variant.
 
-TODO
+* Source: [`packages/grafana-dashboards/dashboards/`](packages/grafana-dashboards/dashboards/)
+* Generated: [`charts/materialize-monitoring/pre-rendered/dashboards/grafana/`](charts/materialize-monitoring/pre-rendered/dashboards/grafana/), and downloadable from the [docsite](https://materializeinc.github.io/materialize-monitoring/dashboards/grafana/importing/)
+* Installed by the chart through grafana-operator, which keeps them in sync rather than importing a point-in-time copy
 
-### Materialize Infrastructure
+Troubleshooting, Logs & Events, Upgrades, Networking, the per-subsystem drilldowns, and native Datadog / Google Cloud Monitoring / Honeycomb dashboard sets are planned — see the [Dashboards workstream](docs/content/reference/internal/roadmap.md#dashboards) for status.
+Until those land, non-Grafana backends are served by forwarding over OTLP rather than by native dashboards.
 
-Infrastructure-level monitoring for Materialize dependencies.
+## Compatibility
 
-TODO
+Grafana v13+ is required for dashboard schema v2; v12 generally works.
+Dashboards degrade gracefully without the `mz_object_info` metric introduced in Materialize v26.29.0, and the scrapers need the `environmentd` labels introduced in v26.24.0.
+
+[Compatibility](https://materializeinc.github.io/materialize-monitoring/reference/compatibility/) carries the full matrix, including `materialize-terraform-self-managed` and GKE.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the quickstart, and [Internal Development](https://materializeinc.github.io/materialize-monitoring/reference/internal/contributing/) for the full contributor guide.
+
+Bug reports and feature requests belong in [GitHub issues](https://github.com/MaterializeInc/materialize-monitoring/issues).
+For help running Materialize, [reach out for support](https://materialize.com/docs/support/).
 
 ## License
 
-Materialize is provided as a self-managed product and a fully managed cloud service with
-[credit-based pricing](https://materialize.com/pricing/). Included in the price
-are proprietary cloud-native features like horizontal scalability, high
-availability, and a web management console.
+This repository is [licensed](LICENSE) under the Business Source License 1.1, converting to the Apache 2.0 license on April 21, 2030.
 
-We're big believers in advancing the frontier of human knowledge. To
-that end, the source code of the standalone database engine is publicly
-available, in this repository, and [licensed](LICENSE) under the BSL 1.1,
-converting to the open-source Apache 2.0 license after 4 years. As stated in the
-BSL, use of the standalone database engine on a single node is free forever.
+Materialize itself is available as a self-managed product and as a fully managed cloud service with [credit-based pricing](https://materialize.com/pricing/).

@@ -7,7 +7,8 @@ weight: 60
 
 # Roadmap
 
-The goal of `materialize-monitoring` is **first-class, opt-in observability for self-managed Materialize** — logs, metrics, events, and alerts — for customers who want a one-stop-shop, without forcing our stack on customers who already run their own.
+The goal of `materialize-monitoring` is **first-class, composable observability for self-managed Materialize** — logs, metrics, events, and alerts — best-practices-by-default for customers who want a one-stop-shop, without forcing our stack on customers who already run their own.
+Composable is the operative word: the same stack is consumed through Helm with a lot of levers, through our Terraform module, and through the downstream per-cloud Terraform wrappers, and every component can be turned off in favour of one a customer already runs.
 This page is the current source of truth for what is built, what is in flight, and what is planned next.
 
 The work spans two Linear projects, and this page tracks both:
@@ -186,8 +187,8 @@ This replaces the hand-rolled Prometheus + Grafana modules that repo shipped, wh
 | Design doc | FCO-M3 | ✅ |
 | Common module (chart + CRDs flag, values composition, secrets, outputs) | FCO-M3 | ✅ |
 | Terraform tooling in CI (`fmt`, `terraform-docs`, `validate`, and the tier-0 render check) + `terraform/` folded into the `materialize-monitoring` component | FCO-M3 | 🔨 (`tflint` not wired) |
-| Per-cloud wrapper modules; retire the legacy modules downstream | FCO-M3 | 🔨 (AWS + GCP built; Azure in review) |
-| Terraform install guide + tfvars reference + Terraform ↔ chart version compatibility row | FCO-M3 | 🔨 (in review) |
+| Per-cloud wrapper modules; retire the legacy modules downstream | FCO-M3 | ✅ (all three clouds shipped in `materialize-terraform-self-managed` v11, which also flipped `enable_observability` to **on by default** — opt-out rather than opt-in. v11 pins chart 0.17.0; the legacy Prometheus + Grafana modules are retired) |
+| Terraform install guide + tfvars reference + Terraform ↔ chart version compatibility row | FCO-M3 | ✅ |
 | Levers beyond the base install: `storage_class`, `google_cloud_metrics` (GCM fan-out with an importance tier), and a values hash that rolls Alloy on a config change | FCO-M3 | ✅ |
 | Static object-storage credentials ([DEP-203](https://linear.app/materializeinc/issue/DEP-203)), so a consumer without workload identity does not need `additional_values` | OO-M1 | ✅ (`object_storage_access_key_id` / `_secret_access_key`; tier-0 asserts they reach both backends and that Loki's config becomes a Secret rather than a ConfigMap) |
 | Expose the remaining destinations ([DEP-204](https://linear.app/materializeinc/issue/DEP-204)) — OTLP, Datadog, and the full `authType` set. The chart supports all of them; the module surfaces only `google_cloud_metrics` | OO-M1 | ⬜ |
@@ -205,7 +206,7 @@ The rule set ships; the routing that turns a firing rule into a page does not.
 
 | Item | Milestone | Status |
 |---|---|---|
-| Base alert set (severity profiles + runbook stubs) | FCO-M2 | ✅ |
+| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | ⬜ |
 | Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ |

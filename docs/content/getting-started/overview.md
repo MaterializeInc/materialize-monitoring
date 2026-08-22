@@ -13,8 +13,8 @@ The contents of this chapter describe how to install and configure
 
 If you stand up Materialize with the Terraform modules, observability comes up with the cluster — the modules create the buckets and workload identity, then install these charts at a pinned version.
 
-> [!WARNING]
->  **Preview.** The modules are built and validated but not yet in a tagged release of `materialize-terraform-self-managed`. AWS and GCP are wired; Azure still uses the previous Prometheus + Grafana modules.
+Since `materialize-terraform-self-managed` **v11** this is **opt-out rather than opt-in**: `enable_observability` defaults to `true` in every example root, on AWS, GCP, and Azure.
+Set it to `false` if you do not want the stack.
 
 See [Terraform Installation](../terraform/) — including the [tfvars reference](../terraform/#tfvars-reference).
 

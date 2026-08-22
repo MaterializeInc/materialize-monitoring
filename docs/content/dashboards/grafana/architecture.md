@@ -336,7 +336,7 @@ The values are the same either way; what differs is who fills in the cloud speci
 | | Set | Cloud specifics |
 |---|---|---|
 | Helm | `grafana.ingress` / `grafana.service` directly, or layer the `grafana-ingress` profile | Yours — annotations, certificate reference, allowlist |
-| Terraform | `grafana_ingress` (AWS) / `grafana_load_balancer` (GCP, Azure) on the per-cloud monitoring module | The wrapper's — it renders the annotations and passes them as chart values |
+| Terraform | `grafana_load_balancer` on the per-cloud monitoring module — the same variable on all three clouds. AWS adds `grafana_nlb_name` and `grafana_service_port` | The wrapper's — it renders the annotations and passes them as chart values |
 
 The Terraform wrapper does not invent a path around the chart: it computes these same values and appends them ahead of your `additional_values`, so every render-time check below still applies, and anything the wrapper does not model stays reachable.
 See [Reaching Grafana](../../../getting-started/terraform/#reaching-grafana) on the Terraform side for the variables and what each one implies.
@@ -353,12 +353,14 @@ Everywhere else the choice decides the protocol layer, and a Service cannot be t
 | GCP | Application Load Balancer — **L7** | passthrough NLB — **L4** |
 | Azure | Application Gateway — **L7** | Azure Load Balancer — **L4** |
 | Needs a controller installed | yes, except on GKE (built in) | no |
-| Terminates TLS | yes | no — bytes pass through |
+| Terminates TLS | yes, at the load balancer | not at the load balancer — bytes pass through to the pod |
 | Host-based routing | yes | no — one load balancer, one backend |
 | Allowlist the chart can read | no; it lives in controller annotations | `loadBalancerSourceRanges` |
 
-The consequence that matters: **on a Service, nothing in front of Grafana terminates TLS.**
-Grafana serves plain HTTP until it is given a certificate of its own, so `server.root_url` stays `http://` and `security.cookie_secure` must stay off — setting it marks the session cookie `Secure`, the browser then refuses to send it over the connection that actually works, and nobody can log in.
+The consequence that matters: **on a Service, nothing in front of Grafana terminates TLS** — so TLS either terminates at the Grafana pod, or not at all.
+Both are supported, and the chart can issue Grafana the certificate the first one needs. See [Terminating TLS](#terminating-tls) below.
+
+Get that settled before setting `security.cookie_secure`: it marks the session cookie `Secure`, and over a plain-HTTP connection the browser then refuses to send the cookie back, so nobody can log in.
 
 **Pick by what your platform's controllers consume, and by whether you need what L7 adds.**
 A WAF, rate limiting, and authentication at the edge are the things L4 cannot do at all, and they are the reason to take on an ingress controller for a Grafana that faces the internet.
@@ -385,11 +387,44 @@ Note what that enforcement does and does not buy. It requires you to *state* an 
 An Ingress is the case the chart genuinely cannot characterize, because the scope lives in the controller's annotations.
 So it checks the things it can see instead, all as warnings: no `tls` block, no `server.root_url`, no identity provider configured.
 
-### What to set alongside
+### Terminating TLS {#terminating-tls}
 
-**TLS.** Grafana authenticates with a session cookie; without TLS that cookie and the admin password cross the network in the clear.
-Either an Ingress `tls` block backed by cert-manager, or termination at the load balancer against a cloud-held certificate (ACM on AWS) — in the second case the `tls` block stays empty and the chart's warning is asking you to confirm that, not to add a Secret you do not have.
-Set `security.cookie_secure: true` once it is in place, and not before: until then the cookie is never sent and nobody can log in.
+Grafana authenticates with a session cookie, so without TLS that cookie and the admin password cross the network in the clear.
+There are three shapes, and which one applies follows from the layer you exposed it at.
+
+| | Where TLS terminates | What you set |
+|---|---|---|
+| **L4 load balancer** (the Terraform default, all three clouds) | The Grafana pod | `certificates.external` — the chart issues the certificate |
+| **L7 load balancer** with a cloud-managed certificate | The load balancer | An ARN or resource ID in `grafana.service.annotations` / the Ingress controller's annotations |
+| **Ingress** with cert-manager | The ingress controller | An Ingress `tls` block naming the Secret |
+
+**Behind an L4 load balancer the material has to exist in the cluster**, because the load balancer passes TCP through and the pod is the only thing left that can terminate.
+That is what `certificates.external` is for, and it is why it is a separate `issuerRef` from `certificates.internal`: a public ACME issuer cannot sign `grafana.monitoring.svc`, and a self-signed root means nothing to a browser.
+
+```yaml
+certificates:
+  enabled: true
+  external:
+    issuerRef:
+      name: letsencrypt-prod   # or a private CA that signs your public names
+      kind: ClusterIssuer
+    dnsNames:
+      - grafana.example.com    # what users type, and what root_url says
+```
+
+That renders a second `Certificate` for Grafana — `<release>-grafana-external-tls` — alongside its internal one, and adds the same public names to the internal certificate's SANs so an in-cluster client dialing the public name still matches.
+
+> [!INFO]
+>   The chart **issues** the certificate; it does not wire Grafana to serve it.
+>   Mount the Secret with `grafana.extraSecretMounts` and point `grafana.ini.server` at the files (`protocol`, `cert_file`, `cert_key`).
+>   `grafana.ini` is an arbitrary-config passthrough, so anything Grafana understands can go there.
+
+For an **L7** load balancer holding a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault), the key never enters the cluster — leave `certificates.external` unset and attach the certificate by annotation.
+Setting `dnsNames` without an `issuerRef.name` renders nothing and warns, precisely so this case is stated rather than assumed.
+
+Once TLS is in place, set `security.cookie_secure: true` — and not before.
+
+### What to set alongside
 
 **DNS.** Neither object publishes the hostname, and the chart has no view of your zone, so the record is a separate step.
 It is easy to forget until an ACME challenge fails against a name that does not resolve.
