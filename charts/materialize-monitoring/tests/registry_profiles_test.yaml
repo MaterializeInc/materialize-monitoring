@@ -171,9 +171,10 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: '^cgr\.dev/<ORG>/loki:'
 
-  # memcached's image block has no `registry` key, so the host has to ride along
-  # in `repository`. Renders as a bare `memcached:<tag>` if that is missed.
-  - it: chainguard profile repoints Loki's memcached, which has no registry key
+  # memcached had no `registry` key until Loki 18.11.0, so the profiles used to
+  # carry the host in `repository`. Once the key appeared that double-prefixed
+  # into `docker.io/cgr.dev/...`, which is what this pins against recurring.
+  - it: chainguard profile repoints Loki's memcached without double-prefixing it
     values:
       - ../profiles/registry/chainguard.values.yaml
     template: ../charts/loki/templates/chunks-cache/statefulset.yaml
@@ -290,19 +291,31 @@ tests:
           path: spec.template.spec.containers[0].image
           value: "<REGISTRY>/quay/prometheus/node-exporter:v1.12.1-distroless"
 
-  # The four images whose host lives inside `repository`, which anchors cannot
-  # reach and which are the likely way to get this half-applied.
+  # The images whose host lives inside `repository`, which anchors cannot reach
+  # and which are the likely way to get this half-applied. Loki's memcached pair
+  # was here until 18.11.0 gave it a `registry` key; the anchors cover it now.
   - it: mirror profile covers the images that carry the host in the repository
     values:
       - ../profiles/registry/mirror.values.yaml
     templates:
       - ../charts/alertmanager/templates/statefulset.yaml
-      - ../charts/loki/templates/chunks-cache/statefulset.yaml
       - ../charts/metrics-server/templates/deployment.yaml
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[0].image
-          pattern: '^<REGISTRY>/(quay/prometheus/alertmanager|dockerhub/library/memcached|registry-k8s-io/metrics-server/metrics-server):'
+          pattern: '^<REGISTRY>/(quay/prometheus/alertmanager|registry-k8s-io/metrics-server/metrics-server):'
+
+  # memcached composes the anchor with the chart's own `library/memcached`
+  # default rather than being spelled out, so this pins that the two halves
+  # still meet and neither side got prefixed twice.
+  - it: mirror profile reaches Loki's memcached through the anchor alone
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    template: ../charts/loki/templates/chunks-cache/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "<REGISTRY>/dockerhub/library/memcached:1.6.45-alpine"
 
   # ---------------------------------------------------------------------------
   # Composition

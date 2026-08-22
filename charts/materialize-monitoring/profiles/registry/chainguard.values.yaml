@@ -70,17 +70,21 @@ loki:
     image:
       registry: "cgr.dev"
       repository: "<ORG>/loki-canary"
-  # `memcached.image` and `memcachedExporter.image` have no `registry` key of
-  # their own — the Loki helper only reads a global one — so the host goes in
-  # `repository`. Do not "fix" this by setting `global.imageRegistry`: that key
-  # outranks every per-component `registry` in the Loki chart and would drag the
-  # rest of the stack's images onto cgr.dev too.
+  # Loki 18.11.0 gave these two a `registry` key of their own and renamed the
+  # memcached repository to `library/memcached`. Before that the host had to ride
+  # along inside `repository`, which double-prefixed once the key appeared.
+  #
+  # Do not reach for `global.imageRegistry` instead: it still outranks every
+  # per-component `registry` in the Loki chart and would drag the rest of the
+  # stack's images onto cgr.dev too.
   memcached:
     image:
-      repository: "cgr.dev/<ORG>/memcached"
+      registry: "cgr.dev"
+      repository: "<ORG>/memcached"
   memcachedExporter:
     image:
-      repository: "cgr.dev/<ORG>/memcached-exporter"
+      registry: "cgr.dev"
+      repository: "<ORG>/memcached-exporter"
   # Inert unless `loki.gateway.enabled` is turned on. Chainguard publishes no
   # `nginx-unprivileged` variant because its `nginx` already runs non-root.
   gateway:
