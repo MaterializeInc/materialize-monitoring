@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.11.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.19.0 (Unreleased)
 
 _Changes Pending_
@@ -160,9 +164,26 @@ _Changes Pending_
 * Included Prometheus Scrapers @ v0.3.0..v0.4.0
 * Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
 
-## mzmon-lib (shared library) v0.10.0 (Unreleased)
+## mzmon-lib (shared library) v0.10.0
 
-_Changes Pending_
+* DEP-195 Implement TLS across stack
+    * [materialize-monitoring#254](https://github.com/MaterializeInc/materialize-monitoring/pull/254)
+* Update Rust crate jsonschema to v0.49.9
+    * [materialize-monitoring#209](https://github.com/MaterializeInc/materialize-monitoring/pull/209)
+* Provide Datadog queries in documentation
+    * [materialize-monitoring#249](https://github.com/MaterializeInc/materialize-monitoring/pull/249)
+* DEP-185 Add an E2E test suite
+    * [materialize-monitoring#233](https://github.com/MaterializeInc/materialize-monitoring/pull/233)
+* DEP-187 Scrape cadvisor from kubelet instead of via daemonset
+    * [materialize-monitoring#222](https://github.com/MaterializeInc/materialize-monitoring/pull/222)
+* DEP-190 Provide separate sizing profiles for thanos
+    * [materialize-monitoring#210](https://github.com/MaterializeInc/materialize-monitoring/pull/210)
+* Update Rust crate jsonschema to v0.49.4
+    * [materialize-monitoring#206](https://github.com/MaterializeInc/materialize-monitoring/pull/206)
+* Convert raw blocks into structured configs
+    * [materialize-monitoring#203](https://github.com/MaterializeInc/materialize-monitoring/pull/203)
+* DEP-187 Collect cAdvisor metrics with Alloy
+    * [materialize-monitoring#200](https://github.com/MaterializeInc/materialize-monitoring/pull/200)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.14.0
 
