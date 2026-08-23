@@ -40,8 +40,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::release_notes::NoteMap;
+
 /// Repo slug used to build PR links in changelog entries.
-const REPO_SLUG: &str = "MaterializeInc/materialize-monitoring";
+pub(crate) const REPO_SLUG: &str = "MaterializeInc/materialize-monitoring";
 
 /// Arguments for the read-only `changelog` report.
 #[derive(clap::Args)]
@@ -273,6 +275,19 @@ fn changed_paths(hash: &str) -> anyhow::Result<Vec<String>> {
         .collect())
 }
 
+/// The numbers of the PRs merged in `since..until`, in history order.
+///
+/// Cheaper than [`collect_merges`] — no per-merge diff — because the caller only
+/// needs the numbers to pre-fetch release notes for.
+pub(crate) fn pr_numbers(since: &str, until: &str) -> anyhow::Result<Vec<u64>> {
+    let range = format!("{since}..{until}");
+    let raw = git(&["log", "--first-parent", "--merges", &range, "--format=%s"])?;
+    Ok(raw
+        .lines()
+        .filter_map(|subject| parse_subject(subject.trim()).0)
+        .collect())
+}
+
 /// Collect first-parent merge commits in `since..until`.
 fn collect_merges(since: &str, until: &str) -> anyhow::Result<Vec<PrMerge>> {
     let range = format!("{since}..{until}");
@@ -488,16 +503,28 @@ struct RenderCtx<'a> {
     /// Latest released version per component (absent for brand-new streams);
     /// used to render the `@ vPREV..vNEW` range on dependency rollups.
     prev: &'a IndexMap<String, SemVer>,
+    /// Author-written release notes per PR number, nested under that PR's
+    /// bullet. Empty when GitHub could not be read (see [`crate::release_notes`]).
+    notes: &'a NoteMap,
 }
 
-/// Append a PR bullet (title + indented link) at the given indent level.
-fn push_pr(out: &mut Vec<String>, pr: &PrMerge, level: usize) {
+/// Append a PR bullet at the given indent level: its title, then the PR link and
+/// any release notes the author wrote, as siblings one level deeper. Notes keep
+/// the nesting they had in the PR description.
+fn push_pr(out: &mut Vec<String>, pr: &PrMerge, level: usize, notes: &NoteMap) {
     let indent = "    ".repeat(level);
     out.push(format!("{indent}* {}", pr.bullet_text()));
     if let Some(n) = pr.number {
         out.push(format!(
             "{indent}    * [materialize-monitoring#{n}](https://github.com/{REPO_SLUG}/pull/{n})"
         ));
+        for note in notes.get(&n).into_iter().flatten() {
+            out.push(format!(
+                "{}* {}",
+                "    ".repeat(level + 1 + note.depth),
+                note.text
+            ));
+        }
     }
 }
 
@@ -512,7 +539,7 @@ fn render_section(name: &str, c: &Component, ctx: &RenderCtx<'_>) -> Vec<String>
     for a in ctx.attributed {
         if a.owners.contains_key(name) {
             seen.insert(a.pr.key());
-            push_pr(&mut body, a.pr, 0);
+            push_pr(&mut body, a.pr, 0, ctx.notes);
         }
     }
 
@@ -567,7 +594,7 @@ fn render_deps(
         out.push(format!("{indent}* Included {} @ {span}", dc.title));
         for a in ctx.attributed {
             if a.owners.contains_key(dep) && seen.insert(a.pr.key()) {
-                push_pr(out, a.pr, level + 1);
+                push_pr(out, a.pr, level + 1, ctx.notes);
             }
         }
         children.push(dep.clone());
@@ -804,6 +831,7 @@ pub(crate) fn plan_release(
     uv_lock_path: &Path,
     since: &str,
     until: &str,
+    notes: &NoteMap,
 ) -> anyhow::Result<Option<ReleasePlan>> {
     let merges = collect_merges(since, until)?;
     let attributed = attribute(&merges, comps);
@@ -831,6 +859,7 @@ pub(crate) fn plan_release(
         bumping: &bumping,
         versions: &versions,
         prev: &prev,
+        notes,
     };
 
     let (changelog_content, released) = apply_version_update(&parsed, target, &ctx)?;
@@ -914,6 +943,10 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
         anyhow::bail!("component {target:?} has no changelog stream");
     }
 
+    // Release notes come from the merged PRs' descriptions, so this reads
+    // GitHub when a token is available; without one the notes are omitted.
+    let notes = crate::release_notes::resolve(&pr_numbers(&args.since, &args.until)?);
+
     let plan = plan_release(
         &comps,
         target,
@@ -921,6 +954,7 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
         &args.uv_lock,
         &args.since,
         &args.until,
+        &notes,
     )?
     .ok_or_else(|| anyhow!("no changes attributed to {target:?} since {}", args.since))?;
 
@@ -999,6 +1033,23 @@ mod tests {
 
     fn link(n: u64) -> String {
         format!("    * [materialize-monitoring#{n}](https://github.com/{REPO_SLUG}/pull/{n})")
+    }
+
+    /// A [`NoteMap`] from `(pr, [(depth, text)])` pairs.
+    fn notes(entries: &[(u64, &[(usize, &str)])]) -> NoteMap {
+        entries
+            .iter()
+            .map(|(n, ns)| {
+                let notes = ns
+                    .iter()
+                    .map(|(depth, text)| crate::release_notes::Note {
+                        depth: *depth,
+                        text: text.to_string(),
+                    })
+                    .collect();
+                (*n, notes)
+            })
+            .collect()
     }
 
     // ---- SemVer ---------------------------------------------------------
@@ -1270,13 +1321,44 @@ mod tests {
 
     #[test]
     fn push_pr_levels() {
+        let empty = NoteMap::new();
         let mut out = Vec::new();
-        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 0);
+        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 0, &empty);
         assert_eq!(out, vec!["* T".to_string(), link(5)]);
 
         let mut out = Vec::new();
-        push_pr(&mut out, &pr(None, Some("T"), None, &[]), 1);
+        push_pr(&mut out, &pr(None, Some("T"), None, &[]), 1, &empty);
         assert_eq!(out, vec!["    * T".to_string()]); // no number -> no link
+    }
+
+    #[test]
+    fn push_pr_release_notes_follow_the_link() {
+        // Notes sit alongside the link and keep their own nesting.
+        let ns = notes(&[(5, &[(0, "Added a thing"), (1, "Off by default")])]);
+        let mut out = Vec::new();
+        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 0, &ns);
+        assert_eq!(
+            out,
+            vec![
+                "* T".to_string(),
+                link(5),
+                "    * Added a thing".to_string(),
+                "        * Off by default".to_string(),
+            ]
+        );
+
+        // Nested under a dependency rollup, everything shifts together.
+        let mut out = Vec::new();
+        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 1, &ns);
+        assert_eq!(
+            out,
+            vec![
+                "    * T".to_string(),
+                format!("    {}", link(5)),
+                "        * Added a thing".to_string(),
+                "            * Off by default".to_string(),
+            ]
+        );
     }
 
     // ---- render_section / render_deps -----------------------------------
@@ -1351,12 +1433,15 @@ mod tests {
         )]
         .into_iter()
         .collect();
+        // #12 carries a release note; #11 does not.
+        let ns = notes(&[(12, &[(0, "Renamed a metric")])]);
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
             bumping: &bumping,
             versions: &versions,
             prev: &prev,
+            notes: &ns,
         };
 
         // Pipeline: #11 first-class; #12 under lib; #11 not repeated.
@@ -1372,6 +1457,7 @@ mod tests {
                 "* Included lib @ v0.4.0..v0.5.0".to_string(),
                 "    * Lib only".to_string(),
                 format!("    {}", link(12)),
+                "        * Renamed a metric".to_string(),
             ]
         );
 
@@ -1389,6 +1475,7 @@ mod tests {
                 "* Included lib @ v0.4.0..v0.5.0".to_string(),
                 "    * Lib only".to_string(),
                 format!("    {}", link(12)),
+                "        * Renamed a metric".to_string(),
             ]
         );
     }
@@ -1418,20 +1505,24 @@ mod tests {
             [("foo".to_string(), semver(0, 6, 0))].into_iter().collect();
         let prev: IndexMap<String, SemVer> =
             [("foo".to_string(), semver(0, 5, 0))].into_iter().collect();
+        let ns = notes(&[(20, &[(0, "`foo.bar` now defaults to `true`")])]);
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
             bumping: &bumping,
             versions: &versions,
             prev: &prev,
+            notes: &ns,
         };
 
         let (out, released) = apply_version_update(&parsed, "foo", &ctx).unwrap();
         assert_eq!(released, semver(0, 6, 0));
         // Fresh placeholder for the next version, at the top.
         assert!(out.contains("## Foo v0.7.0 (Unreleased)\n\n_Changes Pending_"));
-        // The v0.6.0 placeholder is promoted in place and populated.
+        // The v0.6.0 placeholder is promoted in place and populated, with the
+        // PR's release note nested under its link.
         assert!(out.contains("## Foo v0.6.0\n\n* Cool foo change"));
+        assert!(out.contains("\n    * `foo.bar` now defaults to `true`\n"));
         assert!(!out.contains("## Foo v0.6.0 (Unreleased)"));
         // Other sections preserved verbatim.
         assert!(out.contains("## Bar v0.9.0 (Unreleased)"));
@@ -1453,12 +1544,14 @@ mod tests {
         let versions: IndexMap<String, SemVer> =
             [("foo".to_string(), semver(0, 6, 0))].into_iter().collect();
         let prev: IndexMap<String, SemVer> = IndexMap::new();
+        let empty = NoteMap::new();
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
             bumping: &bumping,
             versions: &versions,
             prev: &prev,
+            notes: &empty,
         };
         assert!(apply_version_update(&parsed, "foo", &ctx).is_err());
     }

@@ -1,0 +1,15 @@
+<!-- What changed, and why. Link the Linear issue if there is one. -->
+
+### Release Notes
+
+<!--
+These bullets are copied verbatim into CHANGELOG.md, nested under this PR's
+entry, for every component this PR bumps. Write them for someone consuming the
+released artifact — a new or renamed value, a changed default, a metric or label
+they need to react to — not for a reviewer of this diff.
+
+Nested bullets keep their nesting. Comments like this one are stripped.
+Leave `* None` when nothing needs saying; the section is then dropped entirely.
+-->
+
+* None

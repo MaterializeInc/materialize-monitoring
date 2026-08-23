@@ -27,16 +27,22 @@
 //! - `GITHUB_SHA` — base commit the branches build on (the merge commit on the
 //!   default branch); falls back to `git rev-parse HEAD`.
 //!
-//! `--dry-run` skips all GitHub calls and prints the plan (still requires
-//! `CI=true`). GitHub releases/tags are handled by a separate command.
+//! `--dry-run` prints the plan and makes no *mutating* GitHub calls (still
+//! requires `CI=true`). It does still perform the read-only fetch of merged PRs'
+//! release notes when a token is available, so the plan is computed exactly as a
+//! real run would compute it. GitHub releases/tags are handled by a separate
+//! command.
 
 use anyhow::{Context, anyhow};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use crate::github::Gh;
+use crate::release_notes;
 use crate::versioning::{
-    ReleasePlan, latest_released, load_components, parse_changelog, plan_release, rev_parse,
+    ReleasePlan, latest_released, load_components, parse_changelog, plan_release, pr_numbers,
+    rev_parse,
 };
 
 /// Arguments for the `propose-bumps` command.
@@ -114,14 +120,14 @@ pub fn propose_bumps(args: ProposeBumpsArgs) -> anyhow::Result<()> {
     let parsed = parse_changelog(&changelog_text)
         .with_context(|| format!("parsing {}", args.changelog.display()))?;
 
-    let mut proposals: Vec<Proposal> = Vec::new();
+    // Each component's "since" boundary is the tag for its latest released
+    // version. Without a prior release (or its tag), skip: a first release is
+    // bootstrapped manually rather than guessed.
+    let mut baselines: Vec<(String, String)> = Vec::new();
     for (name, comp) in &comps {
         if !comp.changelog {
             continue;
         }
-        // The since boundary is the tag for the component's latest released
-        // version. Without a prior release (or its tag), skip: a first release
-        // is bootstrapped manually rather than guessed.
         let Some(released) = latest_released(&comp.title, &parsed) else {
             eprintln!("skip {name}: no prior release; bootstrap its first release manually");
             continue;
@@ -131,14 +137,31 @@ pub fn propose_bumps(args: ProposeBumpsArgs) -> anyhow::Result<()> {
             eprintln!("skip {name}: release tag {tag} not found; create it to set the baseline");
             continue;
         }
+        baselines.push((name.clone(), tag));
+    }
 
+    // Release notes are fetched once for the union of the components' windows:
+    // the windows overlap heavily (one PR often lands in several), and this
+    // keeps the GitHub reads out of the per-component planning loop.
+    let numbers: BTreeSet<u64> = baselines
+        .iter()
+        .map(|(_, tag)| pr_numbers(tag, &args.until))
+        .collect::<anyhow::Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    let notes = release_notes::resolve(&numbers.into_iter().collect::<Vec<_>>());
+
+    let mut proposals: Vec<Proposal> = Vec::new();
+    for (name, tag) in &baselines {
         let Some(plan) = plan_release(
             &comps,
             name,
             &args.changelog,
             &args.uv_lock,
-            &tag,
+            tag,
             &args.until,
+            &notes,
         )?
         else {
             continue; // no changes — leave any existing branch/PR as-is
@@ -146,7 +169,11 @@ pub fn propose_bumps(args: ProposeBumpsArgs) -> anyhow::Result<()> {
 
         proposals.push(Proposal {
             branch: format!("{}{name}", args.branch_prefix),
-            title: format!("Release {} {}", comp.title, plan.released.changelog()),
+            title: format!(
+                "Release {} {}",
+                comps[name].title,
+                plan.released.changelog()
+            ),
             name: name.clone(),
             plan,
         });

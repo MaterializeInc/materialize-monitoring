@@ -49,6 +49,9 @@ A PR already shown as a first-class change in a section is not repeated under th
 When a PR touches two sibling dependencies, the one declared first in `dependencies` claims it; order the main content components ahead of shared/common ones so changes surface in the more specific stream.
 A single PR can still appear in several components' sections; that duplication is intentional, so each component's release reads completely on its own.
 
+Under each PR's bullet sit its link and then any **release notes** the author wrote in the PR description, so a reader gets the consumer-facing detail without opening the PR.
+See [Release notes from PR descriptions](releasing/#release-notes-from-pr-descriptions) for what is picked up and what is dropped.
+
 ## How versions are synced
 
 Versions are read from `CHANGELOG.md` for each component.
@@ -63,14 +66,16 @@ Both subcommands live in `mz-monitoring-build` and default to a dry run; `--writ
 
 - `mz-monitoring-build changelog --since <ref> [--until <ref>] [--verbose]` is **read-only**: it reports which merged PRs each component would collect and the version each would bump to — a preview for validating `components.yaml` against real history.
 - `mz-monitoring-build release --component <name> --since <ref> [--write]` generates a `version-update/<component>` PR: it promotes that component's `_Changes Pending_` placeholder in place into a populated released section, inserts a fresh placeholder at the top, and bumps the component's `version_paths`.
+  With a `GITHUB_TOKEN` in the environment it also reads the merged PRs' descriptions for their release notes; without one it prints a warning and omits them, so its output is otherwise reproducible offline.
 
 The shared logic (component model, changelog parsing, attribution, cascade rendering, version rewriting) lives in the `versioning` module and is unit-tested without invoking git.
+Release-note extraction lives alongside it in `release_notes`, and is likewise unit-tested against real PR-description shapes without touching the network.
 
-## Release PR automation (TODO)
+## Release PR automation
 
-The orchestration that drives `release` from CI is not built yet (see [Releasing](releasing/) for the intended state machine).
-Any merge to `main` should create or update the `version-update/*` PRs for components with changes; tags `<component>/vX.Y.Z` are created when such a PR merges; a GitHub Release follows each tag.
+The orchestration that drives `release` from CI is built: `propose-bumps` runs on every merge to `main` and creates or updates the `version-update/*` PRs for components with changes, `publish-release` creates the `<component>/vX.Y.Z` tag and GitHub Release when such a PR merges.
 The per-component tag doubles as that component's `--since` boundary.
+See [Releasing](releasing/) for the full state machine and the workflows that drive it.
 
 ## Design principles
 

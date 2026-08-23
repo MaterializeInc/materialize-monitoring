@@ -40,7 +40,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-cadvisor.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
     * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; not consumed by customers
-    * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`)
+    * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
     * `mz-monitoring-check/`: Rust schema/consistency checks
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
@@ -79,4 +79,4 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `grafonnet/`: grafonnet/jsonnet vendoring (`jsonnetfile.json` + lock)
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
-  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever
+  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`; also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever

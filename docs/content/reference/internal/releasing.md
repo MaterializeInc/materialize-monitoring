@@ -80,7 +80,7 @@ Required environment:
 | `GITHUB_REPOSITORY` | `owner/repo` (set by GitHub Actions). |
 | `GITHUB_SHA` | Base commit the branches build on; falls back to `git rev-parse HEAD`. |
 
-`--dry-run` prints the plan and makes no GitHub calls (still requires `CI=true`).
+`--dry-run` prints the plan and makes no *mutating* GitHub calls (still requires `CI=true`); it does still read PR descriptions for their release notes, so the plan it computes is the one a real run would.
 `--draft` opens PRs as drafts (the default in our workflow for now); draft state blocks accidental merges.
 `--automerge` best-effort enables auto-merge on newly opened PRs.
 
@@ -106,6 +106,44 @@ jobs:
 ```
 
 **Bootstrapping:** the per-component "since" boundary is the tag `<component>/v<latest released>`. Create those tags at the current release point before the first run (e.g. `git tag mzmon-lib/v0.5.0 <commit>`); a component with no prior release or missing tag is skipped with a message. `propose-bumps` does **not** create tags or releases — that is `publish-release` below.
+
+## Release notes from PR descriptions
+
+A PR title says what changed; only the author can say what a *consumer* of the released artifact needs to know about it.
+That cannot be derived from the diff, so the changelog tooling reads a `### Release Notes` section out of each merged PR's description and nests its bullets under that PR's changelog entry, alongside the PR link.
+
+The [PR template](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/pull_request_template.md) seeds the section with `* None`, which is dropped — so the default is to say nothing, and an author opts in by replacing it.
+
+```markdown
+### Release Notes
+
+* `alloy.extraArgs` is new, defaulting to `[]`
+  * Ignored by the CRDs chart
+```
+
+lands in the changelog as:
+
+```markdown
+* Support extra alloy arguments
+    * [materialize-monitoring#281](https://github.com/MaterializeInc/materialize-monitoring/pull/281)
+    * `alloy.extraArgs` is new, defaulting to `[]`
+        * Ignored by the CRDs chart
+```
+
+What gets picked up:
+
+- **List items** under the heading, with their relative nesting preserved. Indent width does not matter, only the nesting the author expressed.
+- **Headings that carry a link.** This is how renovate summarizes an upstream changelog — one ``### [`v3.2.1`](…)`` heading per released version, usually wrapped in a `<details>` block — so a dependency bump contributes a linked entry per upstream version. Once any heading appears, the prose and bullets *beneath* it are the upstream project's detail rather than notes about this change, so only the linked headings survive.
+
+What gets dropped: HTML comments (so the template's instructions never reach the changelog), an absent or empty section, and a section that says only `None`/`N/A` — along with anything nested under such an entry.
+The section ends at the next *unlinked* heading at its own level or shallower (an author's `### Testing`, renovate's `### Configuration` footer), or at the end of the description.
+
+Notes are an **enrichment, not a gate**. With no `GITHUB_TOKEN`, or when a description cannot be read, the run warns and continues without them rather than failing — and since `propose-bumps` rebuilds its branches from scratch on every merge to the default branch, a transient failure self-heals on the next merge.
+The descriptions are fetched once for the union of all components' windows, since one PR often lands in several.
+
+> [!NOTE]
+>   The notes are read from the PR description **as it stands when `propose-bumps` runs**, not as it stood at merge time.
+>   Editing a merged PR's description therefore still changes what the next run writes, right up until the version-update PR merges — which is the escape hatch when a note was wrong or missing.
 
 ## `publish-release` (runs when a version-update PR merges)
 

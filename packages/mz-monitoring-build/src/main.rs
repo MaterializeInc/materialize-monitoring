@@ -16,6 +16,7 @@ mod gen_scrape_configs;
 mod github;
 mod propose;
 mod publish;
+mod release_notes;
 mod versioning;
 
 #[derive(Parser)]
