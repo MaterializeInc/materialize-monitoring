@@ -18,7 +18,10 @@
 //! What counts as a note inside that section:
 //!
 //! - **List items**, with their relative nesting preserved. Indent width does
-//!   not matter — only the nesting the author expressed.
+//!   not matter — only the nesting the author expressed. An item may span
+//!   several source lines: continuation lines are folded back into the item they
+//!   belong to, so a note wrapped for line length (or written a sentence per
+//!   line, as this repo's Markdown style asks) survives whole.
 //! - **Headings that carry a link.** This is how renovate summarizes an upstream
 //!   changelog: one `### [`v3.2.1`](…)` heading per released version, usually
 //!   inside a `<details>` block, and at the same level as the `### Release Notes`
@@ -134,6 +137,17 @@ fn is_fence(line: &str) -> bool {
     line.starts_with("```") || line.starts_with("~~~")
 }
 
+/// A thematic break (`---`, `***`, `___`). Directly under a paragraph CommonMark
+/// reads `---` as a setext heading instead, so either way it is not text
+/// continuing the item above it.
+fn is_thematic_break(line: &str) -> bool {
+    let line = line.trim();
+    line.len() >= 3
+        && ['-', '*', '_']
+            .into_iter()
+            .any(|mark| line.chars().all(|c| c == mark))
+}
+
 /// A list item's indent (in columns, a tab counting as 4) and its text.
 /// Accepts `*`/`-`/`+` and ordered `1.`/`1)` markers.
 fn list_item(line: &str) -> Option<(usize, &str)> {
@@ -240,10 +254,14 @@ pub(crate) fn extract(body: &str) -> Vec<Note> {
     // Renovate nests its per-version headings inside `<details>`; those are part
     // of the notes, so only a heading at depth 0 can close the section.
     let mut details = 0usize;
+    // Whether the previous line was part of a list item, and so whether a plain
+    // line here continues it rather than starting something new.
+    let mut continuing = false;
 
     for line in lines {
         if is_fence(line) {
             fenced = !fenced;
+            continuing = false;
             continue;
         }
         if fenced {
@@ -252,7 +270,14 @@ pub(crate) fn extract(body: &str) -> Vec<Note> {
         details += line.matches("<details").count();
         details = details.saturating_sub(line.matches("</details>").count());
 
+        // A blank line closes the item above it: whatever follows starts fresh.
+        if line.trim().is_empty() {
+            continuing = false;
+            continue;
+        }
+
         if let Some((level, text)) = heading(line) {
+            continuing = false;
             // A linked heading is a note wherever it sits — renovate does not
             // always wrap its per-version headings in `<details>`, and it emits
             // them at the same level as the `### Release Notes` heading itself.
@@ -280,6 +305,21 @@ pub(crate) fn extract(body: &str) -> Vec<Note> {
                 depth: indents.len() - 1,
                 text: text.to_string(),
             });
+            continuing = true;
+        } else if continuing
+            && !seen_heading
+            && !is_thematic_break(line)
+            // A raw HTML block (renovate's `<details>`/`<summary>`) is structure,
+            // not prose the author meant to continue an item with.
+            && !line.trim_start().starts_with('<')
+            && let Some(last) = notes.last_mut()
+        {
+            // Fold the continuation back into its item as one line, which is how
+            // a Markdown renderer displays it anyway.
+            last.text.push(' ');
+            last.text.push_str(line.trim());
+        } else {
+            continuing = false;
         }
     }
 
@@ -409,6 +449,85 @@ mod tests {
             vec![(0, "a")]
         );
         assert!(extract("### Release Note\n\n* a\n").is_empty()); // not the section
+    }
+
+    // ---- extract: multi-line items --------------------------------------
+
+    #[test]
+    fn extract_folds_continuation_lines_into_their_item() {
+        // Indented continuation, the CommonMark form.
+        let body = "### Release Notes\n\n* `alloy.extraArgs` is new, defaulting to `[]`.\n  It is ignored by the CRDs chart.\n* Second note\n";
+        assert_eq!(
+            flat(&extract(body)),
+            vec![
+                (
+                    0,
+                    "`alloy.extraArgs` is new, defaulting to `[]`. It is ignored by the CRDs chart."
+                ),
+                (0, "Second note"),
+            ]
+        );
+
+        // Lazy continuation, with no indent at all.
+        let body = "### Release Notes\n\n* A note that runs on\nwithout indenting\n";
+        assert_eq!(
+            flat(&extract(body)),
+            vec![(0, "A note that runs on without indenting")]
+        );
+
+        // Several continuation lines fold into one, and a nested item's do too.
+        let body = "### Release Notes\n\n* Parent line one\n  line two\n  line three\n  * Child line one\n    child line two\n";
+        assert_eq!(
+            flat(&extract(body)),
+            vec![
+                (0, "Parent line one line two line three"),
+                (1, "Child line one child line two"),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_continuation_stops_at_a_boundary() {
+        // A blank line closes the item: trailing prose is not folded in.
+        let body = "### Release Notes\n\n* A note\n\nLoose prose after a blank line\n";
+        assert_eq!(flat(&extract(body)), vec![(0, "A note")]);
+
+        // A thematic break is not continuation text.
+        let body = "### Release Notes\n\n* A note\n---\nprose\n";
+        assert_eq!(flat(&extract(body)), vec![(0, "A note")]);
+
+        // Neither is a raw HTML block.
+        let body = "### Release Notes\n\n* A note\n<details>\n<summary>upstream</summary>\n";
+        assert_eq!(flat(&extract(body)), vec![(0, "A note")]);
+
+        // Nor a fenced block's contents.
+        let body = "### Release Notes\n\n* A note\n```\nnot folded in\n```\n";
+        assert_eq!(flat(&extract(body)), vec![(0, "A note")]);
+    }
+
+    #[test]
+    fn extract_placeholder_survives_continuation() {
+        // "None" spread over two lines is still nothing to say.
+        assert!(extract("### Release Notes\n\n* None\n").is_empty());
+        // But a note that merely starts with a placeholder-ish word is kept.
+        let body =
+            "### Release Notes\n\n* None of the alert names changed,\n  but their labels did.\n";
+        assert_eq!(
+            flat(&extract(body)),
+            vec![(0, "None of the alert names changed, but their labels did.")]
+        );
+    }
+
+    // ---- is_thematic_break ----------------------------------------------
+
+    #[test]
+    fn is_thematic_break_variants() {
+        for line in ["---", "***", "___", "  ----  ", "-----"] {
+            assert!(is_thematic_break(line), "{line:?} should be a break");
+        }
+        for line in ["--", "-- -", "- item", "text", ""] {
+            assert!(!is_thematic_break(line), "{line:?} should not be a break");
+        }
     }
 
     // ---- extract: renovate ----------------------------------------------

@@ -38,7 +38,7 @@ PRs are found by walking the **first-parent** history of the range, and both of 
 | Merge commit | 2 | `Merge pull request #N from <branch>` | first non-empty line of the body |
 | Squash commit | 1 | the PR title, with a `(#N)` suffix | the subject, suffix stripped |
 
-Most human PRs land as merge commits and most renovate PRs land as squash commits, so recognizing only the first would drop a large share of dependency bumps — including the ones whose descriptions carry the richest [release notes](releasing/#release-notes-from-pr-descriptions).
+Most human PRs land as merge commits and most renovate PRs land as squash commits, so recognizing only the first would drop a large share of dependency bumps — including the ones whose descriptions carry the richest [release notes](../releasing/#release-notes-from-pr-descriptions).
 
 A merge commit is itself evidence of an integration event, so one without a `#N` still earns an entry, labeled by branch or short hash.
 A lone commit is not — it could be any direct push to the branch — so without a `(#N)` there is no PR to attribute it to and it is skipped.
@@ -63,15 +63,15 @@ When a PR touches two sibling dependencies, the one declared first in `dependenc
 A single PR can still appear in several components' sections; that duplication is intentional, so each component's release reads completely on its own.
 
 Under each PR's bullet sit its link and then any **release notes** the author wrote in the PR description, so a reader gets the consumer-facing detail without opening the PR.
-See [Release notes from PR descriptions](releasing/#release-notes-from-pr-descriptions) for what is picked up and what is dropped.
+See [Release notes from PR descriptions](../releasing/#release-notes-from-pr-descriptions) for what is picked up and what is dropped.
 
 ## How versions are synced
 
 Versions are read from `CHANGELOG.md` for each component.
-Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](releasing/)).
+Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](../releasing/)).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
 The next version defaults to a minor bump; **a patch or a major is expressed by editing the placeholder heading**, which the tooling reads and never overrides.
-See [Choosing the next version](releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose.
+See [Choosing the next version](../releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose.
 
 ## Tooling
 
@@ -88,7 +88,7 @@ Release-note extraction lives alongside it in `release_notes`, and is likewise u
 
 The orchestration that drives `release` from CI is built: `propose-bumps` runs on every merge to `main` and creates or updates the `version-update/*` PRs for components with changes, `publish-release` creates the `<component>/vX.Y.Z` tag and GitHub Release when such a PR merges.
 The per-component tag doubles as that component's `--since` boundary.
-See [Releasing](releasing/) for the full state machine and the workflows that drive it.
+See [Releasing](../releasing/) for the full state machine and the workflows that drive it.
 
 ## Design principles
 

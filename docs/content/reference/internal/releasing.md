@@ -5,7 +5,7 @@ weight: 80
 
 # Releasing
 
-Each artifact releases on its own version stream (see [Versioning](versioning/)).
+Each artifact releases on its own version stream (see [Versioning](../versioning/)).
 
 <!-- The state machine below is the intended design; the tooling to drive it is
 not built yet. Today `mz-monitoring-build changelog --write` populates and
@@ -64,7 +64,7 @@ Two other things are expressed by editing this heading rather than by a flag: se
 
 `mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
 
-- recreates the `version-update/<component>` branch as a **single commit atop the base**, applying that component's [`release`](versioning/) changelog + version + `uv.lock` edits (the version is not in the branch name);
+- recreates the `version-update/<component>` branch as a **single commit atop the base**, applying that component's [`release`](../versioning/) changelog + version + `uv.lock` edits (the version is not in the branch name);
 - force-pushes the branch (stateless) and either opens the PR or refreshes the open one's title/body so the description tracks the new commit.
 
 The PR body is the component's released changelog section. New PRs are labeled `auto-format` (`--label`, empty to disable) so the [auto-format](#auto-format) workflow can fix anything the commit cannot regenerate.
@@ -133,12 +133,14 @@ lands in the changelog as:
 What gets picked up:
 
 - **List items** under the heading, with their relative nesting preserved. Indent width does not matter, only the nesting the author expressed.
+  An item may span several source lines — wrapped for line length, or written a sentence per line, as this repo's [Markdown conventions](../contributing/#markdown-conventions) ask — and the continuation is folded back into the item, since that is how a Markdown renderer displays it anyway.
+  A blank line, a `---` break, a fenced block, or a raw HTML block closes the item.
 - **Headings that carry a link.** This is how renovate summarizes an upstream changelog — one ``### [`v3.2.1`](…)`` heading per released version, usually wrapped in a `<details>` block — so a dependency bump contributes a linked entry per upstream version. Once any heading appears, the prose and bullets *beneath* it are the upstream project's detail rather than notes about this change, so only the linked headings survive.
 
 What gets dropped: HTML comments (so the template's instructions never reach the changelog), an absent or empty section, and a section that says only `None`/`N/A` — along with anything nested under such an entry.
 The section ends at the next *unlinked* heading at its own level or shallower (an author's `### Testing`, renovate's `### Configuration` footer), or at the end of the description.
 
-Both of GitHub's merge styles are read, so a squash-merged renovate PR contributes its notes just as a merge-committed one does (see [How changes are attributed](versioning/#how-changes-are-attributed)).
+Both of GitHub's merge styles are read, so a squash-merged renovate PR contributes its notes just as a merge-committed one does (see [How changes are attributed](../versioning/#how-changes-are-attributed)).
 
 Notes are an **enrichment, not a gate**. With no `GITHUB_TOKEN`, or when a description cannot be read, the run warns and continues without them rather than failing — and since `propose-bumps` rebuilds its branches from scratch on every merge to the default branch, a transient failure self-heals on the next merge.
 The descriptions are fetched once for the union of all components' windows, since one PR often lands in several.
@@ -200,4 +202,4 @@ If the token is unset the push falls back to the default `GITHUB_TOKEN`, restori
 
 - The default next version is a minor bump; a breaking change needs the placeholder version edited manually before release.
 - Cascade can fan out: releasing a low-level shared component updates every dependent's version-update PR, so expect merge-order sensitivity across concurrent release PRs.
-- `version_paths` now track the latest **released** version (bumped by the version-update PR), not the latest unreleased — reconcile the wording in [Versioning](versioning/) when the tooling lands.
+- `version_paths` now track the latest **released** version (bumped by the version-update PR), not the latest unreleased — reconcile the wording in [Versioning](../versioning/) when the tooling lands.

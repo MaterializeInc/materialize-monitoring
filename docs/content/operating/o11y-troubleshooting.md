@@ -34,7 +34,7 @@ kubectl --namespace monitoring describe pod <the-unhappy-one>
 kubectl --namespace monitoring logs <pod> --all-containers --previous
 ```
 
-The genuine "it really is just slow" case exists but is narrow: a **known** ingester rollout, which is ordered and readiness-gated at roughly a minute per ingester. If you did not just change the ingester pod spec, that is not what you are looking at. See [Upgrading](upgrading/).
+The genuine "it really is just slow" case exists but is narrow: a **known** ingester rollout, which is ordered and readiness-gated at roughly a minute per ingester. If you did not just change the ingester pod spec, that is not what you are looking at. See [Upgrading](../upgrading/).
 
 ## Install and storage
 
@@ -116,7 +116,7 @@ kubectl get nodes -o custom-columns='NODE:.metadata.name,DISK:.status.capacity.e
 
 Then lower the request, or lower what drives it.
 For Receive that is `thanos.receive.tsdb.retention` — local retention sets the disk requirement almost linearly, and the chart ships 6h for this reason.
-See [Declaring the ephemeral budget](production-best-practices/#thanos-ephemeral-budget).
+See [Declaring the ephemeral budget](../production-best-practices/#thanos-ephemeral-budget).
 
 Two things that make this harder to spot than it should be:
 
@@ -223,7 +223,7 @@ This is the one place the chart cannot own its own rollout, and it is the revers
 kubectl --namespace monitoring rollout restart deployment/alloy-gateway daemonset/alloy-agent
 ```
 
-The Terraform modules stamp a values hash onto both pod templates so this happens automatically. On the Helm path it is yours — see [Collection (Alloy)](production-best-practices/#collection-alloy).
+The Terraform modules stamp a values hash onto both pod templates so this happens automatically. On the Helm path it is yours — see [Collection (Alloy)](../production-best-practices/#collection-alloy).
 
 ### Grafana's admin password changes on every deploy
 
@@ -252,7 +252,7 @@ Then confirm the write and read URLs match the deployment mode you are running.
 
 ### `helm uninstall` hangs, or the namespace stays `Terminating`
 
-**Cause.** grafana-operator finalizers with no remover. See [Uninstalling](uninstalling/) for the mechanism, the ordered teardown, and how to recover a wedged one — including the worse variant, where a stuck CRD blocks *re-installing* the CRDs chart.
+**Cause.** grafana-operator finalizers with no remover. See [Uninstalling](../uninstalling/) for the mechanism, the ordered teardown, and how to recover a wedged one — including the worse variant, where a stuck CRD blocks *re-installing* the CRDs chart.
 
 ## Terraform-specific
 
@@ -274,6 +274,6 @@ Note that a replace does **not** reset PVCs, per the storage-class warning above
 
 ## See more
 
-- [Production Best Practices](production-best-practices/) — the deployment checklist, tagged by owner
-- [Uninstalling](uninstalling/) and [Upgrading](upgrading/) — the two asymmetric lifecycle operations
-- [Meta Observability](meta-observability/) — monitoring the monitoring stack
+- [Production Best Practices](../production-best-practices/) — the deployment checklist, tagged by owner
+- [Uninstalling](../uninstalling/) and [Upgrading](../upgrading/) — the two asymmetric lifecycle operations
+- [Meta Observability](../meta-observability/) — monitoring the monitoring stack

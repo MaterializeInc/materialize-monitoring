@@ -190,6 +190,44 @@ For YAML / KYAML conventions and the intentional yamllint relaxations (`quoted-s
 
 For Python, ruff is configured with `select = ["ALL"]` and roughly 40 deliberate ignores in [`pyproject.toml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/pyproject.toml). KYAML is linted with `--strict` against [`.yamllint-kyaml.kyaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.yamllint-kyaml.kyaml); none of the lower-toil relaxations apply.
 
+## Markdown conventions
+
+Nothing in pre-commit reformats Markdown, so these are conventions rather than enforced rules — but they are load-bearing for reviewability.
+
+**Break lines on sentence ends — one sentence per line.**
+Wrap at 120-150 characters if a sentence runs long, but do not reflow a paragraph to fill lines.
+A sentence-per-line diff shows exactly the sentence that changed; a reflowed paragraph shows the whole paragraph as rewritten, which buries the edit and makes untouched sentences look rewritten.
+It also means editing one sentence never churns the lines around it.
+
+**Docsite structure.**
+`_index.md` files under `docs/content/` carry frontmatter only — a section's landing content goes in a regular page inside it at `weight: 1`, so every directory in the sidebar is a container and every clickable title is a real page.
+See [Repo Layout](../repo-layout/) for the full rule and its one exception.
+
+**Relative links need `../` for siblings.**
+Pretty URLs put every page at its own directory, so `reference/internal/releasing.md` is served as `reference/internal/releasing/`.
+A sibling link is therefore `[Versioning](../versioning/)` — a bare `versioning/` resolves to `releasing/versioning/` and 404s.
+Link to pages, not files: `../versioning/`, never `versioning.md`.
+
+Moving a page one level deeper adds one more `../` to every relative link in it, and inbound links written as `section/#anchor` have to be retargeted at the new page.
+
+**Link decoration is automatic.**
+The [`render-link`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/docs/layouts/_markup/render-link.html) hook classes outbound links by destination, and [`_custom.scss`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/docs/assets/_custom.scss) gives each class a marker:
+
+| Destination | Marker |
+|---|---|
+| Linear (`linear.app`, `linear.com`) | 🔒 |
+| `github.com/MaterializeInc` | ‹/› |
+| any other external URL | ⧉ |
+
+So a Linear link inside `docs/content/` needs no manual "(internal)" marker.
+Anything else an external reader cannot reach — internal infrastructure repos, dashboards, runbooks — does: mark it `(internal)` where the surrounding text does not already make it obvious.
+
+**Never commit customer information.**
+No customer names, organization or environment identifiers, or other customer-identifying details, anywhere in the repo. Keep examples generic.
+
+**Release notes.**
+A PR's `### Release Notes` section is harvested into `CHANGELOG.md`, so its bullets are published text rather than review notes — see [Release notes from PR descriptions](../releasing/#release-notes-from-pr-descriptions) for what is picked up and what is dropped.
+
 ## Working with Git LFS
 
 LFS is used for packaged Helm subcharts (`charts/*/charts/*.tgz`); the pattern is declared in [`.gitattributes`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.gitattributes).
