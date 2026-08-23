@@ -335,6 +335,7 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
 
 - **Per-component streams.** ✅
   Merged PRs are attributed to components by path; `CHANGELOG.md` is the source of truth, with cumulative `Included <dep> @ vPREV..vNEW` dependency rollups.
+  Each PR's entry also carries the author's own [release notes](../releasing/#release-notes-from-pr-descriptions), read from the `### Release Notes` section of its description, so the consumer-facing detail travels with the entry.
 - **Automation.** ✅
   `mz-monitoring-build propose-bumps` opens one `version-update/<component>` PR per changed component on each merge to main; `publish-release` tags `<component>/vX.Y.Z` and creates a GitHub Release (attaching each component's `artifacts`) when such a PR merges.
 - **Downstream pinning.** ✅

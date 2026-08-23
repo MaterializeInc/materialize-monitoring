@@ -19,10 +19,14 @@
 //!
 //! Merged PRs in a commit range are attributed to a component by longest-prefix
 //! match against `content_paths` (minus `content_exclude`). Attribution works
-//! off each merge's own diff (`<merge>^1..<merge>`) rather than
+//! off each commit's own diff (`<commit>^1..<commit>`) rather than
 //! `git log -- <path>`, which is unreliable here: history simplification prunes
 //! merges, and the `crates/` -> `packages/` move means today's paths do not
 //! match historical ones.
+//!
+//! Both of GitHub's merge styles are recognized, since this repo uses both: a
+//! merge commit for most PRs, and a squash commit for many renovate ones (see
+//! [`collect_prs`]).
 //!
 //! A component bumps when it has a directly-attributed PR. Bumps then cascade
 //! (transitively) to changelog-enabled dependents, which record an
@@ -40,8 +44,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::release_notes::NoteMap;
+
 /// Repo slug used to build PR links in changelog entries.
-const REPO_SLUG: &str = "MaterializeInc/materialize-monitoring";
+pub(crate) const REPO_SLUG: &str = "MaterializeInc/materialize-monitoring";
 
 /// Arguments for the read-only `changelog` report.
 #[derive(clap::Args)]
@@ -261,7 +267,16 @@ fn parse_subject(subject: &str) -> (Option<u64>, Option<String>) {
     (number, branch)
 }
 
-/// The files a merge introduced, relative to its first parent.
+/// Parse the `(#N)` suffix GitHub appends when a PR is squash-merged, returning
+/// the number and the subject with the suffix stripped — which is the PR title.
+fn parse_squash_subject(subject: &str) -> Option<(u64, &str)> {
+    let (title, number) = subject.rsplit_once(" (#")?;
+    let number = number.strip_suffix(')')?.parse().ok()?;
+    let title = title.trim();
+    (!title.is_empty()).then_some((number, title))
+}
+
+/// The files a commit introduced, relative to its first parent.
 fn changed_paths(hash: &str) -> anyhow::Result<Vec<String>> {
     let parent = format!("{hash}^1");
     let out = git(&["diff", "--name-only", &parent, hash])?;
@@ -273,37 +288,99 @@ fn changed_paths(hash: &str) -> anyhow::Result<Vec<String>> {
         .collect())
 }
 
-/// Collect first-parent merge commits in `since..until`.
-fn collect_merges(since: &str, until: &str) -> anyhow::Result<Vec<PrMerge>> {
+/// The numbers of the PRs merged in `since..until`, in history order.
+///
+/// Cheaper than [`collect_prs`] — no per-commit diff — because the caller only
+/// needs the numbers to pre-fetch release notes for.
+pub(crate) fn pr_numbers(since: &str, until: &str) -> anyhow::Result<Vec<u64>> {
+    let range = format!("{since}..{until}");
+    let raw = git(&["log", "--first-parent", &range, "--format=%P%x1f%s"])?;
+    Ok(raw
+        .lines()
+        .filter_map(|line| {
+            let (parents, subject) = line.split_once('\u{1f}')?;
+            pr_number_of(parents, subject.trim())
+        })
+        .collect())
+}
+
+/// The PR number a first-parent commit refers to, from its parent list and
+/// subject — the two merge styles [`collect_prs`] documents. `None` when the
+/// commit carries no PR reference.
+fn pr_number_of(parents: &str, subject: &str) -> Option<u64> {
+    if parents.split_whitespace().count() > 1 {
+        parse_subject(subject).0
+    } else {
+        parse_squash_subject(subject).map(|(number, _)| number)
+    }
+}
+
+/// The PRs found on a range's first-parent history, plus the commits that
+/// carried no PR reference.
+struct RangePrs {
+    prs: Vec<PrMerge>,
+    /// `<short hash> <subject>` per skipped commit. Surfaced by the `changelog`
+    /// report so a genuinely missed PR is visible rather than silently dropped.
+    skipped: Vec<String>,
+}
+
+/// Collect the PRs on the first-parent history of `since..until`.
+///
+/// Both of GitHub's merge styles land here, because this repo uses both:
+///
+/// - a **merge commit** — two parents, `Merge pull request #N from <branch>` as
+///   its subject, and the PR title as the first non-empty line of its body;
+/// - a **squash commit** — one parent, the PR title as its subject with a `(#N)`
+///   suffix, and the PR description as its body. Most renovate PRs land this way.
+///
+/// A merge commit is itself evidence of an integration event, so one without a
+/// `#N` still earns an entry, labeled by branch or hash. A lone commit is not —
+/// it could be any direct push to the branch — so without a `(#N)` there is no
+/// PR to attribute it to, and it is recorded in `skipped` instead.
+fn collect_prs(since: &str, until: &str) -> anyhow::Result<RangePrs> {
     let range = format!("{since}..{until}");
     // \x1f separates fields, \x1e separates records — both rare in commit text.
     let raw = git(&[
         "log",
         "--first-parent",
-        "--merges",
         &range,
-        "--format=%H%x1f%s%x1f%b%x1e",
+        "--format=%H%x1f%P%x1f%s%x1f%b%x1e",
     ])?;
 
-    let mut merges = Vec::new();
+    let mut prs = Vec::new();
+    let mut skipped = Vec::new();
     for record in raw.split('\u{1e}') {
         let record = record.trim();
         if record.is_empty() {
             continue;
         }
-        let mut fields = record.splitn(3, '\u{1f}');
+        let mut fields = record.splitn(4, '\u{1f}');
         let hash = fields.next().unwrap_or("").trim();
+        let parents = fields.next().unwrap_or("");
         let subject = fields.next().unwrap_or("").trim();
         let body = fields.next().unwrap_or("");
-        let (number, branch) = parse_subject(subject);
-        // The PR title is the first non-empty line of the merge body.
-        let title = body
-            .lines()
-            .map(str::trim)
-            .find(|l| !l.is_empty())
-            .map(str::to_string);
+
+        let (number, branch, title) = if parents.split_whitespace().count() > 1 {
+            let (number, branch) = parse_subject(subject);
+            // The PR title is the first non-empty line of the merge body.
+            let title = body
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string);
+            (number, branch, title)
+        } else if let Some((number, title)) = parse_squash_subject(subject) {
+            (Some(number), None, Some(title.to_string()))
+        } else {
+            skipped.push(format!(
+                "{} {subject}",
+                hash.chars().take(9).collect::<String>()
+            ));
+            continue;
+        };
+
         let paths = changed_paths(hash)?;
-        merges.push(PrMerge {
+        prs.push(PrMerge {
             hash: hash.to_string(),
             number,
             branch,
@@ -311,7 +388,7 @@ fn collect_merges(since: &str, until: &str) -> anyhow::Result<Vec<PrMerge>> {
             paths,
         });
     }
-    Ok(merges)
+    Ok(RangePrs { prs, skipped })
 }
 
 /// The component that owns `file`: the one whose matching `content_path` is the
@@ -488,16 +565,28 @@ struct RenderCtx<'a> {
     /// Latest released version per component (absent for brand-new streams);
     /// used to render the `@ vPREV..vNEW` range on dependency rollups.
     prev: &'a IndexMap<String, SemVer>,
+    /// Author-written release notes per PR number, nested under that PR's
+    /// bullet. Empty when GitHub could not be read (see [`crate::release_notes`]).
+    notes: &'a NoteMap,
 }
 
-/// Append a PR bullet (title + indented link) at the given indent level.
-fn push_pr(out: &mut Vec<String>, pr: &PrMerge, level: usize) {
+/// Append a PR bullet at the given indent level: its title, then the PR link and
+/// any release notes the author wrote, as siblings one level deeper. Notes keep
+/// the nesting they had in the PR description.
+fn push_pr(out: &mut Vec<String>, pr: &PrMerge, level: usize, notes: &NoteMap) {
     let indent = "    ".repeat(level);
     out.push(format!("{indent}* {}", pr.bullet_text()));
     if let Some(n) = pr.number {
         out.push(format!(
             "{indent}    * [materialize-monitoring#{n}](https://github.com/{REPO_SLUG}/pull/{n})"
         ));
+        for note in notes.get(&n).into_iter().flatten() {
+            out.push(format!(
+                "{}* {}",
+                "    ".repeat(level + 1 + note.depth),
+                note.text
+            ));
+        }
     }
 }
 
@@ -512,7 +601,7 @@ fn render_section(name: &str, c: &Component, ctx: &RenderCtx<'_>) -> Vec<String>
     for a in ctx.attributed {
         if a.owners.contains_key(name) {
             seen.insert(a.pr.key());
-            push_pr(&mut body, a.pr, 0);
+            push_pr(&mut body, a.pr, 0, ctx.notes);
         }
     }
 
@@ -567,7 +656,7 @@ fn render_deps(
         out.push(format!("{indent}* Included {} @ {span}", dc.title));
         for a in ctx.attributed {
             if a.owners.contains_key(dep) && seen.insert(a.pr.key()) {
-                push_pr(out, a.pr, level + 1);
+                push_pr(out, a.pr, level + 1, ctx.notes);
             }
         }
         children.push(dep.clone());
@@ -726,8 +815,8 @@ fn rewrite_lock_version(lock: &str, package: &str, new: &str) -> anyhow::Result<
 /// in the given range, and the version each would bump to.
 pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
     let comps = load_components(&args.components)?;
-    let merges = collect_merges(&args.since, &args.until)?;
-    let attributed = attribute(&merges, &comps);
+    let prs = collect_prs(&args.since, &args.until)?;
+    let attributed = attribute(&prs.prs, &comps);
     let bumping = compute_bumps(&comps, &attributed);
 
     let changelog_text = std::fs::read_to_string(&args.changelog)
@@ -739,7 +828,7 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
         "Range {}..{}: {} merged PR(s)",
         args.since,
         args.until,
-        merges.len()
+        prs.prs.len()
     );
     println!("\n== Bumps ==");
     for (name, _) in &comps {
@@ -763,6 +852,13 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
             println!("\n== Unattributed paths ==");
             for a in &orphans {
                 println!("  {}: {}", a.pr.label(), a.orphans.join(", "));
+            }
+        }
+
+        if !prs.skipped.is_empty() {
+            println!("\n== Commits with no PR reference (skipped) ==");
+            for line in &prs.skipped {
+                println!("  {line}");
             }
         }
     }
@@ -804,9 +900,10 @@ pub(crate) fn plan_release(
     uv_lock_path: &Path,
     since: &str,
     until: &str,
+    notes: &NoteMap,
 ) -> anyhow::Result<Option<ReleasePlan>> {
-    let merges = collect_merges(since, until)?;
-    let attributed = attribute(&merges, comps);
+    let prs = collect_prs(since, until)?;
+    let attributed = attribute(&prs.prs, comps);
     let bumping = compute_bumps(comps, &attributed);
     if !bumping.contains(target) {
         return Ok(None);
@@ -831,6 +928,7 @@ pub(crate) fn plan_release(
         bumping: &bumping,
         versions: &versions,
         prev: &prev,
+        notes,
     };
 
     let (changelog_content, released) = apply_version_update(&parsed, target, &ctx)?;
@@ -914,6 +1012,10 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
         anyhow::bail!("component {target:?} has no changelog stream");
     }
 
+    // Release notes come from the merged PRs' descriptions, so this reads
+    // GitHub when a token is available; without one the notes are omitted.
+    let notes = crate::release_notes::resolve(&pr_numbers(&args.since, &args.until)?);
+
     let plan = plan_release(
         &comps,
         target,
@@ -921,6 +1023,7 @@ pub fn release(args: ReleaseArgs) -> anyhow::Result<()> {
         &args.uv_lock,
         &args.since,
         &args.until,
+        &notes,
     )?
     .ok_or_else(|| anyhow!("no changes attributed to {target:?} since {}", args.since))?;
 
@@ -1001,6 +1104,23 @@ mod tests {
         format!("    * [materialize-monitoring#{n}](https://github.com/{REPO_SLUG}/pull/{n})")
     }
 
+    /// A [`NoteMap`] from `(pr, [(depth, text)])` pairs.
+    fn notes(entries: &[(u64, &[(usize, &str)])]) -> NoteMap {
+        entries
+            .iter()
+            .map(|(n, ns)| {
+                let notes = ns
+                    .iter()
+                    .map(|(depth, text)| crate::release_notes::Note {
+                        depth: *depth,
+                        text: text.to_string(),
+                    })
+                    .collect();
+                (*n, notes)
+            })
+            .collect()
+    }
+
     // ---- SemVer ---------------------------------------------------------
 
     #[test]
@@ -1067,6 +1187,49 @@ mod tests {
         assert_eq!(parse_subject("no marker here"), (None, None));
         assert_eq!(parse_subject("#abc def"), (None, None)); // non-digit after #
         assert_eq!(parse_subject("title from x"), (None, Some("x".to_string())));
+    }
+
+    // ---- parse_squash_subject -------------------------------------------
+
+    #[test]
+    fn parse_squash_subject_variants() {
+        assert_eq!(
+            parse_squash_subject("Update dependency go to 1.27 (#266)"),
+            Some((266, "Update dependency go to 1.27"))
+        );
+        // A title that ends in its own parenthetical keeps it.
+        assert_eq!(
+            parse_squash_subject("Update terraform kubernetes (v3) (#173)"),
+            Some((173, "Update terraform kubernetes (v3)"))
+        );
+        assert_eq!(parse_squash_subject("No suffix here"), None);
+        assert_eq!(parse_squash_subject("Trailing (#12) text"), None); // not a suffix
+        assert_eq!(parse_squash_subject("Bad number (#abc)"), None);
+        assert_eq!(parse_squash_subject("(#5)"), None); // no title
+        // A merge commit's subject is not a squash subject.
+        assert_eq!(
+            parse_squash_subject("Merge pull request #15 from Org/branch"),
+            None
+        );
+    }
+
+    // ---- pr_number_of ---------------------------------------------------
+
+    #[test]
+    fn pr_number_of_picks_the_style_by_parent_count() {
+        // Two parents: the merge-commit form, and only that form.
+        assert_eq!(
+            pr_number_of("aaa bbb", "Merge pull request #15 from Org/branch"),
+            Some(15)
+        );
+        assert_eq!(pr_number_of("aaa bbb", "Squash style (#15)"), Some(15)); // via "#15"
+        assert_eq!(pr_number_of("aaa bbb", "Merge branch 'main'"), None);
+
+        // One parent: only the squash form, so a direct push is skipped.
+        assert_eq!(pr_number_of("aaa", "Squash style (#266)"), Some(266));
+        assert_eq!(pr_number_of("aaa", "A direct push to main"), None);
+        // Even a #N mid-subject does not count without the trailing suffix.
+        assert_eq!(pr_number_of("aaa", "Follow-up to #266"), None);
     }
 
     // ---- PrMerge label / bullet_text / key ------------------------------
@@ -1270,13 +1433,44 @@ mod tests {
 
     #[test]
     fn push_pr_levels() {
+        let empty = NoteMap::new();
         let mut out = Vec::new();
-        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 0);
+        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 0, &empty);
         assert_eq!(out, vec!["* T".to_string(), link(5)]);
 
         let mut out = Vec::new();
-        push_pr(&mut out, &pr(None, Some("T"), None, &[]), 1);
+        push_pr(&mut out, &pr(None, Some("T"), None, &[]), 1, &empty);
         assert_eq!(out, vec!["    * T".to_string()]); // no number -> no link
+    }
+
+    #[test]
+    fn push_pr_release_notes_follow_the_link() {
+        // Notes sit alongside the link and keep their own nesting.
+        let ns = notes(&[(5, &[(0, "Added a thing"), (1, "Off by default")])]);
+        let mut out = Vec::new();
+        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 0, &ns);
+        assert_eq!(
+            out,
+            vec![
+                "* T".to_string(),
+                link(5),
+                "    * Added a thing".to_string(),
+                "        * Off by default".to_string(),
+            ]
+        );
+
+        // Nested under a dependency rollup, everything shifts together.
+        let mut out = Vec::new();
+        push_pr(&mut out, &pr(Some(5), Some("T"), None, &[]), 1, &ns);
+        assert_eq!(
+            out,
+            vec![
+                "    * T".to_string(),
+                format!("    {}", link(5)),
+                "        * Added a thing".to_string(),
+                "            * Off by default".to_string(),
+            ]
+        );
     }
 
     // ---- render_section / render_deps -----------------------------------
@@ -1351,12 +1545,15 @@ mod tests {
         )]
         .into_iter()
         .collect();
+        // #12 carries a release note; #11 does not.
+        let ns = notes(&[(12, &[(0, "Renamed a metric")])]);
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
             bumping: &bumping,
             versions: &versions,
             prev: &prev,
+            notes: &ns,
         };
 
         // Pipeline: #11 first-class; #12 under lib; #11 not repeated.
@@ -1372,6 +1569,7 @@ mod tests {
                 "* Included lib @ v0.4.0..v0.5.0".to_string(),
                 "    * Lib only".to_string(),
                 format!("    {}", link(12)),
+                "        * Renamed a metric".to_string(),
             ]
         );
 
@@ -1389,6 +1587,7 @@ mod tests {
                 "* Included lib @ v0.4.0..v0.5.0".to_string(),
                 "    * Lib only".to_string(),
                 format!("    {}", link(12)),
+                "        * Renamed a metric".to_string(),
             ]
         );
     }
@@ -1418,20 +1617,24 @@ mod tests {
             [("foo".to_string(), semver(0, 6, 0))].into_iter().collect();
         let prev: IndexMap<String, SemVer> =
             [("foo".to_string(), semver(0, 5, 0))].into_iter().collect();
+        let ns = notes(&[(20, &[(0, "`foo.bar` now defaults to `true`")])]);
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
             bumping: &bumping,
             versions: &versions,
             prev: &prev,
+            notes: &ns,
         };
 
         let (out, released) = apply_version_update(&parsed, "foo", &ctx).unwrap();
         assert_eq!(released, semver(0, 6, 0));
         // Fresh placeholder for the next version, at the top.
         assert!(out.contains("## Foo v0.7.0 (Unreleased)\n\n_Changes Pending_"));
-        // The v0.6.0 placeholder is promoted in place and populated.
+        // The v0.6.0 placeholder is promoted in place and populated, with the
+        // PR's release note nested under its link.
         assert!(out.contains("## Foo v0.6.0\n\n* Cool foo change"));
+        assert!(out.contains("\n    * `foo.bar` now defaults to `true`\n"));
         assert!(!out.contains("## Foo v0.6.0 (Unreleased)"));
         // Other sections preserved verbatim.
         assert!(out.contains("## Bar v0.9.0 (Unreleased)"));
@@ -1453,12 +1656,14 @@ mod tests {
         let versions: IndexMap<String, SemVer> =
             [("foo".to_string(), semver(0, 6, 0))].into_iter().collect();
         let prev: IndexMap<String, SemVer> = IndexMap::new();
+        let empty = NoteMap::new();
         let ctx = RenderCtx {
             comps: &cs,
             attributed: &attributed,
             bumping: &bumping,
             versions: &versions,
             prev: &prev,
+            notes: &empty,
         };
         assert!(apply_version_update(&parsed, "foo", &ctx).is_err());
     }
