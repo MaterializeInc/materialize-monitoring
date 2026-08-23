@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
 
       # Keep this in lockstep with the `tool` pin in go.mod — the Makefile
       # builds that one, so a split would have CI and local builds rendering
