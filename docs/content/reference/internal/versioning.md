@@ -28,8 +28,21 @@ A component may have an empty `version_paths` (its version lives only in `CHANGE
 
 ## How changes are attributed
 
-Changes are attributed **per merged pull request**, using that merge's own diff (`<merge>^1..<merge>`), not `git log -- <path>`.
+Changes are attributed **per merged pull request**, using that commit's own diff (`<commit>^1..<commit>`), not `git log -- <path>`.
 A plain path log is unreliable here for two reasons: Git history simplification prunes merge commits, and the `crates/` → `packages/` move means today's paths do not match historical ones.
+
+PRs are found by walking the **first-parent** history of the range, and both of GitHub's merge styles are recognized, because this repo uses both:
+
+| Style | Parents | Subject | PR title from |
+|---|---|---|---|
+| Merge commit | 2 | `Merge pull request #N from <branch>` | first non-empty line of the body |
+| Squash commit | 1 | the PR title, with a `(#N)` suffix | the subject, suffix stripped |
+
+Most human PRs land as merge commits and most renovate PRs land as squash commits, so recognizing only the first would drop a large share of dependency bumps — including the ones whose descriptions carry the richest [release notes](releasing/#release-notes-from-pr-descriptions).
+
+A merge commit is itself evidence of an integration event, so one without a `#N` still earns an entry, labeled by branch or short hash.
+A lone commit is not — it could be any direct push to the branch — so without a `(#N)` there is no PR to attribute it to and it is skipped.
+`changelog --verbose` lists what it skipped under `== Commits with no PR reference ==`, so a genuinely missed PR is visible rather than silently dropped.
 
 A PR is attributed to a component when it changes a path under one of that component's `content_paths`.
 Each changed file is assigned to the component with the **longest matching** `content_paths` entry; ties resolve to declaration order in `components.yaml`.

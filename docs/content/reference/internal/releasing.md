@@ -138,6 +138,8 @@ What gets picked up:
 What gets dropped: HTML comments (so the template's instructions never reach the changelog), an absent or empty section, and a section that says only `None`/`N/A` — along with anything nested under such an entry.
 The section ends at the next *unlinked* heading at its own level or shallower (an author's `### Testing`, renovate's `### Configuration` footer), or at the end of the description.
 
+Both of GitHub's merge styles are read, so a squash-merged renovate PR contributes its notes just as a merge-committed one does (see [How changes are attributed](versioning/#how-changes-are-attributed)).
+
 Notes are an **enrichment, not a gate**. With no `GITHUB_TOKEN`, or when a description cannot be read, the run warns and continues without them rather than failing — and since `propose-bumps` rebuilds its branches from scratch on every merge to the default branch, a transient failure self-heals on the next merge.
 The descriptions are fetched once for the union of all components' windows, since one PR often lands in several.
 
