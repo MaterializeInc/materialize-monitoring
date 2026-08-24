@@ -107,23 +107,67 @@ This section is the policy of record.
 
 1. **Announce** — `stability: deprecated` where the field exists, plus a release-note bullet starting `**Deprecated:**` that names the replacement.
 2. **Overlap** — old and new both *work* for at least **30 days**, measured from that release's tag date.
-3. **Remove** — a later minor (pre-1.0) or major (post-1.0), with a `**Removed:**` bullet. `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
+3. **Remove** — a later minor (pre-1.0) or major (post-1.0), with a `**Removed:**` bullet.
+   `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
-Additions are free, in any release. A **behavior change is a break**: an alert that keeps its name but fires under materially different conditions goes through the cycle, because routing and runbooks key on the name.
+Additions are free, in any release.
+A **behavior change is a break**: an alert that keeps its name but fires under materially different conditions goes through the cycle, because routing and runbooks key on the name.
 
 **Ceremony is graded by failure mode, not by surface size.**
-A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule. A renamed or removed alert leaves *silence*, and silence during an incident is indistinguishable from health.
+A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
+A renamed or removed alert leaves *silence*, and silence during an incident is indistinguishable from health.
 So alerts get the strictest treatment — cooldown, dual-publish, explicit notes, a named owner on removal — and metrics get the lightest.
 This deliberately inverts the "the label/metric contract is the public API" framing: on a failure-mode reading, metrics are among the most forgiving things we publish.
 
 **Chart values are handled by contact, not by cycle.**
-Their consumer is our own Terraform module, which pins a chart version, so a rename is absorbed by bumping the module. The exception is direct `helm install` users, and that list is short enough to notify individually.
+Their consumer is our own Terraform module, which pins a chart version, so a rename is absorbed by bumping the module.
+The exception is direct `helm install` users, and that list is short enough to notify individually.
 
 **Enforcement builds nothing.**
 Every committed identifier already appears in a generated, committed artifact — `terraform-docs` output for module variables, `pre-rendered/` for dashboards and tiers, `packages/queries/` for alerts — so a rename already shows as a diff in the PR.
 [CODEOWNERS](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/CODEOWNERS) covers those paths, and the [release-process check](../releasing/#the-committed-surface-check) is the reviewer's half.
 
-**Pre-1.0.** Breaking changes may ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205); the cycle still applies. Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
+### Designing to avoid the cycle
+
+The cycle is the fallback, not the goal.
+Most breaking changes are avoidable at design time, and these are the levers worth reaching for first.
+
+**Publish a recording rule, not a raw metric.**
+The strongest lever we have, and unused — the registry defines zero recording rules today.
+A `record:` name is ours, and the schema already says the expression behind it may change freely.
+So an artifact that reads `mzobject:compute_peek_latency_seconds:p99` instead of a raw `mz_*` metric turns an upstream rename into an expression edit with no customer-visible change at all.
+That converts a [coordinated-surface](#stability-guarantees) risk, which we do not control, into an owned one we fully control.
+
+**Add; do not rename.**
+Additions are free in any release.
+A new identifier alongside the old costs nothing, and the cycle only starts when you want the old one *gone* — which is often not required.
+Leaving a superseded alert or output in place is cheaper than removing it, and honest as long as it still works.
+
+**Do not publish what you do not need.**
+Every committed identifier is a permanent obligation.
+A Terraform output added "just in case", or an alert shipped before anyone routes on it, is a promise nobody asked for.
+The cheapest non-breaking change is one to a surface that was never published.
+
+**Template what varies.**
+`%%{mzSqlPrefix}` is the working example: one query definition renders against either the `mz_` or `v2_mz_` namespace, so the difference never reaches a name we publish.
+Where a value differs by deployment, or looks likely to move, parameterize rather than bake it in.
+
+**Ship new behavior opt-in.**
+Adding a value whose default preserves current behavior is not breaking; changing a default is.
+Introduce it default-off, then flip the default in a later major.
+
+**Name for the condition, not the grade.**
+29 of the 89 alerts end in `-critical`, `-high`, or `-elevated`, and six families differ only by that suffix — so re-grading any of them forces a rename.
+Severity belongs in the `severity` label, and the name should describe what is wrong.
+This does not remove the exposure, since severity values are themselves committed, but it shrinks it: a label change misroutes an alert that still fires under a name people can still find, where a rename breaks both at once.
+Alerts are unshipped, so this is free to fix now and a cycle per alert later.
+
+**When a rename is genuinely required, accept both.**
+Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
+No module variable does this yet, so it is a pattern to establish rather than one to copy.
+
+**Pre-1.0.** Breaking changes may ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205); the cycle still applies.
+Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
 
 ## Design principles
 

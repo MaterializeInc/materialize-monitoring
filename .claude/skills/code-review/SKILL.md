@@ -96,6 +96,33 @@ When something does need flagging, ask for **one** of:
 Suggest wording that names what did **not** change alongside what did, the way the [Terraform module's upgrade notes](https://github.com/MaterializeInc/materialize-terraform-self-managed#upgrade-notes) do.
 Naming the non-breaks is what makes the breaks trustworthy.
 
+## Suggest the alternative, not just the cycle
+
+A flagged break is usually avoidable, so lead with the design that dodges it.
+The reasoning behind each is in **Designing to avoid the cycle** in `docs/content/reference/internal/versioning.md`.
+
+- **Reading a raw `mz_*` metric?**
+  Suggest minting a recording rule and pointing the artifact at that instead.
+  We guarantee the `record:` name and may change the expression under it freely, so a future upstream rename becomes an expression edit with no customer-visible change.
+  Zero recording rules exist yet, so there is no precedent to match — this is the moment to set one.
+- **Renaming for clarity?**
+  Suggest adding the new name and leaving the old one working.
+  Additions are free; the cycle only starts when the old identifier has to *go*, which is often not actually required.
+- **Adding an output, variable, or alert nobody consumes yet?**
+  Ask whether it needs to be published at all.
+  Every committed identifier is a permanent obligation, and the cheapest non-breaking change is one to a surface that was never published.
+- **Hard-coding something deployment-specific?**
+  Suggest templating it, the way `%%{mzSqlPrefix}` renders one query against either metric namespace.
+- **Changing a default?**
+  Suggest a new value that defaults to current behavior, with the default flipped in a later major.
+- **An alert name ending `-critical` / `-high` / `-elevated`?**
+  Severity in the identifier means re-grading forces a rename.
+  Suggest naming for the condition and carrying the grade in the `severity` label.
+  This shrinks the exposure rather than removing it — severity values are committed too — but a label change misroutes an alert that still fires under a findable name, where a rename breaks both.
+- **A rename that genuinely must happen?**
+  Ask that the old identifier keep *working*, not merely be documented.
+  For a Terraform variable that means retaining it and letting the new one take precedence.
+
 ## Context that prevents wrong calls
 
 - **The alerting path is not yet rendered** in self-managed — `charts/*/pre-rendered/rules/` is empty.
