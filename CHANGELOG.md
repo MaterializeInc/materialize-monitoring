@@ -8,9 +8,31 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.19.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.20.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.19.0
+
+* DEP-232 Support multiple prometheus RemoteWrite destinations
+    * [materialize-monitoring#272](https://github.com/MaterializeInc/materialize-monitoring/pull/272)
+    * terraform: add new variables for tuning prometheus remote_write destinations (as a map)
+    * **breaking** helm: move prometheusRemoteEntries destinations down one to a keyed map `pipeline.metrics.gateway.destination.prometheusRemoteWrite` -> `pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos`
+* Ensure auto-format on version-update PRs does not update Chart.lock
+    * [materialize-monitoring#262](https://github.com/MaterializeInc/materialize-monitoring/pull/262)
+* Update Helm release metrics-server to ^3.14.0
+    * [materialize-monitoring#260](https://github.com/MaterializeInc/materialize-monitoring/pull/260)
+
+### Dependencies
+
+* Included Dashboards @ v0.11.0..v0.12.0
+* Included Pipelines @ v0.11.0..v0.12.0
+    * DEP-127 Policy for deprecations and breaking changes
+        * [materialize-monitoring#271](https://github.com/MaterializeInc/materialize-monitoring/pull/271)
+* Included Prometheus Scrapers @ v0.3.0..v0.4.0
+* Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
+    * DEP-237 Support additional release notes in changelogs
+        * [materialize-monitoring#268](https://github.com/MaterializeInc/materialize-monitoring/pull/268)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.18.1
 
