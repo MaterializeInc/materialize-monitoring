@@ -293,7 +293,7 @@ tests:
     set:
       tags.pipeline: true
       thanos.receive.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://thanos-receive.example.com/api/v1/receive
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://thanos-receive.example.com/api/v1/receive
     template: NOTES.txt
     asserts:
       - matchRegexRaw:

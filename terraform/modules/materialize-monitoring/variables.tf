@@ -429,6 +429,164 @@ variable "otlp_auth_bearer_token" {
   sensitive   = true
 }
 
+# Keep this type expression free of blank lines and comments: terraform-docs
+# publishes it verbatim, and the docsite renders it inside a raw HTML block that
+# a blank line would terminate.
+variable "prometheus_remote_write" {
+  description = <<-EOT
+    Prometheus remote-write destinations for the Alloy gateway, keyed by name — Amazon Managed
+    Prometheus, Grafana Cloud, Mimir, another Thanos. Empty leaves the chart's single bundled
+    Thanos destination exactly as it is.
+
+    The key names the destination and becomes its Alloy component label, so it must match
+    `[a-zA-Z_][a-zA-Z0-9_]*` and appears in the gateway's own metrics. Two keys are special only by
+    convention: `thanos` is the chart's built-in destination, so setting it here **retunes** that
+    one rather than adding a second — which is how you drop the bundled backend to a cheaper tier,
+    or turn it off with `enabled = false` while keeping another destination.
+
+    Each destination gets its own remote-write component and its own upstream tier filter, so
+    `min_importance` — `essential`, `recommended`, `extended`, `diagnostic`, or `all`, each
+    including the ones below it — is genuinely per destination: a metered backend on `essential`
+    never buffers the metrics it would only discard. Amazon Managed Prometheus bills per sample
+    ingested and per active series, which is what that is for.
+
+    `auth_type` is `none`, `sigv4`, `basicAuth`, or `bearer`. `sigv4` needs no credentials at
+    all — the gateway signs with the IRSA identity from `gateway_service_account_annotations`. The
+    other two take their credentials from `prometheus_remote_write_credentials`, which delivers
+    them through a Secret rather than the Helm values.
+  EOT
+  type = map(object({
+    url             = optional(string)
+    enabled         = optional(bool, true)
+    min_importance  = optional(string, "all")
+    auth_type       = optional(string, "none")
+    sigv4_region    = optional(string)
+    sigv4_role_arn  = optional(string)
+    external_labels = optional(map(string), {})
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for name, _ in var.prometheus_remote_write : can(regex("^[a-zA-Z_][a-zA-Z0-9_]*$", name))
+    ])
+    error_message = <<-EOT
+      Every prometheus_remote_write key must match [a-zA-Z_][a-zA-Z0-9_]* — no dashes, dots, or
+      leading digits.
+
+      The key becomes an Alloy component label. A name Alloy cannot parse is not caught by
+      `terraform validate`; the chart refuses to render, and a hand-written config would fail at
+      gateway startup instead.
+    EOT
+  }
+
+  validation {
+    condition = alltrue([
+      for name, _ in var.prometheus_remote_write : !contains(
+        # `egress` is the fan-out seam's own component label. The rest are the
+        # keys the pre-map single-destination shape used, which the chart reads
+        # as a leftover override rather than as a destination.
+        ["egress", "enabled", "url", "urlEnv", "minMetricImportance", "unfilteredMetricsEnv",
+        "externalLabels", "authType", "basicAuth", "bearer", "oauth2", "sigv4", "tls"],
+        name,
+      )
+    ])
+    error_message = <<-EOT
+      A prometheus_remote_write key may not be `egress`, nor any of the chart's pre-map
+      single-destination keys (`enabled`, `url`, `authType`, `basicAuth`, `bearer`, `oauth2`,
+      `sigv4`, `tls`, `externalLabels`, `urlEnv`, `minMetricImportance`, `unfilteredMetricsEnv`).
+
+      Both are render-time failures the chart raises and `terraform validate` cannot: `egress`
+      collides with the fan-out seam's component label, and the rest are read as a leftover
+      override of the old singular shape.
+    EOT
+  }
+
+  validation {
+    condition = alltrue([
+      for _, dest in var.prometheus_remote_write : contains(
+        ["essential", "recommended", "extended", "diagnostic", "all"], dest.min_importance,
+      )
+    ])
+    error_message = "prometheus_remote_write min_importance must be one of: essential, recommended, extended, diagnostic, all."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, dest in var.prometheus_remote_write : contains(
+        ["none", "sigv4", "basicAuth", "bearer"], dest.auth_type,
+      )
+    ])
+    error_message = "prometheus_remote_write auth_type must be one of: none, sigv4, basicAuth, bearer."
+  }
+
+  validation {
+    condition = alltrue([
+      for name, dest in var.prometheus_remote_write :
+      dest.url != null || name == "thanos" || dest.enabled == false
+    ])
+    error_message = <<-EOT
+      Every enabled prometheus_remote_write destination needs a url, except `thanos`, which
+      inherits the chart's in-cluster endpoint.
+
+      A destination with no url renders a remote_write component whose endpoint resolves to the
+      empty string. Alloy accepts that at load, so it surfaces only as writes failing once the
+      gateway is running.
+    EOT
+  }
+
+  validation {
+    condition = alltrue([
+      for _, dest in var.prometheus_remote_write :
+      dest.url == null || can(regex("^https?://", dest.url))
+    ])
+    error_message = <<-EOT
+      Every prometheus_remote_write url must carry an http:// or https:// scheme, and be the full
+      remote-write path — for AMP that is
+      "https://aps-workspaces.<region>.amazonaws.com/workspaces/<id>/api/v1/remote_write".
+
+      Unlike otlp_metrics.url, which is a bare host, this one is a URL.
+    EOT
+  }
+}
+
+variable "prometheus_remote_write_credentials" {
+  description = <<-EOT
+    Credentials for `prometheus_remote_write` destinations whose `auth_type` is `basicAuth` or
+    `bearer`, keyed by the same destination name.
+
+    Delivered as a Secret this module creates (`mzmon-alloy-gateway-env`) rather than through the
+    Helm values, which are readable with `helm get values` and land in Terraform state. The module
+    derives the variable names from the destination name — `amp` becomes
+    `GATEWAY_PROMETHEUS_DEST_AMP_USERNAME` and friends — and writes those same names into the
+    chart's values, so the two cannot disagree.
+
+    `sigv4` destinations need no entry here: they sign with the gateway pod's IRSA identity.
+  EOT
+  type = map(object({
+    username     = optional(string)
+    password     = optional(string)
+    bearer_token = optional(string)
+  }))
+  default   = {}
+  nullable  = false
+  sensitive = true
+}
+
+variable "gateway_service_account_annotations" {
+  description = <<-EOT
+    Annotations for the Alloy gateway's ServiceAccount, for binding it to a cloud identity —
+    `eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity.
+
+    Required by a `sigv4` remote-write destination, which has no other source of credentials.
+    Merged with any annotations `object_storage` contributes, so both can be present.
+  EOT
+  type        = map(string)
+  default     = {}
+  nullable    = false
+}
+
 # ==============================================================================
 # Grafana
 # ==============================================================================

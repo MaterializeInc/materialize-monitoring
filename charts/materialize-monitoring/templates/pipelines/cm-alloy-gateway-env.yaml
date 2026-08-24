@@ -39,34 +39,38 @@ data:
   {{- end }}
   {{- /* </lokiDest> */}}
 
-  {{- $promDest := .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite }}
-  {{- if $promDest.enabled }}
-  GATEWAY_PROM_DEST: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $promDest.url $ ) "tls" $promDest.tls ) | quote }}
-    {{- if eq $promDest.authType "none" }}
-    {{- else if eq $promDest.authType "basicAuth" }}
-      {{- if $promDest.basicAuth.username }}
+  {{- /* One block of variables per named remote-write destination. The names are
+         resolved by the same helper the pipeline uses, so the variable this
+         writes and the variable `sys.env(...)` reads cannot drift. */}}
+  {{- range $promDest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
+    {{- if $promDest.enabled }}
+  {{ $promDest.urlEnv }}: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $promDest.url $ ) "tls" $promDest.tls ) | quote }}
+      {{- if eq $promDest.authType "none" }}
+      {{- else if eq $promDest.authType "basicAuth" }}
+        {{- if $promDest.basicAuth.username }}
   {{ $promDest.basicAuth.usernameEnv }}: {{ tpl $promDest.basicAuth.username $ | quote }}
-      {{- end }}
-      {{- if $promDest.basicAuth.password }}
+        {{- end }}
+        {{- if $promDest.basicAuth.password }}
   {{ $promDest.basicAuth.passwordEnv }}: {{ tpl $promDest.basicAuth.password $ | quote }}
-      {{- end }}
-    {{- else if eq $promDest.authType "bearer" }}
-      {{- if $promDest.bearer.token }}
+        {{- end }}
+      {{- else if eq $promDest.authType "bearer" }}
+        {{- if $promDest.bearer.token }}
   {{ $promDest.bearer.tokenEnv }}: {{ tpl $promDest.bearer.token $ | quote }}
+        {{- end }}
+      {{- else if eq $promDest.authType "sigv4" }}
+        {{- /* SigV4 signs with ambient AWS credentials (IRSA); region/roleArn go
+               straight into the alloy config, so no env secrets are needed here. */}}
+      {{- else }}
+        {{- printf "Unsupported .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s.authType (%s)" $promDest.name $promDest.authType | fail }}
       {{- end }}
-    {{- else if eq $promDest.authType "sigv4" }}
-      {{- /* SigV4 signs with ambient AWS credentials (IRSA); region/roleArn go
-             straight into the alloy config, so no env secrets are needed here. */}}
-    {{- else }}
-      {{- printf "Unsupported .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType (%s)" $promDest.authType | fail }}
-    {{- end }}
 
   {{ $promDest.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
       "context" $
       "minMetricImportance" $promDest.minMetricImportance
     ) | quote }}
+    {{- end }}
   {{- end }}
-  {{- /* </promDest> */}}
+  {{- /* </promDests> */}}
 
   {{- $tenancy := $.Values.pipeline.logging.tenancy | required "pipeline.logging.tenancy is required" }}
   GATEWAY_STATIC_TENANT: {{ $tenancy.staticTenant | quote }}

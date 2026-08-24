@@ -353,8 +353,8 @@ tests:
   # make alloy reject the config instead of skipping them.
   - it: should render a CA-only tls_config for a server-verification-only phase
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled: true
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.enabled: true
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.caFile: /etc/mzmon/tls/ca.crt
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -875,10 +875,11 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.enabled: false
     asserts:
       - failedTemplate:
-          errorPattern: "every metric write fails"
+          # Names the destination, because the check is per destination now.
+          errorPattern: "prometheusRemoteWrite\\.thanos\\.tls\\.enabled is off"
 
   # A backend told to serve TLS from material nothing is issuing. Legitimate with
   # your own PKI, and otherwise the signature of a half-applied profile.

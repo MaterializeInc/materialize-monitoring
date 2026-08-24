@@ -28,8 +28,9 @@ pipeline:
       destination:
         # Cheap, full-fidelity local storage: keep everything.
         prometheusRemoteWrite:
-          enabled: true
-          minMetricImportance: all
+          thanos:
+            enabled: true
+            minMetricImportance: all
 
         otel:
           enabled: true

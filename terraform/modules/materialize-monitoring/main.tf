@@ -204,22 +204,67 @@ resource "helm_release" "monitoring" {
       EOT
     }
 
+    # A credential keyed by a name no destination uses. Both halves of that are
+    # silent: the Secret grows a key nothing reads, and the destination that was
+    # meant to get it authenticates with an empty credential — which the backend
+    # rejects at run time, long after the apply, with an error naming neither the
+    # typo nor the variable.
+    #
+    # A `validation` block cannot see across variables on the module's minimum
+    # Terraform version, so this is a precondition, like the OTLP pair above.
     precondition {
-      condition = (
-        var.otlp_metrics != null ||
-        (var.otlp_auth_bearer_token == null && length(local.otlp_auth_header_entries) == 0)
-      )
+      condition = length(setsubtract(
+        local.prom_dest_credential_names,
+        keys(var.prometheus_remote_write),
+      )) == 0
       error_message = <<-EOT
+        prometheus_remote_write_credentials names a destination that prometheus_remote_write does
+        not define: ${join(", ", sort(setsubtract(
+      local.prom_dest_credential_names,
+      keys(var.prometheus_remote_write),
+)))}.
+
+        The two are keyed by the same destination name. A key that matches nothing puts an unread
+        variable in the gateway Secret and leaves the destination it was meant for authenticating
+        with an empty credential, which surfaces only as the backend rejecting every write.
+      EOT
+}
+
+# The mirror image: a destination asking for credentials that were never
+# supplied. sigv4 and none need none, so only the two that read the Secret
+# are checked.
+precondition {
+  condition = alltrue([
+    for name, dest in var.prometheus_remote_write :
+    contains(local.prom_dest_credential_names, name)
+    if contains(["basicAuth", "bearer"], dest.auth_type)
+  ])
+  error_message = <<-EOT
+        A prometheus_remote_write destination sets auth_type basicAuth or bearer but has no entry in
+        prometheus_remote_write_credentials.
+
+        The rendered pipeline reads its credential from an environment variable the gateway Secret
+        would have supplied. Unset, `sys.env` resolves to the empty string — which Alloy accepts at
+        load, so the failure appears only as authentication errors once the gateway is running.
+      EOT
+}
+
+precondition {
+  condition = (
+    var.otlp_metrics != null ||
+    (var.otlp_auth_bearer_token == null && length(local.otlp_auth_header_entries) == 0)
+  )
+  error_message = <<-EOT
         OTLP credentials are set but otlp_metrics is null, so no OTLP exporter is enabled and
         nothing would read them.
 
         Set otlp_metrics (at minimum its `url`), or drop the credentials.
       EOT
-    }
+}
 
-    precondition {
-      condition     = var.datadog_metrics == null || var.datadog_api_key != null
-      error_message = <<-EOT
+precondition {
+  condition     = var.datadog_metrics == null || var.datadog_api_key != null
+  error_message = <<-EOT
         datadog_metrics is set but datadog_api_key is null.
 
         The Datadog exporter authenticates with the API key alone, and the gateway reads it from an
@@ -227,14 +272,14 @@ resource "helm_release" "monitoring" {
         starts, sends, and is rejected by the intake — `fail_on_invalid_key` reports it in the
         gateway's logs and nowhere else.
       EOT
-    }
+}
 
-    precondition {
-      condition = (
-        var.object_storage_access_key_id == null ||
-        try(var.object_storage.cloud, null) == "aws"
-      )
-      error_message = <<-EOT
+precondition {
+  condition = (
+    var.object_storage_access_key_id == null ||
+    try(var.object_storage.cloud, null) == "aws"
+  )
+  error_message = <<-EOT
         object_storage_access_key_id is set but object_storage.cloud is
         "${try(var.object_storage.cloud, "null")}".
 
@@ -242,17 +287,17 @@ resource "helm_release" "monitoring" {
         storage-account key, and neither backend reads an access-key pair — set them through
         additional_values instead.
       EOT
-    }
-  }
+}
+}
 
-  depends_on = [
-    helm_release.crds,
-    kubernetes_secret.grafana_admin,
-    # The gateway's `envFrom` mount is optional, so a Secret that lands after the
-    # pod does is not an error anywhere — the gateway simply starts with empty
-    # credentials and every export is rejected until something restarts it.
-    kubernetes_secret.alloy_gateway_env,
-  ]
+depends_on = [
+  helm_release.crds,
+  kubernetes_secret.grafana_admin,
+  # The gateway's `envFrom` mount is optional, so a Secret that lands after the
+  # pod does is not an error anywhere — the gateway simply starts with empty
+  # credentials and every export is rejected until something restarts it.
+  kubernetes_secret.alloy_gateway_env,
+]
 }
 
 # Certificate wiring the chart can only complain about at render time, surfaced

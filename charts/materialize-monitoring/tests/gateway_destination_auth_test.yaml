@@ -26,11 +26,11 @@ set:
   # the reachability validators quiet, since they flag in-cluster Service URLs
   # aimed at backends this suite deliberately does not deploy.
   pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://metrics.example.com/api/v1/receive
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   - it: "metrics: external_labels renders at the top level, not inside endpoint"
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: none
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: none
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -43,8 +43,8 @@ tests:
 
   - it: "metrics: sigv4 renders inside endpoint"
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: sigv4
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.sigv4.region: us-east-1
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: sigv4
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.sigv4.region: us-east-1
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -53,8 +53,8 @@ tests:
 
   - it: "metrics: sigv4 is a handled authType in the env configMap (renders, no fail)"
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: sigv4
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.sigv4.region: us-east-1
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: sigv4
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.sigv4.region: us-east-1
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:
       - hasDocuments:
@@ -62,7 +62,7 @@ tests:
 
   - it: "metrics: basic_auth renders inside endpoint"
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: basicAuth
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: basicAuth
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -71,7 +71,7 @@ tests:
 
   - it: "metrics: bearer authorization renders inside endpoint"
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.authType: bearer
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: bearer
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:

@@ -24,7 +24,8 @@ pipeline:
         # cheap, full-fidelity local storage; set enabled: false to send metrics
         # only to OTLP.
         prometheusRemoteWrite:
-          enabled: true
+          thanos:
+            enabled: true
 
         otel:
           enabled: true

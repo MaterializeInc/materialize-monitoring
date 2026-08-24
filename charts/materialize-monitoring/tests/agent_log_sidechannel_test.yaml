@@ -18,7 +18,7 @@ set:
   tags.default: false
   tags.pipeline: true
   pipeline.logging.gateway.destination.loki.enabled: false
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
 tests:
   - it: should tail agent pods from the Kubernetes API on the gateway
     template: templates/pipelines/cm-alloy-gateway.yaml

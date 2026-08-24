@@ -210,6 +210,17 @@ Supply `sql_scraper_password` when enabling it.
         <td class="tf-var-default"><code>false</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="gateway_service_account_annotations" href="#gateway_service_account_annotations">gateway_<wbr>service_<wbr>account_<wbr>annotations</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">Annotations for the Alloy gateway's ServiceAccount, for binding it to a cloud identity —
+`eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity.
+
+Required by a `sigv4` remote-write destination, which has no other source of credentials.
+Merged with any annotations `object_storage` contributes, so both can be present.
+</td>
+        <td class="tf-var-default"><code>map[]</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="google_cloud_metrics" href="#google_cloud_metrics">google_<wbr>cloud_<wbr>metrics</a></td>
         <td class="tf-var-type"><em>schema</em></td>
       <td class="tf-var-desc">Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
@@ -626,6 +637,60 @@ a Secret.
     min_importance = optional(string, "recommended")
     auth_headers   = optional(map(string), {})
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="prometheus_remote_write" href="#prometheus_remote_write">prometheus_<wbr>remote_<wbr>write</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Prometheus remote-write destinations for the Alloy gateway, keyed by name — Amazon Managed
+Prometheus, Grafana Cloud, Mimir, another Thanos. Empty leaves the chart's single bundled
+Thanos destination exactly as it is.
+
+The key names the destination and becomes its Alloy component label, so it must match
+`[a-zA-Z_][a-zA-Z0-9_]*` and appears in the gateway's own metrics. Two keys are special only by
+convention: `thanos` is the chart's built-in destination, so setting it here **retunes** that
+one rather than adding a second — which is how you drop the bundled backend to a cheaper tier,
+or turn it off with `enabled = false` while keeping another destination.
+
+Each destination gets its own remote-write component and its own upstream tier filter, so
+`min_importance` — `essential`, `recommended`, `extended`, `diagnostic`, or `all`, each
+including the ones below it — is genuinely per destination: a metered backend on `essential`
+never buffers the metrics it would only discard. Amazon Managed Prometheus bills per sample
+ingested and per active series, which is what that is for.
+
+`auth_type` is `none`, `sigv4`, `basicAuth`, or `bearer`. `sigv4` needs no credentials at
+all — the gateway signs with the IRSA identity from `gateway_service_account_annotations`. The
+other two take their credentials from `prometheus_remote_write_credentials`, which delivers
+them through a Secret rather than the Helm values.
+</td>
+        <td class="tf-var-schema"><pre><code>map(object({
+    url             = optional(string)
+    enabled         = optional(bool, true)
+    min_importance  = optional(string, "all")
+    auth_type       = optional(string, "none")
+    sigv4_region    = optional(string)
+    sigv4_role_arn  = optional(string)
+    external_labels = optional(map(string), {})
+  }))</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="prometheus_remote_write_credentials" href="#prometheus_remote_write_credentials">prometheus_<wbr>remote_<wbr>write_<wbr>credentials</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Credentials for `prometheus_remote_write` destinations whose `auth_type` is `basicAuth` or
+`bearer`, keyed by the same destination name.
+
+Delivered as a Secret this module creates (`mzmon-alloy-gateway-env`) rather than through the
+Helm values, which are readable with `helm get values` and land in Terraform state. The module
+derives the variable names from the destination name — `amp` becomes
+`GATEWAY_PROMETHEUS_DEST_AMP_USERNAME` and friends — and writes those same names into the
+chart's values, so the two cannot disagree.
+
+`sigv4` destinations need no entry here: they sign with the gateway pod's IRSA identity.
+</td>
+        <td class="tf-var-schema"><pre><code>map(object({
+    username     = optional(string)
+    password     = optional(string)
+    bearer_token = optional(string)
+  }))</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>

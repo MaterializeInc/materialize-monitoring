@@ -105,6 +105,34 @@ module "monitoring" {
     "x-honeycomb-team" = "example-not-a-real-honeycomb-key"
   }
 
+  # Amazon Managed Prometheus alongside the bundled Thanos — the two-destination
+  # case the destination map exists for. Each is its own remote-write component,
+  # so the tiers really are independent: Thanos keeps everything, AMP takes only
+  # the alerting metrics, and AMP's write-ahead log holds only what it will send.
+  #
+  # `thanos` is restated here to prove the retune path works — the key merges
+  # over the chart's built-in destination rather than adding a second one, so a
+  # regression that made it add one instead would show up as two Thanos writers.
+  #
+  # No credentials: SigV4 signs with the IRSA identity bound below. That is the
+  # third credential shape in this example, and the only one with nothing in the
+  # Secret at all.
+  prometheus_remote_write = {
+    thanos = {
+      min_importance = "all"
+    }
+    amp = {
+      url            = "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-00000000-1111-2222-3333-444444444444/api/v1/remote_write"
+      min_importance = "essential"
+      auth_type      = "sigv4"
+      sigv4_region   = "us-east-1"
+    }
+  }
+
+  gateway_service_account_annotations = {
+    "eks.amazonaws.com/role-arn" = "arn:aws:iam::012345678901:role/ExampleAmpWriter"
+  }
+
   # Certificates, on the recommended shape: no issuer named, so the chart
   # bootstraps a self-signed root scoped to this release rather than reusing the
   # cluster's general-purpose one. Requires cert-manager to already be installed.

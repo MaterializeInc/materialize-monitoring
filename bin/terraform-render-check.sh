@@ -375,6 +375,37 @@ PYEOF
         echo "    static object-storage credentials reached loki, thanos, and a Secret"
     fi
 
+    # --- Prometheus remote-write destinations (DEP-232) -----------------------
+    # Gated on the module *call* declaring them, read from the plan's
+    # configuration rather than from the rendered output, for the same reason the
+    # object-storage credential check is: gating on the output would be circular,
+    # and a module that stopped composing the destination would simply stop being
+    # checked.
+    #
+    # `-c` so the JSON survives as one shell word.
+    declared_prw="$(jq -c '
+        .configuration.root_module.module_calls.monitoring.expressions
+        .prometheus_remote_write.constant_value // {}
+    ' "${plan_json}" 2>/dev/null || echo '{}')"
+
+    if [ "${declared_prw}" != "{}" ] && [ -n "${declared_prw}" ]; then
+        prw_rc=0
+        ${PY_RUN} python "${REPO_ROOT}/bin/check_remote_write_destinations.py" \
+            "${declared_prw}" "${rendered}" "${WORK_DIR}/${example}"-[0-9]*.yaml || prw_rc=$?
+
+        if [ "${prw_rc}" -eq 1 ]; then
+            echo "  !! ${example}: a declared remote-write destination did not land." >&2
+            echo "     See destinations.tf and the prometheusRemoteWrite map in the chart." >&2
+            status=1
+            continue
+        elif [ "${prw_rc}" -ne 0 ]; then
+            echo "  !! could not run the remote-write check: '${PY_RUN} python' exited ${prw_rc}." >&2
+            echo "     This is a tooling problem, not a destination failure." >&2
+            status=1
+            continue
+        fi
+    fi
+
     # --- certificates ---------------------------------------------------------
     # The class of bug tier 0 exists for: an issuer written to a path the chart
     # does not read is valid HCL, plans clean, and issues nothing. Only a render

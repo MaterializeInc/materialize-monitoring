@@ -1,0 +1,60 @@
+# Example AWS overlay: write to the bundled in-cluster Thanos AND to Amazon
+# Managed Prometheus at the same time, each on its own importance tier.
+#
+# This is the shape the destination map exists for. AMP bills per sample ingested
+# and per active series, while the in-cluster Thanos costs a PVC — so the same
+# metric stream is worth full fidelity in one and a filtered slice in the other.
+# Because each destination is its own `prometheus.remote_write` component with
+# its own upstream tier filter, the AMP write-ahead log holds only the essential
+# series rather than the full firehose it then discards.
+#
+# For AMP alone, delete the `thanos` entry below and set `thanos.enabled: false`
+# on the bundled backend at the bottom of this file.
+
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          # Full fidelity where storage is cheap. `thanos` is the chart's own
+          # default destination; it is restated here only to make the pairing
+          # legible.
+          thanos:
+            enabled: true
+            minMetricImportance: all
+
+          # Alerting metrics only, where storage is metered. Raise to
+          # `recommended` if you want the dashboard metrics in AMP too — that is
+          # the tier the other metered backends default to.
+          #
+          # The name becomes the Alloy component label, so it shows up as
+          # `prometheus.remote_write.amp` in the gateway's own metrics and UI.
+          amp:
+            enabled: true
+            minMetricImportance: essential
+
+            # Region should be like us-east-1
+            # Workspace ID should be like ws-11111111-2222-3333-4444-555555555555
+            url: "https://aps-workspaces.<REGION>.amazonaws.com/workspaces/<WORKSPACE-ID>/api/v1/remote_write"
+
+            # SigV4 with no static credentials in the cluster: the AWS SDK's
+            # default chain picks up the IRSA web-identity token the EKS webhook
+            # injects into the gateway pod. `region` is derivable from the URL by
+            # the SDK in most cases, but naming it removes a failure that only
+            # shows up as signature rejections.
+            authType: sigv4
+            sigv4:
+              region: "<REGION>"
+
+alloy-gateway:
+  serviceAccount:
+    annotations:
+      # The IAM role this workspace's `aps:RemoteWrite` permission is attached
+      # to. Without it the SigV4 signature is built from no credentials and
+      # every write is rejected with a 403 that names nothing.
+      eks.amazonaws.com/role-arn: "arn:aws:iam::012345678901:role/YourAMPRole"
+
+# The bundled Thanos stays on, because this profile writes to both. Set this
+# false — and drop the `thanos` destination above — to send metrics only to AMP.
+thanos:
+  enabled: true

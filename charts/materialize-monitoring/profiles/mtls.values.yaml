@@ -298,9 +298,13 @@ pipeline:
           clientAuth: NoClientCert
       destination:
         prometheusRemoteWrite:
-          tls:
-            enabled: true
-            caFile: /etc/mzmon/tls/ca.crt
+          # See the note in mtls-phase2.values.yaml: this names the chart's
+          # default destination, and a renamed or additional one needs its own
+          # entry here.
+          thanos:
+            tls:
+              enabled: true
+              caFile: /etc/mzmon/tls/ca.crt
 
 # ---------------------------------------------------------------------------
 # Grafana's datasources

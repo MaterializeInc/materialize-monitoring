@@ -22,7 +22,7 @@ tests:
       loki.enabled: false
       thanos.enabled: false
       pipeline.logging.gateway.destination.loki.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
     template: ../charts/node-exporter/templates/daemonset.yaml
     asserts:
       - containsDocument:
