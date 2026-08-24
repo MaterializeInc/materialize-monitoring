@@ -33,8 +33,10 @@ const HEADER: &str = "\
 # and treats the `all` destination tier as `.*` without reading this file).
 #
 # Entries are anchored-regex fragments matched against the metric name. A leading
-# `(?:v2_)?mz_` matches both the converged (`mz_`) and legacy (`v2_mz_`) prefixes
-# of the SQL-exporter metrics; other names are literal.
+# `(?:v2_)?mz_` matches the SQL-exporter metrics under either prefix: `mz_` on
+# self-managed and `v2_mz_` on Cloud. `v2_` is not a version — it is the prefix
+# one part of the Cloud platform uses, and it does not exist on self-managed.
+# Other names are literal.
 ";
 
 /// Arguments for the `gen-metric-tiers` command.

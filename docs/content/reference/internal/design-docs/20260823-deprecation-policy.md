@@ -2,14 +2,14 @@
 title: "Stability Guarantees and Deprecation Policy"
 weight: 20260823
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status=Accepted — the policy landed; see "Work in this repo" for what remains
 draft: false
 publishdate: 2026-08-23
-lastmod: 2026-08-23
+lastmod: 2026-08-24
 # custom parameters
 params:
   author: Heather Lapointe
-  status: "Draft"
+  status: "Accepted"
 ---
 
 # Stability Guarantees and Deprecation Policy
@@ -166,7 +166,7 @@ This resolves what the earlier draft got wrong by counting: **413 documented cha
 
 **What does not have an escape hatch is the observability exit.** A customer's dashboards, alert routes, and silences live in *their* Grafana and *their* Alertmanager. Pinning our chart does not help when the thing that changed is the shape of the data their panels query. That, and only that, is what justifies a cycle stricter than the Terraform stream's.
 
-**What we should borrow wholesale is the notes format.** Those upgrade notes state, per version, what changed, what the impact on an existing deployment is, and — unusually and valuably — what *did not* change: "`grafana_url` keeps its name; its meaning becomes conditional", "`enable_observability` keeps its name and its defaults". Naming the non-breaks is what makes the breaks trustworthy. Our `### Deprecations` changelog subsection should read like that.
+**What we should borrow wholesale is the notes format.** Those upgrade notes state, per version, what changed, what the impact on an existing deployment is, and — unusually and valuably — what *did not* change: "`grafana_url` keeps its name; its meaning becomes conditional", "`enable_observability` keeps its name and its defaults". Naming the non-breaks is what makes the breaks trustworthy. Our `**Deprecated:**` bullets should read like that.
 
 ## Grade the ceremony by failure mode {#grade-the-ceremony-by-failure-mode}
 
@@ -273,9 +273,9 @@ So the budget closes on customer upgrade cadence, not on a decision of ours. The
 
 A rename or removal is a three-step cycle. No step may be skipped, and the steps may not collapse into one release.
 
-1. **Announce.** Set `stability: deprecated` where the surface has the field, name the replacement, and write a `### Deprecations` entry in the PR description. The entry lands in the release's changelog section and, for registry surfaces, becomes visible on the docsite.
+1. **Announce.** Set `stability: deprecated` where the surface has the field, and write a release-note bullet in the PR description starting `**Deprecated:**`, naming the replacement. The bullet lands in that release's changelog section, which is the dated record the cooldown is measured from.
 2. **Overlap.** Old and new both work for **at least 30 days**. The old identifier keeps functioning — not merely existing — for the whole window.
-3. **Remove.** In a later minor (pre-1.0) or major (post-1.0), with the removal named in the changelog. `stability: unsupported` marks the tombstone so the identifier is never silently reused for something else.
+3. **Remove.** In a later minor (pre-1.0) or major (post-1.0), with a `**Removed:**` bullet. `stability: unsupported` marks the tombstone so the identifier is never silently reused for something else.
 
 **Additions are always free**, at any time, in any release. A policy that taxes additions gets routed around.
 
@@ -332,7 +332,7 @@ So the proposal, in ascending order of cost, stopping as early as it can:
 
 1. **Nothing to build.** The diffs above are the signal. The committed surface is roughly 180 identifiers, of which the two largest groups have shipped nothing.
 2. **CODEOWNERS on the paths that carry committed identifiers** — `packages/queries/`, `terraform/modules/*/variables.tf` and `outputs.tf`, `charts/*/pre-rendered/`. One file, no maintenance, GitHub enforces it, and it makes the existing `TODO` a little less of one.
-3. **A `### Deprecations` section in the PR template**, harvested into a `### Deprecations` changelog subsection exactly as [release notes](../../releasing/#release-notes-from-pr-descriptions) already are. The harvester exists; this is a template edit and a grouping rule, not new machinery. The changelog is then also where the 30-day clock is read from — release sections are dated by their tags, so no separate `since` bookkeeping.
+3. **A prefix convention on release-note bullets** — `**Deprecated:**` and `**Removed:**` — which the [release-notes harvesting](../../releasing/#release-notes-from-pr-descriptions) already carries into `CHANGELOG.md` verbatim. No new PR section, no second harvester, no grouping rule: it works today with what shipped last week. The changelog is then also where the 30-day clock is read from, since release sections are dated by their tags, so there is no separate `since` bookkeeping either.
 4. **Deferred: a grep-based CI reminder.** If a mechanical net turns out to be wanted, it is a short script that flags a disappearing `- alert:`, `record:`, or `^variable "` line and comments on the PR. No generated file, no exemption label, no state. Worth building the day it would have caught something, and not before.
 
 **When to escalate:** when there is more than one reviewer, or when the direct-installer list stops being a list you can contact. Both are observable, and neither is true today.
@@ -354,18 +354,22 @@ Ordered, because some of it gates the rest:
 
 | Item | Where | Status |
 |---|---|---|
-| This proposal | `design-docs/20260823-deprecation-policy.md` | 🔨 Draft, this doc |
-| Policy of record | [Versioning](../../versioning/) — a "Stability guarantees" section | ⬜ |
-| Customer-facing page | `reference/stability/`, alongside [Compatibility](../../../compatibility/) | ⬜ |
-| Release-process check | [Releasing](../../releasing/) — the reviewer's half of the gate | ⬜ |
-| `### Deprecations` PR section | `.github/pull_request_template.md`, harvested like [release notes](../../releasing/#release-notes-from-pr-descriptions) | ⬜ |
-| CODEOWNERS on the committed-surface paths | `.github/CODEOWNERS` | ⬜ |
+| This proposal | `design-docs/20260823-deprecation-policy.md` | ✅ Accepted |
+| Policy of record | [Versioning](../../versioning/#stability-guarantees) | ✅ |
+| Customer-facing page | [Stability and Deprecations](../../../stability/) | ✅ |
+| Release-process check | [Releasing](../../releasing/#the-committed-surface-check) | ✅ |
+| `**Deprecated:**` / `**Removed:**` bullet convention | `.github/pull_request_template.md` | ✅ |
+| CODEOWNERS on the committed-surface paths | `.github/CODEOWNERS` | ✅ |
+| Schema wording correction | `mzmon-query.schema.yaml` | ✅ |
+| Reword `v2_mz_` as a Cloud prefix, not "legacy" | `query/render.rs`, `gen_metric_tiers.rs` | ✅ |
+| **Alert / recording-rule naming decision, before the alerting path ships** | `packages/queries/` | ⬜ The time-sensitive one |
 | Load-bearing metric list (`canonical` closure of `metrics.yaml`) | `mz-monitoring-build` | ⬜ |
 | Upstream agreement on a window for that list | Materialize product side, not this repo | ⬜ |
-| Schema wording correction | `mzmon-query.schema.yaml` | ⬜ |
-| Reword `v2_mz_` as "Cloud SQL-endpoint prefix", not "legacy" | `query/render.rs`, `gen_metric_tiers.rs` header | ⬜ |
-| Alert / recording-rule naming decision, before the alerting path ships | `packages/queries/` | ⬜ |
 | `best-effort` → `canonical` triage | `packages/queries/` | ⬜ |
+| Spend the [pre-1.0 budget](#the-pre-10-breaking-change-budget) | various | ⬜ |
+| Direct-installer list — owner and location | — | ⬜ |
+
+The policy itself has landed; what remains is the cleanup it enables and the one decision with a closing window.
 
 **A note on the issue's paths.** DEP-127 names `docs/contrib/contract/versioning.md` and `docs/contrib/release.md`, and describes upgrading the former "from *stability guarantees TBD*". Neither path exists any more — the docs moved to `docs/content/reference/internal/` — and the current [Versioning](../../versioning/) page has no stability section at all, TBD or otherwise. The table above is the same three deliverables against the tree as it stands.
 

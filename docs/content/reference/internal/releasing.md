@@ -192,6 +192,45 @@ If the token is unset the push falls back to the default `GITHUB_TOKEN`, restori
 
 `propose-bumps` still syncs `uv.lock` inline for now; once auto-format reliably handles lockfiles that inline logic can be dropped (deferred — only generated docs were stale in practice).
 
+## The committed-surface check {#the-committed-surface-check}
+
+DEP-127's third deliverable: a PR that changes the customer-facing surface either follows the [deprecation policy](../versioning/#stability-guarantees) or says why not.
+There is no CI gate for this — see [why](../design-docs/20260823-deprecation-policy/#enforcement-use-what-is-already-generated) — so it is a review step, deliberately short.
+
+**When it applies.** The PR's diff touches one of these:
+
+| Path | Carries |
+|---|---|
+| `packages/queries/*.yaml` | alert names, `severity` / `component` values, recording-rule names |
+| `terraform/modules/*/variables.tf`, `outputs.tf` | module inputs and outputs |
+| `charts/*/pre-rendered/dashboards/` | dashboard identities |
+| `charts/*/pre-rendered/metrics/metric-tiers.yaml` | tier names |
+
+These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/CODEOWNERS) covers, so the review request arrives on its own.
+Adding an identifier needs nothing — the check is only about **renames and removals**, which show up as a delete-plus-add in one of the generated or committed files above.
+
+**What to check.** For each removed or renamed identifier, one of:
+
+- It was announced at least **30 days** ago. Find the `**Deprecated:**` bullet in `CHANGELOG.md` and check the date on that release's tag.
+- It is being announced *now*, in which case the PR keeps the old name working and adds the `**Deprecated:**` bullet — removal is a later PR.
+- It is exempt, and the PR body says why. The honest exemptions are that nothing ever consumed it, or that it is in the [pre-1.0 batch](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget). Say which.
+
+**How a deprecation is recorded.** As a release-note bullet in the PR description, using a `**Deprecated:**` or `**Removed:**` prefix:
+
+```markdown
+### Release Notes
+
+* **Deprecated:** `mz-mon-env-top` is now `mz-mon-environment-overview`.
+  Both names resolve until 2026-09-23; update dashboard links and embeds.
+```
+
+The existing [release-notes harvesting](#release-notes-from-pr-descriptions) carries that into the component's `CHANGELOG.md` section verbatim, and the release's tag date is what the 30 days are counted from.
+No separate section, no extra tooling — the prefix is the whole convention.
+
+**Write it like the Terraform module's [upgrade notes](https://github.com/MaterializeInc/materialize-terraform-self-managed#upgrade-notes)**, which name what *did not* change alongside what did ("`grafana_url` keeps its name; its meaning becomes conditional"). Naming the non-breaks is what makes the breaks trustworthy.
+
+**Chart values are the exception.** Their consumer is our own Terraform module, so a rename there is absorbed by the module bump in the same change. What it needs instead is a note to the known direct-`helm install` users; there is no cooldown to serve.
+
 ## Cascade and ordering
 
 - Releasing a dependency updates its dependents' version-update PRs (cascade), recording an `Included <dep> @ vPREV..vNEW` entry.

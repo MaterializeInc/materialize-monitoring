@@ -1,6 +1,14 @@
-
 # TODO: repo should be owned by a team, not just Heather
 /*                  @alphadelta14
 
 # CHANGELOG.md owners will be pinged for automated version update PRs.
 /CHANGELOG.md       @alphadelta14
+
+# Committed customer-facing surface: a rename or removal here owes a deprecation
+# cycle. See reference/internal/releasing.md ("The committed-surface check").
+# Adding an identifier needs nothing; these entries exist so renames get a look.
+/packages/queries/                                  @alphadelta14
+/terraform/modules/materialize-monitoring/variables.tf   @alphadelta14
+/terraform/modules/materialize-monitoring/outputs.tf     @alphadelta14
+/charts/materialize-monitoring/pre-rendered/dashboards/   @alphadelta14
+/charts/materialize-monitoring/pre-rendered/metrics/       @alphadelta14

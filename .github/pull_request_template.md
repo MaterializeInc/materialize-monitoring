@@ -10,6 +10,11 @@ they need to react to — not for a reviewer of this diff.
 
 Nested bullets keep their nesting. Comments like this one are stripped.
 Leave `* None` when nothing needs saying; the section is then dropped entirely.
+
+Renaming or removing an alert name, a recording-rule name, a Terraform variable
+or output, or a dashboard identity? That owes a deprecation cycle. Prefix the
+bullet `**Deprecated:**` or `**Removed:**` and name the replacement — see
+reference/internal/releasing.md, "The committed-surface check".
 -->
 
 * None

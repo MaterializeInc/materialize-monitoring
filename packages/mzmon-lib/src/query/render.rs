@@ -180,7 +180,11 @@ pub fn promql_or_zero(base: &str, _args: &[String]) -> String {
 pub const SQL_PREFIX_SENTINEL: &str = "__mz_sql_prefix__";
 
 /// The anchored-regex fragment the [`SQL_PREFIX_SENTINEL`] rewrites to: matches
-/// both the converged (`mz_`) and legacy (`v2_mz_`) prefixes.
+/// both self-managed's `mz_` prefix and Cloud's `v2_mz_` one.
+///
+/// `v2_` is **not** a version: it is the prefix on one part of the Cloud
+/// platform's SQL-based metric endpoints, and it does not exist on self-managed.
+/// The two prefixes are two deployments, not two generations of one metric.
 pub const SQL_PREFIX_REGEX: &str = "(?:v2_)?mz_";
 
 /// Shared builder for the extraction contexts. Only `mz_sql_prefix` varies: it
@@ -263,7 +267,7 @@ pub fn doc_context<'a>(
 /// [`SQL_PREFIX_SENTINEL`] rather than a concrete prefix. The sentinel is a valid
 /// PromQL name (extraction parses it) that the tiers projection later rewrites to
 /// [`SQL_PREFIX_REGEX`] — so a SQL-exporter metric lands in the allowlist as a
-/// fragment matching both `mz_…` (converged) and `v2_mz_…` (legacy), and works
+/// fragment matching both `mz_…` (self-managed) and `v2_mz_…` (Cloud), and works
 /// regardless of which endpoint a deployment scrapes.
 pub fn tier_context<'a>(registry: &'a QueryRegistry, engine: QueryEngine) -> TemplateContext<'a> {
     extraction_context(registry, engine, SQL_PREFIX_SENTINEL)

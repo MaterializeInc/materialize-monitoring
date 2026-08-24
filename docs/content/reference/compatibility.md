@@ -8,6 +8,9 @@ weight: 40
 This shows the compatibility of materialize-monitoring with various
 technologies.
 
+It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
+For what we guarantee about our own names, and the notice you get before one changes, see [Stability and Deprecations](../stability/).
+
 ## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
 | materialize-terraform-self-managed | materialize-monitoring | Clouds | Observability default |
