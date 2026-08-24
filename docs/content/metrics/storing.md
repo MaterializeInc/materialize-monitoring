@@ -6,28 +6,34 @@ weight: 20
 # Storing Metrics
 
 `alloy-gateway` forwards the metrics it collects to one or more storage backends.
-Out of the box that is an in-cluster **Thanos Receive**, but you can send metrics to any Prometheus remote-write store (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …), to an **OpenTelemetry (OTLP)** endpoint, or to several at once — each enabled destination receives its own copy.
+Out of the box that is an in-cluster **Thanos Receive**, but you can send metrics to any number of Prometheus remote-write stores (Thanos, Mimir, Amazon Managed Prometheus, Grafana Cloud, …), to an **OpenTelemetry (OTLP)** endpoint, or to several of both at once — each enabled destination receives its own copy, filtered to its own [importance tier](#the-importance-tiers).
 
 This page walks through the three decisions that setup involves:
 
-- **Where** metrics go — the default [remote-write destination](#the-remote-write-destination) and the [other backends](#other-metric-storage-backends) (generic OTLP, Google Cloud Monitoring, Datadog, Amazon Managed Prometheus).
+- **Where** metrics go — the [remote-write destinations](#the-remote-write-destinations) and the [other backends](#other-metric-storage-backends) (generic OTLP, Google Cloud Monitoring, Datadog).
 - **How** the gateway authenticates — [authentication](#authentication) and the [gateway Secret](#supplying-credentials-the-gateway-secret) that holds the credentials.
 - **What** each backend stores — the [importance tiers and denylist](#controlling-what-each-destination-stores) that decide which metrics reach each destination.
 
 If you keep the bundled Thanos, it persists blocks to object storage — see [Thanos object storage](#thanos-object-storage) for the S3/GCS/Azure setup.
 
-## The remote-write destination
+## The remote-write destinations {#the-remote-write-destinations}
 
-These values live under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`:
+`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a **map keyed by destination name**.
+The chart ships one entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding a key adds a destination.
+
+Each destination takes these values:
 
 | Value | Purpose |
 |---|---|
-| `enabled` | Toggle the metrics remote-write sink (default `true`). |
-| `url` | Remote-write endpoint (default: in-cluster Thanos Receive). |
-| `authType` | `none` (default), `basicAuth`, `bearer`, or `sigv4`. |
-| `sigv4` | AWS SigV4 signing config — for Amazon Managed Prometheus (see below). |
+| `enabled` | Write to this destination (default `true`). |
+| `url` | Remote-write endpoint. Required, except on `thanos`, which defaults to the in-cluster Receive. |
+| `minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
+| `authType` | `none` (default), `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
+| `sigv4` | AWS SigV4 signing config — for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
+| `tls` | Client TLS for this hop. |
+| `externalLabels` | Extra labels stamped on every sample this destination receives. |
 
-Point it at an external store:
+Point the bundled destination at an external store instead:
 
 ```yaml
 pipeline:
@@ -35,9 +41,48 @@ pipeline:
     gateway:
       destination:
         prometheusRemoteWrite:
-          enabled: true
-          url: https://<your-remote-write-endpoint>/api/v1/write
+          thanos:
+            url: https://<your-remote-write-endpoint>/api/v1/write
 ```
+
+Or write to two backends at once, each on its own tier:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          # Everything, to storage you already pay for.
+          thanos:
+            minMetricImportance: all
+          # Alerting metrics only, to a backend that bills per sample.
+          amp:
+            url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+            minMetricImportance: essential
+            authType: sigv4
+            sigv4:
+              region: us-east-1
+```
+
+The name is more than a label in `values`: it becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI, and it is the fragment the [credential environment variables](#credential-environment-variables) are derived from.
+It must match `[a-zA-Z_][a-zA-Z0-9_]*` — no dashes or dots — and `egress` is reserved for the fan-out seam.
+Both rules fail at render rather than at gateway startup.
+
+### One component per destination, and why it matters {#one-component-per-destination}
+
+Each destination gets its own `prometheus.remote_write` component with its own write-ahead log, rather than sharing one component with several `endpoint` blocks.
+That costs a WAL per destination and buys two things:
+
+- **Tiers that are real.** The importance filter sits *upstream* of the component, so a destination on `essential` writes a WAL holding only essential series.
+  Sharing one component would mean filtering with `write_relabel_config` on the way *out* of the WAL — every destination paying full-firehose disk regardless of the tier it asked for.
+- **Independent failure domains.** A backend that stops accepting writes backs up its own WAL and nothing else.
+  On a shared component a stuck endpoint holds back WAL truncation for every other endpoint too, so one unreachable SaaS backend would grow the disk the in-cluster path depends on.
+
+Budget disk accordingly: the gateway's WAL volume has to hold the sum of the enabled destinations' buffers, not one.
+The `essential` tier is a small fraction of `all`, so a filtered second destination costs far less than a doubling.
+
+### External labels
 
 Every sample carries a `cluster` label identifying its source cluster, set from the `CLUSTER_NAME` environment variable (default `default`).
 Set it per install so series from different clusters stay distinct once they land in a shared backend:
@@ -45,6 +90,44 @@ Set it per install so series from different clusters stay distinct once they lan
 ```yaml
 env:
   CLUSTER_NAME: prod-us-east-1
+```
+
+`cluster` is applied to every destination.
+Add labels for one destination only with its `externalLabels` map, which is useful where one backend needs a tenant or account key the others do not:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          amp:
+            externalLabels:
+              account: "012345678901"
+```
+
+Setting `cluster` in `externalLabels` replaces the environment-derived one for that destination.
+
+### Upgrading from the single-destination shape
+
+`prometheusRemoteWrite` used to *be* one destination, with `url`, `authType`, and the rest directly under it.
+Those keys now live one level down, under a name.
+An install that never overrode them upgrades with no change at all — the default `thanos` destination writes to the same endpoint on the same tier.
+
+An install that did override them **fails at render** with a message naming the keys to move.
+That is deliberate rather than unfriendly: Helm merges maps, so a leftover `prometheusRemoteWrite.url` would land *beside* `thanos` rather than replacing it.
+The setting would apply to nothing, the default endpoint would keep receiving, and there would be no error and no metric gap to notice.
+Move each key under a name — `thanos` to keep the bundled Receive:
+
+```yaml
+pipeline:
+  metrics:
+    gateway:
+      destination:
+        prometheusRemoteWrite:
+          thanos:                       # was: directly under prometheusRemoteWrite
+            url: https://metrics.example.com/api/v1/write
+            authType: bearer
 ```
 
 ## Authentication
@@ -98,19 +181,25 @@ The Secret's keys are injected as environment variables next to the ConfigMap's,
 
 Populate only the rows for the destinations and auth methods you enable:
 
+`<NAME>` below is the destination's key in the `prometheusRemoteWrite` map, uppercased with anything outside `A-Z0-9` folded to `_` — the `amp` destination reads `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
+Every remote-write row is per destination, so two destinations on `basicAuth` need two pairs of keys.
+
 | Destination · method | `values` block | Secret keys (env vars) |
 |---|---|---|
-| Prometheus remote-write · `basicAuth` | `…destination.prometheusRemoteWrite.basicAuth` | `GATEWAY_PROMETHEUS_DEST_USERNAME`, `GATEWAY_PROMETHEUS_DEST_PASSWORD` |
-| Prometheus remote-write · `bearer` | `…prometheusRemoteWrite.bearer` | `GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN` |
-| Prometheus remote-write · `oauth2` | `…prometheusRemoteWrite.oauth2` | `GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID`, `…_CLIENT_SECRET`, `…_TOKEN_URL` |
-| Prometheus remote-write · client TLS | `…prometheusRemoteWrite.tls` | `GATEWAY_PROMETHEUS_DEST_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
+| Prometheus remote-write · `basicAuth` | `…prometheusRemoteWrite.<name>.basicAuth` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_<NAME>_PASSWORD` |
+| Prometheus remote-write · `bearer` | `…prometheusRemoteWrite.<name>.bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_BEARER_TOKEN` |
+| Prometheus remote-write · `oauth2` | `…prometheusRemoteWrite.<name>.oauth2` | `GATEWAY_PROMETHEUS_DEST_<NAME>_OAUTH2_CLIENT_ID`, `…_CLIENT_SECRET`, `…_TOKEN_URL` |
+| Prometheus remote-write · client TLS | `…prometheusRemoteWrite.<name>.tls` | `GATEWAY_PROMETHEUS_DEST_<NAME>_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
 | OTLP · `basic` | `…otel.auth.basic` | `GATEWAY_OTEL_DEST_USERNAME`, `GATEWAY_OTEL_DEST_PASSWORD` |
 | OTLP · `bearer` | `…otel.auth.bearer` | `GATEWAY_OTEL_DEST_BEARER_TOKEN` |
 | OTLP · `headers` | `…otel.auth.headers` | whatever each header's `valueEnv` names — you choose |
 | Datadog | `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_DATADOG_API_KEY` |
-| SigV4 — AMP or OTLP `awsSigv4` | `…prometheusRemoteWrite.sigv4` / `…otel.auth.awsSigv4` | — none; uses the pod's IRSA identity |
+| SigV4 — AMP or OTLP `awsSigv4` | `…prometheusRemoteWrite.<name>.sigv4` / `…otel.auth.awsSigv4` | — none; uses the pod's IRSA identity |
 
 SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
+
+Each remote-write destination can also name its own variables — `basicAuth.usernameEnv`, `bearer.tokenEnv`, and so on — where the derived name is inconvenient or a Secret already uses another.
+The Terraform module sets them explicitly for this reason; see [Through Terraform](#through-terraform).
 
 ## Controlling what each destination stores
 
@@ -141,7 +230,8 @@ The defaults lean permissive for cheap local storage and frugal for metered SaaS
 
 | Destination | Default `minMetricImportance` |
 |---|---|
-| `prometheusRemoteWrite` (bundled Thanos) | `all` |
+| `prometheusRemoteWrite.thanos` (bundled Thanos) | `all` |
+| `prometheusRemoteWrite.<name>` (any you add) | `all` |
 | `otlpExporter` (generic OTLP) | `all` |
 | `googleCloudExporter` (GCM) | `recommended` |
 | `datadogExporter` | `recommended` |
@@ -164,11 +254,15 @@ pipeline:
 >   If you want *everything* that is scraped, use `all`, not `diagnostic`.
 
 For a worked example that keeps full fidelity in Thanos while sending a smaller, cheaper slice to Google Cloud Monitoring and Datadog, see the annotated [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile.
+The remote-write equivalent — Thanos on `all`, Amazon Managed Prometheus on `essential` — is [`aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
+
+On the remote-write side the tier does more than filter, because the filter runs before the write-ahead log: a destination on `essential` also buffers only essential series to disk.
+See [One component per destination](#one-component-per-destination).
 
 ### How the allowlist is built
 
 Tier membership is generated from the query registry into `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml` (via `mz-monitoring-build gen-metric-tiers`, or `make metric-tiers`).
-At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_UNFILTERED_PROM_METRICS`.
+At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_UNFILTERED_PROM_METRICS_AMP` for a remote-write destination named `amp`.
 `all` skips the file entirely and uses `.*`.
 Do not edit `metric-tiers.yaml` by hand: reclassify metrics in the registry and regenerate.
 
@@ -189,7 +283,7 @@ Reach for the denylist to shed a metric everywhere (cost, cardinality, noise); r
 
 ### Through Terraform
 
-The `materialize-monitoring` module exposes three destinations directly, each taking the same `min_importance` tier documented above:
+The `materialize-monitoring` module exposes the OTLP-family destinations directly, each taking the same `min_importance` tier documented above:
 
 ```hcl
 google_cloud_metrics = { min_importance = "recommended" }
@@ -204,6 +298,29 @@ otlp_metrics = {
 }
 otlp_auth_header_secrets = { "x-honeycomb-team" = var.honeycomb_api_key }
 ```
+
+Remote-write destinations go through `prometheus_remote_write`, which is the same map keyed by name.
+A key of `thanos` **retunes** the bundled destination rather than adding a second one, so dropping local fidelity and adding AMP is one input:
+
+```hcl
+prometheus_remote_write = {
+  thanos = { min_importance = "all" }
+  amp = {
+    url            = "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write"
+    min_importance = "essential"
+    auth_type      = "sigv4"
+    sigv4_region   = "us-east-1"
+  }
+}
+
+# SigV4 needs no credentials, only an identity to sign as.
+gateway_service_account_annotations = {
+  "eks.amazonaws.com/role-arn" = aws_iam_role.amp_writer.arn
+}
+```
+
+`basicAuth` and `bearer` destinations take their credentials from `prometheus_remote_write_credentials`, keyed by the same destination name.
+The module derives the environment variable names from that name and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
 
 Credentials do **not** go through the Helm values — the module puts them in the gateway Secret instead, and rolls the gateway when one changes.
 See the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations) for the environment variables each input becomes.
@@ -408,7 +525,12 @@ The bundled Thanos runs as a small set of roles over the shared bucket:
 
 ## Other Metric Storage Backends
 
-Two families of backend sit alongside the default Thanos remote-write sink: **OpenTelemetry (OTLP)** destinations, configured under the `otel` block, and remote-write variants such as **Amazon Managed Prometheus**, which reuse `prometheusRemoteWrite` with SigV4 auth.
+Two families of backend sit alongside the bundled Thanos, and both fan out *in addition to* it rather than replacing it.
+
+**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further entries in the [`prometheusRemoteWrite` map](#the-remote-write-destinations).
+Nothing on this page is an either/or with the in-cluster Thanos: keeping full fidelity locally while shipping a filtered slice to a metered backend is the shape the map exists for.
+
+**OpenTelemetry (OTLP) destinations** are configured under the `otel` block, described below.
 
 Enable the OTLP path with `pipeline.metrics.gateway.destination.otel.enabled: true`, then turn on one or more exporters — `otlpExporter` (generic), `googleCloudExporter`, and `datadogExporter` can all run at once, each with its own `minMetricImportance`.
 
@@ -513,7 +635,11 @@ The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materi
 
 To push to Amazon Managed Prometheus (AMP), sign requests with SigV4 and let the gateway pod assume an IAM role via **IRSA** — no static keys in the cluster.
 
-1. Point the destination at your workspace's remote-write URL and enable `sigv4`:
+AMP is a remote-write destination like any other, so this **adds** to the bundled Thanos rather than replacing it.
+Running both is the usual choice: AMP bills per sample ingested and per active series, so the pairing below keeps everything in local storage you already pay for and sends only the alerting metrics to AMP.
+To send metrics *only* to AMP, drop the `thanos` entry and set `thanos.enabled: false` on the bundled backend.
+
+1. Add a destination pointing at your workspace's remote-write URL, with `sigv4`:
 
    ```yaml
    pipeline:
@@ -521,11 +647,15 @@ To push to Amazon Managed Prometheus (AMP), sign requests with SigV4 and let the
        gateway:
          destination:
            prometheusRemoteWrite:
-             url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
-             authType: sigv4
-             sigv4:
-               region: <region>
-               # roleArn: optional — only to assume a *different* role than IRSA grants
+             thanos:
+               minMetricImportance: all
+             amp:
+               url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
+               minMetricImportance: essential
+               authType: sigv4
+               sigv4:
+                 region: <region>
+                 # roleArn: optional — only to assume a *different* role than IRSA grants
    ```
 
 2. Grant an IAM role `aps:RemoteWrite` on the workspace, and bind it to the gateway with IRSA by annotating the `alloy-gateway` ServiceAccount:
@@ -546,6 +676,8 @@ With `sigv4` set (region only), the AWS SDK's default credential chain picks up 
 
 > [!NOTE]
 >   If the gateway NetworkPolicy is enabled, allow egress (443) to the AMP endpoint and to AWS STS, or the credential fetch and the write will fail.
+
+[`aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml) is this whole setup as one annotated profile.
 
 ## See more
 

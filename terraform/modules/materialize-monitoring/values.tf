@@ -467,6 +467,11 @@ locals {
     local.google_cloud_metrics_document,
     local.datadog_metrics_document,
     local.otlp_metrics_document,
+    local.prometheus_remote_write_document,
+    # After storage_documents, which also writes alloy-gateway.serviceAccount
+    # .annotations. Helm deep-merges maps across documents, so both survive; this
+    # only decides who wins on a key both set.
+    local.gateway_service_account_document,
     local.scheduling_document,
     local.zone_spread_document,
   )

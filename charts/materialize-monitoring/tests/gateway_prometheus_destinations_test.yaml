@@ -1,0 +1,322 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# `pipeline.metrics.gateway.destination.prometheusRemoteWrite` as a map of named
+# destinations (DEP-232).
+#
+# The bugs worth locking down here are the quiet ones. Everything in this suite
+# renders valid Alloy and installs cleanly when it is wrong; what breaks is
+# *where the metrics go*, which nothing in the cluster reports:
+#
+#   1. A destination that renders a component but is not forwarded to. Alloy
+#      accepts an orphan component, so the destination simply never receives.
+#   2. A per-destination tier filter that is shared, missing, or reading the
+#      wrong variable. The write still succeeds — it just carries the wrong
+#      metric set, and on a backend billing per sample that is a cost bug with
+#      no symptom.
+#   3. Environment variables the pipeline reads and the env ConfigMap does not
+#      write, or vice versa. `sys.env` of an unset variable is the empty string,
+#      which Alloy accepts at load.
+#   4. A boolean that does not take. `enabled: false` and `tls.verify: false`
+#      are both zero values, so a merge-based resolver would silently discard
+#      them and leave the destination on, or verifying.
+suite: alloy-gateway prometheus remote-write destinations
+release:
+  name: test-mon
+  namespace: monitoring
+set:
+  # Only the Alloy pipeline; backends off so the loki/thanos subchart validators
+  # do not demand bucket and objstore values.
+  tags.default: false
+  tags.pipeline: true
+  # Off-cluster, which is what these tests are about and what keeps the
+  # reachability validators quiet about backends this suite does not deploy.
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+tests:
+  # --- the default, unchanged -------------------------------------------------
+  # The upgrade promise: an install that set nothing keeps exactly one
+  # destination, on the same tier, writing to the same place.
+  - it: should render one destination by default
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "thanos" \{'
+      # Exactly one, asserted through the fan-out seam rather than by counting
+      # components: the closing `]` right after the single edge is what makes
+      # this "one destination" rather than "at least one". Go's regexp has no
+      # negative lookahead, so excluding other names directly is not available.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "egress" \{\s*forward_to = \[\s*prometheus\.relabel\.thanos\.receiver,\s*\]'
+
+  # --- two destinations -------------------------------------------------------
+  - it: should give each destination its own component, filter, and fan-out edge
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp:
+        url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1/api/v1/remote_write
+        authType: sigv4
+        minMetricImportance: essential
+        sigv4:
+          region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "amp" \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "thanos" \{'
+      # Each gets its own tier filter, reading its own variable. A shared filter
+      # would render one of these and both destinations would take the same set.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "amp" \{[\s\S]*?GATEWAY_UNFILTERED_PROM_METRICS_AMP'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "thanos" \{[\s\S]*?GATEWAY_UNFILTERED_PROM_METRICS_THANOS'
+      # And each is actually reachable. An orphan component is valid Alloy that
+      # never receives a sample.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "egress" \{[\s\S]*?prometheus\.relabel\.amp\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "egress" \{[\s\S]*?prometheus\.relabel\.thanos\.receiver'
+
+  # The filter has to sit *upstream* of the remote_write, not as a
+  # write_relabel_config inside its endpoint. Downstream it would run on the way
+  # out of the write-ahead log, so an `essential` destination would still buffer
+  # the whole firehose to disk before discarding it — which is most of the point
+  # of giving each destination its own component.
+  - it: should filter upstream of the WAL, not on the way out of it
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: essential
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "thanos" \{[\s\S]*?forward_to = \[\s*prometheus\.remote_write\.thanos\.receiver'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: "write_relabel_config"
+
+  # --- env ConfigMap agreement ------------------------------------------------
+  # Both sides of every variable, because a name that only one side knows is not
+  # an error anywhere: the pipeline reads an unset variable as "".
+  - it: should write a URL and a tier variable per destination
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp:
+        url: https://aps.example.com/api/v1/remote_write
+        minMetricImportance: essential
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_PROM_DEST_AMP
+          value: https://aps.example.com/api/v1/remote_write
+      - equal:
+          path: data.GATEWAY_PROM_DEST_THANOS
+          value: https://metrics.example.com/api/v1/receive
+      # `all` is the firehose and short-circuits the tier file entirely.
+      - equal:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_THANOS
+          value: ".*"
+      # `essential` must resolve to a real allowlist, not to `.*`.
+      - notEqual:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_AMP
+          value: ".*"
+
+  # This was a live bug before the map: the variable was written and nothing
+  # read it, so `minMetricImportance` on this destination did nothing at all.
+  - it: should have the pipeline read the tier variable the env ConfigMap writes
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'sys\.env\("GATEWAY_UNFILTERED_PROM_METRICS_THANOS"\)'
+
+  - it: should derive credential variables from the destination name
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.mimir:
+        url: https://mimir.example.com/api/v1/push
+        authType: basicAuth
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'username = sys\.env\("GATEWAY_PROMETHEUS_DEST_MIMIR_USERNAME"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'password = sys\.env\("GATEWAY_PROMETHEUS_DEST_MIMIR_PASSWORD"\)'
+
+  # The caller-named form DEP-204 established, so a Terraform-managed Secret can
+  # choose the variable rather than having to reproduce the derivation.
+  - it: should let a destination name its own credential variables
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.mimir:
+        url: https://mimir.example.com/api/v1/push
+        authType: bearer
+        bearer:
+          tokenEnv: MY_OWN_TOKEN_VARIABLE
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'credentials = sys\.env\("MY_OWN_TOKEN_VARIABLE"\)'
+
+  # --- booleans that have to survive resolution -------------------------------
+  # `false` is Go's zero value, so a resolver built on `mergeOverwrite` would
+  # discard both of these and leave the destination enabled, and verifying. Both
+  # are asserted in the false direction on purpose: a test of the default passes
+  # against the broken form too.
+  - it: should honour enabled=false on one destination without touching the other
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp:
+        url: https://aps.example.com/api/v1/remote_write
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "thanos"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "amp" \{'
+      # The disabled one must also leave the fan-out, or the egress seam
+      # references a component that no longer exists and Alloy refuses the file.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: "prometheus\\.relabel\\.thanos\\.receiver"
+
+  # `null` is how Helm records a key a later values file cleared, and `dig`
+  # returns empty for it — which would read as `false` and quietly take the
+  # destination off the fan-out. Absent and null both mean "use the default".
+  - it: should treat enabled=null as unset rather than as false
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: null
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "thanos" \{'
+
+  - it: should honour tls.verify=false
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.enabled: true
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.verify: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: "insecure_skip_verify = true"
+
+  # --- external labels --------------------------------------------------------
+  - it: should keep the cluster label and allow per-destination additions
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.externalLabels:
+        region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'external_labels = \{\s*cluster = sys\.env\("CLUSTER_NAME"\),\s*region = "us-east-1",'
+      # Still a top-level argument of the component, never inside `endpoint` —
+      # Alloy rejects the config at load if it moves.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint \{[^}]*external_labels'
+
+  # --- the migration guard ----------------------------------------------------
+  # The whole reason this fails loudly rather than warning. Helm merges maps, so
+  # a leftover `prometheusRemoteWrite.url` lands beside `thanos` instead of
+  # replacing it: it applies to nothing, the default endpoint keeps receiving,
+  # and there is no error and no metric gap to notice.
+  - it: should refuse a leftover single-destination key
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://old.example.com/api/v1/receive
+    asserts:
+      - failedTemplate:
+          errorPattern: "still carries the single-destination key\\(s\\) url"
+
+  - it: should refuse a name alloy cannot use as a component label
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.my-amp:
+        url: https://aps.example.com/api/v1/remote_write
+    asserts:
+      - failedTemplate:
+          errorPattern: "is not a usable name"
+
+  - it: should refuse a name the pipeline has already taken
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.egress:
+        url: https://aps.example.com/api/v1/remote_write
+    asserts:
+      - failedTemplate:
+          errorPattern: "uses a name this pipeline has already taken"
+
+  - it: should refuse an enabled destination with no url
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp:
+        minMetricImportance: essential
+    asserts:
+      - failedTemplate:
+          errorPattern: "prometheusRemoteWrite\\.amp is enabled but has no url"
+
+  # A destination that is off does not need a URL — that is how you keep a
+  # placeholder in values without it being a render error.
+  - it: should allow a disabled destination with no url
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp:
+        enabled: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "amp"'
+
+  # --- auth validation, per destination ---------------------------------------
+  # A warning rather than an error, because the gateway always mounts the
+  # `mzmon-alloy-gateway-env` Secret with `envFrom` and render time cannot see
+  # inside it. What matters here is that the warning names *which* destination
+  # and *which* variable — with three destinations, "a credential is missing" is
+  # not actionable. Asserted against NOTES.txt: validate.yaml emits warnings as
+  # YAML comments and produces no document to match on.
+  - it: should name the destination and its variable when a credential is missing
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp:
+        url: https://aps.example.com/api/v1/remote_write
+        authType: basicAuth
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "prometheusRemoteWrite\\.amp\\.basicAuth\\.password is empty"
+      - matchRegexRaw:
+          pattern: "GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD"
+      # The other destination is fine, so it must not be implicated.
+      - notMatchRegexRaw:
+          pattern: "prometheusRemoteWrite\\.thanos\\.basicAuth"
+
+  # --- the shipped profile ----------------------------------------------------
+  - it: should render the AMP fan-out profile end to end
+    values:
+      - ../profiles/aws-amp-fanout.values.yaml
+    set:
+      # The profile keeps the bundled Thanos on — that is the whole point of it —
+      # so the subchart's own validator wants somewhere to put blocks.
+      thanos.global.objstore.config: |
+        type: FILESYSTEM
+      # The profile ships a placeholder URL for the operator to fill in. The
+      # `<REGION>` in it is fine for Alloy but not for the reachability
+      # validator, so this pins a concrete one.
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp.url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1/api/v1/remote_write
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp.sigv4.region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "amp" \{[\s\S]*?sigv4 \{\s*region = "us-east-1"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "thanos" \{'

@@ -55,7 +55,7 @@ The example profiles do all of it correctly and are the shortest path:
 | `profiles/aws-example.values.yaml` | S3 + IRSA |
 | `profiles/gcp-example.values.yaml` | GCS + GKE Workload Identity |
 | `profiles/azure-example.values.yaml` | Blob + Entra Workload ID |
-| `profiles/aws-amp-example.values.yaml` | S3 for logs, Amazon Managed Prometheus for metrics |
+| `profiles/aws-amp-fanout.values.yaml` | S3 for logs; metrics to the bundled Thanos **and** Amazon Managed Prometheus at once |
 
 > [!TIP]
 >  Read the Azure profile's header before copying it. Entra Workload ID needs a pod label as well as the ServiceAccount annotation, and the two subcharts take that label under different keys — `loki.loki.podLabels` for Loki, `thanos.global.commonLabels` for Thanos, which has no `podLabels` of its own.

@@ -32,9 +32,10 @@ pipeline:
     gateway:
       destination:
         prometheusRemoteWrite:
-          # No Thanos in this tier. Left on, the gateway retries a remote-write
-          # endpoint that does not resolve and buries the logs under errors.
-          enabled: false
+          thanos:
+            # No Thanos in this tier. Left on, the gateway retries a remote-write
+            # endpoint that does not resolve and buries the logs under errors.
+            enabled: false
 
 grafana:
   # No PVC and no Postgres: Grafana's default SQLite on an emptyDir is fine for a

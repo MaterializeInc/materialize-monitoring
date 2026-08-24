@@ -1,9 +1,11 @@
 # Extra metrics destinations.
 #
-# The gateway always remote-writes to Thanos; these fan out in addition to it.
-# Each one turns on `destination.otel`, which is the chart's switch for the whole
-# OTLP path — shared by every OTLP exporter, so enabling a second one later does
-# not change this.
+# The gateway remote-writes to the bundled Thanos out of the box; everything here
+# fans out in addition to it. Two shapes, and the difference is the chart's, not
+# this module's: the three OTLP-family destinations each turn on
+# `destination.otel`, a single switch shared by every OTLP exporter, while
+# `prometheus_remote_write` writes into a map keyed by destination name — where a
+# key of `thanos` retunes the built-in one rather than adding a second.
 #
 # Credentials are deliberately absent from every document here. They reach the
 # gateway through the Secret in gateway_credentials.tf instead, so they stay out
@@ -145,6 +147,97 @@ locals {
           }
         }
       }
+    }
+  })]
+}
+
+# ------------------------------------------------------------------------------
+# Prometheus remote-write
+# ------------------------------------------------------------------------------
+# Unlike the three above, this one is not a *new* destination — the chart already
+# remote-writes to the bundled Thanos, and this fans out beside it. The chart's
+# value is a map keyed by name, so a key of `thanos` deep-merges over the chart's
+# own default destination and any other key adds one. That is what makes
+# "retune Thanos" and "add AMP" the same input rather than two.
+#
+# Each destination becomes its own `prometheus.remote_write` component with its
+# own importance filter upstream of it, so `min_importance` is genuinely per
+# destination: an AMP workspace on `essential` never buffers the metrics it would
+# only discard. That matters more here than on the OTLP side, because AMP bills
+# per sample ingested and per active series.
+locals {
+  # Matches the chart's own derivation (`regexReplaceAll "[^A-Za-z0-9]" "_" | upper`),
+  # so the variable this module puts in the Secret is the variable the rendered
+  # pipeline reads. Named explicitly in the values below rather than left to both
+  # sides deriving it, which is the DEP-204 pattern: one of them changing its rule
+  # would otherwise be a silent auth failure at run time.
+  prom_dest_slug = {
+    for name, _ in var.prometheus_remote_write :
+    name => upper(replace(name, "/[^A-Za-z0-9]/", "_"))
+  }
+
+  # Credential *names* are not secret, and unwrapping them here keeps the
+  # sensitivity mark off the whole values list. See `otlp_auth_header_names`.
+  prom_dest_credential_names = nonsensitive(keys(var.prometheus_remote_write_credentials))
+
+  prometheus_remote_write_document = length(var.prometheus_remote_write) == 0 ? [] : [yamlencode({
+    pipeline = {
+      metrics = {
+        gateway = {
+          destination = {
+            prometheusRemoteWrite = {
+              for name, dest in var.prometheus_remote_write :
+              name => merge(
+                {
+                  enabled             = dest.enabled
+                  minMetricImportance = dest.min_importance
+                  authType            = dest.auth_type
+                },
+                # Omitted when null so the chart's own default survives. This is
+                # what lets `thanos = { min_importance = "recommended" }` retune
+                # the bundled destination without restating its URL.
+                dest.url == null ? {} : { url = dest.url },
+                length(dest.external_labels) == 0 ? {} : { externalLabels = dest.external_labels },
+                # SigV4 carries no credentials at all: the AWS SDK signs from
+                # the pod's IRSA identity. `role_arn` is the cross-account case,
+                # where the gateway's own role assumes another one.
+                dest.auth_type != "sigv4" ? {} : {
+                  sigv4 = merge(
+                    dest.sigv4_region == null ? {} : { region = dest.sigv4_region },
+                    dest.sigv4_role_arn == null ? {} : { roleArn = dest.sigv4_role_arn },
+                  )
+                },
+                # Only the env-var *names*; the values are in the Secret. The
+                # chart derives the same names by default, but naming them is
+                # what makes the pair unable to drift if either rule changes.
+                dest.auth_type != "basicAuth" ? {} : {
+                  basicAuth = {
+                    usernameEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_USERNAME"
+                    passwordEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_PASSWORD"
+                  }
+                },
+                dest.auth_type != "bearer" ? {} : {
+                  bearer = {
+                    tokenEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_BEARER_TOKEN"
+                  }
+                },
+              )
+            }
+          }
+        }
+      }
+    }
+  })]
+
+  # IRSA and Workload Identity both reach the gateway the same way — an
+  # annotation on its ServiceAccount — and a SigV4 destination has nowhere else
+  # to get credentials from. Its own document rather than a merge into
+  # `storage_documents`, because that one only exists when `object_storage` is
+  # set and AMP does not imply a bucket. Helm deep-merges maps across documents,
+  # so the two compose when both are present.
+  gateway_service_account_document = length(var.gateway_service_account_annotations) == 0 ? [] : [yamlencode({
+    alloy-gateway = {
+      serviceAccount = { annotations = var.gateway_service_account_annotations }
     }
   })]
 }

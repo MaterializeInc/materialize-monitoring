@@ -34,6 +34,19 @@ locals {
       for name in local.otlp_auth_header_names :
       local.otlp_auth_header_env[name] => var.otlp_auth_header_secrets[name]
     },
+    # Prometheus remote-write, one to three variables per destination depending
+    # on its authType. Entries whose field is null are dropped rather than
+    # written empty: an empty Secret key still shadows nothing, but it makes the
+    # Secret claim to carry a credential it does not have.
+    merge([
+      for name in local.prom_dest_credential_names : {
+        for env, value in {
+          "GATEWAY_PROMETHEUS_DEST_${upper(replace(name, "/[^A-Za-z0-9]/", "_"))}_USERNAME"     = var.prometheus_remote_write_credentials[name].username
+          "GATEWAY_PROMETHEUS_DEST_${upper(replace(name, "/[^A-Za-z0-9]/", "_"))}_PASSWORD"     = var.prometheus_remote_write_credentials[name].password
+          "GATEWAY_PROMETHEUS_DEST_${upper(replace(name, "/[^A-Za-z0-9]/", "_"))}_BEARER_TOKEN" = var.prometheus_remote_write_credentials[name].bearer_token
+        } : env => value if value != null
+      }
+    ]...),
   )
 
   # `count` cannot take a sensitive value, and this map is sensitive by

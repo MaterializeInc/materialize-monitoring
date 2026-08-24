@@ -95,7 +95,7 @@ tests:
     set:
       tags.pipeline: true
       pipeline.logging.gateway.destination.loki.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
     template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
     asserts:
       - equal:
@@ -106,7 +106,7 @@ tests:
     set:
       tags.pipeline: true
       pipeline.logging.gateway.destination.loki.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
     template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
       - equal:

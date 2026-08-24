@@ -22,9 +22,18 @@
 // configMap) are its only check. Keep this stub roughly in step with that helper,
 // but the helper is the source of truth for what runs.
 //
+// The metrics tail is where the two differ most, deliberately. The chart renders
+// ONE prometheus.relabel + prometheus.remote_write pair PER NAMED DESTINATION
+// (pipeline.metrics.gateway.destination.prometheusRemoteWrite is a map), each
+// with its own importance-tier filter and its own WAL, all hanging off the shared
+// prometheus.relabel.egress seam. The stub renders a single unnamed pair, because
+// the contract gateway.yaml depends on is the `egress` seam, not how many sinks
+// sit behind it — and one is enough to validate that seam.
+//
 // Endpoints fall back to in-cluster defaults via coalesce(sys.env(…), default),
-// reading GATEWAY_LOKI_DEST / GATEWAY_PROM_DEST (matching the helper's env vars).
-// Auth is deferred in the stub.
+// reading GATEWAY_LOKI_DEST / GATEWAY_PROM_DEST. GATEWAY_PROM_DEST is stub-only:
+// the chart derives a per-destination variable instead (GATEWAY_PROM_DEST_THANOS
+// for the default destination). Auth is deferred in the stub.
 
 loki.process "egress" {
 	forward_to = [

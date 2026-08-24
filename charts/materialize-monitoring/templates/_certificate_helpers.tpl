@@ -293,9 +293,18 @@ Usage:
       ( dict "component" "alloy-gateway" "path" "pipeline.logging.agent.destination.loki.url"
              "url" ( dig "logging" "agent" "destination" "loki" "url" "" $pipeline ) )
       ( dict "component" "loki" "path" "pipeline.logging.gateway.destination.loki.url"
-             "url" ( dig "logging" "gateway" "destination" "loki" "url" "" $pipeline ) )
-      ( dict "component" "thanos" "path" "pipeline.metrics.gateway.destination.prometheusRemoteWrite.url"
-             "url" ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "url" "" $pipeline ) ) }}
+             "url" ( dig "logging" "gateway" "destination" "loki" "url" "" $pipeline ) ) }}
+
+  {{- /* One entry per remote-write destination. Only the ones addressing the
+         bundled Thanos are checked: a certificate this chart issues can only be
+         expected to cover a name this chart serves, and an external backend's
+         SANs are its own operator's business. */}}
+  {{- range $dest := ( include "mzmon.alloyGateway.promDests.thanos" $ | fromYamlArray ) }}
+    {{- $checks = append $checks ( dict
+        "component" "thanos"
+        "path" ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s.url" $dest.name )
+        "url" $dest.resolvedUrl ) }}
+  {{- end }}
 
   {{- range $check := $checks }}
     {{- if ( include "mzmon.certificates.enabled" ( dict "context" $ "component" $check.component ) ) }}
@@ -471,9 +480,9 @@ Usage:
   {{- end }}
 
   {{- if ( include "mzmon.certificates.thanosReceiveServerTls" $ ) }}
-    {{- if dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "enabled" false $pipeline }}
-      {{- if not ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "tls" "enabled" false $pipeline ) }}
-        {{- $errors = append $errors "thanos.receive.extraArgs enables remote-write TLS, but pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls.enabled is off, so the gateway would send plaintext at a TLS port and every metric write fails. Turn the destination's TLS on." }}
+    {{- range $dest := ( include "mzmon.alloyGateway.promDests.thanos" $ | fromYamlArray ) }}
+      {{- if not $dest.tls.enabled }}
+        {{- $errors = append $errors ( printf "thanos.receive.extraArgs enables remote-write TLS, but pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s.tls.enabled is off, so the gateway would send plaintext at a TLS port and every metric write from that destination fails. Turn the destination's TLS on." $dest.name ) }}
       {{- end }}
     {{- end }}
   {{- end }}
@@ -531,9 +540,19 @@ Usage:
   {{- $lokiPresents := and
         ( dig "logging" "gateway" "destination" "loki" "tls" "certFile" "" $pipeline )
         ( dig "logging" "gateway" "destination" "loki" "tls" "keyFile" "" $pipeline ) }}
-  {{- $promPresents := and
-        ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "tls" "certFile" "" $pipeline )
-        ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "tls" "keyFile" "" $pipeline ) }}
+  {{- /* Every destination writing to the bundled Thanos has to present a keypair,
+         not just one of them — Receive requires a certificate from each client,
+         so one destination missing it is one destination refused at the
+         handshake. Collected by name so the error can say which. */}}
+  {{- $promSilent := list }}
+  {{- $promPresents := false }}
+  {{- range $dest := ( include "mzmon.alloyGateway.promDests.thanos" $ | fromYamlArray ) }}
+    {{- if and $dest.tls.certFile $dest.tls.keyFile }}
+      {{- $promPresents = true }}
+    {{- else }}
+      {{- $promSilent = append $promSilent $dest.name }}
+    {{- end }}
+  {{- end }}
 
   {{- $lokiAuth := dig "loki" "server" "http_tls_config" "client_auth_type" "" $loki }}
   {{- $lokiClientCa := dig "loki" "server" "http_tls_config" "client_ca_file" "" $loki }}
@@ -569,8 +588,8 @@ Usage:
     {{- range $arg := ( dig "receive" "extraArgs" list ( $.Values.thanos | default dict ) ) }}
       {{- if hasPrefix "--remote-write.server-tls-client-ca" ( $arg | toString ) }}{{- $hasClientCa = true }}{{- end }}
     {{- end }}
-    {{- if and $hasClientCa ( dig "metrics" "gateway" "destination" "prometheusRemoteWrite" "enabled" false $pipeline ) ( not $promPresents ) }}
-      {{- $errors = append $errors "thanos.receive.extraArgs sets --remote-write.server-tls-client-ca, which puts Receive into require-and-verify immediately — there is no verify-if-given on this hop, whatever the flag's help text suggests. The gateway presents no client certificate (no certFile/keyFile on pipeline.metrics.gateway.destination.prometheusRemoteWrite.tls), so every metric write would be refused at the TLS handshake. Apply profiles/mtls-phase2.values.yaml first, confirm the gateway has rolled, then add this flag." }}
+    {{- if and $hasClientCa $promSilent }}
+      {{- $errors = append $errors ( printf "thanos.receive.extraArgs sets --remote-write.server-tls-client-ca, which puts Receive into require-and-verify immediately — there is no verify-if-given on this hop, whatever the flag's help text suggests. Remote-write destination(s) %s present no client certificate (no certFile/keyFile on pipeline.metrics.gateway.destination.prometheusRemoteWrite.<name>.tls), so their metric writes would be refused at the TLS handshake. Apply profiles/mtls-phase2.values.yaml first, confirm the gateway has rolled, then add this flag." ( join ", " $promSilent ) ) }}
     {{- end }}
   {{- end }}
 

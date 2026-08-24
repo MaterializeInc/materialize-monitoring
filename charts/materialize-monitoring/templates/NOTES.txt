@@ -11,8 +11,10 @@ Grafana Alloy (agent) is installed and configured to collect logs.
 
 Grafana Alloy (gateway) is installed and configured to process metrics and logs.
   Alloy gateway namespace: {{ include "mzmon.alloyGateway.namespace" $ }}
-  {{- if .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.enabled }}
-  Destination: Prometheus RemoteWrite
+  {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
+    {{- if $dest.enabled }}
+  Destination: Prometheus RemoteWrite ({{ $dest.name }}, {{ $dest.minMetricImportance }} metrics)
+    {{- end }}
   {{- end }}
   {{- if .Values.pipeline.metrics.gateway.destination.otel.enabled }}
   OpenTelemetry destinations are enabled for metrics:

@@ -21,7 +21,7 @@ set:
   tags.default: false
   tags.pipeline: true
   pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.url: https://metrics.example.com/api/v1/receive
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
   pipeline.logging.agent.destination.loki.url: https://logs.example.com/loki/api/v1/push
 tests:
   - it: should scale the gateway on CPU alone

@@ -1869,161 +1869,65 @@ without it a long-lived gRPC stream can outlive the certificate that
 established it.
 </td>
     </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable writing to a Prometheus remote write destination. We default to in-cluster Thanos.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.url</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://thanos-receive.{{ include \"mzmon.thanos.namespace\" $ }}.svc:10908/api/v1/receive"</code></td>
-      <td class="helm-value-desc">Prometheus remote write endpoint URL.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.minMetricImportance</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"all"</code></td>
-      <td class="helm-value-desc">Only export metrics with the specified importance level. Values are "essential", "recommended", "extended", "diagnostic", "all"
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.authType</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials. Use sigv4 for AWS SigV4 signing (For AMP).
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.basicAuth</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "password": "",
-  "passwordEnv": "GATEWAY_PROMETHEUS_DEST_PASSWORD",
-  "username": "",
-  "usernameEnv": "GATEWAY_PROMETHEUS_DEST_USERNAME"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.bearer</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "token": "",
-  "tokenEnv": "GATEWAY_PROMETHEUS_DEST_BEARER_TOKEN"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.oauth2</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "clientId": "",
-  "clientIdEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_ID",
-  "clientSecret": "",
-  "clientSecretEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_CLIENT_SECRET",
-  "scopes": [],
-  "tokenUrl": "",
-  "tokenUrlEnv": "GATEWAY_PROMETHEUS_DEST_OAUTH2_TOKEN_URL"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.sigv4</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "region": "",
-  "roleArn": ""
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for AWS signatures when using authType=sigv4 This generally does not need to be set (it is derived from IRSA).
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for the prometheus destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.verify</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the prometheus destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.ca</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.cert</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.key</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.caFile</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
-The inline `ca`/`cert`/`key` above travel through **environment
-variables**, which are captured once at process start. cert-manager
-renews by rewriting the Secret in place, so an env-carried PEM works
-for exactly one certificate lifetime and then fails on every hop at
-once, months after the change that caused it and with no deploy
-nearby to blame.
-
-A mounted file does not have that problem: the kubelet refreshes
-Secret contents atomically, and Alloy's client paths pick up the new
-material on the next connection. Set these to paths under
-`/etc/mzmon/tls`, which is where the chart mounts the
-certificate it issues for this component.
-
-Inline PEM stays supported as the bring-your-own-PKI escape hatch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.serverName</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.prometheusRemoteWrite<wbr>.tls<wbr>.minVersion</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
-</td>
-    </tr>
   </tbody>
 </table>
+
+##### Prometheus remote-write destinations.
+
+Prometheus remote-write destinations, as a map of name to destination.
+
+**A map, not a single destination.** Each key names one destination and
+becomes the label on that destination's Alloy components, so the name is
+visible in `component_id` on the gateway's own metrics and in its UI.
+The default map holds one entry, `thanos`, pointing at the bundled
+in-cluster Thanos Receive.
+
+Every destination gets its **own** `prometheus.remote_write` component
+rather than a second `endpoint` block on a shared one. That costs a WAL
+per destination and buys the two things a shared component cannot give:
+
+* **Its own `minMetricImportance`.** The tier filter is a
+  `prometheus.relabel` *upstream* of the component, so a destination on
+  `essential` writes a WAL holding only essential series. A shared
+  component can only filter with `write_relabel_config`, which runs on
+  the way *out* of the WAL — every destination would pay full firehose
+  disk regardless of tier. This is the whole reason the tiers exist:
+  Amazon Managed Prometheus bills per sample ingested and per series.
+* **Its own failure domain.** A destination that stops accepting writes
+  backs up its own WAL and nothing else. On a shared component a stuck
+  endpoint holds back WAL truncation for every other endpoint too.
+
+`external_labels` is per destination for the same reason, though the
+default (`cluster` from `CLUSTER_NAME`) is what every destination wants.
+
+**Names are Alloy component labels**, so they must match
+`[a-zA-Z_][a-zA-Z0-9_]*`, and `egress` is reserved — the fan-out seam
+already uses it. A name that breaks either rule fails at render.
+
+**Fields are optional.** Anything a destination omits falls back to the
+per-destination defaults below, so a second destination is usually three
+lines. Environment variable names are derived from the destination name
+when not given — `GATEWAY_PROM_DEST_AMP`,
+`GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`,
+`GATEWAY_UNFILTERED_PROM_METRICS_AMP` — and can be set explicitly where a
+caller (such as the Terraform module's `mzmon-alloy-gateway-env` Secret)
+wants to choose them.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Write to this destination. |
+| `url` | — | Remote-write endpoint. Required when enabled. |
+| `minMetricImportance` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
+| `unfilteredMetricsEnv` | `GATEWAY_UNFILTERED_PROM_METRICS_<NAME>` | Env var carrying the tier allowlist regex. |
+| `urlEnv` | `GATEWAY_PROM_DEST_<NAME>` | Env var carrying the endpoint URL. |
+| `externalLabels` | `{cluster: CLUSTER_NAME}` | `external_labels` on the component. Values are Alloy expressions. |
+| `authType` | `none` | `none`, `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
+| `basicAuth` / `bearer` / `oauth2` / `sigv4` | see below | Credentials for the chosen `authType`. |
+| `tls` | off | Client TLS for this hop. |
+
+A worked two-destination example — full fidelity in Thanos, only the
+alerting metrics in AMP — is in
+[`profiles/aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
 
 ##### OpenTelemetry/OTLP destinations.
 
