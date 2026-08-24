@@ -171,8 +171,21 @@ locals {
   # pipeline reads. Named explicitly in the values below rather than left to both
   # sides deriving it, which is the DEP-204 pattern: one of them changing its rule
   # would otherwise be a silent auth failure at run time.
+  # Built over the union of the destination and credential key sets, not just the
+  # destinations. gateway_credentials.tf indexes this by credential key, and a
+  # credential naming a destination that does not exist is a caller mistake the
+  # precondition in main.tf reports properly — indexing a map that lacks the key
+  # would pre-empt it with Terraform's own "Invalid index" instead.
+  #
+  # `replace` with a slash-wrapped pattern IS a regex in Terraform, matching the
+  # chart's `regexReplaceAll "[^A-Za-z0-9]" "_" | upper`. (There is no
+  # `regexreplace` function; the slashes are the opt-in.) Same construction as
+  # `otlp_auth_header_env` above.
   prom_dest_slug = {
-    for name, _ in var.prometheus_remote_write :
+    for name in distinct(concat(
+      keys(var.prometheus_remote_write),
+      local.prom_dest_credential_names,
+    )) :
     name => upper(replace(name, "/[^A-Za-z0-9]/", "_"))
   }
 

@@ -27,6 +27,13 @@ differently and only the first is visible in the config at all:
     destination asked for `essential` silently receives the full firehose.
     On a backend that bills per sample, that last one is the expensive failure,
     and it is completely invisible from the cluster's side.
+
+A `sigv4` destination is checked one step further, because it is the one auth
+type with *nothing* in the gateway Secret: the ServiceAccount annotation is its
+entire credential. Written to a path the subchart does not read, it renders a
+ServiceAccount with no annotation, the AWS SDK finds no web-identity token, and
+every write comes back 403 with an error naming neither the role nor the values
+key that went missing.
 """
 
 from __future__ import annotations
@@ -76,6 +83,18 @@ def gateway_configmaps(rendered: str) -> tuple[str, dict[str, str]]:
             elif any(k.startswith("GATEWAY_") for k in data):
                 env.update(data)
     return config, env
+
+
+def gateway_service_account_annotations(rendered: str) -> dict[str, str]:
+    """Return the annotations on the alloy-gateway ServiceAccount, if one rendered."""
+    with open(rendered) as fh:
+        for doc in yaml.safe_load_all(fh):
+            if not isinstance(doc, dict) or doc.get("kind") != "ServiceAccount":
+                continue
+            meta = doc.get("metadata") or {}
+            if meta.get("name") == "alloy-gateway":
+                return meta.get("annotations") or {}
+    return {}
 
 
 def composed_destinations(paths: list[str]) -> dict[str, dict]:
@@ -154,11 +173,22 @@ def env_problems(
     return problems
 
 
+# The annotations that bind a pod to a cloud identity. A `sigv4` destination has
+# no other source of credentials, so one of these has to be on the gateway's
+# ServiceAccount for it to authenticate at all.
+IDENTITY_ANNOTATIONS = (
+    "eks.amazonaws.com/role-arn",
+    "iam.gke.io/gcp-service-account",
+    "azure.workload.identity/client-id",
+)
+
+
 def check(
     declared: dict[str, dict],
     config: str,
     composed: dict[str, dict],
     env: dict[str, str],
+    sa_annotations: dict[str, str],
 ) -> list[str]:
     """Collect every way the declared destinations failed to reach the render."""
     problems: list[str] = []
@@ -179,6 +209,15 @@ def check(
 
         problems += pipeline_problems(name, config)
         problems += env_problems(name, dest, composed[name], env)
+
+        if dest.get("auth_type") == "sigv4" and not any(
+            a in sa_annotations for a in IDENTITY_ANNOTATIONS
+        ):
+            problems.append(
+                f"{name}: auth_type is sigv4, but the alloy-gateway ServiceAccount carries none of "
+                f"{', '.join(IDENTITY_ANNOTATIONS)} — there is nothing for the AWS SDK to sign as, "
+                f"so every write is refused with a 403"
+            )
     return problems
 
 
@@ -200,7 +239,13 @@ def main(argv: list[str]) -> int:
         print("     no alloy gateway config in the rendered chart", file=sys.stderr)
         return 1
 
-    problems = check(declared, config, composed_destinations(argv[2:]), env)
+    problems = check(
+        declared,
+        config,
+        composed_destinations(argv[2:]),
+        env,
+        gateway_service_account_annotations(argv[1]),
+    )
     for problem in problems:
         print(f"     {problem}", file=sys.stderr)
     if problems:

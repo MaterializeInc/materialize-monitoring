@@ -483,6 +483,28 @@ variable "prometheus_remote_write" {
 
   validation {
     condition = alltrue([
+      for name, _ in var.prometheus_remote_write : !contains(
+        # `egress` is the fan-out seam's own component label. The rest are the
+        # keys the pre-map single-destination shape used, which the chart reads
+        # as a leftover override rather than as a destination.
+        ["egress", "enabled", "url", "urlEnv", "minMetricImportance", "unfilteredMetricsEnv",
+        "externalLabels", "authType", "basicAuth", "bearer", "oauth2", "sigv4", "tls"],
+        name,
+      )
+    ])
+    error_message = <<-EOT
+      A prometheus_remote_write key may not be `egress`, nor any of the chart's pre-map
+      single-destination keys (`enabled`, `url`, `authType`, `basicAuth`, `bearer`, `oauth2`,
+      `sigv4`, `tls`, `externalLabels`, `urlEnv`, `minMetricImportance`, `unfilteredMetricsEnv`).
+
+      Both are render-time failures the chart raises and `terraform validate` cannot: `egress`
+      collides with the fan-out seam's component label, and the rest are read as a leftover
+      override of the old singular shape.
+    EOT
+  }
+
+  validation {
+    condition = alltrue([
       for _, dest in var.prometheus_remote_write : contains(
         ["essential", "recommended", "extended", "diagnostic", "all"], dest.min_importance,
       )
