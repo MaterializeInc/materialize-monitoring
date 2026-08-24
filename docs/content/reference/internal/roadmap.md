@@ -343,8 +343,11 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   The common module ships from this repo **inside the `materialize-monitoring` component** rather than on a stream of its own: the chart version is the release version, and the module's Git tag is that same version.
   Per-cloud wrappers downstream pin the module by Git ref, so a single number identifies both surfaces and there is no window where the pair is mismatched.
   The trade is that a Terraform-only change publishes a chart release, and a breaking module change bumps the chart's major — both handled in the changelog rather than by splitting the stream.
-- **Deprecation policy.** ⬜ ([DEP-127](https://linear.app/materializeinc/issue/DEP-127), OO-M1)
-  Still to commit: at least one minor-release cycle for breaking changes to the label/metric contract, with a release-process check, and a called-out "customer-facing surface" changelog subsection.
+- **Deprecation policy.** ✅ ([DEP-127](https://linear.app/materializeinc/issue/DEP-127), OO-M1)
+  Written up in [Stability Guarantees and Deprecation Policy](../design-docs/20260823-deprecation-policy/), landed as [Stability guarantees](../versioning/#stability-guarantees) (policy of record), [Stability and Deprecations](../../stability/) (customer-facing), and [the committed-surface check](../releasing/#the-committed-surface-check).
+  Surfaces are graded by how much control we have and by how a break presents — alerts fail silently and get the most care, metrics fail visibly and get the least — with a 30-day cooldown enforced by the generated artifacts we already commit rather than by anything new.
+  Query IDs and chart value paths fall outside the customer-facing surface, since their consumers are our own dashboards and our own Terraform module.
+  Still open: the **alert and recording-rule naming decision**, which is free only until the alerting path ships, and the upstream window for the load-bearing metric list.
 - **Stamping 1.0.** ⬜ ([DEP-205](https://linear.app/materializeinc/issue/DEP-205), OO-M1)
   The [pre-1.0 bump policy](../releasing/#choosing-the-next-version) lets breaking changes ride minors.
   At 1.0 that stops, and the label/metric contract, profile semantics, alert names, and chart value paths all acquire a deprecation cycle we owe.

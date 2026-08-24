@@ -11,6 +11,10 @@ on how they would be used.
 
 ## Metric Tiers
 
+Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
+For that, see [Stability and Deprecations](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
+
+
 Metrics are grouped by "metricImportance" levels (mzmon-specific).
 These levels guide which metrics are prioritized in
 metric stores which have limited capacity.

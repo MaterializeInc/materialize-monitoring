@@ -19,7 +19,7 @@ Prefer fixing stale content in passing over leaving it wrong.
 ## Markdown style
 
 Break Markdown lines on sentence ends — write one sentence per line.
-You may wrap at 120-150 characters if you like.
+You may soft wrap at 80-120 characters if you like, but lines should not exceed 150 characters.
 Sentence-per-line keeps diffs small and avoids rewrapping churn when a sentence changes.
 
 ## Docsite section indexes

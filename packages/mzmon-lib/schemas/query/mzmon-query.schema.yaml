@@ -138,8 +138,14 @@ $defs:
 
       Main Dashboard queries generally use Best-Effort queries initially
       which eventually graduate to Canonical definitions.
-      Changes to Canonical or Best-Effort queries are considered breaking changes.
       Queries marked as Unused, Deprecated, Unsupported are generally warned upon usage.
+
+      This field governs *internal* expectations — documentation, test coverage, and
+      whether a query's metrics are load-bearing enough to ask the Materialize side
+      for a deprecation window on. Query IDs themselves are not a customer-facing
+      surface: their consumers are dashboards in this repo. What customers may build
+      on, and the notice owed before it changes, is the committed surface in
+      reference/internal/versioning.md ("Stability guarantees").
 
       Playground and Experimental queries may be used in upcoming dashboards and
       may graduate in the future.
