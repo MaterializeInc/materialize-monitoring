@@ -23,7 +23,7 @@ This page says what you can safely build on, and what happens when something has
 
 ## The deprecation cycle
 
-1. **Announced.** The `CHANGELOG.md` entry for the release carries a `**Deprecated:**` note that names the replacement.
+1. **Announced.** The release's entry in the [Changelog](../changelog/) carries a `**Deprecated:**` note that names the replacement.
 2. **Both work for at least 30 days.** The old name keeps functioning, not merely existing.
 3. **Removed** in a later release, with a `**Removed:**` note.
 
@@ -36,7 +36,7 @@ Additions are not breaking changes and can arrive in any release.
 **Materialize's own metric names and labels.** `mz_*` metrics come from Materialize itself, which has its [own weekly release cadence](https://materialize.com/docs/releases/). We do not control those names, so we cannot freeze them. What we do instead:
 
 - Where our layer can publish both the old and new name at once, we do, for the same 30 days.
-- Where it cannot, the change is called out in `CHANGELOG.md` and in [Compatibility](../compatibility/).
+- Where it cannot, the change is called out in the [Changelog](../changelog/) and in [Compatibility](../compatibility/).
 - Dashboards and alerts declare the Materialize version they need, so an artifact never silently depends on a metric your deployment does not have.
 
 In practice a metric change is the mildest kind of break: a panel goes empty, which is visible and fixable on your own schedule. Nothing pages, and nothing is lost.

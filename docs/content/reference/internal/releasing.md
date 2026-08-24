@@ -207,15 +207,18 @@ There is no CI gate for this — see [why](../design-docs/20260823-deprecation-p
 | `charts/*/pre-rendered/metrics/metric-tiers.yaml` | tier names |
 
 These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/CODEOWNERS) covers, so the review request arrives on its own.
+The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.
 Adding an identifier needs nothing — the check is only about **renames and removals**, which show up as a delete-plus-add in one of the generated or committed files above.
 
 **What to check.** For each removed or renamed identifier, one of:
 
-- It was announced at least **30 days** ago. Find the `**Deprecated:**` bullet in `CHANGELOG.md` and check the date on that release's tag.
+- It was announced at least **30 days** ago. Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
 - It is being announced *now*, in which case the PR keeps the old name working and adds the `**Deprecated:**` bullet — removal is a later PR.
 - It is exempt, and the PR body says why. The honest exemptions are that nothing ever consumed it, or that it is in the [pre-1.0 batch](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget). Say which.
 
-**How a deprecation is recorded.** As a release-note bullet in the PR description, using a `**Deprecated:**` or `**Removed:**` prefix:
+**How a deprecation is recorded.** In the **PR description**, never by hand-editing `CHANGELOG.md` — that file is generated, and `propose-bumps` overwrites it on the next merge to the default branch (the one exception being the unreleased placeholder heading, which is edited to [choose the next version](#choosing-the-next-version)).
+
+Write it as a release-note bullet with a `**Deprecated:**` or `**Removed:**` prefix:
 
 ```markdown
 ### Release Notes
@@ -224,7 +227,8 @@ Adding an identifier needs nothing — the check is only about **renames and rem
   Both names resolve until 2026-09-23; update dashboard links and embeds.
 ```
 
-The existing [release-notes harvesting](#release-notes-from-pr-descriptions) carries that into the component's `CHANGELOG.md` section verbatim, and the release's tag date is what the 30 days are counted from.
+The [release-notes harvesting](#release-notes-from-pr-descriptions) copies that into the component's changelog section by itself, and the release's tag date is what the 30 days are counted from.
+So a review comment asks for a bullet in the PR description; `CHANGELOG.md` is only ever *read*, as the dated record of what already shipped.
 No separate section, no extra tooling — the prefix is the whole convention.
 
 **Write it like the Terraform module's [upgrade notes](https://github.com/MaterializeInc/materialize-terraform-self-managed#upgrade-notes)**, which name what *did not* change alongside what did ("`grafana_url` keeps its name; its meaning becomes conditional"). Naming the non-breaks is what makes the breaks trustworthy.

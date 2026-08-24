@@ -18,6 +18,18 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`deployment-operations`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/deployment-operations/SKILL.md) | standing up the stack against a real or local cluster, or diagnosing an unhealthy one |
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/grafana-dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
+| [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
+
+## Skills in code review
+
+**Copilot code review reads these skills too**, so the same conventions a contributor follows are the ones a review comment cites — the attribution line on a Copilot comment names which skills it used.
+[GitHub's guidance](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review#mcp-servers-and-agent-skills) is that a skill gets picked up for review when its **name and description are review-focused**, which is why [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) is named the way it is.
+
+That skill is the review-time layer: it routes to the domain skills for domain depth and keeps for itself the one thing none of them can see — whether a diff breaks something a customer already depends on, per [the committed-surface check](../releasing/#the-committed-surface-check).
+
+Its most important half is **what is not a breakage**. A review that flags additions and reformatting gets ignored, which is worse than no review, so the false-positive list is load-bearing rather than padding.
+
+We deliberately do **not** also maintain `.github/instructions/*.instructions.md` for this. Those trigger on path globs rather than description matching, which is marginally more deterministic, but a second copy of the same rules is a drift risk for no new coverage. If a surface PR ever gets reviewed without the skill firing, the fix is a few-line instructions file that *points at* the skill — not a duplicate of it.
 
 ## Related skills outside this repo
 

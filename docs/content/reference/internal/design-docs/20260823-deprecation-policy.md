@@ -31,14 +31,14 @@ The timing is better than DEP-127 knew when it argued that the window to establi
 **And what has shipped has almost no adopters yet.** So the practical constraint is not "has it shipped" but "does anything depend on it", and today very little does. That is a real, temporary freedom — and it is [closing on a clock we do not control](#the-pre-10-breaking-change-budget).
 
 <!--
-Agent note: this doc is a proposal, not a description of what exists. The "What exists today" inventory
-is the part most likely to drift — re-derive the counts from packages/queries/ and the schema before
-trusting them, and re-check the "Shipped?" column against pre-rendered/rules/ (empty as of this doc);
-several arguments here rest on the alerting path being unbuilt, and stop holding the day it ships.
-The "almost no adopters" premise behind the breaking-change budget is the most perishable claim in the doc —
-treat it as a statement about August 2026, not a standing fact, and do not let it justify deferring the policy. When the policy is agreed, the three DEP-127 deliverables land in versioning.md,
-a new customer-facing page, and releasing.md; update "Work in this repo" as each lands rather than
-rewriting the proposal in place.
+Agent note: this doc records why the policy is shaped the way it is.
+The policy of record is versioning.md's "Stability guarantees" section; keep the two consistent.
+The counts are the part most likely to drift — re-derive them from packages/queries/ and the schema.
+Re-check the "Shipped?" column against pre-rendered/rules/, which is empty as of this doc.
+Several arguments here rest on the alerting path being unbuilt, and stop holding the day it ships.
+The "almost no adopters" premise behind the breaking-change budget is the most perishable claim here.
+Treat it as a statement about August 2026, not a standing fact, and do not let it justify deferring the policy.
+Update "Work in this repo" as items land, rather than rewriting the proposal in place.
 -->
 
 ## Goals
@@ -333,7 +333,8 @@ So the proposal, in ascending order of cost, stopping as early as it can:
 1. **Nothing to build.** The diffs above are the signal. The committed surface is roughly 180 identifiers, of which the two largest groups have shipped nothing.
 2. **CODEOWNERS on the paths that carry committed identifiers** — `packages/queries/`, `terraform/modules/*/variables.tf` and `outputs.tf`, `charts/*/pre-rendered/`. One file, no maintenance, GitHub enforces it, and it makes the existing `TODO` a little less of one.
 3. **A prefix convention on release-note bullets** — `**Deprecated:**` and `**Removed:**` — which the [release-notes harvesting](../../releasing/#release-notes-from-pr-descriptions) already carries into `CHANGELOG.md` verbatim. No new PR section, no second harvester, no grouping rule: it works today with what shipped last week. The changelog is then also where the 30-day clock is read from, since release sections are dated by their tags, so there is no separate `since` bookkeeping either.
-4. **Deferred: a grep-based CI reminder.** If a mechanical net turns out to be wanted, it is a short script that flags a disappearing `- alert:`, `record:`, or `^variable "` line and comments on the PR. No generated file, no exemption label, no state. Worth building the day it would have caught something, and not before.
+4. **A `code-review` skill** in `.claude/skills/`, which both Copilot code review and Claude read — so the check applies whoever is reviewing, including people running an agent against our changes rather than the other way round. A prompt rather than a gate, so a false positive costs a comment and not a blocked merge. Its most important content is the *what is not a breakage* list — a review that cries wolf gets ignored.
+5. **Deferred: a grep-based CI reminder.** If a mechanical net turns out to be wanted, it is a short script that flags a disappearing `- alert:`, `record:`, or `^variable "` line and comments on the PR. No generated file, no exemption label, no state. Worth building the day it would have caught something, and not before.
 
 **When to escalate:** when there is more than one reviewer, or when the direct-installer list stops being a list you can contact. Both are observable, and neither is true today.
 
@@ -360,6 +361,7 @@ Ordered, because some of it gates the rest:
 | Release-process check | [Releasing](../../releasing/#the-committed-surface-check) | ✅ |
 | `**Deprecated:**` / `**Removed:**` bullet convention | `.github/pull_request_template.md` | ✅ |
 | CODEOWNERS on the committed-surface paths | `.github/CODEOWNERS` | ✅ |
+| `code-review` skill, read by Copilot code review and by Claude | `.claude/skills/code-review/SKILL.md` | ✅ |
 | Schema wording correction | `mzmon-query.schema.yaml` | ✅ |
 | Reword `v2_mz_` as a Cloud prefix, not "legacy" | `query/render.rs`, `gen_metric_tiers.rs` | ✅ |
 | **Alert / recording-rule naming decision, before the alerting path ships** | `packages/queries/` | ⬜ The time-sensitive one |
