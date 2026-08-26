@@ -1,0 +1,12 @@
+{{/*
+  Injected at the end of <body>.
+
+  Ships the replaceables handler on pages that render replaceable
+  placeholders, so a reader can pin values through the URL query string —
+  for example ?mzSqlPrefix=v2_mz_ on Common Queries.
+*/}}
+{{- if strings.Contains .Content "class='replaceable'" }}
+  {{- with resources.Get "replaceables.js" | resources.Minify }}
+<script>{{ .Content | safeJS }}</script>
+  {{- end }}
+{{- end }}
