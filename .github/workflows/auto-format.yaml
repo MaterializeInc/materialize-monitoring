@@ -82,6 +82,7 @@ jobs:
               - .github/workflows/auto-format.yaml
             grafana_schemas:
               - bin/fetch-grafana-schemas.sh
+              - bin/gen-grafana-models.sh
               - .github/workflows/auto-format.yaml
 
   auto-format:
@@ -131,18 +132,24 @@ jobs:
       # so a schema-bump PR arrives with the vendored documents under
       # packages/mzmon-lib/schemas/grafana/ still at the previous tag.
       # Re-vendoring here ships the schema diff in the same PR as the pin, which
-      # is the whole point of reviewing that PR.
+      # is the whole point of reviewing that PR -- and regenerating the models in
+      # the same step is what makes src/grafana/generated/ reviewable alongside
+      # it. cargo-typify is pinned so a generator release cannot silently reshape
+      # the output on an unrelated schema bump.
       #
       # Scoped to PRs that touched the script: this is the only step that reaches
       # GitHub's API, and it is a no-op everywhere else — so running it on every
       # auto-format PR would buy nothing and still fail the run on an API hiccup.
-      - name: Re-vendor Grafana OpenAPI schemas
+      - name: Re-vendor Grafana schemas and regenerate models
         if: ${{ needs.check.outputs.grafana_schemas == 'true' }}
         env:
           # Unauthenticated api.github.com calls are rate-limited per runner IP,
           # which is shared; the default token lifts the ceiling.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./bin/fetch-grafana-schemas.sh
+        run: |
+          ./bin/fetch-grafana-schemas.sh
+          cargo install cargo-typify --locked --version 0.7.0
+          ./bin/gen-grafana-models.sh
 
       - name: Run formatters
         run: |

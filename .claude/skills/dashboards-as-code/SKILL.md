@@ -43,18 +43,23 @@ And into Generating:
 
 ## Schema reference files
 
-When uncertain about the exact shape Grafana expects, read the cog-generated openapi schemas vendored at `packages/mzmon-lib/schemas/grafana/`.
+When uncertain about the exact shape Grafana expects, read the cog-generated JSON Schema (draft-07) documents vendored at `packages/mzmon-lib/schemas/grafana/`.
 The three dashboard documents there are:
 
-- `dashboard.openapi.json` — v1
-- `dashboardv2beta1.openapi.json` — v2beta1
-- `dashboardv2.openapi.json` — v2
+- `dashboard.jsonschema.json` — v1
+- `dashboardv2beta1.jsonschema.json` — v2beta1
+- `dashboardv2.jsonschema.json` — v2
 
 The other 52 documents in the same directory cover the panel, datasource, and `common` packages — that is where a panel's `options` and `fieldConfig` shapes live, not in the dashboard documents.
+
+`packages.json` beside them maps each document to its Grafana plugin id — the value that goes in `VizConfigKind.group` or `DataQueryKind.group`. Read it rather than assuming the document name: `annotationslist` publishes as `annolist`.
 
 The whole set is vendored from the `grafana/grafana-foundation-sdk` release tag `v0.0.18` (June 12, 2026), generated there by cog `v0.1.20`.
 The v2 and v2beta1 documents track Grafana `v13.0.2`; v1 tracks Grafana `v11.6.0`.
 Re-vendor with `bin/fetch-grafana-schemas.sh`; Renovate maintains the tag pinned in that script, and `PROVENANCE.md` records the current pin.
+
+Rust types are generated from these schemas into `packages/mzmon-lib/src/grafana/generated/` by `bin/gen-grafana-models.sh`.
+See [Rust models](../../../docs/content/reference/internal/dashboard/sdks.md#rust-models) for why the layout is one module per document, and for the schema quirks that leak into any code built on them.
 
 ---
 

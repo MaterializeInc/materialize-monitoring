@@ -1,4 +1,5 @@
 pub mod alloy;
+pub mod grafana;
 pub mod query;
 pub mod scrape;
 pub fn add(left: u64, right: u64) -> u64 {
