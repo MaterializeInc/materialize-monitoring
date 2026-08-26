@@ -139,7 +139,7 @@
           "id": {
             "type": "integer",
             "nullable": true,
-            "description": "Unique numeric identifier for the dashboard.\n`id` is internal to a specific Grafana instance. `uid` should be used to identify a dashboard across Grafana instances.\nTODO eliminate this null option\nModified by compiler pass 'DisjunctionWithNullToOptional[Int64|null → Int64?]'"
+            "description": "Unique numeric identifier for the dashboard.\n`id` is internal to a specific Grafana instance. `uid` should be used to identify a dashboard across Grafana instances.\nTODO eliminate this null option"
           },
           "uid": {
             "type": "string",
@@ -246,7 +246,7 @@
                 }
               ]
             },
-            "description": "List of dashboard panels\nModified by compiler pass 'RetypeField[ArrayOfDisjunction → ArrayOfDisjunction]'"
+            "description": "List of dashboard panels"
           },
           "templating": {
             "type": "object",
@@ -260,11 +260,11 @@
                 "description": "List of configured template variables with their saved values along with some other metadata"
               }
             },
-            "description": "Configured template variables\nModified by compiler pass 'FieldsSetRequired[nullable=false, required=true]'"
+            "description": "Configured template variables"
           },
           "annotations": {
             "$ref": "#/components/schemas/AnnotationContainer",
-            "description": "Contains the list of annotations that are associated with the dashboard.\nAnnotations are used to overlay event markers and overlay event tags on graphs.\nGrafana comes with a native annotation store and the ability to add annotation events directly from the graph panel or via the HTTP API.\nSee https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/annotate-visualizations/\nModified by compiler pass 'FieldsSetRequired[nullable=false, required=true]'"
+            "description": "Contains the list of annotations that are associated with the dashboard.\nAnnotations are used to overlay event markers and overlay event tags on graphs.\nGrafana comes with a native annotation store and the ability to add annotation events directly from the graph panel or via the HTTP API.\nSee https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/annotate-visualizations/"
           },
           "links": {
             "type": "array",
@@ -282,7 +282,8 @@
             "description": "When set to true, the dashboard will load all panels in the dashboard when it's loaded."
           }
         },
-        "description": "Modified by compiler pass 'Unspec[spec → Dashboard]'"
+        "deprecated": true,
+        "x-deprecation-message": "Prefer using dashboardv2.Dashboard instead."
       },
       "DashboardCursorSync": {
         "enum": [
@@ -382,7 +383,7 @@
               "type": "object",
               "additionalProperties": {}
             },
-            "description": "Depends on the panel plugin. See the plugin documentation for details.\nModified by compiler pass 'RetypeField[ArrayOfTarget → ArrayOfComposableSlot]'"
+            "description": "Depends on the panel plugin. See the plugin documentation for details."
           },
           "title": {
             "type": "string",
@@ -399,7 +400,7 @@
           },
           "datasource": {
             "$ref": "#/components/schemas/DataSourceRef",
-            "description": "The datasource used in all targets.\nModified by compiler pass 'ReplaceReference[dashboard.DataSourceRef → common.DataSourceRef]'"
+            "description": "The datasource used in all targets."
           },
           "gridPos": {
             "$ref": "#/components/schemas/GridPos",
@@ -475,7 +476,7 @@
           "options": {
             "type": "object",
             "additionalProperties": {},
-            "description": "It depends on the panel plugin. They are specified by the Options field in panel plugin schemas.\nModified by compiler pass 'RetypeField[Map → Any]'"
+            "description": "It depends on the panel plugin. They are specified by the Options field in panel plugin schemas."
           },
           "fieldConfig": {
             "$ref": "#/components/schemas/FieldConfigSource",
@@ -631,7 +632,7 @@
           "inControlsMenu"
         ],
         "type": "string",
-        "description": "Dashboard Link placement. Defines where the link should be displayed.\n- \"inControlsMenu\" renders the link in bottom part of the dashboard controls dropdown menu\nModified by compiler pass 'ConstantToEnum'"
+        "description": "Dashboard Link placement. Defines where the link should be displayed.\n- \"inControlsMenu\" renders the link in bottom part of the dashboard controls dropdown menu"
       },
       "DataTransformerConfig": {
         "type": "object",
@@ -748,7 +749,7 @@
             "description": "Overrides are the options applied to specific fields overriding the defaults."
           }
         },
-        "description": "The data model used in Grafana, namely the data frame, is a columnar-oriented table structure that unifies both time series and table query results.\nEach column within this structure is called a field. A field can represent a single time series or table column.\nField options allow you to change how the data is displayed in your visualizations.\nModified by compiler pass 'RetypeObject[Struct → Struct]'"
+        "description": "The data model used in Grafana, namely the data frame, is a columnar-oriented table structure that unifies both time series and table query results.\nEach column within this structure is called a field. A field can represent a single time series or table column.\nField options allow you to change how the data is displayed in your visualizations."
       },
       "FieldConfig": {
         "type": "object",
@@ -814,7 +815,7 @@
             "items": {
               "$ref": "#/components/schemas/DashboardLink"
             },
-            "description": "The behavior when clicking on a result\nModified by compiler pass 'RetypeField[ArrayOfAny → ArrayOfDashboardLink]'"
+            "description": "The behavior when clicking on a result"
           },
           "actions": {
             "type": "array",
@@ -830,11 +831,10 @@
           "custom": {
             "type": "object",
             "additionalProperties": {},
-            "description": "custom is specified by the FieldConfig field\nin panel plugin schemas.\nModified by compiler pass 'RetypeField[Map → Any]'"
+            "description": "custom is specified by the FieldConfig field\nin panel plugin schemas."
           },
           "fieldMinMax": {
-            "type": "boolean",
-            "description": "Modified by compiler pass 'AddFields[created]'"
+            "type": "boolean"
           }
         },
         "description": "The data model used in Grafana, namely the data frame, is a columnar-oriented table structure that unifies both time series and table query results.\nEach column within this structure is called a field. A field can represent a single time series or table column.\nField options allow you to change how the data is displayed in your visualizations."
@@ -943,12 +943,12 @@
               "from": {
                 "type": "number",
                 "nullable": true,
-                "description": "Min value of the range. It can be null which means -Infinity\nModified by compiler pass 'DisjunctionWithNullToOptional[Float64|null → Float64?]'"
+                "description": "Min value of the range. It can be null which means -Infinity"
               },
               "to": {
                 "type": "number",
                 "nullable": true,
-                "description": "Max value of the range. It can be null which means +Infinity\nModified by compiler pass 'DisjunctionWithNullToOptional[Float64|null → Float64?]'"
+                "description": "Max value of the range. It can be null which means +Infinity"
               },
               "result": {
                 "$ref": "#/components/schemas/ValueMappingResult",
@@ -1088,7 +1088,7 @@
           "value": {
             "type": "number",
             "nullable": true,
-            "description": "Value represents a specified metric for the threshold, which triggers a visual change in the dashboard when this value is met or exceeded.\nNulls currently appear here when serializing -Infinity to JSON.\nModified by compiler pass 'DisjunctionWithNullToOptional[Float64|null → Float64?]'"
+            "description": "Value represents a specified metric for the threshold, which triggers a visual change in the dashboard when this value is met or exceeded.\nNulls currently appear here when serializing -Infinity to JSON."
           },
           "color": {
             "type": "string",
@@ -1323,7 +1323,7 @@
           "string"
         ],
         "type": "string",
-        "description": "Action variable type\nModified by compiler pass 'ConstantToEnum'"
+        "description": "Action variable type"
       },
       "DynamicConfigValue": {
         "type": "object",
@@ -1368,7 +1368,7 @@
           },
           "datasource": {
             "$ref": "#/components/schemas/DataSourceRef",
-            "description": "Name of default datasource for the row\nModified by compiler pass 'ReplaceReference[dashboard.DataSourceRef → common.DataSourceRef]'"
+            "description": "Name of default datasource for the row"
           },
           "gridPos": {
             "$ref": "#/components/schemas/GridPos",
@@ -1383,7 +1383,7 @@
             "items": {
               "$ref": "#/components/schemas/Panel"
             },
-            "description": "List of panels in the row\nModified by compiler pass 'RetypeField[ArrayOfPanel → ArrayOfPanel]'"
+            "description": "List of panels in the row"
           },
           "repeat": {
             "type": "string",
@@ -1439,7 +1439,7 @@
           },
           "datasource": {
             "$ref": "#/components/schemas/DataSourceRef",
-            "description": "Data source used to fetch values for a variable. It can be defined but `null`.\nModified by compiler pass 'ReplaceReference[dashboard.DataSourceRef → common.DataSourceRef]'"
+            "description": "Data source used to fetch values for a variable. It can be defined but `null`."
           },
           "current": {
             "$ref": "#/components/schemas/VariableOption",
@@ -1501,24 +1501,23 @@
           },
           "auto": {
             "type": "boolean",
-            "description": "Dynamically calculates interval by dividing time range by the count specified.\nModified by compiler pass 'AddFields[created]'",
+            "description": "Dynamically calculates interval by dividing time range by the count specified.",
             "default": false
           },
           "auto_min": {
             "type": "string",
-            "description": "The minimum threshold below which the step count intervals will not divide the time.\nModified by compiler pass 'AddFields[created]'",
+            "description": "The minimum threshold below which the step count intervals will not divide the time.",
             "default": "10s"
           },
           "auto_count": {
             "type": "integer",
             "minimum": 0,
             "exclusiveMinimum": true,
-            "description": "How many times the current time range should be divided to calculate the value, similar to the Max data points query option.\nFor example, if the current visible time range is 30 minutes, then the auto interval groups the data into 30 one-minute increments.\nModified by compiler pass 'AddFields[created]'",
+            "description": "How many times the current time range should be divided to calculate the value, similar to the Max data points query option.\nFor example, if the current visible time range is 30 minutes, then the auto interval groups the data into 30 one-minute increments.",
             "default": 30
           },
           "definition": {
-            "type": "string",
-            "description": "Modified by compiler pass 'AddFields[created]'"
+            "type": "string"
           }
         },
         "description": "A variable is a placeholder for a value. You can use variables in metric queries and in panel titles."
@@ -1646,7 +1645,7 @@
           },
           "datasource": {
             "$ref": "#/components/schemas/DataSourceRef",
-            "description": "Datasource where the annotations data is\nModified by compiler pass 'FieldsSetNotRequired[nullable=true, required=false]'\nModified by compiler pass 'ReplaceReference[dashboard.DataSourceRef → common.DataSourceRef]'"
+            "description": "Datasource where the annotations data is"
           },
           "enable": {
             "type": "boolean",
@@ -1669,7 +1668,7 @@
           "target": {
             "type": "object",
             "additionalProperties": {},
-            "description": "TODO.. this should just be a normal query target\nModified by compiler pass 'RetypeField[AnnotationTarget → ComposableSlot]'"
+            "description": "TODO.. this should just be a normal query target"
           },
           "type": {
             "type": "string",
@@ -1690,8 +1689,34 @@
             "description": "Placement can be used to display the annotation query somewhere else on the dashboard other than the default location."
           },
           "expr": {
+            "type": "string"
+          },
+          "textFormat": {
             "type": "string",
-            "description": "Modified by compiler pass 'AddFields[created]'"
+            "description": "Format for Prometheus annotation text. Label values can be interpolated with templates like {{instance}}."
+          },
+          "titleFormat": {
+            "type": "string",
+            "description": "Format for Prometheus and Loki annotation titles. Label values can be interpolated with templates like {{instance}}."
+          },
+          "tagKeys": {
+            "type": "string",
+            "description": "Comma-separated label keys used as annotation tags."
+          },
+          "step": {
+            "type": "string",
+            "description": "Legacy Prometheus annotation query step interval."
+          },
+          "useValueForTime": {
+            "type": "boolean",
+            "description": "Use the Prometheus series value as the annotation timestamp."
+          },
+          "mappings": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AnnotationEventFieldMapping"
+            },
+            "description": "Mappings define how to convert data frame fields to annotation event fields."
           }
         },
         "description": "TODO docs\nFROM: AnnotationQuery in grafana-data/src/types/annotations.ts"
@@ -1754,7 +1779,7 @@
           "inControlsMenu"
         ],
         "type": "string",
-        "description": "Annotation Query placement. Defines where the annotation query should be displayed.\n- \"inControlsMenu\" renders the annotation query in the dashboard controls dropdown menu\nModified by compiler pass 'ConstantToEnum'"
+        "description": "Annotation Query placement. Defines where the annotation query should be displayed.\n- \"inControlsMenu\" renders the annotation query in the dashboard controls dropdown menu"
       },
       "Snapshot": {
         "type": "object",
@@ -1824,11 +1849,38 @@
             "description": "user id of the snapshot creator"
           },
           "dashboard": {
-            "$ref": "#/components/schemas/Dashboard",
-            "description": "Modified by compiler pass 'AddFields[created]'"
+            "$ref": "#/components/schemas/Dashboard"
           }
         },
         "description": "A dashboard snapshot shares an interactive dashboard publicly.\nIt is a read-only version of a dashboard, and is not editable.\nIt is possible to create a snapshot of a snapshot.\nGrafana strips away all sensitive information from the dashboard.\nSensitive information stripped: queries (metric, template,annotation) and panel links."
+      },
+      "AnnotationEventFieldSource": {
+        "enum": [
+          "field",
+          "text",
+          "skip"
+        ],
+        "type": "string",
+        "description": "Annotation event field source. Defines how to obtain the value for an annotation event field.\n- \"field\": Find the value with a matching key (default)\n- \"text\": Write a constant string into the value\n- \"skip\": Do not include the field"
+      },
+      "AnnotationEventFieldMapping": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/AnnotationEventFieldSource",
+            "description": "Source type for the field value."
+          },
+          "value": {
+            "type": "string",
+            "description": "Constant value to use when source is \"text\"."
+          },
+          "regex": {
+            "type": "string",
+            "description": "Regular expression to apply to the field value."
+          }
+        },
+        "description": "Annotation event field mapping. Defines how to map a data frame field to an annotation event field."
       }
     }
   }

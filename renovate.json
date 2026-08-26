@@ -102,6 +102,12 @@
       "maxMajorIncrement": 1
     },
     {
+      "description": "bin/fetch-grafana-schemas.sh pins a grafana-foundation-sdk git tag, which is a different dep from the pypi package above. That repo tags three families off one namespace -- the `v0.0.x` releases we want, a parallel `go/v0.0.x` set for the Go module, and `dashboard-converter-v1.0.0` -- and semver-coerced reads that last one as a 1.0.0 major bump. Capping the range keeps only the real releases in play; drop the cap if upstream ever leaves 0.0.x.",
+      "matchDatasources": ["github-tags"],
+      "matchPackageNames": ["grafana/grafana-foundation-sdk"],
+      "allowedVersions": "<0.1.0"
+    },
+    {
       "description": "helm-docs is pinned to a commit pseudo-version; do not flag it as abandoned",
       "matchPackageNames": ["github.com/norwoodj/helm-docs"],
       "abandonmentThreshold": null
@@ -134,6 +140,15 @@
       "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": [
         "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z_][A-Za-z0-9_-]*:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update renovate-annotated versions in the vendoring scripts under bin/. Same annotation convention as the Dockerfile and workflow managers, but the variable name is unconstrained: these pins are git refs (`FSDK_REF`), not `*_VERSION`/`*_TAG` values, so the Dockerfile manager's name suffix would never match. Renovate moves only the pin -- the `auto-format` label on these PRs is what re-runs the script so the vendored output lands in the same PR.",
+      "managerFilePatterns": ["/^bin/.+\\.sh$/"],
+      "matchStrings": [
+        "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z_][A-Za-z0-9_]*=[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
     },

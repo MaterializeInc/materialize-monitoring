@@ -1,5 +1,5 @@
 {
-  "_comment": "editorconfig-checker config. Indent_size/Indentation checks are disabled because language tools (ruff, rustfmt, shfmt, prettier) own that; editorconfig-checker enforces the un-controversial hygiene (EOL, final newline, trailing whitespace, charset). Exclude list mirrors the generated/legacy paths in .pre-commit-config.yaml that .gitignore doesn't already cover.",
+  "_comment": "editorconfig-checker config. Indent_size/Indentation checks are disabled because language tools (ruff, rustfmt, shfmt, prettier) own that; editorconfig-checker enforces the un-controversial hygiene (EOL, final newline, trailing whitespace, charset). Exclude list mirrors the generated/legacy paths in .pre-commit-config.yaml that .gitignore doesn't already cover. The vendored Grafana schemas are excluded to keep them byte-identical to the upstream tag recorded in their PROVENANCE.md -- upstream ships them without a final newline, and rewriting that would make the tree unverifiable against the pin.",
   "Disable": {
     "IndentSize": true,
     "Indentation": true,
@@ -10,6 +10,7 @@
     "^dist/",
     "^docs/assets/dashboards/",
     "^charts/[^/]+/pre-rendered/",
+    "^packages/mzmon-lib/schemas/grafana/",
     "\\.min\\.(js|css)$",
     "^go\\.sum$",
     "^uv\\.lock$",

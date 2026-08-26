@@ -27,6 +27,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `bin/`: bash dev/CI entrypoints (flat; no subdirectories)
     * `check-lfs.sh`: verify/repair Git LFS state
     * `extract-crd-schemas.sh`: pull CRD schemas out of upstream charts
+    * `fetch-grafana-schemas.sh`: vendor the cog-generated Grafana OpenAPI schemas from grafana-foundation-sdk
     * `extract-grafana-operator-crds.sh`: deflate the Grafana Operator CRDs into the CRDs chart (`make grafana-operator-crds`)
     * `grafonnet-render`: grafonnet rendering helper
     * `helm-deps.sh`: vendor each chart's locked subchart tarballs into `charts/*/charts/` (`make helm-deps`)
@@ -39,7 +40,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-cadvisor.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
-    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; not consumed by customers
+    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana OpenAPI schemas under `schemas/grafana/`; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
     * `mz-monitoring-check/`: Rust schema/consistency checks
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing

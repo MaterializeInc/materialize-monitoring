@@ -43,13 +43,18 @@ And into Generating:
 
 ## Schema reference files
 
-When uncertain about the exact shape Grafana expects, the cog-generated openapi schemas are bundled here:
+When uncertain about the exact shape Grafana expects, read the cog-generated openapi schemas vendored at `packages/mzmon-lib/schemas/grafana/`.
+The three dashboard documents there are:
 
-- `references/dashboard.openapi.json` — v1
-- `references/dashboardv2beta1.openapi.json` — v2beta1
-- `references/dashboardv2.openapi.json` — v2
+- `dashboard.openapi.json` — v1
+- `dashboardv2beta1.openapi.json` — v2beta1
+- `dashboardv2.openapi.json` — v2
 
-All three generated from cog `61ff0a6055fa48f0c7b105fe4a37af637191314f` (April 9, 2026).
+The other 52 documents in the same directory cover the panel, datasource, and `common` packages — that is where a panel's `options` and `fieldConfig` shapes live, not in the dashboard documents.
+
+The whole set is vendored from the `grafana/grafana-foundation-sdk` release tag `v0.0.18` (June 12, 2026), generated there by cog `v0.1.20`.
+The v2 and v2beta1 documents track Grafana `v13.0.2`; v1 tracks Grafana `v11.6.0`.
+Re-vendor with `bin/fetch-grafana-schemas.sh`; Renovate maintains the tag pinned in that script, and `PROVENANCE.md` records the current pin.
 
 ---
 

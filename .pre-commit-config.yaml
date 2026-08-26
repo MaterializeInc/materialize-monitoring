@@ -18,6 +18,7 @@ exclude: |
     | docs/resources/.*
     | docs/assets/dashboards/.*
     | charts/[^/]+/pre-rendered/.*
+    | packages/mzmon-lib/schemas/grafana/.*
     | .*\.min\.(js|css)
   )$
 

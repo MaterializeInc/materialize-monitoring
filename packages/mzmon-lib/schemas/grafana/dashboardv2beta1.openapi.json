@@ -1,10 +1,10 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "dashboardv2",
+    "title": "dashboardv2beta1",
     "version": "0.0.0",
     "x-schema-identifier": "",
-    "x-schema-kind": ""
+    "x-schema-kind": "core"
   },
   "paths": {},
   "components": {
@@ -107,12 +107,10 @@
               "$ref": "#/components/schemas/VariableKind"
             },
             "description": "Configured template variables."
-          },
-          "preferences": {
-            "$ref": "#/components/schemas/Preferences"
           }
         },
-        "description": "Modified by compiler pass 'RenameObject[DashboardSpec → Dashboard]'"
+        "deprecated": true,
+        "x-deprecation-message": "Prefer using dashboardv2.Dashboard instead."
       },
       "AnnotationQueryKind": {
         "type": "object",
@@ -165,7 +163,12 @@
             "$ref": "#/components/schemas/AnnotationPanelFilter"
           },
           "placement": {
-            "$ref": "#/components/schemas/AnnotationQueryPlacement",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnnotationQueryPlacement"
+              }
+            ],
             "description": "Placement can be used to display the annotation query somewhere else on the dashboard other than the default location."
           },
           "mappings": {
@@ -222,8 +225,7 @@
           "spec": {
             "type": "object",
             "additionalProperties": {},
-            "nullable": true,
-            "description": "Modified by compiler pass 'RetypeField[Map → Any]'"
+            "nullable": true
           }
         }
       },
@@ -249,8 +251,10 @@
         }
       },
       "AnnotationQueryPlacement": {
+        "enum": [
+          "inControlsMenu"
+        ],
         "type": "string",
-        "const": "inControlsMenu",
         "description": "Annotation Query placement. Defines where the annotation query should be displayed.\n- \"inControlsMenu\" renders the annotation query in the dashboard controls dropdown menu"
       },
       "AnnotationEventFieldMapping": {
@@ -440,8 +444,7 @@
             "$ref": "#/components/schemas/DataQueryKind"
           },
           "refId": {
-            "type": "string",
-            "description": "Modified by compiler pass 'RetypeField[String → String]'"
+            "type": "string"
           },
           "hidden": {
             "type": "boolean"
@@ -453,30 +456,30 @@
         "additionalProperties": false,
         "required": [
           "kind",
-          "group",
           "spec"
         ],
         "properties": {
           "kind": {
             "type": "string",
-            "const": "Transformation"
-          },
-          "group": {
-            "type": "string",
-            "description": "The group is the transformation ID"
+            "description": "The kind of a TransformationKind is the transformation ID"
           },
           "spec": {
-            "$ref": "#/components/schemas/TransformationSpec"
+            "$ref": "#/components/schemas/DataTransformerConfig"
           }
         }
       },
-      "TransformationSpec": {
+      "DataTransformerConfig": {
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "id",
           "options"
         ],
         "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of transformer"
+          },
           "disabled": {
             "type": "boolean",
             "description": "Disabled transformations are skipped"
@@ -606,8 +609,7 @@
           "options": {
             "type": "object",
             "additionalProperties": {},
-            "nullable": true,
-            "description": "Modified by compiler pass 'RetypeField[Map → Any]'"
+            "nullable": true
           },
           "fieldConfig": {
             "$ref": "#/components/schemas/FieldConfigSource"
@@ -654,7 +656,7 @@
             "description": "Overrides are the options applied to specific fields overriding the defaults."
           }
         },
-        "description": "The data model used in Grafana, namely the data frame, is a columnar-oriented table structure that unifies both time series and table query results.\nEach column within this structure is called a field. A field can represent a single time series or table column.\nField options allow you to change how the data is displayed in your visualizations.\nModified by compiler pass 'RetypeObject[Struct → Struct]'"
+        "description": "The data model used in Grafana, namely the data frame, is a columnar-oriented table structure that unifies both time series and table query results.\nEach column within this structure is called a field. A field can represent a single time series or table column.\nField options allow you to change how the data is displayed in your visualizations."
       },
       "FieldConfig": {
         "type": "object",
@@ -738,7 +740,7 @@
             "type": "object",
             "additionalProperties": {},
             "nullable": true,
-            "description": "custom is specified by the FieldConfig field\nin panel plugin schemas.\nModified by compiler pass 'RetypeField[Map → Any]'"
+            "description": "custom is specified by the FieldConfig field\nin panel plugin schemas."
           },
           "fieldMinMax": {
             "type": "boolean",
@@ -854,12 +856,12 @@
               "from": {
                 "type": "number",
                 "nullable": true,
-                "description": "Min value of the range. It can be null which means -Infinity\nModified by compiler pass 'DisjunctionWithNullToOptional[Float64|null → Float64?]'"
+                "description": "Min value of the range. It can be null which means -Infinity"
               },
               "to": {
                 "type": "number",
                 "nullable": true,
-                "description": "Max value of the range. It can be null which means +Infinity\nModified by compiler pass 'DisjunctionWithNullToOptional[Float64|null → Float64?]'"
+                "description": "Max value of the range. It can be null which means +Infinity"
               },
               "result": {
                 "$ref": "#/components/schemas/ValueMappingResult",
@@ -995,7 +997,7 @@
           "value": {
             "type": "number",
             "nullable": true,
-            "description": "Value null means -Infinity\nModified by compiler pass 'DisjunctionWithNullToOptional[Float64|null → Float64?]'"
+            "description": "Value null means -Infinity"
           },
           "color": {
             "type": "string"
@@ -1442,7 +1444,7 @@
           "variable"
         ],
         "type": "string",
-        "description": "other repeat modes will be added in the future: label, frame\nModified by compiler pass 'ConstantToEnum'"
+        "description": "other repeat modes will be added in the future: label, frame"
       },
       "RowsLayoutKind": {
         "type": "object",
@@ -3038,7 +3040,12 @@
             "default": false
           },
           "placement": {
-            "$ref": "#/components/schemas/DashboardLinkPlacement",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardLinkPlacement"
+              }
+            ],
             "description": "Placement can be used to display the link somewhere else on the dashboard other than above the visualisations."
           },
           "origin": {
@@ -3057,8 +3064,10 @@
         "description": "Dashboard Link type. Accepted values are dashboards (to refer to another dashboard) and link (to refer to an external resource)"
       },
       "DashboardLinkPlacement": {
+        "enum": [
+          "inControlsMenu"
+        ],
         "type": "string",
-        "const": "inControlsMenu",
         "description": "Dashboard Link placement. Defines where the link should be displayed.\n- \"inControlsMenu\" renders the link in bottom part of the dashboard controls dropdown menu"
       },
       "TimeSettingsSpec": {
@@ -3168,24 +3177,6 @@
           }
         }
       },
-      "Preferences": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "layout": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AutoGridLayoutKind"
-              },
-              {
-                "$ref": "#/components/schemas/GridLayoutKind"
-              }
-            ],
-            "description": "default layout template to be used when new containers are created"
-          }
-        },
-        "description": "Dashboard specific preferences (applied per dashboard = all users using the dashboard)"
-      },
       "AnnotationEventFieldSource": {
         "enum": [
           "field",
@@ -3257,7 +3248,7 @@
           "formatter": {
             "type": "string",
             "nullable": true,
-            "description": "The format name or function used in the expression\nModified by compiler pass 'RetypeField[Disjunction → String]'"
+            "description": "The format name or function used in the expression"
           }
         },
         "description": "Custom variable value"
@@ -3324,15 +3315,13 @@
         },
         "description": "FIXME: should we introduce this? --- Variable value option"
       },
-      "DashboardAPIVersion": {
+      "DashboardApiVersion": {
         "type": "string",
-        "const": "dashboard.grafana.app/v2",
-        "description": "Modified by compiler pass 'AddObject[created]'"
+        "const": "dashboard.grafana.app/v2beta1"
       },
       "DashboardKind": {
         "type": "string",
-        "const": "Dashboard",
-        "description": "Modified by compiler pass 'AddObject[created]'"
+        "const": "Dashboard"
       }
     }
   }
