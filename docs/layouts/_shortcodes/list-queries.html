@@ -50,34 +50,34 @@
           {{- $highlight := transform.Highlight $query "promql" }}
           {{- $highlight3 := $highlight | replaceRE
             `<span[^>]+>\$\{mzEnvironmentFilter</span>\}`
-            "<span class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~\".*\"</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~\".*\"</span>"
             | replaceRE
             `<span[^>]+>\$\{cAdvisorFilter</span>\}`
-            "<span class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!=\"POD\", container!=\"\"</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!=\"POD\", container!=\"\"</span>"
             | replaceRE
             `<span[^>]+>\$\{mzEnvironmentNamespaceFilter</span>\}`
-            "<span class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~\"materialize-environment\"</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~\"materialize-environment\"</span>"
             | replaceRE
             `<span[^>]+>\$\{mzOperatorNamespaceFilter</span>\}`
-            "<span class='replaceable' data-replace='mzOperatorNamespaceFilter' title='mzOperatorNamespaceFilter'>namespace=~\"materialize\"</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='mzOperatorNamespaceFilter' title='mzOperatorNamespaceFilter'>namespace=~\"materialize\"</span>"
             | replaceRE
             `<span[^>]+>\$\{excludeEnvironmentFilter</span>\}`
-            "<span class='replaceable' data-replace='excludeEnvironmentFilter' title='excludeEnvironmentFilter'></span>"
+            "<span contenteditable='true' class='replaceable' data-replace='excludeEnvironmentFilter' title='excludeEnvironmentFilter'></span>"
             | replaceRE
             `<span[^>]+>\$\{([^<}]+)=([^<}]+)</span>\}`
-            "<span class='replaceable' data-replace='$1' title='$1'>$2</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='$1' title='$1'>$2</span>"
             | replaceRE
             `<span[^>]+>\$\{([^<}]+)=([^<}]+)\}</span>`
-            "<span class='replaceable' data-replace='$1' title='$1'>$2</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='$1' title='$1'>$2</span>"
             | replaceRE
             `\$</span>\{<span[^>]+>([^<}]+)=([^<}]+)</span>\}`
-            "</span><span class='replaceable' data-replace='$1' title='$1'>$2</span>"
+            "</span><span contenteditable='true' class='replaceable' data-replace='$1' title='$1'>$2</span>"
             | replaceRE
             `<span[^>]+>([^<&]*)&lt;&lt;</span>([^>+<]+)<span[^>]+>&gt;&gt;</span>`
-            "$1<span class='replaceable' data-replace='$2' title='$2'>$${$2}</span>"
+            "$1<span contenteditable='true' class='replaceable' data-replace='$2' title='$2'>$${$2}</span>"
             | replaceRE
             `<span[^>]+>&lt;&lt;([^>+<]+)&gt;&gt;</span>`
-            "<span class='replaceable' data-replace='$1' title='$1'>$${$1}</span>"
+            "<span contenteditable='true' class='replaceable' data-replace='$1' title='$1'>$${$1}</span>"
           }}
 {{ $highlight3 | safe.HTML }}
         {{- end }}
@@ -98,6 +98,7 @@
             {{- if reflect.IsMap $query }}
               {{- $query = $query.template }}
             {{- end }}
+            {{- $query = $query | replaceRE "%%\\{([^}]+)\\}" "$${$1}"}}
             {{- /* no theme for datadog */}}
             {{- $highlight := transform.Highlight $query "promql" }}
 {{ $highlight | safe.HTML }}

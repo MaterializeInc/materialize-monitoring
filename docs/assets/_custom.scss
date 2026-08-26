@@ -265,6 +265,36 @@ main.container {
   code.language-promql {
     span.replaceable {
       text-decoration: underline dashed;
+
+      // Set from the URL or edited in place; see assets/replaceables.js.
+      &[data-replaced] {
+        text-decoration: underline solid;
+        font-weight: 500;
+      }
+
+      &[contenteditable] {
+        cursor: text;
+
+        // Not a --gray-* variable: chroma renders Monokai in both site
+        // themes, so the block behind this is dark either way, and both ends
+        // of --gray-200 (near-white light, near-black dark) disappear against
+        // it. A translucent white reads on any syntax colour.
+        // The ring carries the focus indication (3:1 against the block); the
+        // fill stays light so the value under it keeps its contrast.
+        &:focus {
+          outline: none;
+          background: rgba(255, 255, 255, 0.16);
+          border-radius: rem(0.3);
+          box-shadow: 0 0 0 rem(0.2) rgba(255, 255, 255, 0.5);
+        }
+
+        // An empty value — excludeEnvironmentFilter defaults to one — has no
+        // box to click, so give it a hair of width. The nbsp is a pseudo
+        // element, so it stays out of textContent and out of a copied query.
+        &:empty::after {
+          content: "\00a0";
+        }
+      }
     }
   }
 }
