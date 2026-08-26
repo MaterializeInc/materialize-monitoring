@@ -40,6 +40,22 @@ function _has_prog() {
     command -v "$1" >/dev/null
 }
 
+## _require_progs: Ensure required programs are available
+# This will abort the script if any of the listed programs are not found on PATH.
+# Usage: _require_progs prog1 prog2 ...
+function _require_progs() {
+    local missing=false
+    for prog in "$@"; do
+        if ! _has_prog "$prog"; then
+            _error "required program not found on PATH: $prog"
+            missing=true
+        fi
+    done
+    if [ "$missing" = true ]; then
+        exit 1
+    fi
+}
+
 # Callback function for when set -e (ERREXIT) is triggered)
 # This shows a small stacktrace for the current shell along with the failing
 # function call.

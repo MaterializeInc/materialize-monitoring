@@ -28,17 +28,6 @@ CRDS=(
     "ScrapeConfig|scrapeconfigs|v1alpha1|scrapeconfig"
 )
 
-function _require_progs() {
-    local missing=false
-    for prog in "$@"; do
-        if ! _has_prog "$prog"; then
-            _error "required program not found on PATH: $prog"
-            missing=true
-        fi
-    done
-    [ "$missing" = false ] || exit 1
-}
-
 function _find_tarball() {
     # Resolve the single vendored prometheus-operator-crds-*.tgz tarball.
     local matches=("$CRD_CHART_DIR"/prometheus-operator-crds-*.tgz)

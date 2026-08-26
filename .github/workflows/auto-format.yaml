@@ -38,10 +38,10 @@ jobs:
   # Runs a shallow checkout only, so a re-triggered loop run stops here in a few
   # seconds instead of installing the whole toolchain to reformat nothing.
   #
-  # Also decides whether the subchart archives need rebuilding. That step is the
-  # only one that reaches a chart registry, so it is kept off PRs that cannot
-  # have invalidated the archives rather than exposing every auto-format run to
-  # a registry outage.
+  # Also decides whether the subchart archives and the vendored Grafana schemas
+  # need rebuilding. Those steps are the only ones that reach out to a registry
+  # or to GitHub's API, so they are kept off PRs that cannot have invalidated
+  # their output rather than exposing every auto-format run to an outage.
   check:
     if: contains(github.event.pull_request.labels.*.name, 'auto-format')
     runs-on: ubuntu-24.04
@@ -49,6 +49,7 @@ jobs:
     outputs:
       proceed: ${{ steps.guard.outputs.proceed }}
       helm_deps: ${{ steps.filter.outputs.helm_deps }}
+      grafana_schemas: ${{ steps.filter.outputs.grafana_schemas }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -78,6 +79,9 @@ jobs:
               - charts/*/Chart.yaml
               - charts/*/Chart.lock
               - Makefile
+              - .github/workflows/auto-format.yaml
+            grafana_schemas:
+              - bin/fetch-grafana-schemas.sh
               - .github/workflows/auto-format.yaml
 
   auto-format:
@@ -123,6 +127,23 @@ jobs:
           ./bin/check-lfs.sh --fix
           git lfs install --local
           make helm-deps
+      # Renovate moves the FSDK_REF pin in the script but cannot run the script,
+      # so a schema-bump PR arrives with the vendored documents under
+      # packages/mzmon-lib/schemas/grafana/ still at the previous tag.
+      # Re-vendoring here ships the schema diff in the same PR as the pin, which
+      # is the whole point of reviewing that PR.
+      #
+      # Scoped to PRs that touched the script: this is the only step that reaches
+      # GitHub's API, and it is a no-op everywhere else — so running it on every
+      # auto-format PR would buy nothing and still fail the run on an API hiccup.
+      - name: Re-vendor Grafana OpenAPI schemas
+        if: ${{ needs.check.outputs.grafana_schemas == 'true' }}
+        env:
+          # Unauthenticated api.github.com calls are rate-limited per runner IP,
+          # which is shared; the default token lifts the ceiling.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./bin/fetch-grafana-schemas.sh
+
       - name: Run formatters
         run: |
           make helm-docs

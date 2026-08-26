@@ -1,0 +1,104 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "logs",
+    "version": "0.0.0",
+    "x-schema-identifier": "logs",
+    "x-schema-kind": "composable",
+    "x-schema-variant": "panelcfg"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "Options": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "showLabels",
+          "showCommonLabels",
+          "showTime",
+          "showLogContextToggle",
+          "wrapLogMessage",
+          "prettifyLogMessage",
+          "enableLogDetails",
+          "sortOrder",
+          "dedupStrategy"
+        ],
+        "properties": {
+          "showLabels": {
+            "type": "boolean"
+          },
+          "showCommonLabels": {
+            "type": "boolean"
+          },
+          "showTime": {
+            "type": "boolean"
+          },
+          "showLogContextToggle": {
+            "type": "boolean"
+          },
+          "wrapLogMessage": {
+            "type": "boolean"
+          },
+          "prettifyLogMessage": {
+            "type": "boolean"
+          },
+          "enableLogDetails": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "$ref": "#/components/schemas/LogsSortOrder"
+          },
+          "dedupStrategy": {
+            "$ref": "#/components/schemas/LogsDedupStrategy"
+          },
+          "enableInfiniteScrolling": {
+            "type": "boolean"
+          },
+          "showControls": {
+            "type": "boolean",
+            "description": "Display controls to jump to the last or first log line, and filters by log level."
+          },
+          "showFieldSelector": {
+            "type": "boolean",
+            "description": "Show a component to manage the displayed fields from the logs."
+          },
+          "syntaxHighlighting": {
+            "type": "boolean",
+            "description": "Use a predefined coloring scheme to highlight relevant parts of the log lines."
+          },
+          "fontSize": {
+            "enum": [
+              "default",
+              "small"
+            ],
+            "type": "string"
+          },
+          "detailsMode": {
+            "enum": [
+              "inline",
+              "sidebar"
+            ],
+            "type": "string"
+          }
+        }
+      },
+      "LogsSortOrder": {
+        "enum": [
+          "Descending",
+          "Ascending"
+        ],
+        "type": "string"
+      },
+      "LogsDedupStrategy": {
+        "enum": [
+          "none",
+          "exact",
+          "numbers",
+          "signature"
+        ],
+        "type": "string"
+      }
+    }
+  }
+}

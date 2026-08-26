@@ -26,17 +26,6 @@ _register_traceback
 OPERATOR_CHART_DIR="charts/materialize-monitoring/charts"
 OUT_CHART_DIR="charts/materialize-monitoring-crds/charts/grafana-operator-crds"
 
-function _require_progs() {
-    local missing=false
-    for prog in "$@"; do
-        if ! _has_prog "$prog"; then
-            _error "required program not found on PATH: $prog"
-            missing=true
-        fi
-    done
-    [ "$missing" = false ] || exit 1
-}
-
 function _find_tarball() {
     # Resolve the single vendored grafana-operator-*.tgz tarball.
     local matches=("$OPERATOR_CHART_DIR"/grafana-operator-*.tgz)
