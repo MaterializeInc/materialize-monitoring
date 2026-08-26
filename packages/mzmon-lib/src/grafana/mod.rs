@@ -18,3 +18,4 @@
 //!   therefore `#[serde(untagged)]`: exact on the write path, but deserialization
 //!   failures report only "data did not match any variant".
 pub mod generated;
+pub mod query;

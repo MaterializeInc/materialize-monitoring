@@ -84,6 +84,25 @@ Three properties of the upstream schemas shape everything built on top of them:
 
 Two documents cannot be generated at all: `alerting` (typify panics deriving variant names for the `MatchType` enum `["=", "!=", "=~", "!~"]`) and, without normalization, `table` (cog emits a `default` that violates its own schema — `Options.footer` defaults `reducer` to null where `TableFooterOptions` requires an array).
 
+### Query bridge
+
+`mzmon_lib::grafana::query` turns a registry query into the two things a panel needs.
+`panel_query(registry, id, ctx)` looks an id up, renders it for the engine the `TemplateContext` names, and returns a `QueryGroupKind` plus a markdown description.
+
+The context's engine picks the datasource: `PromQl` builds Prometheus dataqueries against `${metricsDatasource}`, `LogQl` builds Loki ones against `${logsDatasource}`.
+Datadog and Honeycomb render fine but have no Grafana datasource here, so the bridge rejects them rather than emitting an expression that would silently return nothing.
+
+Two details worth knowing:
+
+- **Prometheus compat fields.** Grafana's Prometheus datasource reads `query` and `qryType`, while the schema cog generates calls them `expr` and `queryType`. Sending only the schema spelling loses data on push, so the bridge emits both — matching `py_mzmon_lib.query_v2.CompatPrometheusDataQuery`.
+- **Description formatting.** The registry's `Description` is structured (summary / nominal / degraded / unhealthy / notes); the hand-written panels inline "Nominal: …" in flowing prose. The bridge emits the summary in bold followed by the behavioral fields as labeled paragraphs, and unwraps the YAML hard-wrapping. That is one function (`format_description`) if the convention should change.
+
+The registry-to-dashboard path is new: the Python dashboards hand-write their PromQL inline with f-strings rather than going through the registry, so the pre-rendered dashboards are not a byte-level baseline for it.
+What is still missing is a **dashboard `TemplateContext`** — the Rust side has `doc_context` and `tier_context` (both extraction-flavored, with sentinel parameter values), but nothing that resolves parameters to Grafana built-ins and dashboard variables (`interval` -> `[$__rate_interval]`, `mzEnvironmentFilter` -> `materialize_cloud_organization_name=~"$environmentIdList"`, and so on).
+
+`packages/mzmon-lib/tests/grafana_query_bridge.rs` runs the bridge over every PromQL query in the registry (207 at the time of writing) plus the named availability query in detail.
+The registry has no LogQL queries yet, so the Loki path is covered only by unit tests.
+
 `packages/mzmon-lib/tests/grafana_golden.rs` parses the pre-rendered `env-top.yaml` into the generated models and checks that re-serializing loses nothing.
 That test is what caught the one place the schemas are narrower than Grafana itself: `MatcherConfig.options` is typed `object`, but Grafana's `byName` matcher takes a bare field-name string, which the golden dashboard emits and Grafana accepts.
 The generation script widens it, with the reasoning recorded inline.
