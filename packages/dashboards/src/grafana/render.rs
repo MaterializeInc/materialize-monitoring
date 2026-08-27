@@ -24,7 +24,7 @@
 
 use mzmon_lib::grafana::dashboard::Resource;
 
-use super::{Cloud, Options, Renderable};
+use super::{Options, Renderable};
 
 /// What went wrong rendering.
 #[derive(Debug, thiserror::Error)]
@@ -36,17 +36,6 @@ pub enum Error {
         #[source]
         source: mzmon_lib::grafana::dashboard::Error,
     },
-
-    /// This dashboard has no variant for the requested cloud.
-    ///
-    /// Deliberately an error rather than a fallback: the GCP variant differs in
-    /// panel content, not just metadata, so emitting the generic render under a
-    /// `gcp-` name would ship a dashboard whose gauges read the wrong metric.
-    #[error(
-        "{name} has no {cloud} variant yet; the generic render is not a substitute \
-         because the cloud variants differ in panel content"
-    )]
-    UnsupportedCloud { name: &'static str, cloud: Cloud },
 
     #[error("serializing {name} as {format}: {source}")]
     Serialize {
@@ -182,6 +171,7 @@ fn canonical_number(number: serde_json::Number) -> serde_json::Number {
 mod tests {
     use super::*;
     use crate::grafana;
+    use crate::grafana::Cloud;
 
     #[test]
     fn sorting_is_recursive_and_leaves_arrays_alone() {
@@ -334,19 +324,56 @@ mod tests {
     }
 
     #[test]
-    fn an_unported_cloud_variant_fails_loudly() {
-        // Silently emitting the generic render under a `gcp-` name would ship
-        // gauges reading a metric GCP does not expose.
-        let options = Options {
-            cloud: Cloud::Gcp,
-            ..Options::default()
-        };
-        let err = render(&grafana::ALL[0], &options, Format::Yaml).expect_err("gcp is not ported");
-        let message = err.to_string();
-        assert!(message.contains("gcp"), "{message}");
-        assert!(
-            message.contains("no substitute") || message.contains("not a substitute"),
-            "{message}"
-        );
+    fn every_cloud_renders_and_records_what_it_targets() {
+        // The clouds no longer differ in panel content -- `alloy-gateway` scrapes
+        // the kubelet's cAdvisor directly rather than consuming GKE's reduced
+        // subset -- so the only thing `cloud` reaches is the annotation that says
+        // which variant a file is.
+        for (cloud, want) in [(Cloud::Generic, "generic"), (Cloud::Gcp, "gcp")] {
+            let options = Options {
+                cloud,
+                ..Options::default()
+            };
+            for dashboard in grafana::ALL {
+                let json = render(dashboard, &options, Format::Json)
+                    .unwrap_or_else(|e| panic!("{} for {cloud}: {e}", dashboard.name));
+                let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
+                assert_eq!(
+                    value["metadata"]["annotations"]["monitoring.materialize.cloud/target-cloud"],
+                    serde_json::json!(want),
+                    "{} for {cloud}",
+                    dashboard.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_clouds_differ_only_in_that_annotation() {
+        // If a cloud ever needs different panels again, this is the test that says
+        // so -- it fails, and the divergence gets named rather than appearing as an
+        // unexplained diff in a checked-in artifact.
+        const ANNOTATION: &str = "monitoring.materialize.cloud/target-cloud";
+        for dashboard in grafana::ALL {
+            let mut renders = Vec::new();
+            for cloud in [Cloud::Generic, Cloud::Gcp] {
+                let options = Options {
+                    cloud,
+                    ..Options::default()
+                };
+                let json = render(dashboard, &options, Format::Json).expect("render");
+                let mut value: serde_json::Value = serde_json::from_str(&json).expect("parse");
+                value["metadata"]["annotations"]
+                    .as_object_mut()
+                    .expect("annotations")
+                    .remove(ANNOTATION);
+                renders.push(value);
+            }
+            assert_eq!(
+                renders[0], renders[1],
+                "{}: the generic and gcp renders differ in more than {ANNOTATION}",
+                dashboard.name
+            );
+        }
     }
 }

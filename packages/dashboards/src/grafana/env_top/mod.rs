@@ -194,26 +194,26 @@ pub fn build(cloud: crate::grafana::Cloud, sql_metric_prefix: &str) -> dashboard
         .build()
 }
 
-/// Render for the registry: applies the cloud variant, or refuses.
+/// Render for the registry.
+///
+/// Every cloud renders the same panels. The Python branched here: GKE's *managed*
+/// cAdvisor and kube-state-metrics shipped a reduced allowlist that omitted the
+/// container limit and spec series, so the percent-of-limit gauges had no
+/// denominator and fell back to absolute cores and bytes, under different titles.
+/// That gap is closed — `alloy-gateway` scrapes `/metrics/cadvisor` on every
+/// kubelet directly rather than consuming GKE's subset, and every `container_*`
+/// series these queries reference is present. See `docs/content/metrics/scraping.md`.
+///
+/// So `cloud` reaches only the `target-cloud` metadata annotation, which records
+/// what the artifact was rendered for. If a cloud ever diverges in panel content
+/// again, this is where the branch goes back.
 pub fn render(options: &crate::grafana::Options) -> crate::grafana::render::Result<Resource> {
-    use crate::grafana::{Cloud, render::Error};
+    use crate::grafana::render::Error;
 
-    match options.cloud {
-        Cloud::Generic => {
-            build(options.cloud, &options.sql_metric_prefix).map_err(|source| Error::Build {
-                name: NAME_STEM,
-                source,
-            })
-        }
-        // The GCP variant is not ported. Its CPU and memory gauges are different
-        // panels, not the same panels with different metadata, because GCP's
-        // cAdvisor does not expose the container memory limit the generic gauges
-        // divide by.
-        cloud => Err(Error::UnsupportedCloud {
-            name: NAME_STEM,
-            cloud,
-        }),
-    }
+    build(options.cloud, &options.sql_metric_prefix).map_err(|source| Error::Build {
+        name: NAME_STEM,
+        source,
+    })
 }
 
 #[cfg(test)]

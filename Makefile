@@ -121,9 +121,6 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib) $
 
 ### DASHBOARD SYNC ###
 
-SOURCES_py-mzmon-lib = $(shell find packages/py-mzmon-lib/src -type f)
-SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f) $(SOURCES_py-mzmon-lib)
-
 charts/materialize-monitoring/pre-rendered/dashboards/grafana: \
 		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
@@ -556,17 +553,17 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
-# The generic render comes from Rust; the `gcp-` variant is still Python, because
-# the cloud variants differ in panel content and the GCP one is not ported yet.
-# `gen-dashboards --cloud gcp` fails loudly rather than emitting the generic render
-# under a gcp- name, so this line cannot quietly become wrong.
+# Two files, same panels: the `gcp-` variant differs only in its `target-cloud`
+# annotation now that the gateway scrapes the kubelet's cAdvisor directly instead
+# of consuming GKE's reduced subset. It stays a separate artifact because the
+# docsite links it, and because a cloud could diverge again.
 docs/assets/dashboards/grafana: \
-		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) $(SOURCES_grafana-dashboards) \
-		target/debug/mz-monitoring-build
+		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.json
 	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json
-	$(PY_RUN) -m dashboards.render -o "$@" --format json --cloud-hint gcp --prefix gcp-
+	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json \
+		--cloud gcp --prefix gcp-
 	touch "$@"
 
 # Generate docs

@@ -36,7 +36,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables); `grafana/render.rs` serializes deterministically and `grafana/mod.rs` is the registry, both driven by `mz-monitoring-build gen-dashboards`
-    * `grafana-dashboards/`: the Python implementation being replaced (`grafana-foundation-sdk`); sources under `dashboards/` (e.g. `mz_environment/`, `render.py`, `palette.py`). Still the source of the `gcp-` prefixed docs asset, the one cloud variant not yet ported
+    * `grafana-dashboards/`: the Python implementation, fully replaced for every shipped artifact by `packages/dashboards` — no Makefile target or CI job renders from it any more; sources under `dashboards/` (e.g. `mz_environment/`, `render.py`, `palette.py`)
     * `py-mzmon-lib/`: Python helper library imported by the dashboard packages; not consumed by customers. Also home to the original query registry (`registry/`), now ported to `mzmon-lib`'s Rust `query` module
     * `queries/`: query-registry YAML inputs (`materialize-*.yaml`) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)

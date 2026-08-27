@@ -21,9 +21,8 @@
 //! `mz_dashboards::grafana::render`. Repeated runs over unchanged sources produce
 //! byte-identical files, which is what keeps a regeneration reviewable.
 //!
-//! This replaces `python -m dashboards.render`. The Python remains the source of
-//! the `gcp-` prefixed docs assets until that cloud variant is ported; see
-//! `--cloud`.
+//! This replaces `python -m dashboards.render` for every artifact the chart and the
+//! docsite ship, including the `gcp-` prefixed one.
 
 use anyhow::Context;
 use mz_dashboards::grafana::{self, Cloud, Options, render};
@@ -85,8 +84,10 @@ pub struct GenDashboardsArgs {
 
     /// Cloud metric surface to target.
     ///
-    /// Not cosmetic: the variants differ in panel content, so an unported one is
-    /// an error rather than a silent fallback to generic.
+    /// Reaches only the `target-cloud` annotation today. The variants used to
+    /// differ in panel content, back when GKE's managed collectors shipped a
+    /// reduced allowlist; the gateway now scrapes the kubelet's cAdvisor directly,
+    /// so every cloud gets the same panels.
     #[arg(long, value_enum, default_value = "generic")]
     cloud: CloudTarget,
 

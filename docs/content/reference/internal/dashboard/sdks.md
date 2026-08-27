@@ -205,6 +205,9 @@ Two consumers, one command:
 | `--format yaml` into `charts/…/pre-rendered/dashboards/grafana/` | the Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
 
+The JSON target renders twice, once per cloud, because the docsite links `env-top.json` and `gcp-env-top.json`
+separately; `--prefix` names the second.
+
 Both trees are checked in, which makes byte-stability the property that matters most.
 Every render therefore goes through `render::canonical` first, which does two things:
 
@@ -222,15 +225,33 @@ plain `make` can consider them up to date and skip rendering — which would mak
 Deleting the outputs first does not fix it either, because removing files inside a directory target updates that
 directory's mtime, making it look newer than its prerequisites rather than missing.
 
-#### Cloud variants are not cosmetic
+#### Cloud variants
 
-`--cloud gcp` currently fails, and that is deliberate.
-The variants differ in *panel content*, not just metadata: GCP's cAdvisor does not expose the container memory limit,
-so 71 leaves differ between the two renders.
-Emitting the generic render under a `gcp-` name would ship a dashboard whose gauges read a metric that does not exist,
-so `render::Error::UnsupportedCloud` refuses rather than falling back.
-The Python remains the source of `docs/assets/dashboards/grafana/gcp-env-top.json` until that variant is ported, which
-is why the Makefile target and the CI job still set up Python.
+`--cloud generic` and `--cloud gcp` render the same panels.
+The only difference is the `monitoring.materialize.cloud/target-cloud` annotation, which records what a file was
+rendered for; both are shipped because the docsite links each one.
+
+That is a recent simplification.
+The Python branched on `cloud_hint` in eleven panels, because GKE's *managed* cAdvisor and kube-state-metrics shipped a
+reduced metric allowlist that omitted the container limit and spec series:
+
+- Two panels had no denominator for a percent-of-limit gauge, so `cpu-usage-current` and `memory-usage-current` fell
+  back to absolute cores and bytes — a different panel type (stat, not gauge), title, unit and threshold ladder.
+- Nine more swapped their `no_value` text for one naming the GKE gap.
+
+The gap is closed: `alloy-gateway` scrapes `/metrics/cadvisor` on every kubelet directly rather than consuming GKE's
+subset, and every `container_*` series these queries reference is present — see
+[Scraping]({{< relref "../../../metrics/scraping.md" >}}#kubelet).
+So the fallbacks are obsolete, and GCP gets the percent-of-limit gauges like everywhere else.
+
+`render.rs` keeps a test asserting the two renders are identical apart from that annotation.
+If a cloud ever needs different panels again, that test fails and the divergence gets named — rather than showing up as
+an unexplained diff in a checked-in artifact.
+
+<!-- One nuance if this comes up again: the kubelet scrape covers the cAdvisor series
+(`container_spec_cpu_quota`, `container_spec_memory_limit_bytes`, `container_start_time_seconds`). The CPU gauge's
+denominator, `kube_pod_container_resource_limits`, is a kube-state-metrics series, which the chart discovers via
+monitors rather than scraping itself. -->
 
 ### Parity against the Python
 
