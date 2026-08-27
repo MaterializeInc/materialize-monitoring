@@ -350,12 +350,26 @@ impl PanelOptions for Table {
 
 /// Gauge preset. One options block across both baseline panels.
 ///
-/// `show_threshold_markers` defaults to `false`: the baseline asked for `true` and
-/// Grafana rewrote it to `false` on save, so `true` was never what rendered.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// `show_threshold_markers` defaults to `true`, matching the schema's own default:
+/// the markers are the coloured band around the gauge arc, which is how a gauge
+/// shows where the reading sits relative to its thresholds. Turning them off
+/// leaves a bare needle whose thresholds only affect the value's colour.
+///
+/// `show_threshold_labels` stays off — it prints the numeric boundaries around the
+/// arc, which is noise on a small panel.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Gauge {
     pub show_threshold_labels: bool,
     pub show_threshold_markers: bool,
+}
+
+impl Default for Gauge {
+    fn default() -> Self {
+        Gauge {
+            show_threshold_labels: false,
+            show_threshold_markers: true,
+        }
+    }
 }
 
 impl PanelOptions for Gauge {
@@ -914,7 +928,7 @@ mod tests {
     fn gauge_threshold_markers_default_off() {
         // The baseline asked for `true`; Grafana rewrote it to `false` on save.
         let opts = serde_json::to_value(options_of(&Panel::gauge("g").build(1))).unwrap();
-        assert_eq!(opts["showThresholdMarkers"], false);
+        assert_eq!(opts["showThresholdMarkers"], true);
     }
 
     #[test]

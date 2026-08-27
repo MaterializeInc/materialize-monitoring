@@ -330,7 +330,15 @@ pub fn metric_adhoc() -> dashboardv2::VariableKind {
 ///
 /// Order matters to a reader, not to Grafana: each variable's query references
 /// the one before it, so listing them in that order is what makes the chain
-/// legible in the variable editor.
+/// legible in the variable editor. It is also the order the controls appear in,
+/// so the row reads as a narrowing funnel — environment, then namespace, then
+/// cluster, then replica — with the system-cluster toggle sitting where it gates
+/// the cluster list and the ad-hoc filter last, being a free-form escape hatch
+/// rather than a step in the funnel.
+///
+/// This differs from the Python, which emitted the ad-hoc filter second because
+/// it registered datasources before variables. That was an artifact of the call
+/// order, not a choice about the controls row.
 pub fn environment_scoped(sql_metric_prefix: &str) -> Vec<dashboardv2::VariableKind> {
     vec![
         metrics_datasource(),

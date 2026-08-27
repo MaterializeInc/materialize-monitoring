@@ -1,18 +1,20 @@
-//! Deserialize the pre-rendered `env-top` dashboard into the generated models.
+//! Deserialize a real `env-top` dashboard into the generated models.
 //!
-//! `charts/materialize-monitoring/pre-rendered/dashboards/grafana/env-top.yaml`
-//! is what the Python implementation ships today, so it is the baseline the Rust
-//! models have to accept. This is a parse test, not a byte-for-byte one -- key
-//! order and omitted-vs-null are not part of the contract.
+//! The document is `tests/fixtures/env-top.python-baseline.yaml`, the last render
+//! the Python implementation produced. It is a frozen fixture rather than the
+//! checked-in artifact under `charts/`, because the Rust generator writes that file
+//! now -- reading it would test our own output against itself. See the fixture
+//! README for the provenance.
+//!
+//! This is a parse test, not a byte-for-byte one -- key order and
+//! omitted-vs-null are not part of the contract.
 
 use std::path::PathBuf;
 
 use mzmon_lib::grafana::generated::dashboardv2;
 
 fn golden_path() -> PathBuf {
-    // tests/ -> mzmon-lib -> packages -> repo root
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../charts/materialize-monitoring/pre-rendered/dashboards/grafana/env-top.yaml")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/env-top.python-baseline.yaml")
 }
 
 /// The Kubernetes-style envelope the chart ships; `spec` is the dashboard.

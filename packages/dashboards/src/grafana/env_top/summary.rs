@@ -22,6 +22,7 @@ use mzmon_lib::grafana::threshold;
 
 use super::selector;
 use super::theme;
+use super::transform;
 
 /// One query, the common case on this tab.
 fn data(query: PromQuery) -> dashboardv2::QueryGroupKind {
@@ -41,7 +42,10 @@ fn environment_health() -> Row {
             .panel("is-healthy", is_healthy())
             .panel("availability-percent", availability_percent())
             .panel("last-restart", last_restart())
-            .panel("summary-currently-hydrating", currently_hydrating())
+            .panel(
+                "summary-currently-hydrating",
+                super::currently_hydrating(theme::COMPUTE.shade),
+            )
             .panel("summary-max-lag", max_lag())
             .panel("cpu-usage-current", cpu_usage_current())
             .panel("memory-usage-current", memory_usage_current()),
@@ -146,44 +150,6 @@ time()
         // palette runs alarming-to-calm as the duration grows.
         .thresholds(threshold::stability_days(2.0, false).build())
         .no_value(NoValue::RequiresCAdvisor)
-        .build(0)
-}
-
-fn currently_hydrating() -> dashboardv2::PanelKind {
-    let expr = format!(
-        r#"
-count(
-    max by (instance_id, collection_id) (
-        mz_dataflow_wallclock_lag_seconds{{
-            {env},
-            {cluster},
-            instance_id!="",
-            quantile="1"
-        }} > 1e15
-    )
-) or vector(0)
-"#,
-        env = selector::environment(),
-        cluster = selector::cluster()
-    );
-    Panel::stat("Currently Hydrating")
-        .description(
-            "**Collections still (re)building their in-memory state — a live hydration-queue \
-             proxy.** Hydration rebuilds a dataflow's state from persisted storage after a \
-             cluster/replica restart, replica creation, or some DDL; until it finishes, the \
-             collection has no output frontier, which this counts (via the \
-             `mz_dataflow_wallclock_lag_seconds` sentinel). **Nominal: 0, with brief spikes \
-             right after a replica restart that drain back to 0 as dataflows catch up — that's \
-             healthy.** A count that stays elevated means something can't finish hydrating \
-             (e.g. a source whose `CREATE` didn't complete, or a wedged dataflow). Confirm what's \
-             stuck with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`; \
-             watch _Compute Objects -> Freshness_ for the lag those collections accrue.",
-        )
-        .data(data(PromQuery::new(expr).legend("hydrating")))
-        // Points at Compute Objects, so it wears that tab's colour.
-        .shade(theme::COMPUTE.shade)
-        .min(0.0)
-        .no_value(NoValue::FilterMismatch)
         .build(0)
 }
 
@@ -315,8 +281,20 @@ group by (mz_version) (
         // string rather than the metric's value.
         .reduce_fields("/^mz_version$/")
         .links(vec![commit_link()])
+        // The version arrives as a label, so promote it to a field, then split the
+        // trailing `(<commit>)` out into a `commit` field for the data link below.
+        .transformations(vec![
+            transform::labels_to_fields(&[]),
+            transform::extract_fields_regex("mz_version", COMMIT_PATTERN),
+        ])
         .build(0)
 }
+
+/// Pull the commit hash out of a version string like `v0.150.1 (abc1234)`.
+///
+/// Grafana's `extractFields` regex form wants the delimiting slashes, and the
+/// named group is what becomes the `commit` field.
+const COMMIT_PATTERN: &str = r"/.+\((?<commit>[a-fA-F0-9]+)\)/";
 
 /// Link the displayed version to its commit on GitHub.
 ///
@@ -345,13 +323,7 @@ sum by (container) (
         containers = selector::workload_containers()
     );
     Panel::stat("Total CPU Capacity")
-        .description(
-            "**Total CPU cores configured across containers in the selected scope** (sum of \
-             CPU limits from cAdvisor). Steps correlate with `ALTER CLUSTER REPLICA SIZE`, \
-             `CREATE`/`DROP CLUSTER REPLICA`, or pod restarts. On the Summary tab the \
-             monitoring exporter is excluded (so this reflects user-workload capacity); on the \
-             Kubernetes Workloads tab it's included.",
-        )
+        .description(super::CPU_CAPACITY_DESCRIPTION)
         .data(data(PromQuery::new(expr).legend("CPUs ({{container}})")))
         .text_mode(stat::BigValueTextMode::ValueAndName)
         // Points at Kubernetes Workloads.
@@ -371,12 +343,7 @@ sum by (container) (
         containers = selector::workload_containers()
     );
     Panel::stat("Total Memory")
-        .description(
-            "**Total memory configured across containers in the selected scope** (sum of \
-             memory limits from cAdvisor). Memory is the dominant constraint on Materialize: \
-             in-memory arrangements (see _Compute Objects -> Arrangements_) live in here. Steps \
-             correlate with `ALTER CLUSTER REPLICA SIZE` or pod restarts.",
-        )
+        .description(super::MEMORY_TOTAL_DESCRIPTION)
         .data(data(PromQuery::new(expr).legend("Memory ({{container}})")))
         .text_mode(stat::BigValueTextMode::ValueAndName)
         .shade(theme::KUBERNETES.shade)

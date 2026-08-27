@@ -138,17 +138,19 @@ Each dashboard owns two coordination modules:
   A variable rename touches one function instead of sixty expressions, and a typo cannot introduce an undefined variable
   because the names come from `context::variables`.
 
-`tests/env_top_parity.rs` is the port's ledger: it compares the Rust dashboard against the pre-rendered baseline,
-checks titles, descriptions, plugins, units and queries for every panel that has landed, and prints per-tab coverage
-for what has not.
+`tests/env_top_parity.rs` holds the port to the baseline.
+All 69 panels are ported, and it checks every panel's title, description, plugin, unit and queries against the
+pre-rendered YAML, printing per-tab coverage.
 Deliberate divergences are enumerated in two lists rather than scattered through assertions, and the description list
 is checked in both directions — an entry that no longer diverges fails too, so it cannot go stale.
 
-Two of those entries fix **broken cross-references in the baseline**: panel descriptions navigate by naming tabs as
-`_Tab -> Section_`, and the baseline points at `_Storage -> Sources_` and `_Compute -> Freshness_`, neither of which
-is a tab (they are `Sources and Sinks` and `Compute Objects`).
-`no_description_points_at_a_tab_that_does_not_exist` validates the arrow form against the titles `theme.rs` declares,
-which is only possible because those titles live in one place.
+Six of those entries fix **broken cross-references in the baseline**.
+Panel descriptions navigate by naming a destination as `_Where -> What_`, where `Where` is a tab or a row.
+The baseline points at `_Storage -> Sources_`, `_Storage Objects -> Sink Throughput_` and `_Compute -> Freshness_`,
+none of which is a tab — they are `Sources and Sinks` and `Compute Objects`.
+It reads like a tab rename that never reached the prose.
+`no_description_points_somewhere_that_does_not_exist` validates the arrow form against the tab titles `theme.rs`
+declares plus every row title in the built layout, which is only possible because those titles live in one place.
 
 ### Dashboard shell
 
@@ -189,6 +191,71 @@ before `compute_cluster_name`, which is what makes that regex stable.
 
 Tests assert the set defines every `REQUIRED_VARIABLES` entry, that the chain references only names the set defines,
 and that the prefix lands on the cluster query alone.
+
+### Rendering
+
+`mz-monitoring-build gen-dashboards` is the entrypoint, replacing `python -m dashboards.render`.
+`packages/dashboards/src/grafana/render.rs` does the work; `packages/dashboards/src/grafana/mod.rs` holds the registry
+of what can be rendered.
+
+Two consumers, one command:
+
+| Output | Consumer | Make target |
+| --- | --- | --- |
+| `--format yaml` into `charts/…/pre-rendered/dashboards/grafana/` | the Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
+| `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
+
+Both trees are checked in, which makes byte-stability the property that matters most.
+Every render therefore goes through `render::canonical` first, which does two things:
+
+- **Sorts every object's keys.** This reaches further than choosing an ordered map for the generated structs: the
+  free-form `options` and `spec` blocks are `serde_json::Map`, whose order under this crate's `preserve_order` is
+  insertion order — which is whatever the panel builder happened to do.
+- **Writes whole-valued floats as integers.** The schemas type most numerics as `number`, so typify gives them `f64`,
+  and an `f64` serializes as `3.0` even when it holds a count. `maxColumnCount: 3.0` reads as a mistake.
+
+`--check` renders and compares against what is on disk without writing, exiting non-zero if they differ.
+The `dashboards` workflow runs `make -B dashboards` and then asserts `git status` is clean, so a change to a panel or
+to the generator cannot merge with stale output.
+`-B` matters: the Makefile targets are the output *directories*, and a fresh checkout's mtimes are arbitrary, so a
+plain `make` can consider them up to date and skip rendering — which would make the freshness check vacuous.
+Deleting the outputs first does not fix it either, because removing files inside a directory target updates that
+directory's mtime, making it look newer than its prerequisites rather than missing.
+
+#### Cloud variants are not cosmetic
+
+`--cloud gcp` currently fails, and that is deliberate.
+The variants differ in *panel content*, not just metadata: GCP's cAdvisor does not expose the container memory limit,
+so 71 leaves differ between the two renders.
+Emitting the generic render under a `gcp-` name would ship a dashboard whose gauges read a metric that does not exist,
+so `render::Error::UnsupportedCloud` refuses rather than falling back.
+The Python remains the source of `docs/assets/dashboards/grafana/gcp-env-top.json` until that variant is ported, which
+is why the Makefile target and the CI job still set up Python.
+
+### Parity against the Python
+
+`packages/dashboards/tests/env_top_parity.rs` compares the port against
+`packages/mzmon-lib/tests/fixtures/env-top.python-baseline.yaml` — the last render the Python produced, frozen.
+
+It is a fixture rather than a read of the checked-in artifact because the Rust generator now writes that file.
+Comparing the output to itself would make every assertion vacuous, and would *invert* the ones that assert a
+deliberate divergence: those started failing the moment the switchover landed, which is how the problem surfaced.
+`mzmon-lib`'s `grafana_golden.rs` reads the same fixture, for the different reason that it wants a real Dashboard v2
+document to round-trip through the generated models.
+
+Six checks, each covering a class the others cannot see:
+
+| Check | Why it is separate |
+| --- | --- |
+| titles and descriptions | catches invented prose — it found eight fabricated panel titles |
+| plugin and unit | a panel can carry the right title and render as the wrong type |
+| queries (whitespace-collapsed) | the expressions are hand-indented, so exact newlines would test the formatter |
+| transformations, options included | invisible to every check above; its absence dropped an `extractFields` step a data link depended on |
+| the tab/row skeleton | the panel checks say nothing about the frame; its absence let a row ship under an invented title, at the wrong column cap |
+| the variable set | a query naming an undefined variable interpolates to nothing and matches no series — a panel that looks right and is empty |
+
+Divergences are allow-listed at the top of the file with the reason, and the allow-list is checked in both directions —
+an entry that no longer diverges fails too, so the list cannot rot into a set of stale excuses.
 
 ### End to end
 

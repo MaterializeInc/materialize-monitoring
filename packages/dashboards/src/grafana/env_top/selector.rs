@@ -53,8 +53,48 @@ pub fn compute_replica() -> String {
     format!(r#"compute_replica_id=~"${}""#, variables::MZ_REPLICA_LIST)
 }
 
+/// Scope to the selected clusters under the replica-history label name.
+///
+/// The third spelling of a cluster id: arrangement and dataflow-history metrics
+/// arrive from the replica's own scrape, which prefixes environmentd's labels.
+pub fn history_cluster() -> String {
+    format!(
+        r#"cluster_environmentd_materialize_cloud_cluster_id=~"${}""#,
+        variables::MZ_CLUSTER_LIST
+    )
+}
+
+/// Scope to the selected replicas under the replica-history label name.
+pub fn history_replica() -> String {
+    format!(
+        r#"cluster_environmentd_materialize_cloud_replica_id=~"${}""#,
+        variables::MZ_REPLICA_LIST
+    )
+}
+
+/// The label carrying a cluster id on replica-history metrics.
+pub const HISTORY_CLUSTER_LABEL: &str = "cluster_environmentd_materialize_cloud_cluster_id";
+/// The label carrying a replica id on replica-history metrics.
+pub const HISTORY_REPLICA_LABEL: &str = "cluster_environmentd_materialize_cloud_replica_id";
+
 /// System clusters, whose ids start with `s`.
 pub const SYSTEM_CLUSTER_PATTERN: &str = "^s.*";
+
+/// Collections Materialize maintains for itself: catalog tables, probes.
+pub const SYSTEM_COLLECTION_PATTERN: &str = "s.*";
+/// Collections created by the user: indexes and materialized views.
+pub const USER_COLLECTION_PATTERN: &str = "u.*";
+/// Short-lived intermediates, plus the sentinel for an unidentified collection.
+pub const TRANSIENT_COLLECTION_PATTERN: &str = "t.*|none";
+
+/// The sentinel a collection reports before it has an output frontier.
+///
+/// A not-yet-hydrated collection reports a lag far in the future rather than
+/// nothing, so `> SENTINEL` counts what is hydrating and `< FINITE_LAG_CEILING`
+/// excludes it from lag panels.
+pub const HYDRATING_SENTINEL: &str = "1e15";
+/// The ceiling separating a real lag from the hydration sentinel.
+pub const FINITE_LAG_CEILING: &str = "1e9";
 
 /// Match the pods of the *selected* cluster replicas, by name.
 ///

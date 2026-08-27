@@ -97,7 +97,7 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | Provide [Honeycomb](https://linear.app/materializeinc/issue/DEP-218) dashboard set | OO-M3 | ⬜ |
 | [Dependencies](https://linear.app/materializeinc/issue/DEP-224) (Day 1: are Materialize + o11y requirements satisfied?) | OO-M3 | ⬜ |
 | [Sizing](https://linear.app/materializeinc/issue/DEP-225) (Day 1) | OO-M3 | ⬜ |
-| [Replace dashboard management with a Rust implementation](https://linear.app/materializeinc/issue/DEP-222) | OO-M3 | ⬜ |
+| [Replace dashboard management with a Rust implementation](https://linear.app/materializeinc/issue/DEP-222) | OO-M3 | 🔨 (`env-top` is rendered by Rust and is what ships: `mz-monitoring-build gen-dashboards` writes both the chart's YAML and the docsite's JSON, and the `dashboards` workflow asserts the checked-in output is fresh. All 69 panels ported, pinned against the frozen final Python render with seven allow-listed shell divergences — the threshold base step, the errors/load respacing, `cursorSync`, the `$environmentNameList` rename, the variable order, and the `liveNow` / built-in-annotations fields Grafana writes on save — plus seven description fixes, six of them broken cross-references in the baseline's own prose. **Outstanding:** the GCP cloud variant, which differs in panel content and is still rendered by the Python, so `packages/grafana-dashboards` and `py-mzmon-lib` cannot be removed yet) |
 
 We weight **Day 2 operations over Day 1**: upgrades, resizing, changing sources, changing external destinations, and managing users are the operations that matter most for a running deployment.
 Day 1 dashboards (Dependencies, Sizing) stay last.

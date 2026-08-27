@@ -13,7 +13,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use mz_dashboards::grafana::env_top;
+use mz_dashboards::grafana::render::canonical;
 use mzmon_lib::grafana::generated::dashboardv2;
+use mzmon_lib::grafana::variable;
 
 /// Fields whose divergence from the baseline is intentional.
 ///
@@ -34,6 +36,12 @@ const ALLOWED: &[(&str, &str)] = &[
     (
         "thresholds.steps[0].value",
         "an explicit null base step; the baseline omits the base entirely",
+    ),
+    (
+        "variable order",
+        "the ad-hoc filter moves last and the environment first, so the controls row \
+         reads as a narrowing funnel; the baseline's order was an artifact of \
+         registering datasources before variables",
     ),
     (
         "errors/load threshold spacing",
@@ -63,12 +71,40 @@ const DESCRIPTION_DIVERGENCES: &[(&str, &str)] = &[
         "summary-currently-hydrating",
         "the baseline points at `_Compute -> Freshness_`; the tab is `Compute Objects`",
     ),
+    (
+        "hydration-unhydrated-count",
+        "shares its prose with summary-currently-hydrating, including the corrected \
+         `_Compute Objects -> Freshness_` reference",
+    ),
+    (
+        "sources-ingestion-by-replica",
+        "the baseline points at `_Compute -> Freshness_`; the tab is `Compute Objects`",
+    ),
+    (
+        "sources-errors",
+        "the baseline points at `_Compute -> Freshness_`; the tab is `Compute Objects`",
+    ),
+    (
+        "pod-network-tx",
+        "the baseline points at `_Storage Objects -> Sink Throughput_`; the tab is \
+         `Sources and Sinks`",
+    ),
 ];
 
+// Three of the four description divergences are the same bug: the baseline names
+// tabs `Storage`, `Storage Objects`, and `Compute`, none of which exist -- the
+// tabs are `Sources and Sinks` and `Compute Objects`. It reads like a tab rename
+// that never reached the prose. `no_description_points_at_a_tab_that_does_not_exist`
+// is what keeps the ported copies honest.
+
 fn baseline() -> serde_json::Value {
+    // A frozen fixture, not the checked-in artifact: the Rust generator writes that
+    // file now, so reading it would compare the output to itself and invert every
+    // deliberate-divergence assertion. See `mzmon-lib/tests/fixtures/README.md`.
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../charts/materialize-monitoring/pre-rendered/dashboards/grafana/env-top.yaml");
-    let raw = std::fs::read_to_string(path).expect("read the pre-rendered baseline");
+        .join("../mzmon-lib/tests/fixtures/env-top.python-baseline.yaml");
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read the frozen Python baseline at {}: {e}", path.display()));
     serde_yaml_ng::from_str(&raw).expect("parse the baseline")
 }
 
@@ -102,7 +138,9 @@ fn baseline_panels() -> BTreeMap<String, (String, serde_json::Value)> {
 }
 
 fn ours() -> dashboardv2::Dashboard {
-    env_top::build("mz_").expect("build the dashboard").spec
+    env_top::build(mz_dashboards::grafana::Cloud::Generic, "mz_")
+        .expect("build the dashboard")
+        .spec
 }
 
 #[test]
@@ -272,6 +310,214 @@ fn the_ported_panels_query_the_same_thing() {
     );
 }
 
+/// The variable set must match the baseline's, as a set; the order is ours.
+///
+/// Nothing compared variables before, which is how a reorder went in undocumented.
+/// The *set* is a correctness property — a query referencing a variable no dashboard
+/// defines interpolates to nothing and silently matches no series — while the order
+/// is only what the controls row looks like, so they are asserted separately.
+#[test]
+fn the_variable_set_matches_the_baseline_modulo_the_rename() {
+    let baseline = baseline();
+    let ours = ours();
+
+    let want: BTreeSet<String> = baseline["spec"]["variables"]
+        .as_array()
+        .expect("variables")
+        .iter()
+        .map(|v| {
+            let name = v["spec"]["name"].as_str().expect("name");
+            // The one deliberate rename, allow-listed above.
+            if name == "environmentIdList" {
+                "environmentNameList".to_string()
+            } else {
+                name.to_string()
+            }
+        })
+        .collect();
+    let got: BTreeSet<String> = ours
+        .variables
+        .iter()
+        .map(|v| variable::name_of(v).to_string())
+        .collect();
+    assert_eq!(got, want, "variable set differs from the baseline");
+
+    // The order is deliberately not the baseline's: environment first, ad-hoc filter
+    // last, so the controls row reads as a narrowing funnel.
+    let order: Vec<&str> = ours.variables.iter().map(variable::name_of).collect();
+    assert_eq!(
+        order,
+        vec![
+            "metricsDatasource",
+            "environmentNameList",
+            "mzNamespaceList",
+            "includeSystemClusters",
+            "mzClusterList",
+            "mzReplicaList",
+            "metricAdhoc",
+        ]
+    );
+    let baseline_order: Vec<&str> = baseline["spec"]["variables"]
+        .as_array()
+        .expect("variables")
+        .iter()
+        .map(|v| v["spec"]["name"].as_str().expect("name"))
+        .collect();
+    assert_eq!(
+        baseline_order[1], "metricAdhoc",
+        "the baseline put the ad-hoc filter second; if that changed, the \
+         `variable order` divergence is stale"
+    );
+}
+
+/// The tab and row skeleton must match the baseline: titles, order, column caps.
+///
+/// The panel-level checks compare panels the baseline also has, so they say nothing
+/// about the frame around them. This is the check whose absence let a row ship as
+/// "Applications" instead of "SQL Control Plane Commands", and with a three-column
+/// cap on a row holding one wide table.
+#[test]
+fn the_tab_and_row_skeleton_matches_the_baseline() {
+    let baseline = baseline();
+    let ours = ours();
+
+    // Through `canonical` on both sides: the generated structs type a column count
+    // as `f64` because the schema says `number`, so an uncanonicalized comparison
+    // reports every `3.0` against the baseline's `3`.
+    let want = skeleton(&canonical(baseline["spec"]["layout"].clone()));
+    let got = skeleton(&canonical(
+        serde_json::to_value(&ours.layout).expect("serialize"),
+    ));
+
+    let mut mismatches = Vec::new();
+    for index in 0..want.len().max(got.len()) {
+        match (got.get(index), want.get(index)) {
+            (Some(g), Some(w)) if g == w => {}
+            (Some(g), Some(w)) => mismatches.push(format!("ours: {g}\n      base: {w}")),
+            (Some(g), None) => mismatches.push(format!("ours: {g}\n      base: <absent>")),
+            (None, Some(w)) => mismatches.push(format!("ours: <absent>\n      base: {w}")),
+            (None, None) => {}
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "{} skeleton divergence(s):\n  {}",
+        mismatches.len(),
+        mismatches.join("\n  ")
+    );
+}
+
+/// Flatten a layout to one comparable line per tab and row.
+fn skeleton(layout: &serde_json::Value) -> Vec<String> {
+    let mut out = Vec::new();
+    for tab in layout["spec"]["tabs"].as_array().into_iter().flatten() {
+        let title = tab["spec"]["title"].as_str().unwrap_or("<untitled>");
+        out.push(format!("tab {title:?}"));
+        for row in tab["spec"]["layout"]["spec"]["rows"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let grid = &row["spec"]["layout"]["spec"];
+            out.push(format!(
+                "  row {:?} cols={} panels={}",
+                row["spec"]["title"].as_str().unwrap_or("<untitled>"),
+                grid["maxColumnCount"],
+                grid["items"].as_array().map(|i| i.len()).unwrap_or(0),
+            ));
+        }
+    }
+    out
+}
+
+/// Transformations must match the baseline exactly, options included.
+///
+/// This is the check whose absence let the version panel ship without its
+/// `extractFields` step: a transformation is invisible in a title/query/unit
+/// comparison, but dropping one silently changes what a panel displays. Options
+/// are compared whole rather than by transformation id, since an `organize` with
+/// the wrong column order is as wrong as a missing one.
+#[test]
+fn the_ported_panels_transform_their_data_the_same_way() {
+    let baseline = baseline_panels();
+    let ours = ours();
+
+    let mut mismatches = Vec::new();
+    for (name, element) in &ours.elements {
+        let dashboardv2::Element::PanelKind(panel) = element else {
+            continue;
+        };
+        let Some((_, want)) = baseline.get(name) else {
+            continue;
+        };
+
+        let want_transforms = want["spec"]["data"]["spec"]["transformations"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let our_transforms: Vec<serde_json::Value> = panel
+            .spec
+            .data
+            .spec
+            .transformations
+            .iter()
+            .map(|t| serde_json::to_value(t).expect("serialize transformation"))
+            .collect();
+
+        if our_transforms.len() != want_transforms.len() {
+            mismatches.push(format!(
+                "{name}: {} transformation(s) != baseline {} (ours: {:?}, base: {:?})",
+                our_transforms.len(),
+                want_transforms.len(),
+                ids(&our_transforms),
+                ids(&want_transforms),
+            ));
+            continue;
+        }
+        for (index, (got, want)) in our_transforms.iter().zip(&want_transforms).enumerate() {
+            if got["group"] != want["group"] {
+                mismatches.push(format!(
+                    "{name} transformation {index}: {} != baseline {}",
+                    got["group"], want["group"]
+                ));
+                continue;
+            }
+            // An absent options block and an empty one mean the same thing to
+            // Grafana, so compare the maps rather than the enclosing values.
+            let got_options = got["spec"]["options"]
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            let want_options = want["spec"]["options"]
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            if got_options != want_options {
+                mismatches.push(format!(
+                    "{name} transformation {index} ({}) options differ:\n      ours: {}\n      base: {}",
+                    got["group"],
+                    serde_json::to_string(&got_options).unwrap_or_default(),
+                    serde_json::to_string(&want_options).unwrap_or_default(),
+                ));
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "{} transformation divergence(s):\n  {}",
+        mismatches.len(),
+        mismatches.join("\n  ")
+    );
+}
+
+/// The transformation ids in order, for a readable count mismatch.
+fn ids(transforms: &[serde_json::Value]) -> Vec<String> {
+    transforms
+        .iter()
+        .map(|t| t["group"].as_str().unwrap_or("?").to_string())
+        .collect()
+}
+
 /// Collapse whitespace and apply the deliberate variable rename.
 fn normalize(expr: &str) -> String {
     expr.replace("$environmentIdList", "$environmentNameList")
@@ -317,7 +563,7 @@ fn report_porting_coverage() {
     }
 
     // Coverage may not regress. Bump as tabs land.
-    const PORTED: usize = 14;
+    const PORTED: usize = 69;
     assert_eq!(
         done, PORTED,
         "porting coverage changed; update PORTED if this was intentional"
