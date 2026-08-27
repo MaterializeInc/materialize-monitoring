@@ -23,7 +23,7 @@
 //! let resource = Dashboard::new("mz-mon-env-top", "Materialize Environment Overview")
 //!     .description("Overview of a Materialize Environment.")
 //!     .tags(["materialize", "monitoring"])
-//!     .variables(variable::environment_scoped("mz_", false))
+//!     .variables(variable::environment_scoped("mz_"))
 //!     .layout(Layout::rows([
 //!         Row::new("Health").grid(AutoGrid::new(3).panel("up", Panel::stat("Up").build(0))),
 //!     ]))
@@ -394,13 +394,39 @@ pub fn builtin_annotations() -> dashboardv2::AnnotationQueryKind {
 /// Grafana variable interpolates to nothing, the selector matches no series, and
 /// the panel renders empty while looking perfectly healthy.
 fn check_variable_references(name: &str, dashboard: &dashboardv2::Dashboard) -> Result<()> {
-    /// Grafana's own built-ins, which no dashboard defines.
+    /// Grafana's global interpolations, which no dashboard defines.
+    ///
+    /// Two families. The time and interval built-ins come from the panel's own
+    /// query context; the rest are *data link* interpolations, resolved from the
+    /// row under the cursor when a link is followed —
+    /// `${__data.fields.commit}` in a version panel, say. Both look exactly like
+    /// a variable reference and neither is one.
     const BUILTINS: &[&str] = &[
+        // Query context.
         "__rate_interval",
-        "__range",
         "__interval",
+        "__interval_ms",
+        "__range",
+        "__range_s",
+        "__range_ms",
         "__auto",
+        "__auto_interval",
         "__all",
+        "__from",
+        "__to",
+        "__timeFilter",
+        // Data links and panel context.
+        "__data",
+        "__field",
+        "__series",
+        "__value",
+        "__cell",
+        "__url_time_range",
+        "__all_variables",
+        "__dashboard",
+        "__org",
+        "__user",
+        "__timezone",
     ];
 
     let defined: Vec<&str> = dashboard.variables.iter().map(variable::name_of).collect();
@@ -583,7 +609,7 @@ mod tests {
                     )]))
                     .build_spec()
             };
-        assert!(build(variable::environment_scoped("mz_", false)).is_ok());
+        assert!(build(variable::environment_scoped("mz_")).is_ok());
         assert!(build(Vec::new()).is_err());
     }
 
@@ -660,7 +686,7 @@ mod tests {
         let resource = minimal()
             .description("d")
             .tags(["materialize"])
-            .variables(variable::environment_scoped("mz_", false))
+            .variables(variable::environment_scoped("mz_"))
             .build()
             .expect("build");
         let json = serde_json::to_string(&resource).expect("serialize");

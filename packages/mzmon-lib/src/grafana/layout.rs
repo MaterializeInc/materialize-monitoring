@@ -33,8 +33,8 @@
 //!     Tab::new("Summary").rows([
 //!         Row::new("Environment Health").grid(
 //!             AutoGrid::new(3)
-//!                 .panel("availability-percent", Panel::stat("Environment Availability").build())
-//!                 .panel("is-healthy", Panel::stat("Healthy").build()),
+//!                 .panel("availability-percent", Panel::stat("Environment Availability").build(0))
+//!                 .panel("is-healthy", Panel::stat("Healthy").build(0)),
 //!         ),
 //!     ]),
 //! ]);
@@ -42,8 +42,8 @@
 //! // assembled.elements -> Dashboard::elements, assembled.layout -> Dashboard::layout
 //! ```
 
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use crate::grafana::generated::dashboardv2;
 
@@ -416,20 +416,20 @@ impl Layout {
 #[derive(Debug, Clone)]
 pub struct Assembled {
     /// Goes into `Dashboard::elements`.
-    pub elements: HashMap<String, dashboardv2::Element>,
+    pub elements: BTreeMap<String, dashboardv2::Element>,
     /// Goes into `Dashboard::layout`.
     pub layout: dashboardv2::DashboardLayout,
 }
 
 impl Assembled {
-    /// Element names in the order they were placed.
+    /// Element names, sorted.
     ///
-    /// `elements` is a `HashMap`, so it has no order of its own; this is what a
-    /// test or a diff wants.
+    /// `elements` is a `BTreeMap`, so this is already its iteration order — which
+    /// is the point: a checked-in dashboard has to serialize its keys the same way
+    /// on every build, and a `HashMap`'s randomly-seeded order would churn the
+    /// diff between two identical runs.
     pub fn names(&self) -> Vec<&str> {
-        let mut names: Vec<&str> = self.elements.keys().map(String::as_str).collect();
-        names.sort_unstable();
-        names
+        self.elements.keys().map(String::as_str).collect()
     }
 }
 
@@ -437,7 +437,7 @@ impl Assembled {
 /// duplicate names.
 #[derive(Default)]
 struct Sink {
-    elements: HashMap<String, dashboardv2::Element>,
+    elements: BTreeMap<String, dashboardv2::Element>,
     next_id: u32,
 }
 

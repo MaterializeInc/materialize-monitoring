@@ -80,6 +80,14 @@ pub enum Error {
     #[error("template references unknown query {0:?}")]
     UnknownQuery(String),
 
+    /// The query rendered, but the engine has no Grafana datasource, so there is
+    /// nothing to point a dataquery at.
+    ///
+    /// Distinct from [`Error::MissingExpression`]: the expression exists and is
+    /// fine, it just cannot be shown in Grafana.
+    #[error("query {id:?} rendered for {engine}, which has no Grafana datasource")]
+    UnsupportedGrafanaEngine { id: String, engine: EngineName },
+
     /// A query id looked up directly in the registry is not present. Distinct
     /// from [`Error::UnknownQuery`], which is a dangling `queryId` *inside* a
     /// template -- this one is a caller asking for an id that does not exist.

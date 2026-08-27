@@ -686,9 +686,16 @@ impl<O: PanelOptions> Panel<O> {
                 // Constant across all 69 baseline panels.
                 links: Vec::new(),
                 transparent: self.transparent,
-                data: self
-                    .data
-                    .unwrap_or_else(|| crate::grafana::query::query_group(Vec::new())),
+                data: {
+                    // Transformations live on the query group, not the panel, so
+                    // they have to be folded in here. Building them separately and
+                    // forgetting this step dropped them silently.
+                    let mut data = self
+                        .data
+                        .unwrap_or_else(|| crate::grafana::query::query_group(Vec::new()));
+                    data.spec.transformations = self.transformations;
+                    data
+                },
                 viz_config: dashboardv2::VizConfigKind {
                     kind: VIZ_CONFIG_KIND.to_string(),
                     group: self.options.plugin_id().to_string(),
@@ -762,6 +769,52 @@ mod tests {
             assert_eq!(reduce["calcs"], serde_json::json!([]));
             assert_eq!(reduce["values"], false, "values must be present: {opts}");
         }
+    }
+
+    #[test]
+    fn transformations_reach_the_query_group() {
+        // They hang off the query group rather than the panel, so a builder that
+        // stored them without folding them in would drop them silently -- which is
+        // exactly what happened first time.
+        let transform = dashboardv2::TransformationKind {
+            kind: "Transformation".to_string(),
+            group: "merge".to_string(),
+            spec: dashboardv2::TransformationSpec {
+                options: Default::default(),
+                disabled: None,
+                filter: None,
+                topic: None,
+            },
+        };
+        let panel = Panel::table("t").transformations(vec![transform]).build(1);
+        assert_eq!(panel.spec.data.spec.transformations.len(), 1);
+        assert_eq!(panel.spec.data.spec.transformations[0].group, "merge");
+    }
+
+    #[test]
+    fn transformations_survive_a_supplied_query_group() {
+        // The data and the transformations arrive through different builder calls;
+        // neither may clobber the other regardless of order.
+        let data =
+            crate::grafana::query::query_group(vec![crate::grafana::query::promql_data_query(
+                "up", "ds", None,
+            )]);
+        let transform = dashboardv2::TransformationKind {
+            kind: "Transformation".to_string(),
+            group: "organize".to_string(),
+            spec: dashboardv2::TransformationSpec {
+                options: Default::default(),
+                disabled: None,
+                filter: None,
+                topic: None,
+            },
+        };
+        let panel = Panel::table("t")
+            .transformations(vec![transform])
+            .data(data)
+            .build(1);
+        assert_eq!(panel.spec.data.spec.queries.len(), 1);
+        assert_eq!(panel.spec.data.spec.transformations.len(), 1);
     }
 
     #[test]

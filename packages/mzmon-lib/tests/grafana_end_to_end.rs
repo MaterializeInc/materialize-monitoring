@@ -40,10 +40,7 @@ fn build() -> Resource {
         .description("A dashboard built through every layer.")
         .tags(["materialize", "monitoring"])
         .cursor_sync(CursorSync::Crosshair)
-        .variables(variable::environment_scoped(
-            &scope.sql_metric_prefix,
-            false,
-        ))
+        .variables(variable::environment_scoped(&scope.sql_metric_prefix))
         .metadata_annotation("monitoring.materialize.cloud/sql-metric-prefix", "mz_")
         .layout(Layout::tabs([
             Tab::new("Summary").rows([

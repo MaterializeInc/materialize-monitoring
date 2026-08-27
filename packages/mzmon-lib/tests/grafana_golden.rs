@@ -635,11 +635,21 @@ fn respacing_verdict(ours: &[(f64, String)], golden: &[(f64, String)]) -> Respac
             our_gap / golden_gap
         ));
     }
-    // And the whole ladder has to follow from that gap.
+    // Both ladders have to be arithmetic in their own gap. Checking only ours
+    // would let a changed golden step past index 1 still read as a deliberate
+    // respacing, which is exactly what this verdict claims to rule out.
     for (index, (value, _)) in ours.iter().enumerate() {
         let want = ours[0].0 + our_gap * index as f64;
         if (value - want).abs() > 1e-6 {
-            return Respacing::Unexplained(format!("step {index} is {value}, not {want}"));
+            return Respacing::Unexplained(format!("our step {index} is {value}, not {want}"));
+        }
+    }
+    for (index, (value, _)) in golden.iter().enumerate() {
+        let want = golden[0].0 + golden_gap * index as f64;
+        if (value - want).abs() > 1e-6 {
+            return Respacing::Unexplained(format!(
+                "golden step {index} is {value}, not {want}; the baseline ladder is                  not the spacing this respacing explains"
+            ));
         }
     }
     Respacing::DeliberateRespace

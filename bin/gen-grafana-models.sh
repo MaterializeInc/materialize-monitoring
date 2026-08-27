@@ -87,8 +87,13 @@ for pkg in "${PACKAGES[@]}"; do
         mv "$WORK_DIR/$pkg.patched.json" "$WORK_DIR/$pkg.json"
     fi
 
+    # BTreeMap, not the default HashMap: a dashboard's `elements` map is
+    # serialized into a checked-in artifact, and HashMap's iteration order is
+    # randomly seeded per process, so two identical builds would reorder the keys
+    # and churn the diff.
     if ! cargo typify --no-builder \
         --additional-derive PartialEq \
+        --map-type '::std::collections::BTreeMap' \
         --output "$OUT_DIR/$pkg.rs" "$WORK_DIR/$pkg.json" >"$WORK_DIR/$pkg.log" 2>&1; then
         _error "typify failed for '$pkg':"
         sed 's/\x1b\[[0-9;]*m//g' "$WORK_DIR/$pkg.log" | sed 's/^/    /' >&2

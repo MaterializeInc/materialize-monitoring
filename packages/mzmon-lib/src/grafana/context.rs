@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn node_is_declared_but_not_supplied_by_any_parameter() {
-        // The node families write `$node` literally, so no parameter can carry
+        // The node families write `$nodeList` literally, so no parameter can carry
         // it; the point of declaring it is that a dashboard must define it.
         let registry = QueryRegistry::new();
         let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());

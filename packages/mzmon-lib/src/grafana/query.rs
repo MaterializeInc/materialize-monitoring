@@ -93,7 +93,7 @@ pub fn panel_query_for(query: &Query, ctx: &TemplateContext) -> Result<PanelQuer
     let exprs = query.render(ctx)?;
     let data_queries = exprs
         .into_iter()
-        .map(|expr| data_query(&expr, ctx.engine, query.instant))
+        .map(|expr| data_query(&expr, ctx.engine, query.instant, &query.id))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(PanelQuery {
@@ -137,17 +137,73 @@ pub fn data_query(
     expr: &str,
     engine: QueryEngine,
     instant: Option<bool>,
+    id: &str,
 ) -> Result<dashboardv2::DataQueryKind> {
     match engine {
         QueryEngine::PromQl => Ok(promql_data_query(expr, METRICS_DATASOURCE_VAR, instant)),
         QueryEngine::LogQl => Ok(logql_data_query(expr, LOGS_DATASOURCE_VAR, instant)),
         // Rendering succeeded, but there is no Grafana datasource for these --
         // emitting the expression as a Prometheus query would produce a dashboard
-        // that looks fine and returns nothing.
-        QueryEngine::Datadog | QueryEngine::Honeycomb => Err(Error::MissingExpression {
-            id: String::new(),
+        // that looks fine and returns nothing. The failure is the missing
+        // datasource, not a missing expression, so it gets its own error: saying
+        // "has no datadog expression" when the caller just supplied one sends the
+        // reader looking in the wrong place.
+        QueryEngine::Datadog | QueryEngine::Honeycomb => Err(Error::UnsupportedGrafanaEngine {
+            id: id.to_string(),
             engine: engine.to_string(),
         }),
+    }
+}
+
+/// A Prometheus dataquery with the fields a panel actually sets.
+///
+/// [`promql_data_query`] covers the bridge's needs, where the expression comes
+/// from the registry and there is no legend to name. A hand-authored panel
+/// usually wants a legend format too, and a positional argument per field stops
+/// scaling around there.
+#[derive(Debug, Clone)]
+pub struct PromQuery {
+    expr: String,
+    datasource_var: String,
+    instant: Option<bool>,
+    legend_format: Option<String>,
+}
+
+impl PromQuery {
+    /// A range query against the metrics datasource.
+    pub fn new(expr: impl Into<String>) -> Self {
+        PromQuery {
+            expr: expr.into(),
+            datasource_var: METRICS_DATASOURCE_VAR.to_string(),
+            instant: None,
+            legend_format: None,
+        }
+    }
+
+    /// Evaluate at a single instant rather than over the panel's range.
+    pub fn instant(mut self) -> Self {
+        self.instant = Some(true);
+        self
+    }
+
+    /// Legend template, e.g. `{{pod}}`.
+    pub fn legend(mut self, format: impl Into<String>) -> Self {
+        self.legend_format = Some(format.into());
+        self
+    }
+
+    /// Point at a datasource variable other than the metrics one.
+    pub fn datasource(mut self, variable: impl Into<String>) -> Self {
+        self.datasource_var = variable.into();
+        self
+    }
+
+    pub fn build(self) -> dashboardv2::DataQueryKind {
+        let mut query = promql_data_query(&self.expr, &self.datasource_var, self.instant);
+        if let (Some(legend), Some(spec)) = (self.legend_format, query.spec.as_mut()) {
+            spec.insert("legendFormat".to_string(), serde_json::json!(legend));
+        }
+        query
     }
 }
 
@@ -413,11 +469,17 @@ mod tests {
     }
 
     #[test]
-    fn engines_without_a_grafana_datasource_are_rejected() {
-        let mut q = query("q", &[]);
+    fn engines_without_a_grafana_datasource_are_rejected_by_name() {
+        let mut q = query("has-datadog", &[]);
         q.datadog_query = vec![TemplateExpr::template("avg:up{*}")];
         let ctx = TemplateContext::new(QueryEngine::Datadog);
-        assert!(panel_query_for(&q, &ctx).is_err());
+        let err = panel_query_for(&q, &ctx).expect_err("should refuse");
+        // The diagnostic has to name the real problem -- the datasource, not the
+        // expression, which the caller just supplied -- and keep the query id.
+        let message = err.to_string();
+        assert!(message.contains("has-datadog"), "{message}");
+        assert!(message.contains("no Grafana datasource"), "{message}");
+        assert!(!message.contains("has no datadog expression"), "{message}");
     }
 
     #[test]
