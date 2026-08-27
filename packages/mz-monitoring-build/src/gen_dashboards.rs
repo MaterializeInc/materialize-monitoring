@@ -26,6 +26,7 @@
 
 use anyhow::Context;
 use mz_dashboards::grafana::{self, Cloud, Options, render};
+use mzmon_lib::query::QueryRegistry;
 use std::path::PathBuf;
 
 /// Output format, mirroring `render::Format` at the CLI boundary.
@@ -95,6 +96,13 @@ pub struct GenDashboardsArgs {
     #[arg(long, default_value = "mz_")]
     sql_metric_prefix: String,
 
+    /// Directory containing query-registry YAML files.
+    ///
+    /// Panels take their expressions and descriptions from the registry, so this
+    /// is a source input, not a lookup path.
+    #[arg(long, default_value = "packages/queries")]
+    queries_dir: PathBuf,
+
     /// List the available dashboards and exit.
     #[arg(long)]
     list: bool,
@@ -133,6 +141,9 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
         out
     };
 
+    let registry = QueryRegistry::from_directory(&args.queries_dir)
+        .with_context(|| format!("loading query registry from {}", args.queries_dir.display()))?;
+
     let options = Options {
         cloud: args.cloud.into(),
         sql_metric_prefix: args.sql_metric_prefix.clone(),
@@ -153,7 +164,7 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
 
     let mut stale = Vec::new();
     for dashboard in selected {
-        let rendered = render::render(dashboard, &options, format)
+        let rendered = render::render(dashboard, &options, &registry, format)
             .with_context(|| format!("rendering {}", dashboard.name))?;
         let path = output_dir.join(format!(
             "{}{}.{}",

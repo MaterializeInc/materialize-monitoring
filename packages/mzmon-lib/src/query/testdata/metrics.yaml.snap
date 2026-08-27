@@ -67,6 +67,7 @@
   name: container_spec_cpu_period
   usage:
   - materialize.kubernetes.cpu.capacity
+  - materialize.kubernetes.cpu.capacity.all_containers
 - importance: essential
   labels:
   - container
@@ -74,6 +75,7 @@
   name: container_spec_cpu_quota
   usage:
   - materialize.kubernetes.cpu.capacity
+  - materialize.kubernetes.cpu.capacity.all_containers
 - importance: essential
   labels:
   - container
@@ -82,6 +84,7 @@
   name: container_spec_memory_limit_bytes
   usage:
   - materialize.kubernetes.memory.capacity
+  - materialize.kubernetes.memory.capacity.all_containers
   - materialize.kubernetes.memory.usage.percent
   - materialize.kubernetes.pods.memory_usage
 - importance: essential

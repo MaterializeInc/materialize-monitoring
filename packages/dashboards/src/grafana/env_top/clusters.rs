@@ -16,9 +16,9 @@
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
-use mzmon_lib::grafana::query::{PromQuery, query_group};
 
-use super::{selector, theme, transform};
+use super::{theme, transform};
+use crate::grafana::queries::Queries;
 
 /// The tab's theme, applied to every shaded panel here.
 const SHADE: &str = theme::CLUSTERS.shade;
@@ -30,83 +30,34 @@ const SHADE: &str = theme::CLUSTERS.shade;
 /// prefix threaded through, which is tracked as a gap in the tab docs.
 const STATUS: &str = "mz_compute_cluster_status";
 
-/// The cluster and replica scope every query on this tab shares.
-fn scope() -> String {
-    format!(
-        "{env}, {cluster}, {replica}",
-        env = selector::environment(),
-        cluster = selector::compute_cluster(),
-        replica = selector::compute_replica()
-    )
+pub fn rows(q: &Queries) -> Vec<Row> {
+    vec![cluster_summary(q), replication(q), cluster_information(q)]
 }
 
-/// Cluster scope only, for panels that count clusters rather than replicas.
-fn cluster_scope() -> String {
-    format!(
-        "{env}, {cluster}",
-        env = selector::environment(),
-        cluster = selector::compute_cluster()
-    )
-}
-
-pub fn rows() -> Vec<Row> {
-    vec![cluster_summary(), replication(), cluster_information()]
-}
-
-fn cluster_summary() -> Row {
+fn cluster_summary(q: &Queries) -> Row {
     Row::new("Cluster Summary").hide_header().grid(
         AutoGrid::new(3)
             .row_height(RowHeight::Short)
-            .panel("cluster-count", cluster_count())
-            .panel("replica-count", replica_count()),
+            .panel("cluster-count", cluster_count(q))
+            .panel("replica-count", replica_count(q)),
     )
 }
 
-fn replication() -> Row {
+fn replication(q: &Queries) -> Row {
     Row::new("Replication / Availability")
-        .grid(AutoGrid::new(3).panel("replica-sizes", replica_sizes()))
+        .grid(AutoGrid::new(3).panel("replica-sizes", replica_sizes(q)))
 }
 
-fn cluster_information() -> Row {
-    Row::new("Cluster Information").grid(AutoGrid::new(3).panel("cluster-table", cluster_table()))
+fn cluster_information(q: &Queries) -> Row {
+    Row::new("Cluster Information").grid(AutoGrid::new(3).panel("cluster-table", cluster_table(q)))
 }
 
-fn cluster_count() -> dashboardv2::PanelKind {
-    // Two series on one stat: the total, and the system subset. Their difference
-    // is what the operator actually created.
-    let total = format!(
-        r#"
-count(
-    group by (compute_cluster_id) (
-        {STATUS}{{{scope}}}
-    )
-)
-"#,
-        scope = cluster_scope()
-    );
-    let system = format!(
-        r#"
-count(
-    group by (compute_cluster_id) (
-        {STATUS}{{{scope}, compute_cluster_id=~"{system}"}}
-    )
-)
-"#,
-        scope = cluster_scope(),
-        system = selector::SYSTEM_CLUSTER_PATTERN
-    );
+fn cluster_count(q: &Queries) -> dashboardv2::PanelKind {
     Panel::stat("Cluster Count")
-        .description(
-            "**Number of clusters in the environment, split into \"Total\" and \"System\".** \
-             System clusters are Materialize-managed (e.g., `mz_catalog_server`, `mz_system`, \
-             `mz_probe`) and exist in every env; the difference between Total and System is the \
-             user clusters you've created. Stable in steady state; expected to step on `CREATE \
-             CLUSTER` / `DROP CLUSTER`. Scoped to the selected clusters.",
-        )
-        .data(query_group(vec![
-            PromQuery::new(total).legend("Total Clusters").build(),
-            PromQuery::new(system).legend("System Clusters").build(),
-        ]))
+        .query(q.legended(
+            "materialize.clusters.count",
+            &["Total Clusters", "System Clusters"],
+        ))
         .text_mode(mzmon_lib::grafana::generated::stat::BigValueTextMode::ValueAndName)
         .shade(SHADE)
         .min(0.0)
@@ -114,45 +65,12 @@ count(
         .build(0)
 }
 
-fn replica_count() -> dashboardv2::PanelKind {
-    let total = format!(
-        r#"
-count(
-    group by (compute_cluster_id, compute_replica_id) (
-        {STATUS}{{{scope}}}
-    )
-)
-"#,
-        scope = scope()
-    );
-    // `r1` is the first replica every cluster gets, so excluding it counts the
-    // redundancy on top rather than the replicas themselves. `or vector(0)`
-    // keeps the panel reading 0 instead of blank when there is none.
-    let additional = format!(
-        r#"
-count(
-    group by (compute_cluster_id, compute_replica_id) (
-        {STATUS}{{{scope}, compute_replica_name!="r1"}}
-    )
-) or vector(0)
-"#,
-        scope = scope()
-    );
+fn replica_count(q: &Queries) -> dashboardv2::PanelKind {
     Panel::stat("Replica Count")
-        .description(
-            "**Number of replicas across the selected clusters, with \"Additional Replicas\" \
-             calling out those beyond the first.** Every cluster needs at least one replica to \
-             run; \"Additional\" counts the redundancy on top of that — non-zero means at least \
-             one cluster has been configured for higher availability or extra capacity. \
-             Expected to step on `CREATE CLUSTER REPLICA` / `DROP CLUSTER REPLICA`. Scoped to \
-             the selected clusters.",
-        )
-        .data(query_group(vec![
-            PromQuery::new(total).legend("Total Replicas").build(),
-            PromQuery::new(additional)
-                .legend("Additional Replicas")
-                .build(),
-        ]))
+        .query(q.legended(
+            "materialize.clusters.replicas.count",
+            &["Total Replicas", "Redundant Replicas"],
+        ))
         .text_mode(mzmon_lib::grafana::generated::stat::BigValueTextMode::ValueAndName)
         .shade(SHADE)
         .min(0.0)
@@ -160,25 +78,12 @@ count(
         .build(0)
 }
 
-fn replica_sizes() -> dashboardv2::PanelKind {
-    let expr = format!(
-        r#"
-count by (size) (
-    {STATUS}{{{scope}}}
-)
-"#,
-        scope = scope()
-    );
+fn replica_sizes(q: &Queries) -> dashboardv2::PanelKind {
     Panel::piechart("Replica Sizes")
-        .description(
-            "**Replicas grouped by their configured size.** Most workloads cluster around a \
-             small number of sizes; a long tail of one-off sizes usually means experimentation \
-             or migration in progress. The total here matches the Replica Count panel. Scoped \
-             to the selected clusters.",
+        .query(
+            q.get("materialize.clusters.replicas.sizes")
+                .legend("{{size}}"),
         )
-        .data(query_group(vec![
-            PromQuery::new(expr).instant().legend("{{size}}").build(),
-        ]))
         // A full pie rather than the default donut: sizes partition the replicas,
         // and a pie reads as a partition.
         .full_pie()
@@ -187,8 +92,7 @@ count by (size) (
         .build(0)
 }
 
-fn cluster_table() -> dashboardv2::PanelKind {
-    let expr = format!("{STATUS}{{{scope}}}", scope = scope());
+fn cluster_table(q: &Queries) -> dashboardv2::PanelKind {
     // The metric's value says nothing here; the labels are the content. Promote
     // them to columns, collapse the per-series frames into one table, then drop
     // the value column and order what is left.
@@ -204,14 +108,7 @@ fn cluster_table() -> dashboardv2::PanelKind {
         "topology_kubernetes_io_zone",
     ];
     Panel::table("Cluster Information")
-        .description(
-            "**A row per (cluster, replica) tuple, with cluster_id / cluster_name / replica \
-             metadata and size / AZ / region info.** Operator's \"what does my fleet look \
-             like\" reference. The column-header filters let you narrow without changing the \
-             dashboard's cluster/replica selectors. Useful for copying a `cluster_id` or \
-             `replica_id` into the dashboard selectors to scope the rest of the dashboard.",
-        )
-        .data(query_group(vec![PromQuery::new(expr).instant().build()]))
+        .query(q.get("materialize.clusters.info"))
         .transformations(vec![
             transform::labels_to_fields(COLUMNS),
             transform::merge(),
@@ -233,7 +130,8 @@ mod tests {
 
     #[test]
     fn the_tab_has_three_rows_and_four_panels() {
-        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows())
+        let q = &crate::grafana::queries::test_queries();
+        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
         assert_eq!(assembled.elements.len(), 4);
@@ -241,18 +139,20 @@ mod tests {
 
     #[test]
     fn the_cluster_and_replica_counts_carry_two_series_each() {
+        let q = &crate::grafana::queries::test_queries();
         // A single-series stat would lose the Total-versus-System contrast that is
         // the whole point of these two panels.
-        for panel in [cluster_count(), replica_count()] {
+        for panel in [cluster_count(q), replica_count(q)] {
             assert_eq!(panel.spec.data.spec.queries.len(), 2);
         }
     }
 
     #[test]
     fn the_table_drops_both_metric_name_spellings() {
+        let q = &crate::grafana::queries::test_queries();
         // Self-managed emits `mz_…`, Cloud `v2_mz_…`; leaving either in shows a
         // meaningless value column on one of them.
-        let panel = cluster_table();
+        let panel = cluster_table(q);
         let organize = panel
             .spec
             .data

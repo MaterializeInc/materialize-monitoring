@@ -122,7 +122,7 @@ queries:
     promQL:
       template: |
         sum by (parent_source_id) (
-          rate(mz_source_bytes_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+          max without (job) (rate(mz_source_bytes_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
         ) > 0
       functions:
         - name: mzObjectName
@@ -146,7 +146,7 @@ queries:
     promQL:
       template: |
         sum by (parent_source_id, cluster_environmentd_materialize_cloud_replica_id) (
-          rate(mz_source_messages_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+          max without (job) (rate(mz_source_messages_received{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
         )
       functions:
         - name: mzObjectName
@@ -176,7 +176,7 @@ queries:
     promQL:
       - |
         sum by (source_id) (
-          rate(mz_source_offset_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+          max without (job) (rate(mz_source_offset_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
         ) > 0
       - |
         (
@@ -223,7 +223,7 @@ queries:
     promQL:
       template: |
         sum by (sink_id) (
-          rate(mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})
+          max without (job) (rate(mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
         ) > 0
       functions:
         - name: mzObjectName
@@ -247,8 +247,8 @@ queries:
     promQL:
       template: |
         clamp_min(
-          sum by (sink_id) (mz_sink_bytes_staged{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
-          - sum by (sink_id) (mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}),
+          sum by (sink_id) (max without (job) (mz_sink_bytes_staged{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}))
+          - sum by (sink_id) (max without (job) (mz_sink_bytes_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})),
           0
         )
       functions:
@@ -277,11 +277,11 @@ queries:
       notes: Scoped to the selected clusters/replicas.
     promQL:
       - |
-        histogram_quantile(0.50, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+        histogram_quantile(0.50, sum by (le) (max without (job) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))))
       - |
-        histogram_quantile(0.90, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+        histogram_quantile(0.90, sum by (le) (max without (job) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))))
       - |
-        histogram_quantile(0.99, sum by (le) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
+        histogram_quantile(0.99, sum by (le) (max without (job) (rate(mz_sink_iceberg_commit_duration_seconds_bucket{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))))
     datadogQuery:
       - |
         p50:mz_sink_iceberg_commit_duration_seconds{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id:%%{mzClusterList}, cluster_environmentd_materialize_cloud_replica_id:%%{mzReplicaList}}
@@ -304,12 +304,12 @@ queries:
       notes: Scoped to the selected clusters/replicas.
     promQL:
       - template: |
-          sum by (sink_id) (rate(mz_sink_iceberg_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_iceberg_commit_failures{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]
       - template: |
-          sum by (sink_id) (rate(mz_sink_iceberg_commit_conflicts{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_iceberg_commit_conflicts{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]
@@ -331,17 +331,17 @@ queries:
         deleting (data evaporating upstream). Scoped to the selected clusters/replicas.
     promQL:
       - template: |
-          sum by (sink_id) (rate(mz_sink_iceberg_data_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_iceberg_data_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]
       - template: |
-          sum by (sink_id) (rate(mz_sink_iceberg_delete_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_iceberg_delete_files_written{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]
       - template: |
-          sum by (sink_id) (rate(mz_sink_iceberg_snapshots_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_iceberg_snapshots_committed{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]
@@ -367,7 +367,7 @@ queries:
       notes: Scoped to the selected clusters/replicas.
     promQL:
       template: |
-        sum by (sink_id) (rate(mz_sink_rdkafka_txerrs{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+        sum by (sink_id) (max without (job) (rate(mz_sink_rdkafka_txerrs{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
       functions:
         - name: mzObjectName
           args: ["sink_id"]
@@ -386,7 +386,7 @@ queries:
       notes: Scoped to the selected clusters/replicas.
     promQL:
       template: |
-        sum by (sink_id) (mz_sink_rdkafka_outbuf_msg_cnt{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"})
+        sum by (sink_id) (max without (job) (mz_sink_rdkafka_outbuf_msg_cnt{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}))
       functions:
         - name: mzObjectName
           args: ["sink_id"]
@@ -406,12 +406,12 @@ queries:
       notes: Scoped to the selected clusters/replicas.
     promQL:
       - template: |
-          sum by (sink_id) (rate(mz_sink_rdkafka_connects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_rdkafka_connects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]
       - template: |
-          sum by (sink_id) (rate(mz_sink_rdkafka_disconnects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}))
+          sum by (sink_id) (max without (job) (rate(mz_sink_rdkafka_disconnects{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval})))
         functions:
           - name: mzObjectName
             args: ["sink_id"]

@@ -121,13 +121,15 @@ mod tests {
     #[test]
     fn corpus_loads_all_queries() {
         let registry = corpus_registry();
-        // 118 queries across the eight files: 71 Materialize (matching the
-        // Python loader) plus 47 node-exporter.
-        assert_eq!(registry.len(), 118);
+        // 120 queries across the eight files: 73 Materialize plus 47
+        // node-exporter. The Materialize count is two above the Python loader's
+        // 71: the exporter-including capacity variants the Kubernetes Workloads
+        // tab needs have no Python equivalent.
+        assert_eq!(registry.len(), 120);
         // A representative spread of engines / shapes is present.
         assert!(registry.get("materialize.clusters.count").is_some());
         assert!(registry.get("node.cpu.utilization").is_some());
-        assert_eq!(registry.iter_metric_queries().count(), 118);
+        assert_eq!(registry.iter_metric_queries().count(), 120);
         assert_eq!(registry.iter_log_queries(false).count(), 0);
     }
 

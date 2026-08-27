@@ -89,6 +89,10 @@ $defs:
     enum:
       - "interval"
       - "range"
+      # The bare range window, without brackets, for a subquery:
+      # (...)[%%{rangeWindow}:1m]. `range` includes its own brackets, so it
+      # cannot be used there.
+      - "rangeWindow"
       - "mzSqlPrefix"
       - "cAdvisorFilter"
       - "mzOperatorNamespaceFilter"
@@ -108,6 +112,12 @@ $defs:
       # the label and interpolates the value: instance_id=~"%%{mzClusterList}".
       - "mzClusterList"
       - "mzReplicaList"
+      # Regex-escaped forms of the two above, for a value interpolated as a
+      # fragment of a larger regex: pod=~".*-cluster-%%{mzClusterListRegex}-.*".
+      # A multi-valued variable interpolates as a glob under the plain form, which
+      # is meaningless inside a regex.
+      - "mzClusterListRegex"
+      - "mzReplicaListRegex"
       # Kubernetes namespace selector value (regex) for kube-state-metrics /
       # cAdvisor panels, e.g. namespace=~"%%{mzNamespaceList}".
       - "mzNamespaceList"

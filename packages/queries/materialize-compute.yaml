@@ -302,9 +302,9 @@ queries:
     promQL:
       template: |
         sum by (instance_id) (
-          rate(
+          max without (job) (rate(
             %%{mzSqlPrefix}dataflow_elapsed_seconds_total{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}"}%%{interval}
-          )
+          ))
         )
       functions:
         - name: mzClusterName
@@ -332,9 +332,9 @@ queries:
     promQL:
       template: |
         sum by (cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id) (
-          rate(
+          max without (job) (rate(
             mz_arrangement_maintenance_seconds_total{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}
-          )
+          ))
         )
       functions:
         - name: mzClusterName
@@ -356,9 +356,9 @@ queries:
     promQL:
       template: |
         sum by (cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, worker_id) (
-          rate(
+          max without (job) (rate(
             mz_arrangement_maintenance_seconds_total{%%{mzEnvironmentFilter}, cluster_environmentd_materialize_cloud_cluster_id=~"%%{mzClusterList}", cluster_environmentd_materialize_cloud_replica_id=~"%%{mzReplicaList}"}%%{interval}
-          )
+          ))
         )
       functions:
         - name: mzClusterName
@@ -374,10 +374,17 @@ queries:
         (collection id starts with `s`). These back the catalog and internal
         probes, not user data, so they shouldn't grow with your workload —
         unexpected growth here can point at a Materialize bug.
-    promQL: |
-      max by (collection_id) (
-        %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"s.*"}
-      )
+    promQL:
+      template: |
+        max by (collection_id) (
+          %%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", replica_id=~"%%{mzReplicaList}", collection_id=~"s.*"}
+        )
+      functions:
+        # System collections have catalog names too (`mz_catalog_server` indexes and
+        # the like), so they join the same way user collections do -- without this a
+        # panel legending on `name` renders blank labels.
+        - name: mzObjectName
+          args: ["collection_id"]
     datadogQuery: |
       max:%%{mzSqlPrefix}arrangement_record_count{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, replica_id:%%{mzReplicaList}, collection_id:s*}
         by {collection_id}

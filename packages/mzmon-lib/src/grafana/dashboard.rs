@@ -98,6 +98,17 @@ pub enum Error {
     #[error("dashboard {0:?} has no layout")]
     NoLayout(String),
 
+    /// One or more panels named a registry query that could not be bridged.
+    ///
+    /// Carries every failure rather than the first: a rename in the registry
+    /// typically breaks several panels at once, and fixing them one render at a
+    /// time is needless.
+    #[error("dashboard {dashboard:?} has {} unresolved registry query/queries:\n  {}", failures.len(), failures.join("\n  "))]
+    Registry {
+        dashboard: &'static str,
+        failures: Vec<String>,
+    },
+
     /// The layout could not be assembled.
     #[error("dashboard {name:?}: {source}")]
     Layout {

@@ -16,9 +16,11 @@
 //! plus one entry — nothing in the CLI needs to know their names.
 
 pub mod env_top;
+pub mod queries;
 pub mod render;
 
 use mzmon_lib::grafana::dashboard::Resource;
+use mzmon_lib::query::QueryRegistry;
 
 /// Which cloud's metric surface a dashboard is rendered against.
 ///
@@ -69,7 +71,7 @@ pub struct Renderable {
     pub name: &'static str,
     /// One-line summary, for `--list`.
     pub summary: &'static str,
-    pub render: fn(&Options) -> render::Result<Resource>,
+    pub render: fn(&Options, &QueryRegistry) -> render::Result<Resource>,
 }
 
 /// Every dashboard, in artifact order.

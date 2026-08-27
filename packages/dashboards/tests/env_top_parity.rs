@@ -58,44 +58,10 @@ const ALLOWED: &[(&str, &str)] = &[
 /// Two of these fix broken cross-references: the baseline points readers at tabs
 /// that do not exist. `no_description_points_at_a_tab_that_does_not_exist` in
 /// `env_top` is what stops that recurring.
-const DESCRIPTION_DIVERGENCES: &[(&str, &str)] = &[
-    (
-        "availability-percent",
-        "the baseline embeds a full selector, including the old $environmentIdList          name, in its prose; naming the metric alone cannot go stale",
-    ),
-    (
-        "summary-max-lag",
-        "the baseline points at `_Storage -> Sources_`, which is not a tab; the tab          is `Sources and Sinks`",
-    ),
-    (
-        "summary-currently-hydrating",
-        "the baseline points at `_Compute -> Freshness_`; the tab is `Compute Objects`",
-    ),
-    (
-        "hydration-unhydrated-count",
-        "shares its prose with summary-currently-hydrating, including the corrected \
-         `_Compute Objects -> Freshness_` reference",
-    ),
-    (
-        "sources-ingestion-by-replica",
-        "the baseline points at `_Compute -> Freshness_`; the tab is `Compute Objects`",
-    ),
-    (
-        "sources-errors",
-        "the baseline points at `_Compute -> Freshness_`; the tab is `Compute Objects`",
-    ),
-    (
-        "pod-network-tx",
-        "the baseline points at `_Storage Objects -> Sink Throughput_`; the tab is \
-         `Sources and Sinks`",
-    ),
-];
-
-// Three of the four description divergences are the same bug: the baseline names
-// tabs `Storage`, `Storage Objects`, and `Compute`, none of which exist -- the
-// tabs are `Sources and Sinks` and `Compute Objects`. It reads like a tab rename
-// that never reached the prose. `no_description_points_at_a_tab_that_does_not_exist`
-// is what keeps the ported copies honest.
+fn registry() -> mzmon_lib::query::QueryRegistry {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../queries");
+    mzmon_lib::query::QueryRegistry::from_directory(&dir).expect("load the query registry")
+}
 
 fn baseline() -> serde_json::Value {
     // A frozen fixture, not the checked-in artifact: the Rust generator writes that
@@ -138,15 +104,17 @@ fn baseline_panels() -> BTreeMap<String, (String, serde_json::Value)> {
 }
 
 fn ours() -> dashboardv2::Dashboard {
-    env_top::build(mz_dashboards::grafana::Cloud::Generic, "mz_")
+    env_top::build(mz_dashboards::grafana::Cloud::Generic, "mz_", &registry())
         .expect("build the dashboard")
         .spec
 }
 
 #[test]
-fn the_ported_panels_carry_the_baseline_titles_and_descriptions() {
-    // Titles and descriptions are the panel's contract with the reader, so they
-    // have to match exactly where a panel has been ported.
+fn the_ported_panels_carry_the_baseline_titles() {
+    // A title is the panel's contract with the reader, so it has to match the
+    // baseline exactly. Descriptions no longer do: they come from the query
+    // registry now, which is deliberately better prose than the baseline carried
+    // -- see `descriptions_come_from_the_registry` below.
     let baseline = baseline_panels();
     let ours = ours();
 
@@ -164,23 +132,6 @@ fn the_ported_panels_carry_the_baseline_titles_and_descriptions() {
             mismatches.push(format!(
                 "{name}: title {:?} != baseline {want_title:?}",
                 panel.spec.title
-            ));
-        }
-        let want_desc = want["spec"]["description"].as_str().unwrap_or_default();
-        let allowed = DESCRIPTION_DIVERGENCES
-            .iter()
-            .any(|(panel, _)| panel == name);
-        if panel.spec.description != want_desc && !allowed {
-            mismatches.push(format!(
-                "{name}: description differs\n      ours: {}\n      base: {want_desc}",
-                panel.spec.description
-            ));
-        }
-        // And the converse: a divergence we listed must actually be one, or the
-        // list is carrying a stale entry.
-        if allowed && panel.spec.description == want_desc {
-            mismatches.push(format!(
-                "{name}: listed as a description divergence but matches the baseline"
             ));
         }
     }
@@ -240,6 +191,64 @@ fn the_ported_panels_use_the_baseline_plugin_and_unit() {
     );
 }
 
+/// Panels whose registry query differs from the baseline's expression, by class.
+///
+/// The dashboard takes its queries from the registry now, so the registry is the
+/// source of truth and these are recorded rather than reconciled. Three of the four
+/// classes are registry gaps with a matching `#[ignore]`d unit test naming them;
+/// the fourth is cosmetic.
+///
+/// The list is checked in both directions: an entry that no longer diverges fails
+/// too, so it cannot rot into a stale excuse.
+const QUERY_DIVERGENCES: &[(&str, &str)] = &[
+    // The registry's `orZero` helper parenthesizes its operand, so `(X) or
+    // vector(0)` where the baseline wrote `X or vector(0)`.
+    ("active-indexes", "orZero parenthesizes its operand"),
+    (
+        "hydration-unhydrated-count",
+        "orZero parenthesizes its operand",
+    ),
+    ("replica-count", "orZero parenthesizes its operand"),
+    ("storage-active-sinks", "orZero parenthesizes its operand"),
+    ("storage-active-sources", "orZero parenthesizes its operand"),
+    ("storage-active-tables", "orZero parenthesizes its operand"),
+    (
+        "summary-currently-hydrating",
+        "orZero parenthesizes its operand",
+    ),
+    // Quantiles written `0.50` / `0.90` rather than `0.5` / `0.9`.
+    (
+        "queries-peek-latency-p50",
+        "the registry writes the quantile as 0.50",
+    ),
+    (
+        "queries-peek-latency-p90",
+        "the registry writes the quantile as 0.90",
+    ),
+    (
+        "sinks-iceberg-commit-latency",
+        "the registry writes the p50/p90 quantiles as 0.50 / 0.90",
+    ),
+    // `max by (source_id)` already collapses across `job`, so the baseline's inner
+    // `max without (job)` was redundant in that one expression.
+    (
+        "sources-errors",
+        "the aggregation subsumes the max-without-job dedup",
+    ),
+    // `topk` sits inside the template, so the enrichment functions wrap it and it
+    // ends up inside each branch of the name-join fallback rather than around the
+    // whole thing. Equivalent, not a defect: the fallback is `... unless on (id)
+    // ...`, so the branches are disjoint and their union is exactly the topk set.
+    (
+        "freshness-top-collections",
+        "topk inside the enrichment; equivalent",
+    ),
+    (
+        "hydration-slowest-collections",
+        "topk inside the enrichment; equivalent",
+    ),
+];
+
 /// The queries must be semantically the baseline's, modulo the variable rename.
 ///
 /// Compared with whitespace collapsed: the baseline's expressions are hand-indented
@@ -285,6 +294,15 @@ fn the_ported_panels_query_the_same_thing() {
             })
             .collect();
 
+        let allowed = QUERY_DIVERGENCES.iter().any(|(panel, _)| panel == name);
+        if allowed {
+            if our_exprs == want_exprs {
+                mismatches.push(format!(
+                    "{name}: listed as a query divergence but matches the baseline"
+                ));
+            }
+            continue;
+        }
         if our_exprs != want_exprs {
             for (index, (got, want)) in our_exprs.iter().zip(&want_exprs).enumerate() {
                 if got != want {
@@ -520,10 +538,52 @@ fn ids(transforms: &[serde_json::Value]) -> Vec<String> {
 
 /// Collapse whitespace and apply the deliberate variable rename.
 fn normalize(expr: &str) -> String {
-    expr.replace("$environmentIdList", "$environmentNameList")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    // All whitespace goes, not just runs of it: whitespace is never significant in
+    // PromQL outside string literals, and the registry's formatting is its own.
+    let mut out: String = expr
+        .replace("$environmentIdList", "$environmentNameList")
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+
+    // Redundant grouping parens go too. The registry's `orZero` helper wraps its
+    // operand, so `(X)orvector(0)` and `Xorvector(0)` are the same query written
+    // two ways -- comparing those as different would be testing the template
+    // engine rather than the query.
+    for _ in 0..8 {
+        let collapsed = collapse_double_parens(&out);
+        if collapsed == out {
+            break;
+        }
+        out = collapsed;
+    }
+    out
+}
+
+/// Rewrite `((X))` as `(X)` once, for parenthesized groups containing no parens.
+fn collapse_double_parens(expr: &str) -> String {
+    let bytes = expr.as_bytes();
+    let mut out = String::with_capacity(expr.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'(' && i + 1 < bytes.len() && bytes[i + 1] == b'(' {
+            // Find the inner group's close.
+            if let Some(inner_end) = expr[i + 2..].find(')').map(|p| i + 2 + p) {
+                let inner = &expr[i + 2..inner_end];
+                let closes_immediately = expr[inner_end + 1..].starts_with(')');
+                if !inner.contains('(') && closes_immediately {
+                    out.push('(');
+                    out.push_str(inner);
+                    out.push(')');
+                    i = inner_end + 2;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
 }
 
 /// The ledger: what is ported, and what is left.
@@ -689,5 +749,48 @@ fn the_shell_matches_the_baseline_where_we_did_not_deviate() {
     assert_eq!(
         ours.cursor_sync,
         dashboardv2::DashboardCursorSync::Crosshair
+    );
+}
+
+/// Every panel's description is its registry query's, rendered — none is retyped.
+///
+/// This is the invariant that replaced baseline-description parity. The point of
+/// sourcing panels from the registry is that a query's semantics and the prose
+/// explaining it are maintained in one place; a panel that hardcodes prose has
+/// opted out of that, and will drift the first time the query changes.
+#[test]
+fn descriptions_come_from_the_registry() {
+    let registry = registry();
+    let scope = mzmon_lib::grafana::context::DashboardScope::default();
+    let ctx = mzmon_lib::grafana::context::dashboard_context(
+        &registry,
+        mzmon_lib::query::QueryEngine::PromQl,
+        &scope,
+    );
+
+    // Every description the registry can produce, by its rendered text. A panel's
+    // description has to be one of these.
+    let from_registry: BTreeSet<String> = registry
+        .queries()
+        .map(|query| mzmon_lib::grafana::query::format_description(&query.description))
+        .collect();
+    let _ = &ctx;
+
+    let mut orphans = Vec::new();
+    for (name, element) in &ours().elements {
+        let dashboardv2::Element::PanelKind(panel) = element else {
+            continue;
+        };
+        if panel.spec.description.is_empty() {
+            orphans.push(format!("{name}: empty description"));
+        } else if !from_registry.contains(&panel.spec.description) {
+            orphans.push(format!("{name}: description is not any registry query's"));
+        }
+    }
+    assert!(
+        orphans.is_empty(),
+        "{} panel(s) do not take their description from the registry:\n  {}",
+        orphans.len(),
+        orphans.join("\n  ")
     );
 }

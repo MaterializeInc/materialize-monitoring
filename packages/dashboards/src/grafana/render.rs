@@ -23,6 +23,7 @@
 //! for the generated structs would reach.
 
 use mzmon_lib::grafana::dashboard::Resource;
+use mzmon_lib::query::QueryRegistry;
 
 use super::{Options, Renderable};
 
@@ -75,8 +76,13 @@ impl std::fmt::Display for Format {
 }
 
 /// Render one dashboard to a string.
-pub fn render(dashboard: &Renderable, options: &Options, format: Format) -> Result<String> {
-    let resource = (dashboard.render)(options)?;
+pub fn render(
+    dashboard: &Renderable,
+    options: &Options,
+    registry: &QueryRegistry,
+    format: Format,
+) -> Result<String> {
+    let resource = (dashboard.render)(options, registry)?;
     serialize(dashboard.name, &resource, format)
 }
 
@@ -233,7 +239,13 @@ mod tests {
         // rather than a hand-built value.
         let options = Options::default();
         for dashboard in grafana::ALL {
-            let json = render(dashboard, &options, Format::Json).expect("render");
+            let json = render(
+                dashboard,
+                &options,
+                crate::grafana::queries::test_registry(),
+                Format::Json,
+            )
+            .expect("render");
             for (index, line) in json.lines().enumerate() {
                 assert!(
                     !line.trim_end_matches(',').ends_with(".0"),
@@ -251,8 +263,13 @@ mod tests {
         let options = Options::default();
         for dashboard in grafana::ALL {
             for format in [Format::Yaml, Format::Json] {
-                let out = render(dashboard, &options, format)
-                    .unwrap_or_else(|e| panic!("{} as {format}: {e}", dashboard.name));
+                let out = render(
+                    dashboard,
+                    &options,
+                    crate::grafana::queries::test_registry(),
+                    format,
+                )
+                .unwrap_or_else(|e| panic!("{} as {format}: {e}", dashboard.name));
                 assert!(
                     out.ends_with('\n'),
                     "{} as {format} lacks a trailing newline",
@@ -274,8 +291,20 @@ mod tests {
         let options = Options::default();
         for dashboard in grafana::ALL {
             for format in [Format::Yaml, Format::Json] {
-                let first = render(dashboard, &options, format).expect("render");
-                let second = render(dashboard, &options, format).expect("render");
+                let first = render(
+                    dashboard,
+                    &options,
+                    crate::grafana::queries::test_registry(),
+                    format,
+                )
+                .expect("render");
+                let second = render(
+                    dashboard,
+                    &options,
+                    crate::grafana::queries::test_registry(),
+                    format,
+                )
+                .expect("render");
                 assert_eq!(
                     first, second,
                     "{} as {format} is not stable",
@@ -288,7 +317,13 @@ mod tests {
     #[test]
     fn the_rendered_keys_are_sorted() {
         let options = Options::default();
-        let json = render(&grafana::ALL[0], &options, Format::Json).expect("render");
+        let json = render(
+            &grafana::ALL[0],
+            &options,
+            crate::grafana::queries::test_registry(),
+            Format::Json,
+        )
+        .expect("render");
         let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
         assert_sorted(&value, "");
     }
@@ -314,12 +349,26 @@ mod tests {
         // Two consumers, one dashboard: the formats must not drift.
         let options = Options::default();
         let dashboard = &grafana::ALL[0];
-        let yaml: serde_json::Value =
-            serde_yaml_ng::from_str(&render(dashboard, &options, Format::Yaml).expect("yaml"))
-                .expect("parse yaml");
-        let json: serde_json::Value =
-            serde_json::from_str(&render(dashboard, &options, Format::Json).expect("json"))
-                .expect("parse json");
+        let yaml: serde_json::Value = serde_yaml_ng::from_str(
+            &render(
+                dashboard,
+                &options,
+                crate::grafana::queries::test_registry(),
+                Format::Yaml,
+            )
+            .expect("yaml"),
+        )
+        .expect("parse yaml");
+        let json: serde_json::Value = serde_json::from_str(
+            &render(
+                dashboard,
+                &options,
+                crate::grafana::queries::test_registry(),
+                Format::Json,
+            )
+            .expect("json"),
+        )
+        .expect("parse json");
         assert_eq!(yaml, json);
     }
 
@@ -335,8 +384,13 @@ mod tests {
                 ..Options::default()
             };
             for dashboard in grafana::ALL {
-                let json = render(dashboard, &options, Format::Json)
-                    .unwrap_or_else(|e| panic!("{} for {cloud}: {e}", dashboard.name));
+                let json = render(
+                    dashboard,
+                    &options,
+                    crate::grafana::queries::test_registry(),
+                    Format::Json,
+                )
+                .unwrap_or_else(|e| panic!("{} for {cloud}: {e}", dashboard.name));
                 let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
                 assert_eq!(
                     value["metadata"]["annotations"]["monitoring.materialize.cloud/target-cloud"],
@@ -361,7 +415,13 @@ mod tests {
                     cloud,
                     ..Options::default()
                 };
-                let json = render(dashboard, &options, Format::Json).expect("render");
+                let json = render(
+                    dashboard,
+                    &options,
+                    crate::grafana::queries::test_registry(),
+                    Format::Json,
+                )
+                .expect("render");
                 let mut value: serde_json::Value = serde_json::from_str(&json).expect("parse");
                 value["metadata"]["annotations"]
                     .as_object_mut()

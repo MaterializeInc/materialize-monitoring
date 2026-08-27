@@ -22,100 +22,65 @@
 use mzmon_lib::grafana::generated::{dashboardv2, stat};
 use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
-use mzmon_lib::grafana::query::{PromQuery, query_group};
 
-use super::{selector, theme};
+use super::theme;
+use crate::grafana::queries::Queries;
 
 /// The tab's theme.
 const SHADE: &str = theme::KUBERNETES.shade;
 
-pub fn rows() -> Vec<Row> {
+pub fn rows(q: &Queries) -> Vec<Row> {
     vec![
-        resources_summary(),
-        workload_readiness(),
-        pod_metrics(),
-        pod_networking(),
+        resources_summary(q),
+        workload_readiness(q),
+        pod_metrics(q),
+        pod_networking(q),
     ]
 }
 
-/// Build the two-query split every per-pod panel uses.
-///
-/// `build` receives a pod matcher and returns the expression for it. The first
-/// query covers the selected cluster replicas, the second everything that is not
-/// a replica pod — which is deliberately *not* narrowed by the cluster selectors,
-/// since environmentd and the balancer belong to no cluster and should not vanish
-/// when you focus on one.
-///
-/// The two matchers are the same pattern under `=~` and `!~`, so the split is
-/// exhaustive and disjoint: no pod is missed and none is counted twice.
-fn split_by_pod<F>(legend: &str, build: F) -> Vec<dashboardv2::DataQueryKind>
-where
-    F: Fn(&str) -> String,
-{
-    vec![
-        PromQuery::new(build(&selector::replica_pods()))
-            .legend(legend)
-            .build(),
-        PromQuery::new(build(&selector::non_replica_pods()))
-            .legend(legend)
-            .build(),
-    ]
-}
-
-fn resources_summary() -> Row {
+fn resources_summary(q: &Queries) -> Row {
     Row::new("Resources Summary").hide_header().grid(
         AutoGrid::new(3)
             .row_height(RowHeight::Short)
-            .panel("k8s-res-cpu-total", cpu_total())
-            .panel("k8s-res-memory-total", memory_total()),
+            .panel("k8s-res-cpu-total", cpu_total(q))
+            .panel("k8s-res-memory-total", memory_total(q)),
     )
 }
 
-fn workload_readiness() -> Row {
+fn workload_readiness(q: &Queries) -> Row {
     Row::new("Workload Readiness").hide_header().grid(
         AutoGrid::new(5)
             .row_height(RowHeight::Short)
-            .panel("resource-pod-status", pod_status())
-            .panel("resource-statefulset-status", statefulset_status())
-            .panel("resource-deployment-status", deployment_status()),
+            .panel("resource-pod-status", pod_status(q))
+            .panel("resource-statefulset-status", statefulset_status(q))
+            .panel("resource-deployment-status", deployment_status(q)),
     )
 }
 
-fn pod_metrics() -> Row {
+fn pod_metrics(q: &Queries) -> Row {
     Row::new("Pod Metrics").grid(
         AutoGrid::new(3)
-            .panel("pod-cpu-percent", pod_cpu_percent())
-            .panel("pod-memory-percent", pod_memory_percent()),
+            .panel("pod-cpu-percent", pod_cpu_percent(q))
+            .panel("pod-memory-percent", pod_memory_percent(q)),
     )
 }
 
-fn pod_networking() -> Row {
+fn pod_networking(q: &Queries) -> Row {
     Row::new("Pod Networking").grid(
         AutoGrid::new(2)
-            .panel("pod-network-rx", network_rx())
-            .panel("pod-network-tx", network_tx())
-            .panel("pod-network-errors", network_errors())
-            .panel("pod-network-drops", network_drops()),
+            .panel("pod-network-rx", network_rx(q))
+            .panel("pod-network-tx", network_tx(q))
+            .panel("pod-network-errors", network_errors(q))
+            .panel("pod-network-drops", network_drops(q)),
     )
 }
 
-fn cpu_total() -> dashboardv2::PanelKind {
-    // Same shape as the Summary tab's panel, but over `containers()` rather than
-    // `workload_containers()`: the exporter counts here.
-    let expr = format!(
-        r#"
-sum by (container) (
-    container_spec_cpu_quota{{ {containers} }}
-    / container_spec_cpu_period{{ {containers} }}
-)
-"#,
-        containers = selector::containers()
-    );
+fn cpu_total(q: &Queries) -> dashboardv2::PanelKind {
     Panel::stat("Total CPU Capacity")
-        .description(super::CPU_CAPACITY_DESCRIPTION)
-        .data(query_group(vec![
-            PromQuery::new(expr).legend("CPUs ({{container}})").build(),
-        ]))
+        .query(
+            q.get("materialize.kubernetes.cpu.capacity.all_containers")
+                .legend("CPUs ({{container}})"),
+        )
         .text_mode(stat::BigValueTextMode::ValueAndName)
         .shade(SHADE)
         .unit("cores")
@@ -123,22 +88,12 @@ sum by (container) (
         .build(0)
 }
 
-fn memory_total() -> dashboardv2::PanelKind {
-    let expr = format!(
-        r#"
-sum by (container) (
-    container_spec_memory_limit_bytes{{ {containers} }}
-)
-"#,
-        containers = selector::containers()
-    );
+fn memory_total(q: &Queries) -> dashboardv2::PanelKind {
     Panel::stat("Total Memory")
-        .description(super::MEMORY_TOTAL_DESCRIPTION)
-        .data(query_group(vec![
-            PromQuery::new(expr)
-                .legend("Memory ({{container}})")
-                .build(),
-        ]))
+        .query(
+            q.get("materialize.kubernetes.memory.capacity.all_containers")
+                .legend("Memory ({{container}})"),
+        )
         .text_mode(stat::BigValueTextMode::ValueAndName)
         .shade(SHADE)
         .unit("bytes")
@@ -146,127 +101,45 @@ sum by (container) (
         .build(0)
 }
 
-fn pod_status() -> dashboardv2::PanelKind {
-    // `max by (…)` over a `sum by (…, instance)`: kube-state-metrics can be
-    // scraped by more than one job, and summing across `instance` then taking the
-    // max keeps one job's view rather than adding the duplicates together.
-    let expr = format!(
-        r#"
-max by (phase, namespace) (
-    sum by (phase, namespace, instance) (
-        kube_pod_status_phase{{{ns}}}
-    )
-)
-"#,
-        ns = selector::namespace()
-    );
+fn pod_status(q: &Queries) -> dashboardv2::PanelKind {
     Panel::piechart("Pod Readiness")
-        .description(
-            "**Pods in the Materialize namespace grouped by phase** (Running, Pending, Failed, \
-             etc.). Nominal: nearly all `Running`. Pods stuck in `Pending` usually mean \
-             Kubernetes can't schedule them (capacity, taints, AZ constraints); `Failed` means \
-             a container exited and won't be restarted. Pairs with _Last Restart Time_ on the \
-             Summary tab. Requires kube-state-metrics.",
+        .query(
+            q.get("materialize.kubernetes.pods.readiness")
+                .legend("{{phase}}"),
         )
-        .data(query_group(vec![
-            PromQuery::new(expr).instant().legend("{{phase}}").build(),
-        ]))
         .shade(SHADE)
         .no_value(NoValue::RequiresKubeStateMetrics)
         .build(0)
 }
 
-fn statefulset_status() -> dashboardv2::PanelKind {
-    let expr = format!(
-        r#"
-max by (namespace) (
-    sum by (namespace, instance) (
-        kube_statefulset_status_replicas_ready{{{ns}}}
-    )
-)
-"#,
-        ns = selector::namespace()
-    );
+fn statefulset_status(q: &Queries) -> dashboardv2::PanelKind {
     Panel::piechart("StatefulSet Readiness")
-        .description(
-            "**Number of StatefulSet replicas reporting Ready.** environmentd and Materialize's \
-             cluster pods are StatefulSets; this panel counts the replicas that have reached \
-             the Ready state. Nominal: matches the configured replica count. A drop indicates a \
-             pod stuck in initialization or hydration. Requires kube-state-metrics.",
+        .query(
+            q.get("materialize.kubernetes.statefulsets.ready")
+                .legend("Ready"),
         )
-        .data(query_group(vec![
-            PromQuery::new(expr).instant().legend("Ready").build(),
-        ]))
         .shade(SHADE)
         .no_value(NoValue::RequiresKubeStateMetrics)
         .build(0)
 }
 
-fn deployment_status() -> dashboardv2::PanelKind {
-    let ready = format!(
-        r#"
-max by (namespace) (
-    sum by (namespace, instance) (
-        kube_deployment_status_replicas_ready{{{ns}}}
-    )
-)
-"#,
-        ns = selector::namespace()
-    );
-    let unavailable = format!(
-        r#"
-max by (namespace) (
-    sum by (namespace, instance) (
-        kube_deployment_status_replicas_unavailable{{{ns}}}
-    )
-)
-"#,
-        ns = selector::namespace()
-    );
+fn deployment_status(q: &Queries) -> dashboardv2::PanelKind {
     Panel::piechart("Deployment Readiness")
-        .description(
-            "**Deployment replica health — Ready vs Unavailable.** Deployments back stateless \
-             services (e.g., the promsql exporter). Nominal: all replicas Ready, zero \
-             Unavailable. Unavailable counts indicate failed rollouts or crashing pods. \
-             Requires kube-state-metrics.",
-        )
-        .data(query_group(vec![
-            PromQuery::new(ready).instant().legend("Ready").build(),
-            PromQuery::new(unavailable)
-                .instant()
-                .legend("Unavailable")
-                .build(),
-        ]))
+        .query(q.legended(
+            "materialize.kubernetes.deployments.readiness",
+            &["Ready", "Unavailable"],
+        ))
         .shade(SHADE)
         .no_value(NoValue::RequiresKubeStateMetrics)
         .build(0)
 }
 
-fn pod_cpu_percent() -> dashboardv2::PanelKind {
-    let build = |pods: &str| {
-        format!(
-            r#"
-sum by (namespace, pod, container) (
-    rate(
-        container_cpu_usage_seconds_total{{{containers}, {pods}}}[$__rate_interval]
-    )
-) / sum by (namespace, pod, container) (
-    kube_pod_container_resource_limits{{resource="cpu", {ns}, {pods}}}
-)
-"#,
-            containers = selector::containers(),
-            ns = selector::namespace()
-        )
-    };
+fn pod_cpu_percent(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Pod CPU Usage")
-        .description(
-            "**CPU utilization per pod, as a fraction of the pod's CPU limit.** Two-query \
-             split: one for cluster replica pods (filtered by the dashboard's cluster/replica \
-             selectors), one for everything else (envd, balancer, exporter, etc.). Sustained \
-             near 1.0 for a pod means it's CPU-bound. For the Materialize-level cause see \
-             _Compute Objects -> Dataflow Elapsed Rate_ or _Arrangements_.",
+        .query(
+            q.get("materialize.kubernetes.pods.cpu_usage")
+                .legend("{{pod}} / {{container}}"),
         )
-        .data(query_group(split_by_pod("{{pod}} / {{container}}", build)))
         .unit("percentunit")
         // Needs both exporters: the numerator is cAdvisor, the denominator
         // kube-state-metrics.
@@ -274,127 +147,56 @@ sum by (namespace, pod, container) (
         .build(0)
 }
 
-fn pod_memory_percent() -> dashboardv2::PanelKind {
-    // Averaged per pod on both sides so a pod scraped twice does not skew the
-    // ratio.
-    let build = |pods: &str| {
-        format!(
-            r#"
-avg by (namespace, pod, container) (
-    container_memory_working_set_bytes{{{containers}, {pods}}}
-) / avg by (namespace, pod, container) (
-    container_spec_memory_limit_bytes{{{containers}, {pods}}}
-)
-"#,
-            containers = selector::workload_containers()
-        )
-    };
+fn pod_memory_percent(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Pod Memory Usage")
-        .description(
-            "**Memory usage per pod, as a fraction of the pod's memory limit (working-set \
-             basis).** Same two-query split as Pod CPU Usage. **Sustained climb toward 1.0 is \
-             dangerous** — a pod hitting its memory limit gets OOM-killed, which on a compute \
-             replica triggers a hydration cycle (in-memory state rebuilt from persistence, \
-             often minutes). If a Materialize cluster pod is the offender, _Compute Objects -> \
-             Arrangements_ shows which arrangements consume the memory.",
+        .query(
+            q.get("materialize.kubernetes.pods.memory_usage")
+                .legend("{{pod}} / {{container}}"),
         )
-        .data(query_group(split_by_pod("{{pod}} / {{container}}", build)))
         .unit("percentunit")
         .no_value(NoValue::RequiresCAdvisor)
         .build(0)
 }
 
-/// A per-pod network rate, for one cAdvisor counter.
-fn network_rate(metric: &str) -> impl Fn(&str) -> String + '_ {
-    move |pods: &str| {
-        format!(
-            r#"
-sum by (namespace, pod) (
-    rate(
-        {metric}{{{ns}, {pods}}}[$__rate_interval]
-    )
-)
-"#,
-            ns = selector::namespace()
-        )
-    }
-}
-
-fn network_rx() -> dashboardv2::PanelKind {
+fn network_rx(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Pod Network Rx")
-        .description(
-            "**Network bytes/sec received per pod**, aggregated across all network interfaces. \
-             Same cluster/non-cluster split as the pod CPU/memory panels. For cluster pods, Rx \
-             tracks ingest from upstream (Kafka, Postgres, etc.) and inter-pod replication; for \
-             envd and the balancer it reflects client SQL traffic. Surges that coincide with \
-             _Compute Objects -> Hydration_ activity are normal (catchup); surges otherwise can \
-             mean a runaway client or source.",
+        .query(
+            q.get("materialize.kubernetes.pods.network_rx")
+                .legend("{{pod}}"),
         )
-        .data(query_group(split_by_pod(
-            "{{pod}}",
-            network_rate("container_network_receive_bytes_total"),
-        )))
         .unit("Bps")
         .no_value(NoValue::RequiresCAdvisor)
         .build(0)
 }
 
-fn network_tx() -> dashboardv2::PanelKind {
+fn network_tx(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Pod Network Tx")
-        .description(
-            "**Network bytes/sec transmitted per pod**, aggregated across interfaces. For \
-             cluster pods Tx covers sink output, inter-pod replication, and query results \
-             returning to envd; for envd it's client query responses. Pairs with _Sources and \
-             Sinks -> Sink Throughput_ when investigating sink-side bandwidth.",
+        .query(
+            q.get("materialize.kubernetes.pods.network_tx")
+                .legend("{{pod}}"),
         )
-        .data(query_group(split_by_pod(
-            "{{pod}}",
-            network_rate("container_network_transmit_bytes_total"),
-        )))
         .unit("Bps")
         .no_value(NoValue::RequiresCAdvisor)
         .build(0)
 }
 
-/// An rx+tx pair, each split by pod: four queries.
-fn rx_tx_split(rx_metric: &str, tx_metric: &str) -> Vec<dashboardv2::DataQueryKind> {
-    let mut queries = split_by_pod("{{pod}} rx", network_rate(rx_metric));
-    queries.extend(split_by_pod("{{pod}} tx", network_rate(tx_metric)));
-    queries
-}
-
-fn network_errors() -> dashboardv2::PanelKind {
+fn network_errors(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Pod Network Errors")
-        .description(
-            "**Network rx + tx errors per pod per second** (errors counted at the NIC/kernel \
-             level). Nominal: 0. Non-zero is unusual and points at infrastructure problems \
-             (faulty NIC, kernel network stack issues, container runtime bugs) — not \
-             Materialize-level. If you see persistent non-zero, file an infra ticket; this \
-             isn't fixable from within Materialize.",
-        )
-        .data(query_group(rx_tx_split(
-            "container_network_receive_errors_total",
-            "container_network_transmit_errors_total",
-        )))
+        .query(q.legended(
+            "materialize.kubernetes.pods.network_errors",
+            &["{{pod}} rx", "{{pod}} rx", "{{pod}} tx", "{{pod}} tx"],
+        ))
         .unit("cps")
         .no_value(NoValue::RequiresCAdvisor)
         .build(0)
 }
 
-fn network_drops() -> dashboardv2::PanelKind {
+fn network_drops(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Pod Network Packet Drops")
-        .description(
-            "**Network packets dropped (rx + tx) per pod per second.** Drops happen when the \
-             kernel's network buffers fill up faster than the application can read from them \
-             (rx) or when egress rate-limiting kicks in (tx). Nominal: 0. Low-level non-zero \
-             drops (single-digit pps) are usually harmless background noise; sustained higher \
-             rates indicate the pod is overwhelmed at the network layer — often paired with \
-             elevated _Pod CPU Usage_.",
-        )
-        .data(query_group(rx_tx_split(
-            "container_network_receive_packets_dropped_total",
-            "container_network_transmit_packets_dropped_total",
-        )))
+        .query(q.legended(
+            "materialize.kubernetes.pods.network_drops",
+            &["{{pod}} rx", "{{pod}} rx", "{{pod}} tx", "{{pod}} tx"],
+        ))
         .unit("pps")
         .no_value(NoValue::RequiresCAdvisor)
         .build(0)
@@ -406,7 +208,8 @@ mod tests {
 
     #[test]
     fn the_tab_has_four_rows_and_eleven_panels() {
-        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows())
+        let q = &crate::grafana::queries::test_queries();
+        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
         assert_eq!(assembled.elements.len(), 11);
@@ -414,15 +217,16 @@ mod tests {
 
     #[test]
     fn every_pod_panel_splits_replicas_from_the_rest() {
+        let q = &crate::grafana::queries::test_queries();
         // The split is the tab's defining shape; a panel that lost one half would
         // silently stop showing either the replicas or everything else.
         for (name, panel, expected) in [
-            ("pod-cpu-percent", pod_cpu_percent(), 2),
-            ("pod-memory-percent", pod_memory_percent(), 2),
-            ("pod-network-rx", network_rx(), 2),
-            ("pod-network-tx", network_tx(), 2),
-            ("pod-network-errors", network_errors(), 4),
-            ("pod-network-drops", network_drops(), 4),
+            ("pod-cpu-percent", pod_cpu_percent(q), 2),
+            ("pod-memory-percent", pod_memory_percent(q), 2),
+            ("pod-network-rx", network_rx(q), 2),
+            ("pod-network-tx", network_tx(q), 2),
+            ("pod-network-errors", network_errors(q), 4),
+            ("pod-network-drops", network_drops(q), 4),
         ] {
             assert_eq!(
                 panel.spec.data.spec.queries.len(),
@@ -456,9 +260,10 @@ mod tests {
 
     #[test]
     fn the_non_replica_half_is_not_narrowed_by_the_cluster_selectors() {
+        let q = &crate::grafana::queries::test_queries();
         // environmentd and the balancer belong to no cluster; narrowing them by the
         // cluster selection would make them disappear when you focus on one.
-        let panel = network_rx();
+        let panel = network_rx(q);
         let excluded = panel
             .spec
             .data
@@ -481,9 +286,10 @@ mod tests {
 
     #[test]
     fn capacity_here_includes_the_monitoring_exporter() {
+        let q = &crate::grafana::queries::test_queries();
         // The Summary tab excludes it to read as user-workload capacity; this tab
         // is about what is actually running.
-        for panel in [cpu_total(), memory_total()] {
+        for panel in [cpu_total(q), memory_total(q)] {
             let expr = panel.spec.data.spec.queries[0]
                 .spec
                 .query
@@ -493,7 +299,7 @@ mod tests {
                 .and_then(|e| e.as_str())
                 .unwrap_or_default();
             assert!(
-                !expr.contains(selector::SQL_EXPORTER_CONTAINER),
+                !expr.contains(super::super::selector::SQL_EXPORTER_CONTAINER),
                 "the exporter should not be excluded here:\n{expr}"
             );
         }
@@ -501,9 +307,10 @@ mod tests {
 
     #[test]
     fn the_cpu_panel_needs_both_exporters() {
+        let q = &crate::grafana::queries::test_queries();
         // Numerator from cAdvisor, denominator from kube-state-metrics: naming only
         // one would send someone to fix the wrong scrape target.
-        let panel = pod_cpu_percent();
+        let panel = pod_cpu_percent(q);
         assert_eq!(
             panel
                 .spec

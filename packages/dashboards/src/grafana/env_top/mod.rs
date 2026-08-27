@@ -38,9 +38,13 @@ pub mod summary;
 pub mod theme;
 pub mod transform;
 
+use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};
 use mzmon_lib::grafana::layout::{Layout, Tab};
 use mzmon_lib::grafana::{dashboard, variable};
+use mzmon_lib::query::QueryRegistry;
+
+use crate::grafana::queries::Queries;
 
 /// Resource name. Stable independently of the title, since it is what permalinks
 /// and the chart's manifest key are built from.
@@ -61,90 +65,42 @@ pub const MIN_MZ_VERSION: &str = "v26.24.0";
 /// Recommended Materialize version.
 pub const REC_MZ_VERSION: &str = "v26.29.0";
 
-/// Description shared by the Total CPU Capacity panels on the Summary and
-/// Kubernetes Workloads tabs.
-///
-/// Verbatim identical in the baseline, and for good reason: the text explains the
-/// one way the two panels differ (whether the monitoring exporter is counted), so
-/// a second copy could only drift away from that explanation.
-pub(super) const CPU_CAPACITY_DESCRIPTION: &str = "**Total CPU cores configured across containers in the selected scope** (sum of CPU limits \
-     from cAdvisor). Steps correlate with `ALTER CLUSTER REPLICA SIZE`, `CREATE`/`DROP CLUSTER \
-     REPLICA`, or pod restarts. On the Summary tab the monitoring exporter is excluded (so this \
-     reflects user-workload capacity); on the Kubernetes Workloads tab it's included.";
-
-/// Description shared by the Total Memory panels on both tabs.
-pub(super) const MEMORY_TOTAL_DESCRIPTION: &str = "**Total memory configured across containers in the selected scope** (sum of memory limits \
-     from cAdvisor). Memory is the dominant constraint on Materialize: in-memory arrangements \
-     (see _Compute Objects -> Arrangements_) live in here. Steps correlate with `ALTER CLUSTER \
-     REPLICA SIZE` or pod restarts.";
-
 /// The Currently Hydrating panel, which the Summary and Compute Objects tabs both
 /// show.
 ///
-/// Identical in the baseline down to the expression, so it lives here rather than
-/// being written twice: the Summary copy is a pointer into Compute Objects, and a
-/// second copy could only drift from what it points at. `shade` is the only
-/// difference — Summary borrows Compute's colour, Compute uses its own.
+/// One query, one panel definition, two placements: the Summary copy is a pointer
+/// into Compute Objects, and a second copy could only drift from what it points at.
+/// `shade` is the only difference — Summary borrows Compute's colour, Compute uses
+/// its own.
 pub(super) fn currently_hydrating(
+    q: &Queries,
     shade: &str,
 ) -> mzmon_lib::grafana::generated::dashboardv2::PanelKind {
     use mzmon_lib::grafana::panel::{NoValue, Panel};
-    use mzmon_lib::grafana::query::{PromQuery, query_group};
 
-    let expr = format!(
-        r#"
-count(
-    max by (instance_id, collection_id) (
-        mz_dataflow_wallclock_lag_seconds{{
-            {env},
-            {cluster},
-            instance_id!="",
-            quantile="1"
-        }} > {sentinel}
-    )
-) or vector(0)
-"#,
-        env = selector::environment(),
-        cluster = selector::cluster(),
-        sentinel = selector::HYDRATING_SENTINEL
-    );
     Panel::stat("Currently Hydrating")
-        .description(HYDRATING_DESCRIPTION)
-        .data(query_group(vec![
-            PromQuery::new(expr).legend("hydrating").build(),
-        ]))
+        .query(
+            q.get("materialize.compute.hydration.currently_hydrating")
+                .legend("hydrating"),
+        )
         .shade(shade)
         .min(0.0)
         .no_value(NoValue::FilterMismatch)
         .build(0)
 }
 
-/// Prose for [`currently_hydrating`].
-///
-/// The baseline points at `_Compute -> Freshness_`, which is not a tab; corrected
-/// to `_Compute Objects -> Freshness_` here.
-pub(super) const HYDRATING_DESCRIPTION: &str = "**Collections still (re)building their in-memory state — a live hydration-queue proxy.** \
-     Hydration rebuilds a dataflow's state from persisted storage after a cluster/replica \
-     restart, replica creation, or some DDL; until it finishes, the collection has no output \
-     frontier, which this counts (via the `mz_dataflow_wallclock_lag_seconds` sentinel). \
-     **Nominal: 0, with brief spikes right after a replica restart that drain back to 0 as \
-     dataflows catch up — that's healthy.** A count that stays elevated means something can't \
-     finish hydrating (e.g. a source whose `CREATE` didn't complete, or a wedged dataflow). \
-     Confirm what's stuck with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT \
-     hydrated`; watch _Compute Objects -> Freshness_ for the lag those collections accrue.";
-
 /// The tabs, in order.
 ///
 /// One entry per tab module. Tabs not yet ported are simply absent — see the
 /// porting status in the module docs.
-fn tabs() -> Vec<Tab> {
+fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
-        Tab::new(theme::SUMMARY_TITLE).rows(summary::rows()),
-        Tab::new(theme::KUBERNETES.title).rows(kubernetes::rows()),
-        Tab::new(theme::CONNECTIONS.title).rows(connections::rows()),
-        Tab::new(theme::CLUSTERS.title).rows(clusters::rows()),
-        Tab::new(theme::COMPUTE.title).rows(compute::rows()),
-        Tab::new(theme::SOURCES_SINKS.title).rows(sources_sinks::rows()),
+        Tab::new(theme::SUMMARY_TITLE).rows(summary::rows(q)),
+        Tab::new(theme::KUBERNETES.title).rows(kubernetes::rows(q)),
+        Tab::new(theme::CONNECTIONS.title).rows(connections::rows(q)),
+        Tab::new(theme::CLUSTERS.title).rows(clusters::rows(q)),
+        Tab::new(theme::COMPUTE.title).rows(compute::rows(q)),
+        Tab::new(theme::SOURCES_SINKS.title).rows(sources_sinks::rows(q)),
     ]
 }
 
@@ -160,7 +116,27 @@ const TARGET_EXPORT: &str = "generic";
 ///
 /// `sql_metric_prefix` is `mz_` on self-managed and `v2_mz_` on Cloud; it reaches
 /// the cluster-discovery variable, which reads a SQL-derived metric.
-pub fn build(cloud: crate::grafana::Cloud, sql_metric_prefix: &str) -> dashboard::Result<Resource> {
+///
+/// Every panel's expression and description come from `registry` — see
+/// [`crate::grafana::queries`]. A panel naming an id that does not exist is
+/// reported here rather than by the panel, so a typo lists every bad id at once.
+pub fn build(
+    cloud: crate::grafana::Cloud,
+    sql_metric_prefix: &str,
+    registry: &QueryRegistry,
+) -> dashboard::Result<Resource> {
+    let scope = DashboardScope::for_prefix(sql_metric_prefix);
+    let queries = Queries::new(registry, &scope);
+    let layout = Layout::tabs(tabs(&queries));
+
+    let failures = queries.failures();
+    if !failures.is_empty() {
+        return Err(dashboard::Error::Registry {
+            dashboard: NAME_STEM,
+            failures,
+        });
+    }
+
     Dashboard::new(NAME, TITLE)
         .description(
             "Overview of a Materialize Environment.\n\nThis provides a high-level summary to \
@@ -190,7 +166,7 @@ pub fn build(cloud: crate::grafana::Cloud, sql_metric_prefix: &str) -> dashboard
             cloud.to_string(),
         )
         .metadata_annotation("monitoring.materialize.cloud/target-export", TARGET_EXPORT)
-        .layout(Layout::tabs(tabs()))
+        .layout(layout)
         .build()
 }
 
@@ -207,10 +183,13 @@ pub fn build(cloud: crate::grafana::Cloud, sql_metric_prefix: &str) -> dashboard
 /// So `cloud` reaches only the `target-cloud` metadata annotation, which records
 /// what the artifact was rendered for. If a cloud ever diverges in panel content
 /// again, this is where the branch goes back.
-pub fn render(options: &crate::grafana::Options) -> crate::grafana::render::Result<Resource> {
+pub fn render(
+    options: &crate::grafana::Options,
+    registry: &QueryRegistry,
+) -> crate::grafana::render::Result<Resource> {
     use crate::grafana::render::Error;
 
-    build(options.cloud, &options.sql_metric_prefix).map_err(|source| Error::Build {
+    build(options.cloud, &options.sql_metric_prefix, registry).map_err(|source| Error::Build {
         name: NAME_STEM,
         source,
     })
@@ -223,7 +202,12 @@ mod tests {
     #[test]
     fn it_builds_for_both_deployments() {
         for prefix in ["mz_", "v2_mz_"] {
-            let resource = build(crate::grafana::Cloud::Generic, prefix).expect("build");
+            let resource = build(
+                crate::grafana::Cloud::Generic,
+                prefix,
+                crate::grafana::queries::test_registry(),
+            )
+            .expect("build");
             assert_eq!(resource.metadata.name, NAME);
             assert_eq!(resource.spec.title, TITLE);
         }
@@ -231,7 +215,12 @@ mod tests {
 
     #[test]
     fn the_sql_prefix_reaches_the_cluster_variable_and_nothing_else() {
-        let cloud = build(crate::grafana::Cloud::Generic, "v2_mz_").expect("build");
+        let cloud = build(
+            crate::grafana::Cloud::Generic,
+            "v2_mz_",
+            crate::grafana::queries::test_registry(),
+        )
+        .expect("build");
         let json = serde_json::to_string(&cloud.spec.variables).expect("serialize");
         assert!(
             json.contains("v2_mz_compute_cluster_status"),
@@ -253,7 +242,12 @@ mod tests {
         // against tabs actually called `Sources and Sinks` and `Compute Objects`.
         // It reads like a tab rename that never reached the prose, which is
         // exactly the class of rot a check can hold back.
-        let resource = build(crate::grafana::Cloud::Generic, "mz_").expect("build");
+        let resource = build(
+            crate::grafana::Cloud::Generic,
+            "mz_",
+            crate::grafana::queries::test_registry(),
+        )
+        .expect("build");
         let mut destinations: Vec<String> = std::iter::once(theme::SUMMARY_TITLE.to_string())
             .chain(theme::THEMED.iter().map(|t| t.title.to_string()))
             .collect();
@@ -343,7 +337,12 @@ mod tests {
     fn the_metadata_annotations_the_docsite_reads_are_present() {
         // Consumed by the grafana-dashboards Hugo shortcode. Grafana drops them on
         // a UI save, so they are informational rather than a gate.
-        let resource = build(crate::grafana::Cloud::Generic, "mz_").expect("build");
+        let resource = build(
+            crate::grafana::Cloud::Generic,
+            "mz_",
+            crate::grafana::queries::test_registry(),
+        )
+        .expect("build");
         for key in [
             "monitoring.materialize.cloud/min-mz-version",
             "monitoring.materialize.cloud/rec-mz-version",

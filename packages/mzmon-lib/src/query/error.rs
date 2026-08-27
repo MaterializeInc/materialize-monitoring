@@ -94,6 +94,15 @@ pub enum Error {
     #[error("no query {0:?} in the registry")]
     NoSuchQuery(String),
 
+    /// A panel supplied a different number of legend templates than the query has
+    /// expressions.
+    ///
+    /// Positional by construction: the templates line up with the `promQL` list the
+    /// registry declares, so a count mismatch means the panel and the query have
+    /// drifted apart and the labels would land on the wrong series.
+    #[error("query has {expected} expression(s) but {got} legend template(s) were given")]
+    LegendCount { expected: usize, got: usize },
+
     /// `promql-parser` failed to parse a rendered PromQL expression.
     #[error("failed to parse PromQL: {message}\n--- expression ---\n{expr}")]
     PromQlParse { expr: String, message: String },

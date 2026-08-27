@@ -72,6 +72,49 @@ pub struct PanelQuery {
     pub description: String,
 }
 
+impl PanelQuery {
+    /// Label every series with one legend template.
+    ///
+    /// A legend is presentation, not query semantics, so the registry has no field
+    /// for it -- the same query legitimately reads `{{name}}` on one panel and
+    /// `{{cluster_name}} / {{name}}` on another. It belongs to the panel.
+    pub fn legend(mut self, template: &str) -> Self {
+        for query in &mut self.query_group.spec.queries {
+            set_legend(&mut query.spec.query, template);
+        }
+        self
+    }
+
+    /// Label each series with its own legend template, positionally.
+    ///
+    /// For a query whose `promQL` is a list: the templates line up with the
+    /// expressions in the order the registry declares them. A count mismatch is a
+    /// bug in the caller rather than something to paper over, so it is an error.
+    pub fn legends(mut self, templates: &[&str]) -> Result<Self> {
+        let queries = &mut self.query_group.spec.queries;
+        if queries.len() != templates.len() {
+            return Err(Error::LegendCount {
+                expected: queries.len(),
+                got: templates.len(),
+            });
+        }
+        for (query, template) in queries.iter_mut().zip(templates) {
+            set_legend(&mut query.spec.query, template);
+        }
+        Ok(self)
+    }
+}
+
+/// Set `legendFormat` on one dataquery.
+///
+/// The dashboard document types a dataquery's `spec` as an open object, so this
+/// reaches in by key rather than through a typed field.
+fn set_legend(query: &mut dashboardv2::DataQueryKind, template: &str) {
+    if let Some(spec) = query.spec.as_mut() {
+        spec.insert("legendFormat".to_string(), serde_json::json!(template));
+    }
+}
+
 /// Look `id` up in `registry`, render it for the context's engine, and build the
 /// query group and description for a panel.
 ///

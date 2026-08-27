@@ -217,6 +217,9 @@ Every render therefore goes through `render::canonical` first, which does two th
 - **Writes whole-valued floats as integers.** The schemas type most numerics as `number`, so typify gives them `f64`,
   and an `f64` serializes as `3.0` even when it holds a count. `maxColumnCount: 3.0` reads as a mistake.
 
+`--queries-dir` points at the query registry (default `packages/queries`), matching the sibling `gen-*` commands:
+the registry is a source input, not a lookup path.
+
 `--check` renders and compares against what is on disk without writing, exiting non-zero if they differ.
 The `dashboards` workflow runs `make -B dashboards` and then asserts `git status` is clean, so a change to a panel or
 to the generator cannot merge with stale output.
@@ -268,12 +271,34 @@ Six checks, each covering a class the others cannot see:
 
 | Check | Why it is separate |
 | --- | --- |
-| titles and descriptions | catches invented prose — it found eight fabricated panel titles |
+| titles | catches invented prose — it found eight fabricated panel titles, and a row titled from nothing |
 | plugin and unit | a panel can carry the right title and render as the wrong type |
 | queries (whitespace-collapsed) | the expressions are hand-indented, so exact newlines would test the formatter |
 | transformations, options included | invisible to every check above; its absence dropped an `extractFields` step a data link depended on |
 | the tab/row skeleton | the panel checks say nothing about the frame; its absence let a row ship under an invented title, at the wrong column cap |
 | the variable set | a query naming an undefined variable interpolates to nothing and matches no series — a panel that looks right and is empty |
+
+Descriptions are no longer compared against the baseline: they come from the registry, which carries better prose than
+the baseline did, so `descriptions_come_from_the_registry` asserts every panel's description *is* some registry query's
+rendered text instead.
+
+Query divergences from the baseline are allow-listed with a reason. Switching the panels to registry queries surfaced
+four real disagreements, all fixed in `packages/queries/` rather than worked around:
+
+| Fix | Was |
+| --- | --- |
+| `max without (job)` restored on 14 storage/compute rates | a target scraped by two jobs was counted twice |
+| regex-escaped list params in the pod-name matchers | the bare variable interpolates a multi-value as a glob, meaningless in a regex |
+| `capacity.all_containers` queries added | only the exporter-*excluding* form existed, so the Kubernetes tab stopped including it |
+| `mzObjectName` added to `arrangements.records.system` | system collections rendered with a blank `{{name}}` legend; `.user` already had the join |
+
+Also `rangeWindow`, the bare (unbracketed) range: `range` carries its own brackets, so `%%{range}:1m` cannot express a
+subquery. `materialize.info.max_lag` carried a FIXME asking for exactly this and hardcoded `1h`; it now follows the
+caller's window, which in a dashboard is the panel's own time picker.
+
+What remains allow-listed is genuinely equivalent, not deferred: the `orZero` helper parenthesizes its operand,
+quantiles are written `0.50` rather than `0.5`, `topk` sits inside the enrichment's disjoint `unless on (…)` branches
+(so their union is exactly the topk set), and one `max by (source_id)` already subsumes the job dedup.
 
 Divergences are allow-listed at the top of the file with the reason, and the allow-list is checked in both directions —
 an entry that no longer diverges fails too, so the list cannot rot into a set of stale excuses.
@@ -479,9 +504,42 @@ Two details worth knowing:
   generates calls them `expr` and `queryType`.
   Sending only the schema spelling loses data on push, so the bridge emits both — matching `py_mzmon_lib.query_v2.CompatPrometheusDataQuery`.
 - **Description formatting.** The registry's `Description` is structured (summary / nominal / degraded / unhealthy /
-  notes); the hand-written panels inline "Nominal: …" in flowing prose.
+  notes).
   The bridge emits the summary in bold followed by the behavioral fields as labeled paragraphs, and unwraps the YAML hard-wrapping.
   That is one function (`format_description`) if the convention should change.
+
+Legends are deliberately *not* a registry field, and stay with the panel: the same query legitimately reads `{{name}}`
+on one panel and `{{cluster_name}} / {{name}}` on another.
+`PanelQuery::legend` labels every series; `legends` labels each positionally against the query's `promQL` list, and a
+count mismatch is an error rather than silent mislabeling of the wrong series.
+
+### Panels do not write PromQL
+
+Every panel names a registry query and takes **both** its expression and its description from it —
+`packages/dashboards/src/grafana/queries.rs` is the handle, `Panel::query` sets both at once.
+The registry is where a query's semantics and the prose explaining it are maintained together, and a dashboard is one
+of several consumers of that pair; a panel that retypes either has opted out and will drift the first time the query
+changes.
+
+What stays with the panel is presentation: legend, unit, panel type, thresholds, transformations, shade, empty-state
+text.
+
+Ids are written inline at the panel that uses them, and there is deliberately **no** checked-in list of them.
+The guarantee comes from the build instead: `Queries` records every lookup that fails and `build()` refuses to return a
+dashboard, so a renamed or deleted registry query is a build failure naming every affected panel:
+
+```
+Error: building env-top: dashboard "env-top" has 1 unresolved registry query/queries:
+  materialize.info.version: no query "materialize.info.version" in the registry
+```
+
+An id list would not catch this any earlier — the same failure, at the same moment — while adding an alias layer that
+can drift from the id's meaning and a hand-maintained `ALL` array where a forgotten entry is silently untested.
+`tests/registry_contract.rs` pins the mechanism, since it is what makes the inline ids safe.
+
+Lookups are infallible for the same reason: threading a `Result` through sixty-odd panel builders to carry a case that
+only fires on a typo costs more than it buys, so a failed lookup yields a placeholder and is collected. A placeholder
+cannot reach an artifact because assembly fails first.
 
 The registry-to-dashboard path is new: the Python dashboards hand-write their PromQL inline with f-strings rather than
 going through the registry, so the pre-rendered dashboards are not a byte-level baseline for it.
