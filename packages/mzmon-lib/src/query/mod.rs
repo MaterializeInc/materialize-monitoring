@@ -33,6 +33,7 @@
 
 pub mod def;
 pub mod docgen;
+pub mod enrich;
 pub mod error;
 pub mod extract;
 pub mod importance;

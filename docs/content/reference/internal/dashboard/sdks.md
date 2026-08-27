@@ -84,6 +84,76 @@ Three properties of the upstream schemas shape everything built on top of them:
 
 Two documents cannot be generated at all: `alerting` (typify panics deriving variant names for the `MatchType` enum `["=", "!=", "=~", "!~"]`) and, without normalization, `table` (cog emits a `default` that violates its own schema — `Options.footer` defaults `reducer` to null where `TableFooterOptions` requires an array).
 
+### Render context
+
+`mzmon_lib::grafana::context::dashboard_context` is the Grafana-flavored [`TemplateContext`].
+The two contexts in `query::render` are extraction-flavored — `doc_context` and `tier_context` fill parameters with recognizable sentinels (`[42m]`, `your-env-name`) because their job is to be parsed, not displayed.
+This one resolves parameters to Grafana built-ins (`$__rate_interval`, `$__range`) and dashboard variables, and its enrichment functions do the real catalog joins where the extraction contexts use the identity.
+
+`DashboardScope` carries the deployment-specific values that are *not* dashboard variables: the SQL metric prefix (`mz_` self-managed, `v2_mz_` Cloud — `DashboardScope::cloud()`), the operator and system namespace selectors, and the optional environment-exclusion fragment.
+
+**Any `$variable` a rendered query references must be defined by the dashboard.**
+An undefined Grafana variable interpolates to nothing and the selector silently matches no series — a panel that looks correct and is empty.
+`REQUIRED_VARIABLES` is the list to assert a dashboard's variable set against.
+That is also why the operator and system namespaces are plain values rather than `$…` references: no dashboard defines a variable for either, so referencing one would match nothing.
+
+`NODE_VARIABLES` is separate. The node-exporter families write `instance=~"$nodeList"` literally in their templates (220 occurrences across `node-health.yaml` and `node-debug.yaml`, a convention inherited from the Node Exporter Full dashboard), so no parameter can supply it and a node dashboard has to define it. The pre-rendered `env-top` defines the four in `REQUIRED_VARIABLES` plus `includeSystemClusters`, `metricAdhoc` and the datasource — not `nodeList`.
+
+Those two families need vetting before a dashboard uses them: they were authored separately from the dashboards, so their conventions were not held to the same standard as the Materialize families. Treat their content as unreviewed rather than as a baseline.
+
+### Variable naming
+
+Two conventions, both load-bearing:
+
+- **`*List` marks the interpolation contract**, not multi-select. A `*List` variable is always interpolated as a pattern — write `instance=~"$nodeList"`, never `instance="$nodeList"` — because a single-select variable still renders as an alternation when "All" is chosen, and `=` against `a|b` matches nothing. The failure is silent, which is why the marker is worth the noise.
+- **`Name` vs `Id` records which identifier is stable.** `mzClusterList` carries the cluster *id* as its value with the name as display text, because cluster names are neither stable nor unique. `environmentNameList` is the reverse: self-managed Materialize has no cloud organization id at all, so the name is the only stable identifier.
+
+The Rust implementation renamed two variables the Python still spells differently — `environmentIdList` -> `environmentNameList` (the old name was simply wrong: it holds `materialize_cloud_organization_name` values) and `node` -> `nodeList` (the sole pattern variable missing the marker).
+Until the Rust takes over rendering, a dashboard rendered by each is not permalink-compatible with the other: the variable name appears in Grafana URLs as `?var-environmentNameList=…`.
+
+Catalog enrichment lives in `mzmon_lib::query::enrich`, beside the renderer rather than under `grafana`, because the joins are plain PromQL shared between the registry's template functions and the dashboards — the same split the Python makes, for the same reason.
+Output is byte-identical to `py_mzmon_lib.enrich`, pinned by tests against captured Python output, so the two implementations do not churn against each other.
+
+One gap: **`mzEnvironmentName` is the identity.** The registry declares it and 25 queries use it, but no implementation exists on either side — there is no verified info metric mapping a namespace to an environment name, and the Python never exercised it because its dashboards hand-write their PromQL. Those queries render, and their legends show the namespace rather than a friendly name. This is a stub, not intended behavior.
+
+Note that dashboard-flavored PromQL is deliberately *not* parseable: `[$__rate_interval]` is not a duration. That is precisely why extraction substitutes `[42m]`. So `every_query_renders_through_the_dashboard_context` checks what is checkable instead — that all 207 PromQL queries render, that nothing is left unsubstituted, and that every `$name` in the output is a Grafana built-in or a declared variable.
+
+### Panel API
+
+`mzmon_lib::grafana::panel` builds panels. Its shape comes from an analysis of `env-top.yaml` rather than from porting the Python: of 4667 written fields there, 47% carried no panel-specific information.
+
+Three findings drive it:
+
+- **`kind` discriminants are never authored.** They accounted for ~600 field-writes of pure noise; `Panel::build` sets them.
+- **A panel's `options` block belongs to the plugin, not the panel.** `timeseries`, `table`, `gauge` and `barchart` each used exactly one options block across all 69 panels; `piechart` used two and `stat` five, differing only in display knobs. Each plugin gets a preset whose `Default` is the block the baseline used, and only the knobs that varied are exposed. `Panel<O>` is generic over its plugin's options, so `log_scale` on a stat panel does not compile.
+- **`fieldConfig` holds the real variation**, and it is a short list — `unit`, `min`, `noValue`, `custom`, `thresholds`, `color`, plus three one-offs. Those are the shared builder methods. `NoValue` names the recurring messages, four of which describe a missing scrape target rather than a filter miss.
+
+Two deviations from the baseline are deliberate, both taken from the load-and-save round trip:
+
+- `reduceOptions` emits `values` as well as `calcs`. The baseline emitted only `calcs`, and Grafana responded by filling the rest in *and* stamping `vizConfig.version` — a migration pass on ten panels every load.
+- `gauge`'s `showThresholdMarkers` defaults to `false`. The baseline asked for `true` and Grafana rewrote it to `false` on save, so `true` was never what rendered.
+
+`vizConfig.version` stays `""`: Grafana stamps the running plugin version on load and it is not predictable, so a guess would only be a value the server overwrites.
+
+`panel_presets_reproduce_the_golden_options_blocks` in `grafana_golden.rs` rebuilds all 69 baseline panels through the API and compares options blocks, allowing only the two deviations above. A new divergence fails the test.
+
+### Layout
+
+`mzmon_lib::grafana::layout` owns both halves of a dashboard's panel arrangement.
+A v2 dashboard keeps panels in a flat `elements` map and describes their arrangement in a separate `layout` tree that references them by name, so the two have to agree exactly — a reference with no element silently drops a panel, an element nobody references is invisible.
+`Layout::assemble` builds both together, which is the only place that can guarantee they line up; it rejects duplicate element names and an empty layout.
+
+`AutoGridLayout` is why there is no partition arithmetic: a `GridLayout` needs an x/y/w/h per panel, while an auto-grid takes a column cap and flows panels into it. Every row of the baseline uses one.
+
+Nesting follows the baseline — tabs of rows of auto-grids, or `Layout::rows` for a dashboard with no tabs. The schema also allows `GridLayout` anywhere and arbitrary re-nesting of rows and tabs; none of that is modelled, since nothing uses it and the generated types remain available.
+
+Two things the layout owns because they are generated rather than authored:
+
+- **Panel ids.** Sequential from `FIRST_PANEL_ID` (1000, matching the baseline's `1000..1068`). `Panel::build` takes an id for direct use, and the assembly overwrites it — only the assembly knows the full set.
+- **Nothing else.** Element *names* are authored, not derived: only 14 of the baseline's 69 are slugs of their titles, and the rest are deliberately short stable ids (`availability-percent` for "Environment Availability (Select Time Range)"). Deriving them from titles would couple a permalink-visible identifier to display-text churn.
+
+`the_layout_api_reproduces_the_golden_tree` rebuilds the baseline's whole tree — 6 tabs, 22 rows, 69 placements — through the API and compares it field for field, allowing only `collapse` and `hideHeader`, which are emitted deliberately (Grafana writes `collapse` on save; `hideHeader` has no schema default, so absent and `false` behave identically).
+
 ### Query bridge
 
 `mzmon_lib::grafana::query` turns a registry query into the two things a panel needs.
@@ -98,7 +168,7 @@ Two details worth knowing:
 - **Description formatting.** The registry's `Description` is structured (summary / nominal / degraded / unhealthy / notes); the hand-written panels inline "Nominal: …" in flowing prose. The bridge emits the summary in bold followed by the behavioral fields as labeled paragraphs, and unwraps the YAML hard-wrapping. That is one function (`format_description`) if the convention should change.
 
 The registry-to-dashboard path is new: the Python dashboards hand-write their PromQL inline with f-strings rather than going through the registry, so the pre-rendered dashboards are not a byte-level baseline for it.
-What is still missing is a **dashboard `TemplateContext`** — the Rust side has `doc_context` and `tier_context` (both extraction-flavored, with sentinel parameter values), but nothing that resolves parameters to Grafana built-ins and dashboard variables (`interval` -> `[$__rate_interval]`, `mzEnvironmentFilter` -> `materialize_cloud_organization_name=~"$environmentIdList"`, and so on).
+The context that resolves parameters to Grafana built-ins and dashboard variables is `dashboard_context`, above.
 
 `packages/mzmon-lib/tests/grafana_query_bridge.rs` runs the bridge over every PromQL query in the registry (207 at the time of writing) plus the named availability query in detail.
 The registry has no LogQL queries yet, so the Loki path is covered only by unit tests.

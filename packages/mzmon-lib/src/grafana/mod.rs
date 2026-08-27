@@ -17,5 +17,8 @@
 //!   variant has a `kind` field with a `const` value. The generated enums are
 //!   therefore `#[serde(untagged)]`: exact on the write path, but deserialization
 //!   failures report only "data did not match any variant".
+pub mod context;
 pub mod generated;
+pub mod layout;
+pub mod panel;
 pub mod query;

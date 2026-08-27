@@ -156,3 +156,118 @@ fn log_queries_bridge_to_loki() {
         eprintln!("note: registry has no LogQL queries; the Loki path is unexercised");
     }
 }
+
+/// Every registry query must render through the dashboard context.
+///
+/// Note what is *not* checked: dashboard-flavored PromQL is deliberately not
+/// parseable — `[$__rate_interval]` is not a duration — which is exactly why the
+/// extraction contexts substitute `[42m]` sentinels instead. So this asserts the
+/// three things that are checkable and that actually break dashboards.
+#[test]
+fn every_query_renders_through_the_dashboard_context() {
+    use mzmon_lib::grafana::context::{
+        DashboardScope, NODE_VARIABLES, REQUIRED_VARIABLES, dashboard_context,
+    };
+
+    let registry = registry();
+    let scope = DashboardScope::default();
+    let ctx = dashboard_context(&registry, QueryEngine::PromQl, &scope);
+
+    // Grafana's own built-ins, plus the variables a dashboard must define.
+    let builtins = ["__rate_interval", "__range", "__interval", "__auto"];
+
+    let mut failures = Vec::new();
+    let mut rendered = 0usize;
+
+    for query in registry.iter_metric_queries() {
+        if query.promql.is_empty() {
+            continue;
+        }
+        let exprs = match query.render(&ctx) {
+            Ok(exprs) => exprs,
+            Err(e) => {
+                failures.push(format!("{}: render failed: {e}", query.id));
+                continue;
+            }
+        };
+        for expr in exprs {
+            rendered += 1;
+            // 1. Nothing left unsubstituted.
+            if expr.contains("%%{") {
+                failures.push(format!("{}: unsubstituted parameter", query.id));
+            }
+            // 2. Every `$name` resolves to something the dashboard provides.
+            //    An undefined variable interpolates to nothing and the selector
+            //    matches no series -- a panel that looks fine and is empty.
+            for reference in dollar_references(&expr) {
+                if !builtins.contains(&reference.as_str())
+                    && !REQUIRED_VARIABLES.contains(&reference.as_str())
+                    && !NODE_VARIABLES.contains(&reference.as_str())
+                {
+                    failures.push(format!("{}: references unknown ${reference}", query.id));
+                }
+            }
+        }
+    }
+
+    assert!(rendered > 0, "no PromQL queries rendered");
+    assert!(
+        failures.is_empty(),
+        "{} failure(s) across {rendered} rendered expression(s):\n  {}",
+        failures.len(),
+        failures.join("\n  ")
+    );
+}
+
+/// Queries that ask for catalog enrichment must actually get the join.
+#[test]
+fn enrichment_reaches_the_rendered_expression() {
+    use mzmon_lib::grafana::context::{DashboardScope, dashboard_context};
+
+    let registry = registry();
+    let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
+
+    // A query the registry annotates with both enrichment functions.
+    let id = "materialize.compute.hydration.slowest_collections";
+    let query = registry.get(id).expect("query should exist");
+    let exprs = query.render(&ctx).expect("render");
+    let expr = exprs.first().expect("one expression");
+
+    assert!(expr.contains("mz_object_info"), "no object join:\n{expr}");
+    assert!(expr.contains("mz_cluster_info"), "no cluster join:\n{expr}");
+    assert!(expr.contains("group_left(name)"), "no name pull:\n{expr}");
+    assert!(
+        expr.contains("group_left(cluster_name)"),
+        "no cluster_name pull:\n{expr}"
+    );
+
+    // The same query through the doc context gets neither join, which is what
+    // makes the two contexts worth having separately.
+    let doc = mzmon_lib::query::render::doc_context(&registry, QueryEngine::PromQl, "mz_");
+    let plain = query.render(&doc).expect("render").remove(0);
+    assert!(
+        !plain.contains("mz_object_info"),
+        "doc context should not join"
+    );
+}
+
+/// Every `$name` in a string.
+fn dollar_references(value: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = value;
+    while let Some(pos) = rest.find('$') {
+        let after = &rest[pos + 1..];
+        let len = after
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            .count();
+        // `$1` and friends are `label_replace` capture-group references --
+        // PromQL syntax, not Grafana variables. The enrichment joins emit them,
+        // and so do queries that do their own label_replace.
+        if len > 0 && !after[..len].bytes().all(|b| b.is_ascii_digit()) {
+            out.push(after[..len].to_string());
+        }
+        rest = &after[len..];
+    }
+    out
+}
