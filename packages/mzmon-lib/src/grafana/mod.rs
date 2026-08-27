@@ -18,9 +18,11 @@
 //!   therefore `#[serde(untagged)]`: exact on the write path, but deserialization
 //!   failures report only "data did not match any variant".
 pub mod context;
+pub mod dashboard;
 pub mod generated;
 pub mod layout;
 pub mod palette;
 pub mod panel;
 pub mod query;
 pub mod threshold;
+pub mod variable;

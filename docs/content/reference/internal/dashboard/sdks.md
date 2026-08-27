@@ -84,6 +84,30 @@ Three properties of the upstream schemas shape everything built on top of them:
 
 Two documents cannot be generated at all: `alerting` (typify panics deriving variant names for the `MatchType` enum `["=", "!=", "=~", "!~"]`) and, without normalization, `table` (cog emits a `default` that violates its own schema — `Options.footer` defaults `reducer` to null where `TableFooterOptions` requires an array).
 
+### Dashboard shell
+
+`mzmon_lib::grafana::dashboard::Dashboard` is the last layer: a title, a `Layout`, and a variable set produce either a bare `dashboardv2::Dashboard` (what the Grafana HTTP API takes) or the Kubernetes-style `Resource` the chart deploys.
+
+`build_spec` runs the check the variable-naming work was for: **every `$variable` a panel references must be defined by the dashboard**. An undefined Grafana variable interpolates to nothing, so the selector matches no series and the panel renders empty while looking healthy. Grafana's own built-ins (`$__rate_interval`, `$__range`, …) are exempt, and `label_replace` capture groups (`$1`) are not variables. Only panels are checked — a variable's own query legitimately references its predecessors, and `variable::environment_scoped` checks that chain itself.
+
+Three fields come from the load-and-save round trip, emitted so a UI save diffs clean: `liveNow: false`, the built-in `Annotations & Alerts` query (Grafana adds it to any dashboard that has none), and `cursorSync`.
+
+**`cursorSync` defaults to `Crosshair`, not Grafana's `Off`.** The baseline left it `Off`, which on a dashboard whose purpose is correlating across panels — "did memory climb when the lag did?" — means every comparison is done by eye against two independently-hovered charts. `Tooltip` adds every panel's tooltip at once, which suits a small focused dashboard rather than a 28-panel tab.
+
+`metadata.annotations` carries the `monitoring.materialize.cloud/*` hints the docsite shortcode reads. Grafana replaces them on a UI save, so they cannot gate anything without a reconcile step.
+
+### Variables
+
+`mzmon_lib::grafana::variable` ports `dashboards.variables`. `environment_scoped(sql_metric_prefix, multi)` returns the standard chained set in dependency order — datasource, environment, namespace, system-cluster toggle, cluster, replica, ad-hoc filter — each query narrowing the last.
+
+Two details worth knowing. The discovery queries read `mz_compute_commands_total`, genuine instrumentation present in every deployment and therefore never SQL-prefixed; only the cluster variable reads the SQL-derived `compute_cluster_status` and so must match the panels' prefix. And `clusters` uses `query_result` rather than `label_values` so the regex can put `compute_cluster_id` in the value and `compute_cluster_name` in the display text — Grafana sorts labels alphabetically, and `compute_cluster_id` sorts before `compute_cluster_name`, which is what makes that regex stable.
+
+Tests assert the set defines every `REQUIRED_VARIABLES` entry, that the chain references only names the set defines, and that the prefix lands on the cluster query alone.
+
+### End to end
+
+`packages/mzmon-lib/tests/grafana_end_to_end.rs` builds a complete dashboard through every layer — registry, context, bridge, panel presets, thresholds, layout, shell — and deserializes the result back through the generated models. Since those carry `deny_unknown_fields`, anything invented along the way fails there rather than at push time. It also checks both output shapes (enveloped resource and bare spec), referential integrity between `elements` and the layout, sequential panel ids, and that the round-trip fields are present.
+
 ### Render context
 
 `mzmon_lib::grafana::context::dashboard_context` is the Grafana-flavored [`TemplateContext`].
