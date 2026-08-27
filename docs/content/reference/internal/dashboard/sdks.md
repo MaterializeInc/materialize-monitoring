@@ -31,11 +31,19 @@ What you need to know to navigate the Grafana SDK landscape:
 ## Vendored schemas
 
 cog is the codegen framework; it does not itself publish the Grafana resource schemas.
-The generated artifacts are checked into grafana-foundation-sdk under `openapi/`, one document per package (`dashboardv2`, `timeseries`, `prometheus`, `common`, and so on).
+The generated artifacts are checked into grafana-foundation-sdk, one document per package (`dashboardv2`, `timeseries`, `prometheus`, `common`, and so on).
 Those documents are the authoritative shape of what Grafana accepts, so we vendor them rather than re-running cog.
 
-The full set of 55 documents lives at `packages/mzmon-lib/schemas/grafana/`, with a `PROVENANCE.md` recording the pin.
-`bin/fetch-grafana-schemas.sh` re-vendors them; that tree is the single copy, and the dashboards-as-code skill points at it rather than bundling its own.
+Upstream publishes the same 55 documents twice — as OpenAPI 3.0 under `openapi/` and as JSON Schema draft-07 under `jsonschema/`.
+We vendor the draft-07 set at `packages/mzmon-lib/schemas/grafana/`.
+The type definitions are identical (verified name-for-name and property-for-property across all 55 pairs), draft-07 is what the Rust codegen consumes directly, and it expresses nullability as `anyOf [T, null]` rather than the OpenAPI 3.0 `nullable` keyword that draft-07 tooling ignores.
+
+The one thing only the OpenAPI set carries is each document's `info` block: `x-schema-identifier`, `x-schema-kind`, `x-schema-variant`.
+That is load-bearing — the identifier is the Grafana plugin id that a dashboard puts in `VizConfigKind.group` (panels) or `DataQueryKind.group` (dataqueries), and it is not always the document name: `annotationslist` publishes as `annolist`.
+So `bin/fetch-grafana-schemas.sh` fetches both renderings, distills those three fields into `packages.json`, and keeps only that.
+
+The vendored `.jsonschema.json` files are byte-identical to upstream, which is why the directory is excluded from the formatters (see `.pre-commit-config.yaml` and `.ecrc`).
+Normalization that codegen needs happens in `bin/gen-grafana-models.sh` instead.
 
 The current pin is the grafana-foundation-sdk release tag `v0.0.18` (June 12, 2026), generated there by cog `v0.1.20`.
 Renovate maintains the `FSDK_REF` pin in the script via the `bin/*.sh` custom manager, and the `auto-format` workflow re-runs the script on PRs that touch it — Renovate can move the tag but cannot regenerate the vendored tree, so without that step a bump would land with stale schemas.
@@ -47,7 +55,7 @@ Upstream also publishes JSONSchema (draft 2020-12) renderings of the same docume
 
 Dashboard v1 was the schema used in Grafana 10 and 11 (earlier versions did not have a particular schema). Grafana 12 supported v1 by default but had an experimental option to use v2beta1. Dashboard v1 schemas are automatically migrated to v2 in later Grafana versions.
 
-The v1 openapi schema is vendored at `packages/mzmon-lib/schemas/grafana/dashboard.openapi.json`.
+The v1 schema is vendored at `packages/mzmon-lib/schemas/grafana/dashboard.jsonschema.json`.
 At the current pin it is generated from Grafana `v11.6.0`'s `public/openapi3.json`, as are the panel and datasource packages (from kind registry `v11.6.x`).
 
 ## Dashboard v2 schema
@@ -58,8 +66,27 @@ Dashboard v2 cannot be automatically downgraded to v1 inside Grafana; we provide
 
 Reference schemas, generated at the current pin from Grafana `v13.0.2`'s `apps/dashboard/kinds/` cue sources:
 
-- v2beta1: `packages/mzmon-lib/schemas/grafana/dashboardv2beta1.openapi.json`
-- v2: `packages/mzmon-lib/schemas/grafana/dashboardv2.openapi.json`
+- v2beta1: `packages/mzmon-lib/schemas/grafana/dashboardv2beta1.jsonschema.json`
+- v2: `packages/mzmon-lib/schemas/grafana/dashboardv2.jsonschema.json`
+
+## Rust models
+
+`bin/gen-grafana-models.sh` generates Rust types from the vendored schemas into `packages/mzmon-lib/src/grafana/generated/`, using [typify](https://github.com/oxidecomputer/typify) (pure Rust — no Java or Node in the build).
+The module is named `generated` rather than `gen` because `gen` is a reserved keyword in Rust edition 2024, which this workspace uses.
+
+Three properties of the upstream schemas shape everything built on top of them:
+
+- **No cross-document `$ref`s.** Every document is self-contained, so shared types are duplicated into each document that uses them: 1285 definitions under 769 distinct names, and 44 of the duplicated names genuinely disagree (`Options` exists in 24 documents with 24 different shapes). A flat namespace is impossible — one Rust module per document is the only mapping that works, which is what the upstream Go and Python SDKs also do. It also means `common` is not worth generating: nothing can `$ref` it, and every panel document already carries its own copy.
+- **Panel options are not typed in the dashboard document.** `VizConfigSpec.options` is a free-form map, so a typed `timeseries::Options` has to be serialized into it, paired with the plugin id from `packages.json`.
+- **The `*Kind` unions carry no `discriminator`**, even though every variant has a `kind` field with a `const` value. The generated enums are therefore `#[serde(untagged)]` — exact on the write path, but a deserialization failure reports only "data did not match any variant". This is the one place the foundation SDK adds something the schemas do not: hand-written unmarshallers keyed on `kind`.
+
+`PACKAGES` in the generation script is deliberately narrow — generating all 53 usable documents costs ~92k lines of mostly redundant copies. It currently tracks the six panel plugins `env-top.yaml` renders, plus the log panel and Loki dataquery for log dashboards.
+
+Two documents cannot be generated at all: `alerting` (typify panics deriving variant names for the `MatchType` enum `["=", "!=", "=~", "!~"]`) and, without normalization, `table` (cog emits a `default` that violates its own schema — `Options.footer` defaults `reducer` to null where `TableFooterOptions` requires an array).
+
+`packages/mzmon-lib/tests/grafana_golden.rs` parses the pre-rendered `env-top.yaml` into the generated models and checks that re-serializing loses nothing.
+That test is what caught the one place the schemas are narrower than Grafana itself: `MatcherConfig.options` is typed `object`, but Grafana's `byName` matcher takes a bare field-name string, which the golden dashboard emits and Grafana accepts.
+The generation script widens it, with the reasoning recorded inline.
 
 ## py-mzmon-lib and Grafana Foundation SDK
 

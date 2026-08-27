@@ -1,0 +1,280 @@
+{
+  "_comment": "GENERATED -- DO NOT EDIT. Plugin metadata distilled from the info block of grafana-foundation-sdk openapi/*.openapi.json at v0.0.18. identifier is the Grafana plugin id used as VizConfigKind.group (panelcfg) or DataQueryKind.group (dataquery); it is not always the document name. An empty identifier means the document carries no plugin identity (dashboardv2, common, units, ...).",
+  "packages": {
+    "alerting": {
+      "identifier": "AlertRuleGroup",
+      "kind": "core",
+      "variant": ""
+    },
+    "annotationslist": {
+      "identifier": "annolist",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "athena": {
+      "identifier": "grafana-athena-datasource",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "azuremonitor": {
+      "identifier": "grafana-azure-monitor-datasource",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "barchart": {
+      "identifier": "barchart",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "bargauge": {
+      "identifier": "bargauge",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "bigquery": {
+      "identifier": "grafana-bigquery-datasource",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "candlestick": {
+      "identifier": "candlestick",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "canvas": {
+      "identifier": "canvas",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "cloudwatch": {
+      "identifier": "cloudwatch",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "common": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "dashboard": {
+      "identifier": "Dashboard",
+      "kind": "core",
+      "variant": ""
+    },
+    "dashboardlist": {
+      "identifier": "dashlist",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "dashboardv2": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "dashboardv2beta1": {
+      "identifier": "",
+      "kind": "core",
+      "variant": ""
+    },
+    "datagrid": {
+      "identifier": "datagrid",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "datasource": {
+      "identifier": "datasource",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "debug": {
+      "identifier": "debug",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "elasticsearch": {
+      "identifier": "elasticsearch",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "expr": {
+      "identifier": "__expr__",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "folderv1": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "folderv1beta1": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "gauge": {
+      "identifier": "gauge",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "geomap": {
+      "identifier": "geomap",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "googlecloudmonitoring": {
+      "identifier": "cloud-monitoring",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "grafanapyroscope": {
+      "identifier": "grafanapyroscope",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "heatmap": {
+      "identifier": "heatmap",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "histogram": {
+      "identifier": "histogram",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "librarypanel": {
+      "identifier": "LibraryPanel",
+      "kind": "core",
+      "variant": ""
+    },
+    "logs": {
+      "identifier": "logs",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "loki": {
+      "identifier": "loki",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "news": {
+      "identifier": "news",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "nodegraph": {
+      "identifier": "nodeGraph",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "parca": {
+      "identifier": "parca",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "piechart": {
+      "identifier": "piechart",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "playlistv0alpha1": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "playlistv1": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "preferences": {
+      "identifier": "Preferences",
+      "kind": "core",
+      "variant": ""
+    },
+    "preferencesv1alpha1": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "prometheus": {
+      "identifier": "prometheus",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "publicdashboard": {
+      "identifier": "PublicDashboard",
+      "kind": "core",
+      "variant": ""
+    },
+    "resource": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "starsv1alpha1": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "stat": {
+      "identifier": "stat",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "statetimeline": {
+      "identifier": "state-timeline",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "statushistory": {
+      "identifier": "status-history",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "table": {
+      "identifier": "table",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "team": {
+      "identifier": "Team",
+      "kind": "core",
+      "variant": ""
+    },
+    "tempo": {
+      "identifier": "tempo",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "testdata": {
+      "identifier": "testdata",
+      "kind": "composable",
+      "variant": "dataquery"
+    },
+    "text": {
+      "identifier": "text",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "timeseries": {
+      "identifier": "timeseries",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "trend": {
+      "identifier": "trend",
+      "kind": "composable",
+      "variant": "panelcfg"
+    },
+    "units": {
+      "identifier": "",
+      "kind": "",
+      "variant": ""
+    },
+    "xychart": {
+      "identifier": "xychart",
+      "kind": "composable",
+      "variant": "panelcfg"
+    }
+  }
+}

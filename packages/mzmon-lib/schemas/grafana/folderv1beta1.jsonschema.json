@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/Folder",
+  "definitions": {
+    "Folder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "deprecated": true,
+      "x-deprecation-message": "Prefer using folder.Folder instead."
+    },
+    "FolderApiVersion": {
+      "type": "string",
+      "const": "folder.grafana.app/v1beta1"
+    },
+    "FolderKind": {
+      "type": "string",
+      "const": "Folder"
+    }
+  }
+}
