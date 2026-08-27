@@ -80,6 +80,12 @@ pub enum Error {
     #[error("template references unknown query {0:?}")]
     UnknownQuery(String),
 
+    /// A query id looked up directly in the registry is not present. Distinct
+    /// from [`Error::UnknownQuery`], which is a dangling `queryId` *inside* a
+    /// template -- this one is a caller asking for an id that does not exist.
+    #[error("no query {0:?} in the registry")]
+    NoSuchQuery(String),
+
     /// `promql-parser` failed to parse a rendered PromQL expression.
     #[error("failed to parse PromQL: {message}\n--- expression ---\n{expr}")]
     PromQlParse { expr: String, message: String },

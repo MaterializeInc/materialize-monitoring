@@ -13,7 +13,7 @@ description: |
   an alert — if something here is worth paging on, it belongs in
   `node-health.yaml` instead.
 
-  The conventions are the same as `node-health.yaml`: `instance=~"$node"` rather
+  The conventions are the same as `node-health.yaml`: `instance=~"$nodeList"` rather
   than `=`, every query wrapped in `max by (instance, ...)` (or `min` where low
   is the bad direction) so a second scrape job cannot double-count, inner
   aggregations carrying `by (instance, job)` so the outer wrapper is what
@@ -44,48 +44,48 @@ queries:
       - |
         max by (instance) (
           avg by (instance, job) (
-            rate(node_cpu_seconds_total{mode="system", instance=~"$node"}%%{interval})
+            rate(node_cpu_seconds_total{mode="system", instance=~"$nodeList"}%%{interval})
           )
         )
       - |
         max by (instance) (
           avg by (instance, job) (
-            rate(node_cpu_seconds_total{mode="user", instance=~"$node"}%%{interval})
+            rate(node_cpu_seconds_total{mode="user", instance=~"$nodeList"}%%{interval})
           )
         )
       - |
         max by (instance) (
           avg by (instance, job) (
-            rate(node_cpu_seconds_total{mode="iowait", instance=~"$node"}%%{interval})
+            rate(node_cpu_seconds_total{mode="iowait", instance=~"$nodeList"}%%{interval})
           )
         )
       - |
         max by (instance) (
           avg by (instance, job) (
             sum without (mode) (
-              rate(node_cpu_seconds_total{mode=~".*irq", instance=~"$node"}%%{interval})
+              rate(node_cpu_seconds_total{mode=~".*irq", instance=~"$nodeList"}%%{interval})
             )
           )
         )
       - |
         max by (instance) (
           avg by (instance, job) (
-            rate(node_cpu_seconds_total{mode="steal", instance=~"$node"}%%{interval})
+            rate(node_cpu_seconds_total{mode="steal", instance=~"$nodeList"}%%{interval})
           )
         )
     # The fourth series averages across the individual irq modes rather than
     # summing them first, which Datadog cannot do in one query.
     datadogQuery:
       - |
-        avg:node_cpu_seconds_total{instance:$node, mode:system} by {instance}.as_rate()
+        avg:node_cpu_seconds_total{instance:$nodeList, mode:system} by {instance}.as_rate()
       - |
-        avg:node_cpu_seconds_total{instance:$node, mode:user} by {instance}.as_rate()
+        avg:node_cpu_seconds_total{instance:$nodeList, mode:user} by {instance}.as_rate()
       - |
-        avg:node_cpu_seconds_total{instance:$node, mode:iowait} by {instance}.as_rate()
+        avg:node_cpu_seconds_total{instance:$nodeList, mode:iowait} by {instance}.as_rate()
       - |
-        avg:node_cpu_seconds_total{instance:$node, mode:*irq} by {instance}.as_rate()
+        avg:node_cpu_seconds_total{instance:$nodeList, mode:*irq} by {instance}.as_rate()
       - |
-        avg:node_cpu_seconds_total{instance:$node, mode:steal} by {instance}.as_rate()
+        avg:node_cpu_seconds_total{instance:$nodeList, mode:steal} by {instance}.as_rate()
   - id: node.debug.cpu.per_core
     stability: canonical
     description:
@@ -97,10 +97,10 @@ queries:
         CPU 0, shows up here and nowhere else.
     promQL: |
       1 - max by (instance, cpu) (
-        rate(node_cpu_seconds_total{mode="idle", instance=~"$node"}%%{interval})
+        rate(node_cpu_seconds_total{mode="idle", instance=~"$nodeList"}%%{interval})
       )
     datadogQuery: |
-      1 - max:node_cpu_seconds_total{instance:$node, mode:idle} by {instance,cpu}.as_rate()
+      1 - max:node_cpu_seconds_total{instance:$nodeList, mode:idle} by {instance,cpu}.as_rate()
   - id: node.debug.schedstat.waiting
     stability: canonical
     description:
@@ -119,10 +119,10 @@ queries:
         reads as zeros.
     promQL: |
       max by (instance, cpu) (
-        rate(node_schedstat_waiting_seconds_total{instance=~"$node"}%%{interval})
+        rate(node_schedstat_waiting_seconds_total{instance=~"$nodeList"}%%{interval})
       )
     datadogQuery: |
-      max:node_schedstat_waiting_seconds_total{instance:$node} by {instance,cpu}.as_rate()
+      max:node_schedstat_waiting_seconds_total{instance:$nodeList} by {instance,cpu}.as_rate()
   - id: node.debug.context_switches
     stability: canonical
     description:
@@ -133,17 +133,17 @@ queries:
     promQL:
       - |
         max by (instance) (
-          rate(node_context_switches_total{instance=~"$node"}%%{interval})
+          rate(node_context_switches_total{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_intr_total{instance=~"$node"}%%{interval})
+          rate(node_intr_total{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_context_switches_total{instance:$node} by {instance}.as_rate()
+        max:node_context_switches_total{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_intr_total{instance:$node} by {instance}.as_rate()
+        max:node_intr_total{instance:$nodeList} by {instance}.as_rate()
 
   # --- memory --------------------------------------------------------------
   - id: node.debug.memory.breakdown
@@ -157,38 +157,38 @@ queries:
         `MemFree` being near zero is healthy.
     promQL:
       - |
-        max by (instance) (node_memory_MemTotal_bytes{instance=~"$node"})
+        max by (instance) (node_memory_MemTotal_bytes{instance=~"$nodeList"})
       - |
         max by (instance) (
-          node_memory_MemTotal_bytes{instance=~"$node"}
-          - node_memory_MemFree_bytes{instance=~"$node"}
-          - node_memory_Cached_bytes{instance=~"$node"}
-          - node_memory_Buffers_bytes{instance=~"$node"}
-          - node_memory_SReclaimable_bytes{instance=~"$node"}
+          node_memory_MemTotal_bytes{instance=~"$nodeList"}
+          - node_memory_MemFree_bytes{instance=~"$nodeList"}
+          - node_memory_Cached_bytes{instance=~"$nodeList"}
+          - node_memory_Buffers_bytes{instance=~"$nodeList"}
+          - node_memory_SReclaimable_bytes{instance=~"$nodeList"}
         )
       - |
         max by (instance) (
-          node_memory_Cached_bytes{instance=~"$node"}
-          + node_memory_Buffers_bytes{instance=~"$node"}
-          + node_memory_SReclaimable_bytes{instance=~"$node"}
+          node_memory_Cached_bytes{instance=~"$nodeList"}
+          + node_memory_Buffers_bytes{instance=~"$nodeList"}
+          + node_memory_SReclaimable_bytes{instance=~"$nodeList"}
         )
       - |
-        min by (instance) (node_memory_MemFree_bytes{instance=~"$node"})
+        min by (instance) (node_memory_MemFree_bytes{instance=~"$nodeList"})
     datadogQuery:
       - |
-        max:node_memory_MemTotal_bytes{instance:$node} by {instance}
+        max:node_memory_MemTotal_bytes{instance:$nodeList} by {instance}
       - |
-        max:node_memory_MemTotal_bytes{instance:$node} by {instance}
-          - max:node_memory_MemFree_bytes{instance:$node} by {instance}
-          - max:node_memory_Cached_bytes{instance:$node} by {instance}
-          - max:node_memory_Buffers_bytes{instance:$node} by {instance}
-          - max:node_memory_SReclaimable_bytes{instance:$node} by {instance}
+        max:node_memory_MemTotal_bytes{instance:$nodeList} by {instance}
+          - max:node_memory_MemFree_bytes{instance:$nodeList} by {instance}
+          - max:node_memory_Cached_bytes{instance:$nodeList} by {instance}
+          - max:node_memory_Buffers_bytes{instance:$nodeList} by {instance}
+          - max:node_memory_SReclaimable_bytes{instance:$nodeList} by {instance}
       - |
-        max:node_memory_Cached_bytes{instance:$node} by {instance}
-          + max:node_memory_Buffers_bytes{instance:$node} by {instance}
-          + max:node_memory_SReclaimable_bytes{instance:$node} by {instance}
+        max:node_memory_Cached_bytes{instance:$nodeList} by {instance}
+          + max:node_memory_Buffers_bytes{instance:$nodeList} by {instance}
+          + max:node_memory_SReclaimable_bytes{instance:$nodeList} by {instance}
       - |
-        min:node_memory_MemFree_bytes{instance:$node} by {instance}
+        min:node_memory_MemFree_bytes{instance:$nodeList} by {instance}
   - id: node.debug.memory.kernel
     stability: canonical
     description:
@@ -202,22 +202,22 @@ queries:
         connection-heavy node with a large conntrack table also lands here.
     promQL:
       - |
-        max by (instance) (node_memory_Slab_bytes{instance=~"$node"})
+        max by (instance) (node_memory_Slab_bytes{instance=~"$nodeList"})
       - |
-        max by (instance) (node_memory_SReclaimable_bytes{instance=~"$node"})
+        max by (instance) (node_memory_SReclaimable_bytes{instance=~"$nodeList"})
       - |
-        max by (instance) (node_memory_SUnreclaim_bytes{instance=~"$node"})
+        max by (instance) (node_memory_SUnreclaim_bytes{instance=~"$nodeList"})
       - |
-        max by (instance) (node_memory_Committed_AS_bytes{instance=~"$node"})
+        max by (instance) (node_memory_Committed_AS_bytes{instance=~"$nodeList"})
     datadogQuery:
       - |
-        max:node_memory_Slab_bytes{instance:$node} by {instance}
+        max:node_memory_Slab_bytes{instance:$nodeList} by {instance}
       - |
-        max:node_memory_SReclaimable_bytes{instance:$node} by {instance}
+        max:node_memory_SReclaimable_bytes{instance:$nodeList} by {instance}
       - |
-        max:node_memory_SUnreclaim_bytes{instance:$node} by {instance}
+        max:node_memory_SUnreclaim_bytes{instance:$nodeList} by {instance}
       - |
-        max:node_memory_Committed_AS_bytes{instance:$node} by {instance}
+        max:node_memory_Committed_AS_bytes{instance:$nodeList} by {instance}
   - id: node.debug.memory.page_faults
     stability: canonical
     description:
@@ -229,17 +229,17 @@ queries:
     promQL:
       - |
         max by (instance) (
-          rate(node_vmstat_pgfault{instance=~"$node"}%%{interval})
+          rate(node_vmstat_pgfault{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_vmstat_pgmajfault{instance=~"$node"}%%{interval})
+          rate(node_vmstat_pgmajfault{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_vmstat_pgfault{instance:$node} by {instance}.as_rate()
+        max:node_vmstat_pgfault{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_vmstat_pgmajfault{instance:$node} by {instance}.as_rate()
+        max:node_vmstat_pgmajfault{instance:$nodeList} by {instance}.as_rate()
   - id: node.debug.memory.reclaim
     stability: canonical
     description:
@@ -258,29 +258,29 @@ queries:
     promQL:
       - |
         max by (instance) (
-          rate(node_vmstat_pgscan_kswapd{instance=~"$node"}%%{interval})
+          rate(node_vmstat_pgscan_kswapd{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_vmstat_pgscan_direct{instance=~"$node"}%%{interval})
+          rate(node_vmstat_pgscan_direct{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_vmstat_pgsteal_kswapd{instance=~"$node"}%%{interval})
+          rate(node_vmstat_pgsteal_kswapd{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_vmstat_pgsteal_direct{instance=~"$node"}%%{interval})
+          rate(node_vmstat_pgsteal_direct{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_vmstat_pgscan_kswapd{instance:$node} by {instance}.as_rate()
+        max:node_vmstat_pgscan_kswapd{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_vmstat_pgscan_direct{instance:$node} by {instance}.as_rate()
+        max:node_vmstat_pgscan_direct{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_vmstat_pgsteal_kswapd{instance:$node} by {instance}.as_rate()
+        max:node_vmstat_pgsteal_kswapd{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_vmstat_pgsteal_direct{instance:$node} by {instance}.as_rate()
+        max:node_vmstat_pgsteal_direct{instance:$nodeList} by {instance}.as_rate()
 
   # --- storage -------------------------------------------------------------
   - id: node.debug.disk.iops
@@ -294,17 +294,17 @@ queries:
     promQL:
       - |
         max by (instance, device) (
-          rate(node_disk_reads_completed_total{instance=~"$node"}%%{interval})
+          rate(node_disk_reads_completed_total{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance, device) (
-          rate(node_disk_writes_completed_total{instance=~"$node"}%%{interval})
+          rate(node_disk_writes_completed_total{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_disk_reads_completed_total{instance:$node} by {instance,device}.as_rate()
+        max:node_disk_reads_completed_total{instance:$nodeList} by {instance,device}.as_rate()
       - |
-        max:node_disk_writes_completed_total{instance:$node} by {instance,device}.as_rate()
+        max:node_disk_writes_completed_total{instance:$nodeList} by {instance,device}.as_rate()
   - id: node.debug.disk.throughput
     stability: canonical
     description:
@@ -316,17 +316,17 @@ queries:
     promQL:
       - |
         max by (instance, device) (
-          rate(node_disk_read_bytes_total{instance=~"$node"}%%{interval})
+          rate(node_disk_read_bytes_total{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance, device) (
-          rate(node_disk_written_bytes_total{instance=~"$node"}%%{interval})
+          rate(node_disk_written_bytes_total{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_disk_read_bytes_total{instance:$node} by {instance,device}.as_rate()
+        max:node_disk_read_bytes_total{instance:$nodeList} by {instance,device}.as_rate()
       - |
-        max:node_disk_written_bytes_total{instance:$node} by {instance,device}.as_rate()
+        max:node_disk_written_bytes_total{instance:$nodeList} by {instance,device}.as_rate()
   - id: node.debug.disk.latency
     stability: canonical
     description:
@@ -339,31 +339,31 @@ queries:
     promQL:
       - |
         max by (instance, device) (
-          (rate(node_disk_reads_completed_total{instance=~"$node"}%%{interval}) > bool 0)
+          (rate(node_disk_reads_completed_total{instance=~"$nodeList"}%%{interval}) > bool 0)
           *
           (
-            rate(node_disk_read_time_seconds_total{instance=~"$node"}%%{interval})
-            / rate(node_disk_reads_completed_total{instance=~"$node"}%%{interval})
+            rate(node_disk_read_time_seconds_total{instance=~"$nodeList"}%%{interval})
+            / rate(node_disk_reads_completed_total{instance=~"$nodeList"}%%{interval})
           )
         )
       - |
         max by (instance, device) (
-          (rate(node_disk_writes_completed_total{instance=~"$node"}%%{interval}) > bool 0)
+          (rate(node_disk_writes_completed_total{instance=~"$nodeList"}%%{interval}) > bool 0)
           *
           (
-            rate(node_disk_write_time_seconds_total{instance=~"$node"}%%{interval})
-            / rate(node_disk_writes_completed_total{instance=~"$node"}%%{interval})
+            rate(node_disk_write_time_seconds_total{instance=~"$nodeList"}%%{interval})
+            / rate(node_disk_writes_completed_total{instance=~"$nodeList"}%%{interval})
           )
         )
     # No `> bool 0` guard in Datadog: an idle device divides by zero and drops
     # out of the graph rather than reading 0.
     datadogQuery:
       - |
-        max:node_disk_read_time_seconds_total{instance:$node} by {instance,device}.as_rate()
-          / max:node_disk_reads_completed_total{instance:$node} by {instance,device}.as_rate()
+        max:node_disk_read_time_seconds_total{instance:$nodeList} by {instance,device}.as_rate()
+          / max:node_disk_reads_completed_total{instance:$nodeList} by {instance,device}.as_rate()
       - |
-        max:node_disk_write_time_seconds_total{instance:$node} by {instance,device}.as_rate()
-          / max:node_disk_writes_completed_total{instance:$node} by {instance,device}.as_rate()
+        max:node_disk_write_time_seconds_total{instance:$nodeList} by {instance,device}.as_rate()
+          / max:node_disk_writes_completed_total{instance:$nodeList} by {instance,device}.as_rate()
   - id: node.debug.disk.queue_depth
     stability: canonical
     description:
@@ -374,10 +374,10 @@ queries:
         bottleneck rather than the workload having gone idle.
     promQL: |
       max by (instance, device) (
-        rate(node_disk_io_time_weighted_seconds_total{instance=~"$node"}%%{interval})
+        rate(node_disk_io_time_weighted_seconds_total{instance=~"$nodeList"}%%{interval})
       )
     datadogQuery: |
-      max:node_disk_io_time_weighted_seconds_total{instance:$node} by {instance,device}.as_rate()
+      max:node_disk_io_time_weighted_seconds_total{instance:$nodeList} by {instance,device}.as_rate()
   - id: node.debug.filesystem.inodes.available.ratio
     stability: canonical
     description:
@@ -389,15 +389,15 @@ queries:
         `min` because low is the bad direction.
     promQL: |
       min by (instance, mountpoint) (
-        node_filesystem_files_free{instance=~"$node", fstype!="rootfs"}
+        node_filesystem_files_free{instance=~"$nodeList", fstype!="rootfs"}
       )
       /
       max by (instance, mountpoint) (
-        node_filesystem_files{instance=~"$node", fstype!="rootfs"}
+        node_filesystem_files{instance=~"$nodeList", fstype!="rootfs"}
       )
     datadogQuery: |
-      min:node_filesystem_files_free{instance:$node, !fstype:rootfs} by {instance,mountpoint}
-        / max:node_filesystem_files{instance:$node, !fstype:rootfs} by {instance,mountpoint}
+      min:node_filesystem_files_free{instance:$nodeList, !fstype:rootfs} by {instance,mountpoint}
+        / max:node_filesystem_files{instance:$nodeList, !fstype:rootfs} by {instance,mountpoint}
 
   # --- network -------------------------------------------------------------
   - id: node.debug.network.throughput
@@ -411,17 +411,17 @@ queries:
     promQL:
       - |
         max by (instance, device) (
-          rate(node_network_receive_bytes_total{instance=~"$node"}%%{interval})
+          rate(node_network_receive_bytes_total{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance, device) (
-          rate(node_network_transmit_bytes_total{instance=~"$node"}%%{interval})
+          rate(node_network_transmit_bytes_total{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_network_receive_bytes_total{instance:$node} by {instance,device}.as_rate()
+        max:node_network_receive_bytes_total{instance:$nodeList} by {instance,device}.as_rate()
       - |
-        max:node_network_transmit_bytes_total{instance:$node} by {instance,device}.as_rate()
+        max:node_network_transmit_bytes_total{instance:$nodeList} by {instance,device}.as_rate()
   - id: node.debug.network.saturation
     stability: canonical
     description:
@@ -437,31 +437,31 @@ queries:
     promQL:
       - |
         max by (instance, device) (
-          (node_network_speed_bytes{instance=~"$node"} > bool 0)
+          (node_network_speed_bytes{instance=~"$nodeList"} > bool 0)
           *
           (
-            rate(node_network_receive_bytes_total{instance=~"$node"}%%{interval})
-            / node_network_speed_bytes{instance=~"$node"}
+            rate(node_network_receive_bytes_total{instance=~"$nodeList"}%%{interval})
+            / node_network_speed_bytes{instance=~"$nodeList"}
           )
         )
       - |
         max by (instance, device) (
-          (node_network_speed_bytes{instance=~"$node"} > bool 0)
+          (node_network_speed_bytes{instance=~"$nodeList"} > bool 0)
           *
           (
-            rate(node_network_transmit_bytes_total{instance=~"$node"}%%{interval})
-            / node_network_speed_bytes{instance=~"$node"}
+            rate(node_network_transmit_bytes_total{instance=~"$nodeList"}%%{interval})
+            / node_network_speed_bytes{instance=~"$nodeList"}
           )
         )
     # As above: interfaces whose driver reports no link speed drop out rather
     # than contributing 0.
     datadogQuery:
       - |
-        max:node_network_receive_bytes_total{instance:$node} by {instance,device}.as_rate()
-          / max:node_network_speed_bytes{instance:$node} by {instance,device}
+        max:node_network_receive_bytes_total{instance:$nodeList} by {instance,device}.as_rate()
+          / max:node_network_speed_bytes{instance:$nodeList} by {instance,device}
       - |
-        max:node_network_transmit_bytes_total{instance:$node} by {instance,device}.as_rate()
-          / max:node_network_speed_bytes{instance:$node} by {instance,device}
+        max:node_network_transmit_bytes_total{instance:$nodeList} by {instance,device}.as_rate()
+          / max:node_network_speed_bytes{instance:$nodeList} by {instance,device}
   - id: node.debug.network.operstate
     stability: canonical
     description:
@@ -478,17 +478,17 @@ queries:
     promQL:
       - |
         min by (instance, device) (
-          node_network_up{instance=~"$node"}
+          node_network_up{instance=~"$nodeList"}
         )
       - |
         min by (instance, device) (
-          node_network_carrier{instance=~"$node"}
+          node_network_carrier{instance=~"$nodeList"}
         )
     datadogQuery:
       - |
-        min:node_network_up{instance:$node} by {instance,device}
+        min:node_network_up{instance:$nodeList} by {instance,device}
       - |
-        min:node_network_carrier{instance:$node} by {instance,device}
+        min:node_network_carrier{instance:$nodeList} by {instance,device}
   - id: node.debug.softnet.processed
     stability: canonical
     description:
@@ -498,10 +498,10 @@ queries:
         receive processing is spread across cores or piled onto one.
     promQL: |
       max by (instance, cpu) (
-        rate(node_softnet_processed_total{instance=~"$node"}%%{interval})
+        rate(node_softnet_processed_total{instance=~"$nodeList"}%%{interval})
       )
     datadogQuery: |
-      max:node_softnet_processed_total{instance:$node} by {instance,cpu}.as_rate()
+      max:node_softnet_processed_total{instance:$nodeList} by {instance,cpu}.as_rate()
   - id: node.debug.softnet.dropped
     stability: canonical
     description:
@@ -515,10 +515,10 @@ queries:
         places the loss is attributable.
     promQL: |
       max by (instance, cpu) (
-        rate(node_softnet_dropped_total{instance=~"$node"}%%{interval})
+        rate(node_softnet_dropped_total{instance=~"$nodeList"}%%{interval})
       )
     datadogQuery: |
-      max:node_softnet_dropped_total{instance:$node} by {instance,cpu}.as_rate()
+      max:node_softnet_dropped_total{instance:$nodeList} by {instance,cpu}.as_rate()
   - id: node.debug.softnet.squeezed
     stability: canonical
     description:
@@ -531,10 +531,10 @@ queries:
         the warning you get before `node.debug.softnet.dropped` moves.
     promQL: |
       max by (instance, cpu) (
-        rate(node_softnet_times_squeezed_total{instance=~"$node"}%%{interval})
+        rate(node_softnet_times_squeezed_total{instance=~"$nodeList"}%%{interval})
       )
     datadogQuery: |
-      max:node_softnet_times_squeezed_total{instance:$node} by {instance,cpu}.as_rate()
+      max:node_softnet_times_squeezed_total{instance:$nodeList} by {instance,cpu}.as_rate()
   - id: node.debug.sockets.tcp
     stability: canonical
     description:
@@ -546,22 +546,22 @@ queries:
         can be retired — a connection-pooling problem, not a network one.
     promQL:
       - |
-        max by (instance) (node_sockstat_TCP_inuse{instance=~"$node"})
+        max by (instance) (node_sockstat_TCP_inuse{instance=~"$nodeList"})
       - |
-        max by (instance) (node_sockstat_TCP_alloc{instance=~"$node"})
+        max by (instance) (node_sockstat_TCP_alloc{instance=~"$nodeList"})
       - |
-        max by (instance) (node_sockstat_TCP_orphan{instance=~"$node"})
+        max by (instance) (node_sockstat_TCP_orphan{instance=~"$nodeList"})
       - |
-        max by (instance) (node_sockstat_TCP_tw{instance=~"$node"})
+        max by (instance) (node_sockstat_TCP_tw{instance=~"$nodeList"})
     datadogQuery:
       - |
-        max:node_sockstat_TCP_inuse{instance:$node} by {instance}
+        max:node_sockstat_TCP_inuse{instance:$nodeList} by {instance}
       - |
-        max:node_sockstat_TCP_alloc{instance:$node} by {instance}
+        max:node_sockstat_TCP_alloc{instance:$nodeList} by {instance}
       - |
-        max:node_sockstat_TCP_orphan{instance:$node} by {instance}
+        max:node_sockstat_TCP_orphan{instance:$nodeList} by {instance}
       - |
-        max:node_sockstat_TCP_tw{instance:$node} by {instance}
+        max:node_sockstat_TCP_tw{instance:$nodeList} by {instance}
   - id: node.debug.sockets.memory
     stability: canonical
     description:
@@ -574,14 +574,14 @@ queries:
         budgets are the same RAM.
     promQL:
       - |
-        max by (instance) (node_sockstat_TCP_mem_bytes{instance=~"$node"})
+        max by (instance) (node_sockstat_TCP_mem_bytes{instance=~"$nodeList"})
       - |
-        max by (instance) (node_sockstat_UDP_mem_bytes{instance=~"$node"})
+        max by (instance) (node_sockstat_UDP_mem_bytes{instance=~"$nodeList"})
     datadogQuery:
       - |
-        max:node_sockstat_TCP_mem_bytes{instance:$node} by {instance}
+        max:node_sockstat_TCP_mem_bytes{instance:$nodeList} by {instance}
       - |
-        max:node_sockstat_UDP_mem_bytes{instance:$node} by {instance}
+        max:node_sockstat_UDP_mem_bytes{instance:$nodeList} by {instance}
   - id: node.debug.tcp.retransmits
     stability: canonical
     description:
@@ -596,23 +596,23 @@ queries:
     promQL:
       - |
         max by (instance) (
-          rate(node_netstat_Tcp_RetransSegs{instance=~"$node"}%%{interval})
+          rate(node_netstat_Tcp_RetransSegs{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_TcpExt_TCPSynRetrans{instance=~"$node"}%%{interval})
+          rate(node_netstat_TcpExt_TCPSynRetrans{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_Tcp_OutSegs{instance=~"$node"}%%{interval})
+          rate(node_netstat_Tcp_OutSegs{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_netstat_Tcp_RetransSegs{instance:$node} by {instance}.as_rate()
+        max:node_netstat_Tcp_RetransSegs{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_TcpExt_TCPSynRetrans{instance:$node} by {instance}.as_rate()
+        max:node_netstat_TcpExt_TCPSynRetrans{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_Tcp_OutSegs{instance:$node} by {instance}.as_rate()
+        max:node_netstat_Tcp_OutSegs{instance:$nodeList} by {instance}.as_rate()
   - id: node.debug.tcp.errors
     stability: canonical
     description:
@@ -628,29 +628,29 @@ queries:
     promQL:
       - |
         max by (instance) (
-          rate(node_netstat_TcpExt_ListenOverflows{instance=~"$node"}%%{interval})
+          rate(node_netstat_TcpExt_ListenOverflows{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_TcpExt_ListenDrops{instance=~"$node"}%%{interval})
+          rate(node_netstat_TcpExt_ListenDrops{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_TcpExt_TCPRcvQDrop{instance=~"$node"}%%{interval})
+          rate(node_netstat_TcpExt_TCPRcvQDrop{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_TcpExt_TCPTimeouts{instance=~"$node"}%%{interval})
+          rate(node_netstat_TcpExt_TCPTimeouts{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_netstat_TcpExt_ListenOverflows{instance:$node} by {instance}.as_rate()
+        max:node_netstat_TcpExt_ListenOverflows{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_TcpExt_ListenDrops{instance:$node} by {instance}.as_rate()
+        max:node_netstat_TcpExt_ListenDrops{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_TcpExt_TCPRcvQDrop{instance:$node} by {instance}.as_rate()
+        max:node_netstat_TcpExt_TCPRcvQDrop{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_TcpExt_TCPTimeouts{instance:$node} by {instance}.as_rate()
+        max:node_netstat_TcpExt_TCPTimeouts{instance:$nodeList} by {instance}.as_rate()
   - id: node.debug.udp.errors
     stability: canonical
     description:
@@ -664,23 +664,23 @@ queries:
     promQL:
       - |
         max by (instance) (
-          rate(node_netstat_Udp_InErrors{instance=~"$node"}%%{interval})
+          rate(node_netstat_Udp_InErrors{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_Udp_RcvbufErrors{instance=~"$node"}%%{interval})
+          rate(node_netstat_Udp_RcvbufErrors{instance=~"$nodeList"}%%{interval})
         )
       - |
         max by (instance) (
-          rate(node_netstat_Udp_NoPorts{instance=~"$node"}%%{interval})
+          rate(node_netstat_Udp_NoPorts{instance=~"$nodeList"}%%{interval})
         )
     datadogQuery:
       - |
-        max:node_netstat_Udp_InErrors{instance:$node} by {instance}.as_rate()
+        max:node_netstat_Udp_InErrors{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_Udp_RcvbufErrors{instance:$node} by {instance}.as_rate()
+        max:node_netstat_Udp_RcvbufErrors{instance:$nodeList} by {instance}.as_rate()
       - |
-        max:node_netstat_Udp_NoPorts{instance:$node} by {instance}.as_rate()
+        max:node_netstat_Udp_NoPorts{instance:$nodeList} by {instance}.as_rate()
   - id: node.debug.udp.queues
     stability: canonical
     description:
@@ -692,17 +692,17 @@ queries:
     promQL:
       - |
         max by (instance) (
-          node_udp_queues{ip="v4", queue="rx", instance=~"$node"}
+          node_udp_queues{ip="v4", queue="rx", instance=~"$nodeList"}
         )
       - |
         max by (instance) (
-          node_udp_queues{ip="v4", queue="tx", instance=~"$node"}
+          node_udp_queues{ip="v4", queue="tx", instance=~"$nodeList"}
         )
     datadogQuery:
       - |
-        max:node_udp_queues{instance:$node, ip:v4, queue:rx} by {instance}
+        max:node_udp_queues{instance:$nodeList, ip:v4, queue:rx} by {instance}
       - |
-        max:node_udp_queues{instance:$node, ip:v4, queue:tx} by {instance}
+        max:node_udp_queues{instance:$nodeList, ip:v4, queue:tx} by {instance}
   - id: node.debug.arp.entries
     stability: canonical
     description:
@@ -713,10 +713,10 @@ queries:
         Large flat clusters are how you get there.
     promQL: |
       max by (instance, device) (
-        node_arp_entries{instance=~"$node"}
+        node_arp_entries{instance=~"$nodeList"}
       )
     datadogQuery: |
-      max:node_arp_entries{instance:$node} by {instance,device}
+      max:node_arp_entries{instance:$nodeList} by {instance,device}
 
   # --- time and entropy ----------------------------------------------------
   - id: node.debug.time.sync_status
@@ -731,10 +731,10 @@ queries:
         it until something else is unexplainable.
     promQL: |
       min by (instance) (
-        node_timex_sync_status{instance=~"$node"}
+        node_timex_sync_status{instance=~"$nodeList"}
       )
     datadogQuery: |
-      min:node_timex_sync_status{instance:$node} by {instance}
+      min:node_timex_sync_status{instance:$nodeList} by {instance}
   - id: node.debug.time.drift
     stability: canonical
     description:
@@ -745,18 +745,18 @@ queries:
         so the worst-drifting node in the selection is what surfaces.
     promQL:
       - |
-        max by (instance) (node_timex_offset_seconds{instance=~"$node"})
+        max by (instance) (node_timex_offset_seconds{instance=~"$nodeList"})
       - |
-        max by (instance) (node_timex_maxerror_seconds{instance=~"$node"})
+        max by (instance) (node_timex_maxerror_seconds{instance=~"$nodeList"})
       - |
-        max by (instance) (node_timex_estimated_error_seconds{instance=~"$node"})
+        max by (instance) (node_timex_estimated_error_seconds{instance=~"$nodeList"})
     datadogQuery:
       - |
-        max:node_timex_offset_seconds{instance:$node} by {instance}
+        max:node_timex_offset_seconds{instance:$nodeList} by {instance}
       - |
-        max:node_timex_maxerror_seconds{instance:$node} by {instance}
+        max:node_timex_maxerror_seconds{instance:$nodeList} by {instance}
       - |
-        max:node_timex_estimated_error_seconds{instance:$node} by {instance}
+        max:node_timex_estimated_error_seconds{instance:$nodeList} by {instance}
   - id: node.debug.entropy.available
     stability: canonical
     description:
@@ -768,14 +768,14 @@ queries:
         `min` on the available side because low is the bad direction.
     promQL:
       - |
-        min by (instance) (node_entropy_available_bits{instance=~"$node"})
+        min by (instance) (node_entropy_available_bits{instance=~"$nodeList"})
       - |
-        max by (instance) (node_entropy_pool_size_bits{instance=~"$node"})
+        max by (instance) (node_entropy_pool_size_bits{instance=~"$nodeList"})
     datadogQuery:
       - |
-        min:node_entropy_available_bits{instance:$node} by {instance}
+        min:node_entropy_available_bits{instance:$nodeList} by {instance}
       - |
-        max:node_entropy_pool_size_bits{instance:$node} by {instance}
+        max:node_entropy_pool_size_bits{instance:$nodeList} by {instance}
 
   # --- exporter itself -----------------------------------------------------
   - id: node.debug.exporter.scrape_duration
@@ -790,7 +790,7 @@ queries:
         busiest nodes first.
     promQL: |
       max by (instance, collector) (
-        node_scrape_collector_duration_seconds{instance=~"$node"}
+        node_scrape_collector_duration_seconds{instance=~"$nodeList"}
       )
     datadogQuery: |
-      max:node_scrape_collector_duration_seconds{instance:$node} by {instance,collector}
+      max:node_scrape_collector_duration_seconds{instance:$nodeList} by {instance,collector}
