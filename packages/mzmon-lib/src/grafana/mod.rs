@@ -20,5 +20,7 @@
 pub mod context;
 pub mod generated;
 pub mod layout;
+pub mod palette;
 pub mod panel;
 pub mod query;
+pub mod threshold;

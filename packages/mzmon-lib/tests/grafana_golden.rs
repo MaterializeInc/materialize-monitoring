@@ -446,3 +446,206 @@ fn layout_diff(
         _ => {}
     }
 }
+
+/// Every threshold ladder in the baseline must be attributable to a generator.
+///
+/// The generators were ported from `dashboards.threshold`, so the ladders the
+/// baseline actually carries are the test. Two deliberate divergences, both
+/// documented in `grafana::threshold`:
+///
+/// * The base step is added, so only the steps above it are compared.
+/// * `errors` and `load` now spread their palette over the *gaps* rather than the
+///   colour count, so the last colour lands on `max` instead of short of it.
+///
+/// The second is checked rather than waved through: a respaced ladder must keep
+/// the golden's colour sequence exactly, and its step gap must exceed the golden's
+/// by precisely `n / (n - 1)`, with every step following from that gap. Any other
+/// drift fails.
+#[test]
+fn threshold_generators_reproduce_the_golden_ladders() {
+    use mzmon_lib::grafana::threshold;
+
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+
+    let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
+    let value: serde_json::Value = serde_yaml_ng::from_str(&raw).expect("parse golden");
+
+    // Every generator call the Python dashboards make, per `grep threshold\.`.
+    let candidates = vec![
+        ("errors(1,100)", threshold::errors_default()),
+        ("errors(1,1)", threshold::errors(1.0, 1.0)),
+        ("errors(1,10)", threshold::errors(1.0, 10.0)),
+        (
+            "health(95,99) pct",
+            threshold::health(95.0, 99.0).percentage(),
+        ),
+        ("load(0,1)", threshold::load_default()),
+        (
+            "utilization(10GiB,100GiB,10GiB)",
+            threshold::utilization(10.0 * GIB, 100.0 * GIB, 10.0 * GIB),
+        ),
+        (
+            "stability(6h, high_bad)",
+            threshold::stability(6.0 * 3600.0, true),
+        ),
+        (
+            "stability(1h, high_bad)",
+            threshold::stability(3600.0, true),
+        ),
+        ("stability(2d)", threshold::stability_days(2.0, false)),
+    ];
+    // (value, colour) above the base, for each candidate.
+    let candidates: Vec<(&str, Vec<(f64, String)>)> = candidates
+        .into_iter()
+        .map(|(name, ladder)| {
+            let steps = ladder
+                .build()
+                .steps
+                .into_iter()
+                .skip(1)
+                .map(|s| (s.value.expect("non-base step has a value"), s.color))
+                .collect();
+            (name, steps)
+        })
+        .collect();
+
+    let mut unmatched = Vec::new();
+    let mut respaced = Vec::new();
+    let mut matched = 0usize;
+    for (panel, element) in value["spec"]["elements"].as_object().expect("elements") {
+        let defaults = &element["spec"]["vizConfig"]["spec"]["fieldConfig"]["defaults"];
+        let Some(golden) = defaults.get("thresholds") else {
+            continue;
+        };
+        // Only `health_thresholds` emits a base in the Python, as the sentinel
+        // `-2147483647`. Every other golden ladder starts on a real authored step
+        // that Grafana silently promotes to the base -- which is the whole reason
+        // the generators here add one -- so those must be compared in full.
+        let golden_steps = golden["steps"].as_array().expect("steps");
+        let sentinel = golden_steps
+            .first()
+            .and_then(|s| s["value"].as_f64())
+            .is_some_and(|v| v <= -2_147_483_647.0);
+        let want: Vec<(f64, String)> = golden_steps
+            .iter()
+            .skip(usize::from(sentinel))
+            .map(|s| {
+                (
+                    s["value"].as_f64().expect("value"),
+                    s["color"].as_str().expect("color").to_string(),
+                )
+            })
+            .collect();
+
+        // A colour sequence does not identify a generator on its own: `load` and
+        // `stability` share the incandescent palette, and the three `errors` calls
+        // share theirs. So try every candidate whose colours line up and keep the
+        // strongest verdict.
+        let mut best: Option<(&str, Respacing)> = None;
+        for (name, ours) in candidates.iter().filter(|(_, s)| colours_match(s, &want)) {
+            let verdict = respacing_verdict(ours, &want);
+            let better = matches!(
+                (&best, &verdict),
+                (None, _)
+                    | (Some((_, Respacing::Unexplained(_))), _)
+                    | (
+                        Some((_, Respacing::DeliberateRespace)),
+                        Respacing::Identical
+                    )
+            );
+            if better {
+                best = Some((name, verdict));
+            }
+        }
+
+        match best {
+            Some((_, Respacing::Identical)) => matched += 1,
+            Some((name, Respacing::DeliberateRespace)) => {
+                matched += 1;
+                respaced.push(format!("{panel} ({name})"));
+            }
+            Some((name, Respacing::Unexplained(why))) => {
+                unmatched.push(format!("{panel}: closest is {name}, but {why}"));
+            }
+            None => unmatched.push(format!(
+                "{panel}: no generator produces the colour sequence {:?}",
+                want.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>()
+            )),
+        }
+    }
+
+    assert!(
+        unmatched.is_empty(),
+        "{} golden ladder(s) unaccounted for:\n  {}",
+        unmatched.len(),
+        unmatched.join("\n  ")
+    );
+    assert_eq!(matched, 9, "the baseline carries 9 threshold ladders");
+    // Pin which ladders the respacing moves, so widening it is a visible change.
+    respaced.sort();
+    assert_eq!(
+        respaced,
+        vec![
+            "cpu-usage-current (load(0,1))",
+            "memory-usage-current (load(0,1))",
+            "sinks-iceberg-failures (errors(1,10))",
+            "sinks-kafka-tx-errors (errors(1,10))",
+        ],
+        "the respacing should move exactly the errors and load ladders"
+    );
+}
+
+/// How our ladder's values relate to the golden's.
+enum Respacing {
+    Identical,
+    /// Larger gaps by exactly `n / (n - 1)`: the count-divisor to gap-divisor fix.
+    DeliberateRespace,
+    Unexplained(String),
+}
+
+/// Classify a value difference, given the colours already match.
+fn respacing_verdict(ours: &[(f64, String)], golden: &[(f64, String)]) -> Respacing {
+    if ours.len() != golden.len() {
+        return Respacing::Unexplained(format!("{} steps vs {}", ours.len(), golden.len()));
+    }
+    if ours
+        .iter()
+        .zip(golden)
+        .all(|((a, _), (b, _))| (a - b).abs() < 1e-6)
+    {
+        return Respacing::Identical;
+    }
+    let n = ours.len();
+    if n < 2 {
+        return Respacing::Unexplained("single step differs".to_string());
+    }
+    // Both ladders start at `min`, so the first gap determines the spacing.
+    if (ours[0].0 - golden[0].0).abs() > 1e-6 {
+        return Respacing::Unexplained(format!("starts at {} not {}", ours[0].0, golden[0].0));
+    }
+    let golden_gap = golden[1].0 - golden[0].0;
+    let our_gap = ours[1].0 - ours[0].0;
+    if golden_gap.abs() < 1e-12 {
+        return Respacing::Unexplained("golden has no gap to compare".to_string());
+    }
+    let want_ratio = n as f64 / (n as f64 - 1.0);
+    if ((our_gap / golden_gap) - want_ratio).abs() > 1e-6 {
+        return Respacing::Unexplained(format!(
+            "gap ratio {:.6}, expected {want_ratio:.6}",
+            our_gap / golden_gap
+        ));
+    }
+    // And the whole ladder has to follow from that gap.
+    for (index, (value, _)) in ours.iter().enumerate() {
+        let want = ours[0].0 + our_gap * index as f64;
+        if (value - want).abs() > 1e-6 {
+            return Respacing::Unexplained(format!("step {index} is {value}, not {want}"));
+        }
+    }
+    Respacing::DeliberateRespace
+}
+
+/// Do two ladders share a colour sequence?
+fn colours_match(a: &[(f64, String)], b: &[(f64, String)]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|((_, ac), (_, bc))| ac == bc)
+}

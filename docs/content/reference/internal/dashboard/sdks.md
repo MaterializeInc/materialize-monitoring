@@ -137,6 +137,32 @@ Two deviations from the baseline are deliberate, both taken from the load-and-sa
 
 `panel_presets_reproduce_the_golden_options_blocks` in `grafana_golden.rs` rebuilds all 69 baseline panels through the API and compares options blocks, allowing only the two deviations above. A new divergence fails the test.
 
+### Thresholds and palettes
+
+`mzmon_lib::grafana::palette` and `mzmon_lib::grafana::threshold` port `dashboards.palette` and `dashboards.threshold`.
+Five ladder generators — `health`, `utilization`, `errors`, `load`, `stability` — plus `health_mapping` for the value-mapping equivalent, and `Ladder` for hand-built ladders.
+
+**The base step is the substantive change.** Grafana's first threshold step *is* the base: it colours everything below the second step and its own value is ignored. The schema says so — `Threshold.value` is nullable, documented as "Value null means -Infinity" — and the load-and-save round trip confirms it, Grafana rewriting whatever first value it is given to `0`.
+
+The Python does not model that. Only `health_thresholds` supplies a base, as `-2147483647`; the other four generators emit their first real threshold as step zero, so Grafana promotes it to the base and its colour bleeds down over everything beneath.
+On the baseline's error column — authored as `1 -> light orange` so that "non-zero jumps out visually" — that means **zero errors renders in the first error colour**.
+
+So every ladder emits an explicit base with `value: None`:
+
+- `health`, `load`, `stability`: the base repeats the first band, so rendering is unchanged and the step merely becomes honest.
+- `errors`: the base is the healthy colour, so a count below `min_errors` is no longer coloured as errors.
+- `utilization`: the base is the palette's low colour, so the region below `min_value` no longer inherits the `min_value` band.
+
+`Ladder::base` overrides it. Grafana normalises `None` back to `0` on save, so a UI round trip shows one changed field per ladder — cosmetic, and worth it: `0` is a real boundary for a metric that can go negative, `None` is not.
+
+**`errors` and `load` were respaced.** The Python divided the range by the colour *count* rather than by the number of gaps, so the top band opened at `min + (n-1)/n * (max - min)` and `max` was never reached: `errors(1, 100)` topped out at 80.2, and `load(0, 1)` at 0.909. That contradicts `error_thresholds`' own docstring ("how many errors for the highest color"). Dividing by the gaps instead puts the last colour on `max`, and gives `load` clean tenths.
+
+That moves four of the baseline's ladders — both `load` panels and the two `errors(1, 10)` sink panels. The golden test does not simply allowlist them: a respaced ladder has to keep the golden's colour sequence exactly, and its step gap has to exceed the golden's by precisely `n / (n - 1)` with every step following from that gap, so any other drift still fails.
+
+One quirk is preserved: `errors(1, 1)` yields five steps all at value 1, which the baseline's `sources-errors` panel relies on to mean "any error is the worst colour".
+
+`threshold_generators_reproduce_the_golden_ladders` checks all 9 ladders the baseline carries against the generator calls the Python dashboards make, comparing steps above the base.
+
 ### Layout
 
 `mzmon_lib::grafana::layout` owns both halves of a dashboard's panel arrangement.
