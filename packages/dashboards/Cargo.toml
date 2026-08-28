@@ -1,0 +1,17 @@
+[package]
+name = "mz-dashboards"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+mzmon-lib = { path = "../mzmon-lib" }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml_ng = "0.10.0"
+thiserror = "2"
+
+[dev-dependencies]
+serde_yaml_ng = "0.10.0"

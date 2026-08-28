@@ -121,7 +121,22 @@ pub fn health_default() -> Ladder {
 ///
 /// Unlike the Python, everything below `min_value` takes the palette's low colour
 /// rather than inheriting the `min_value` band.
+///
+/// # Panics
+///
+/// If `step` is not a positive finite number. The loop below advances by `step`,
+/// so a zero or negative one never reaches `max_value` and spins forever. A
+/// dashboard is built at CI time from literal arguments, so failing loudly at the
+/// call site beats returning a `Result` every caller would unwrap.
 pub fn utilization(min_value: f64, max_value: f64, step: f64) -> Ladder {
+    assert!(
+        step.is_finite() && step > 0.0,
+        "utilization step must be a positive finite number, got {step}"
+    );
+    assert!(
+        min_value.is_finite() && max_value.is_finite(),
+        "utilization bounds must be finite, got {min_value}..{max_value}"
+    );
     let total = palette::INCANDESCENT.len();
     let mut ladder = Ladder::new(palette::INCANDESCENT[0]);
     let mut value = min_value;
@@ -370,6 +385,19 @@ mod tests {
         // unreachable -- healthy/unhealthy only, as the Python documents.
         assert_eq!(built.steps.len(), 3);
         assert_eq!(built.steps[1].value, built.steps[2].value);
+    }
+
+    #[test]
+    #[should_panic(expected = "positive finite")]
+    fn a_zero_utilization_step_panics_rather_than_spinning() {
+        // `while value < max { value += step }` never terminates on a zero step.
+        utilization(80.0, 100.0, 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "positive finite")]
+    fn a_negative_utilization_step_panics() {
+        utilization(80.0, 100.0, -10.0);
     }
 
     #[test]

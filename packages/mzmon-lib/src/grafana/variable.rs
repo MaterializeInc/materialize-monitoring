@@ -145,16 +145,24 @@ pub fn metrics_datasource() -> dashboardv2::VariableKind {
 
 /// Environment selector, by organization *name*.
 ///
-/// `multi` is opt-in because most dashboards read one environment at a time, but
-/// queries must treat the value as a pattern either way — hence the `*List` name.
-pub fn environments(multi: bool) -> dashboardv2::VariableKind {
+/// **Single-select on purpose.** Object and cluster ids are only unique *within*
+/// one environment, and both the registry's aggregations and
+/// [`crate::query::enrich`]'s joins match on those ids alone — so selecting two
+/// environments can merge unrelated series, or break the enrichment join with a
+/// duplicate id on its right-hand side. Multi-select becomes safe once the
+/// organization label survives those aggregations and is part of the enrichment
+/// join keys; until then this deliberately does not offer it.
+///
+/// Queries must still treat the value as a *pattern* — hence the `*List` name —
+/// because a custom value interpolates as an alternation.
+pub fn environments() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::ENVIRONMENT_NAME_LIST,
         label: "Environment",
         description: "The current environment to view",
         expr: format!("label_values({INFO_METRIC}, materialize_cloud_organization_name)"),
-        multi,
-        include_all: multi,
+        multi: false,
+        include_all: false,
         all_value: Some(".*"),
         hide: dashboardv2::VariableHide::DontHide,
         sort: dashboardv2::VariableSort::AlphabeticalAsc,
@@ -322,14 +330,19 @@ pub fn metric_adhoc() -> dashboardv2::VariableKind {
 ///
 /// Order matters to a reader, not to Grafana: each variable's query references
 /// the one before it, so listing them in that order is what makes the chain
-/// legible in the variable editor.
-pub fn environment_scoped(
-    sql_metric_prefix: &str,
-    multi_environment: bool,
-) -> Vec<dashboardv2::VariableKind> {
+/// legible in the variable editor. It is also the order the controls appear in,
+/// so the row reads as a narrowing funnel — environment, then namespace, then
+/// cluster, then replica — with the system-cluster toggle sitting where it gates
+/// the cluster list and the ad-hoc filter last, being a free-form escape hatch
+/// rather than a step in the funnel.
+///
+/// This differs from the Python, which emitted the ad-hoc filter second because
+/// it registered datasources before variables. That was an artifact of the call
+/// order, not a choice about the controls row.
+pub fn environment_scoped(sql_metric_prefix: &str) -> Vec<dashboardv2::VariableKind> {
     vec![
         metrics_datasource(),
-        environments(multi_environment),
+        environments(),
         namespaces(),
         include_system_clusters(),
         clusters(sql_metric_prefix),
@@ -375,7 +388,7 @@ mod tests {
     fn the_standard_set_defines_every_required_variable() {
         // The check that matters: an undefined variable interpolates to nothing
         // and every selector using it silently matches no series.
-        let set = environment_scoped("mz_", false);
+        let set = environment_scoped("mz_");
         let defined = names(&set);
         for required in REQUIRED_VARIABLES {
             assert!(
@@ -388,7 +401,7 @@ mod tests {
     #[test]
     fn the_standard_set_is_listed_in_dependency_order() {
         assert_eq!(
-            names(&environment_scoped("mz_", false)),
+            names(&environment_scoped("mz_")),
             vec![
                 "metricsDatasource",
                 "environmentNameList",
@@ -403,7 +416,7 @@ mod tests {
 
     #[test]
     fn no_variable_is_defined_twice() {
-        let set = environment_scoped("mz_", true);
+        let set = environment_scoped("mz_");
         let mut seen = names(&set);
         let count = seen.len();
         seen.sort_unstable();
@@ -431,7 +444,7 @@ mod tests {
         // The chain is the part that breaks quietly: `mzReplicaList` reads
         // `$mzClusterList`, which reads `$includeSystemClusters`, and a rename
         // anywhere in that line leaves an empty selector.
-        let set = environment_scoped("mz_", false);
+        let set = environment_scoped("mz_");
         let defined = names(&set);
         for variable in &set {
             let Some(expr) = expr_of(variable) else {
@@ -449,7 +462,7 @@ mod tests {
 
     #[test]
     fn the_chain_narrows_in_order() {
-        let set = environment_scoped("mz_", false);
+        let set = environment_scoped("mz_");
         let expr = |name: &str| {
             set.iter()
                 .find(|v| name_of(v) == name)
@@ -470,7 +483,7 @@ mod tests {
         // `compute_cluster_status` is SQL-derived and must match the panels'
         // prefix; `mz_compute_commands_total` is genuine instrumentation and never
         // prefixed.
-        let cloud = environment_scoped("v2_mz_", false);
+        let cloud = environment_scoped("v2_mz_");
         let expr = |set: &[dashboardv2::VariableKind], name: &str| {
             set.iter()
                 .find(|v| name_of(v) == name)
@@ -481,33 +494,31 @@ mod tests {
         assert!(expr(&cloud, "mzReplicaList").contains("mz_compute_commands_total"));
         assert!(!expr(&cloud, "mzReplicaList").contains("v2_mz_compute_commands_total"));
 
-        let self_managed = environment_scoped("mz_", false);
+        let self_managed = environment_scoped("mz_");
         assert!(expr(&self_managed, "mzClusterList").contains("mz_compute_cluster_status"));
     }
 
     #[test]
-    fn multi_environment_enables_the_all_option() {
-        let single = environment_scoped("mz_", false);
-        let multi = environment_scoped("mz_", true);
-        let spec = |set: &[dashboardv2::VariableKind]| match set
-            .iter()
-            .find(|v| name_of(v) == "environmentNameList")
-            .unwrap()
-        {
-            dashboardv2::VariableKind::QueryVariableKind(v) => v.spec.clone(),
+    fn the_environment_selector_is_single_select() {
+        // Multi-select would let two environments' id-keyed series merge, and would
+        // break the enrichment joins, which match on ids alone. See `environments`.
+        match environments() {
+            dashboardv2::VariableKind::QueryVariableKind(v) => {
+                assert!(!v.spec.multi, "multi-select is unsound with id-keyed joins");
+                assert!(
+                    !v.spec.include_all,
+                    "\"All\" is multi-select by another name"
+                );
+            }
             other => panic!("unexpected {other:?}"),
-        };
-        assert!(!spec(&single).multi);
-        assert!(!spec(&single).include_all);
-        assert!(spec(&multi).multi);
-        assert!(spec(&multi).include_all);
+        }
     }
 
     #[test]
     fn derived_variables_are_hidden_and_kept_out_of_the_url() {
         // A permalink that pins a derived namespace inconsistent with its own
         // environment is worse than one that re-derives it.
-        let set = environment_scoped("mz_", false);
+        let set = environment_scoped("mz_");
         match set
             .iter()
             .find(|v| name_of(v) == "mzNamespaceList")
@@ -523,7 +534,7 @@ mod tests {
 
     #[test]
     fn the_cluster_regex_names_both_captures() {
-        match environment_scoped("mz_", false)
+        match environment_scoped("mz_")
             .into_iter()
             .find(|v| name_of(v) == "mzClusterList")
             .unwrap()

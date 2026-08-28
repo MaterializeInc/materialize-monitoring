@@ -15,6 +15,7 @@ ALL_BINARIES = mz-monitoring-build mz-monitoring-check
 # Rust sources
 SOURCES_mzmon-lib = $(shell find packages/mzmon-lib -type f)
 SOURCES_mz-monitoring-build = $(shell find packages/mz-monitoring-build -type f)
+SOURCES_dashboards = $(shell find packages/dashboards -type f)
 SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 SOURCES_mz-monitoring-e2e = $(shell find packages/mz-monitoring-e2e -type f)
 
@@ -109,7 +110,7 @@ check-lfs:
 # Rust binary name
 BUILD_BIN_BASENAME = $(notdir $@)
 
-target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib)
+target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib) $(SOURCES_dashboards)
 	cargo build --bin "$(BUILD_BIN_BASENAME)"
 	# Ensure target uses a newer timestamp (cargo build can leave this as old)
 	touch "$@"
@@ -120,13 +121,11 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib)
 
 ### DASHBOARD SYNC ###
 
-SOURCES_py-mzmon-lib = $(shell find packages/py-mzmon-lib/src -type f)
-SOURCES_grafana-dashboards = $(shell find packages/grafana-dashboards/dashboards -type f) $(SOURCES_py-mzmon-lib)
-
-charts/materialize-monitoring/pre-rendered/dashboards/grafana: $(SOURCES_grafana-dashboards)
+charts/materialize-monitoring/pre-rendered/dashboards/grafana: \
+		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
-	$(PY_RUN) -m dashboards.render -o "$@" --format yaml
+	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format yaml
 	touch "$@"
 
 ### PIPELINE SYNC ###
@@ -554,11 +553,17 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
-docs/assets/dashboards/grafana: $(SOURCES_grafana-dashboards)
+# Two files, same panels: the `gcp-` variant differs only in its `target-cloud`
+# annotation now that the gateway scrapes the kubelet's cAdvisor directly instead
+# of consuming GKE's reduced subset. It stays a separate artifact because the
+# docsite links it, and because a cloud could diverge again.
+docs/assets/dashboards/grafana: \
+		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.json
-	$(PY_RUN) -m dashboards.render -o "$@" --format json
-	$(PY_RUN) -m dashboards.render -o "$@" --format json --cloud-hint gcp --prefix gcp-
+	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json
+	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json \
+		--cloud gcp --prefix gcp-
 	touch "$@"
 
 # Generate docs

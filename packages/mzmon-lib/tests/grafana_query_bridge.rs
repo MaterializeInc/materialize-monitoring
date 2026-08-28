@@ -257,6 +257,10 @@ fn dollar_references(value: &str) -> Vec<String> {
     let mut rest = value;
     while let Some(pos) = rest.find('$') {
         let after = &rest[pos + 1..];
+        // `${name}` is as valid as `$name`; without stripping the brace the length
+        // below is zero and an unknown braced variable slips through. Matches the
+        // production validator in `grafana::dashboard`.
+        let after = after.strip_prefix('{').unwrap_or(after);
         let len = after
             .bytes()
             .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')

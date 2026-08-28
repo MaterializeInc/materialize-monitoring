@@ -80,11 +80,28 @@ pub enum Error {
     #[error("template references unknown query {0:?}")]
     UnknownQuery(String),
 
+    /// The query rendered, but the engine has no Grafana datasource, so there is
+    /// nothing to point a dataquery at.
+    ///
+    /// Distinct from [`Error::MissingExpression`]: the expression exists and is
+    /// fine, it just cannot be shown in Grafana.
+    #[error("query {id:?} rendered for {engine}, which has no Grafana datasource")]
+    UnsupportedGrafanaEngine { id: String, engine: EngineName },
+
     /// A query id looked up directly in the registry is not present. Distinct
     /// from [`Error::UnknownQuery`], which is a dangling `queryId` *inside* a
     /// template -- this one is a caller asking for an id that does not exist.
     #[error("no query {0:?} in the registry")]
     NoSuchQuery(String),
+
+    /// A panel supplied a different number of legend templates than the query has
+    /// expressions.
+    ///
+    /// Positional by construction: the templates line up with the `promQL` list the
+    /// registry declares, so a count mismatch means the panel and the query have
+    /// drifted apart and the labels would land on the wrong series.
+    #[error("query has {expected} expression(s) but {got} legend template(s) were given")]
+    LegendCount { expected: usize, got: usize },
 
     /// `promql-parser` failed to parse a rendered PromQL expression.
     #[error("failed to parse PromQL: {message}\n--- expression ---\n{expr}")]

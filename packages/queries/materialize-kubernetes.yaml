@@ -29,8 +29,8 @@ queries:
         available to the actual workload.
       notes: |
         Steps track `ALTER CLUSTER REPLICA SIZE`, replica create/drop, and pod
-        restarts. The Kubernetes Workloads tab includes the exporter (drop the
-        `container!="new-promsql-exporter"` clause); requires cAdvisor.
+        restarts. Requires cAdvisor. For the same total *including* the
+        monitoring exporter see `.all_containers`.
     promQL: |
       sum by (container) (
         container_spec_cpu_quota{%%{cAdvisorFilter}, container!="new-promsql-exporter"}
@@ -58,6 +58,43 @@ queries:
       sum:container_spec_memory_limit_bytes{%%{cAdvisorFilter}, !container:new-promsql-exporter} by {container}
 
   # --- current usage (Summary) — percent-of-limit + absolute siblings ------
+  - id: materialize.kubernetes.cpu.capacity.all_containers
+    stability: best-effort
+    description:
+      summary: |
+        Total CPU cores configured across every container in the environment,
+        including the monitoring exporter — the Kubernetes view of what is
+        provisioned rather than what is available to the workload.
+      notes: |
+        Differs from `materialize.kubernetes.cpu.capacity` only by counting the
+        monitoring exporter. Use that one to read workload capacity; use this one
+        when reconciling against what Kubernetes reports. Requires cAdvisor.
+    promQL: |
+      sum by (container) (
+        container_spec_cpu_quota{%%{cAdvisorFilter}}
+        / container_spec_cpu_period{%%{cAdvisorFilter}}
+      )
+    datadogQuery: |
+      sum:container_spec_cpu_quota{%%{cAdvisorFilter}} by {container} / 100000
+    instant: true
+  - id: materialize.kubernetes.memory.capacity.all_containers
+    stability: best-effort
+    description:
+      summary: |
+        Total memory configured across every container in the environment,
+        including the monitoring exporter — the Kubernetes view of what is
+        provisioned rather than what is available to the workload.
+      notes: |
+        Differs from `materialize.kubernetes.memory.capacity` only by counting the
+        monitoring exporter. Memory is the dominant constraint on Materialize:
+        in-memory arrangements live inside this total. Requires cAdvisor.
+    promQL: |
+      sum by (container) (
+        container_spec_memory_limit_bytes{%%{cAdvisorFilter}}
+      )
+    datadogQuery: |
+      sum:container_spec_memory_limit_bytes{%%{cAdvisorFilter}} by {container}
+    instant: true
   - id: materialize.kubernetes.cpu.usage.percent
     stability: best-effort
     description:
@@ -255,9 +292,9 @@ queries:
     promQL:
       - |
         sum by (namespace, pod, container) (
-          rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         ) / sum by (namespace, pod, container) (
-          kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}
+          kube_pod_container_resource_limits{resource="cpu", namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}
         )
       - |
         sum by (namespace, pod, container) (
@@ -287,9 +324,9 @@ queries:
     promQL:
       - |
         avg by (namespace, pod, container) (
-          container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}
+          container_memory_working_set_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}
         ) / avg by (namespace, pod, container) (
-          container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}
+          container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container!="new-promsql-exporter", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}
         )
       - |
         avg by (namespace, pod, container) (
@@ -317,7 +354,7 @@ queries:
     promQL:
       - |
         sum by (namespace, pod) (
-          rate(container_network_receive_bytes_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_network_receive_bytes_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         )
       - |
         sum by (namespace, pod) (
@@ -339,7 +376,7 @@ queries:
     promQL:
       - |
         sum by (namespace, pod) (
-          rate(container_network_transmit_bytes_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_network_transmit_bytes_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         )
       - |
         sum by (namespace, pod) (
@@ -365,7 +402,7 @@ queries:
     promQL:
       - |
         sum by (namespace, pod) (
-          rate(container_network_receive_errors_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_network_receive_errors_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         )
       - |
         sum by (namespace, pod) (
@@ -373,7 +410,7 @@ queries:
         )
       - |
         sum by (namespace, pod) (
-          rate(container_network_transmit_errors_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_network_transmit_errors_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         )
       - |
         sum by (namespace, pod) (
@@ -403,7 +440,7 @@ queries:
     promQL:
       - |
         sum by (namespace, pod) (
-          rate(container_network_receive_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_network_receive_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         )
       - |
         sum by (namespace, pod) (
@@ -411,7 +448,7 @@ queries:
         )
       - |
         sum by (namespace, pod) (
-          rate(container_network_transmit_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterList}-replica-%%{mzReplicaList}-.*"}%%{interval})
+          rate(container_network_transmit_packets_dropped_total{namespace=~"%%{mzNamespaceList}", pod=~".*-cluster-%%{mzClusterListRegex}-replica-%%{mzReplicaListRegex}-.*"}%%{interval})
         )
       - |
         sum by (namespace, pod) (

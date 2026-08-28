@@ -2,6 +2,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "packages/dashboards",
     "packages/mz-monitoring-build",
     "packages/mz-monitoring-check",
     "packages/mz-monitoring-e2e",

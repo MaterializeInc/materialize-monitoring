@@ -434,9 +434,9 @@ pub struct AdhocVariableKind {
     pub kind: ::std::string::String,
     #[serde(
         default,
-        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
     )]
-    pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
+    pub labels: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
     pub spec: AdhocVariableSpec,
 }
 #[doc = "`AdhocVariableKindDatasource`"]
@@ -907,18 +907,18 @@ pub struct AnnotationQuerySpec {
     #[serde(
         rename = "legacyOptions",
         default,
-        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
     )]
-    pub legacy_options: ::std::collections::HashMap<
+    pub legacy_options: ::std::collections::BTreeMap<
         ::std::string::String,
         ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     >,
     #[doc = "Mappings define how to convert data frame fields to annotation event fields."]
     #[serde(
         default,
-        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
     )]
-    pub mappings: ::std::collections::HashMap<::std::string::String, AnnotationEventFieldMapping>,
+    pub mappings: ::std::collections::BTreeMap<::std::string::String, AnnotationEventFieldMapping>,
     pub name: ::std::string::String,
     #[doc = "Placement can be used to display the annotation query somewhere else on the dashboard other than the default location."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -2394,7 +2394,7 @@ pub struct Dashboard {
     #[doc = "Whether a dashboard is editable or not."]
     #[serde(default = "defaults::default_bool::<true>")]
     pub editable: bool,
-    pub elements: ::std::collections::HashMap<::std::string::String, Element>,
+    pub elements: ::std::collections::BTreeMap<::std::string::String, Element>,
     pub layout: DashboardLayout,
     #[doc = "Links with references to other dashboards or external websites."]
     pub links: ::std::vec::Vec<DashboardLink>,
@@ -3017,9 +3017,9 @@ pub struct DataQueryKind {
     pub kind: ::std::string::String,
     #[serde(
         default,
-        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
     )]
-    pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
+    pub labels: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
     pub spec: ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
     pub version: ::std::string::String,
 }
@@ -4311,9 +4311,9 @@ pub struct GroupByVariableKind {
     pub kind: ::std::string::String,
     #[serde(
         default,
-        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
     )]
-    pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
+    pub labels: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
     pub spec: GroupByVariableSpec,
 }
 #[doc = "`GroupByVariableKindDatasource`"]
@@ -7669,7 +7669,7 @@ pub struct TransformationSpec {
 #[serde(deny_unknown_fields)]
 pub struct ValueMap {
     #[doc = "Map with <value_to_match>: ValueMappingResult. For example: { \"10\": { text: \"Perfection!\", color: \"green\" } }"]
-    pub options: ::std::collections::HashMap<::std::string::String, ValueMappingResult>,
+    pub options: ::std::collections::BTreeMap<::std::string::String, ValueMappingResult>,
     #[serde(rename = "type")]
     pub type_: MappingType,
 }
@@ -8022,9 +8022,9 @@ pub struct VariableOption {
     #[doc = "Additional properties for multi-props variables"]
     #[serde(
         default,
-        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
     )]
-    pub properties: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
+    pub properties: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
     #[doc = "Whether the option is selected or not"]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub selected: ::std::option::Option<bool>,

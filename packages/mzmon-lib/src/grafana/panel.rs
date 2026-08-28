@@ -350,12 +350,26 @@ impl PanelOptions for Table {
 
 /// Gauge preset. One options block across both baseline panels.
 ///
-/// `show_threshold_markers` defaults to `false`: the baseline asked for `true` and
-/// Grafana rewrote it to `false` on save, so `true` was never what rendered.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// `show_threshold_markers` defaults to `true`, matching the schema's own default:
+/// the markers are the coloured band around the gauge arc, which is how a gauge
+/// shows where the reading sits relative to its thresholds. Turning them off
+/// leaves a bare needle whose thresholds only affect the value's colour.
+///
+/// `show_threshold_labels` stays off — it prints the numeric boundaries around the
+/// arc, which is noise on a small panel.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Gauge {
     pub show_threshold_labels: bool,
     pub show_threshold_markers: bool,
+}
+
+impl Default for Gauge {
+    fn default() -> Self {
+        Gauge {
+            show_threshold_labels: false,
+            show_threshold_markers: true,
+        }
+    }
 }
 
 impl PanelOptions for Gauge {
@@ -686,9 +700,16 @@ impl<O: PanelOptions> Panel<O> {
                 // Constant across all 69 baseline panels.
                 links: Vec::new(),
                 transparent: self.transparent,
-                data: self
-                    .data
-                    .unwrap_or_else(|| crate::grafana::query::query_group(Vec::new())),
+                data: {
+                    // Transformations live on the query group, not the panel, so
+                    // they have to be folded in here. Building them separately and
+                    // forgetting this step dropped them silently.
+                    let mut data = self
+                        .data
+                        .unwrap_or_else(|| crate::grafana::query::query_group(Vec::new()));
+                    data.spec.transformations = self.transformations;
+                    data
+                },
                 viz_config: dashboardv2::VizConfigKind {
                     kind: VIZ_CONFIG_KIND.to_string(),
                     group: self.options.plugin_id().to_string(),
@@ -762,6 +783,52 @@ mod tests {
             assert_eq!(reduce["calcs"], serde_json::json!([]));
             assert_eq!(reduce["values"], false, "values must be present: {opts}");
         }
+    }
+
+    #[test]
+    fn transformations_reach_the_query_group() {
+        // They hang off the query group rather than the panel, so a builder that
+        // stored them without folding them in would drop them silently -- which is
+        // exactly what happened first time.
+        let transform = dashboardv2::TransformationKind {
+            kind: "Transformation".to_string(),
+            group: "merge".to_string(),
+            spec: dashboardv2::TransformationSpec {
+                options: Default::default(),
+                disabled: None,
+                filter: None,
+                topic: None,
+            },
+        };
+        let panel = Panel::table("t").transformations(vec![transform]).build(1);
+        assert_eq!(panel.spec.data.spec.transformations.len(), 1);
+        assert_eq!(panel.spec.data.spec.transformations[0].group, "merge");
+    }
+
+    #[test]
+    fn transformations_survive_a_supplied_query_group() {
+        // The data and the transformations arrive through different builder calls;
+        // neither may clobber the other regardless of order.
+        let data =
+            crate::grafana::query::query_group(vec![crate::grafana::query::promql_data_query(
+                "up", "ds", None,
+            )]);
+        let transform = dashboardv2::TransformationKind {
+            kind: "Transformation".to_string(),
+            group: "organize".to_string(),
+            spec: dashboardv2::TransformationSpec {
+                options: Default::default(),
+                disabled: None,
+                filter: None,
+                topic: None,
+            },
+        };
+        let panel = Panel::table("t")
+            .transformations(vec![transform])
+            .data(data)
+            .build(1);
+        assert_eq!(panel.spec.data.spec.queries.len(), 1);
+        assert_eq!(panel.spec.data.spec.transformations.len(), 1);
     }
 
     #[test]
@@ -861,7 +928,7 @@ mod tests {
     fn gauge_threshold_markers_default_off() {
         // The baseline asked for `true`; Grafana rewrote it to `false` on save.
         let opts = serde_json::to_value(options_of(&Panel::gauge("g").build(1))).unwrap();
-        assert_eq!(opts["showThresholdMarkers"], false);
+        assert_eq!(opts["showThresholdMarkers"], true);
     }
 
     #[test]

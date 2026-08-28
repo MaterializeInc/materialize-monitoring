@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 mzmon-lib = { path = "../mzmon-lib" }
+mz-dashboards = { path = "../dashboards" }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

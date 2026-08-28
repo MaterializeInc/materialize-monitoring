@@ -142,10 +142,10 @@ queries:
     datadogQuery: |
       avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}} by {mz_version}
     instant: true
-  # FIXME: `$__range:1m` is a literal Grafana subquery. The `range` param
-  # renders a bracketed range-vector, not a subquery step, so there's no
-  # portable placeholder for this yet — pinned to Grafana (won't render for
-  # GCM/Datadog as written). Repin once a bare-range / subquery-step param lands.
+  # The subquery window comes from `rangeWindow`, the bare (unbracketed) range:
+  # `range` renders a bracketed range-vector, which is not a subquery step. In a
+  # dashboard this follows the panel's own time picker; extraction sees a fixed
+  # window. The Datadog form below uses its own rollup rather than a subquery.
   - id: materialize.info.max_lag
     stability: best-effort
     description:
@@ -166,7 +166,7 @@ queries:
         max_over_time(
           (
             mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id!="", quantile="1"} < 1e9
-          )[1h:1m]
+          )[%%{rangeWindow}:1m]
         )
       )
     datadogQuery: |

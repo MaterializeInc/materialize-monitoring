@@ -147,6 +147,19 @@ impl DashboardScope {
             ..Self::default()
         }
     }
+
+    /// Whichever of the above matches `prefix`.
+    ///
+    /// The prefix reaches a dashboard as a plain string from the command line, so
+    /// this is the seam between "what was asked for" and the two known scopes.
+    /// An unrecognized prefix is carried through rather than rejected: it is a
+    /// metric-name prefix, and a deployment may legitimately have its own.
+    pub fn for_prefix(prefix: &str) -> Self {
+        DashboardScope {
+            sql_metric_prefix: prefix.to_string(),
+            ..Self::default()
+        }
+    }
 }
 
 /// Build the render context for a Grafana dashboard.
@@ -169,6 +182,11 @@ pub fn dashboard_context<'a>(
         // context hardcodes a window.
         ("interval", "[$__rate_interval]".to_string()),
         ("range", "[$__range]".to_string()),
+        // The bare window, for a subquery. `range` carries its own brackets, so
+        // `%%{range}:1m` would render `[$__range]:1m` -- not valid PromQL. A
+        // subquery in a dashboard panel wants the panel's own range, so this is
+        // what lets a query follow the time picker instead of hardcoding a window.
+        ("rangeWindow", "$__range".to_string()),
         ("mzSqlPrefix", scope.sql_metric_prefix.clone()),
         ("mzEnvironmentFilter", env_filter.clone()),
         ("mzEnvironmentNamespaceFilter", namespace_selector.clone()),
@@ -182,6 +200,21 @@ pub fn dashboard_context<'a>(
         ),
         ("mzClusterList", format!("${}", variables::MZ_CLUSTER_LIST)),
         ("mzReplicaList", format!("${}", variables::MZ_REPLICA_LIST)),
+        // Regex-escaped forms, for a variable interpolated as a *fragment* of a
+        // larger regex (`pod=~".*-cluster-%%{mzClusterListRegex}-replica-..."`).
+        // Grafana's default interpolation of a multi-valued variable is
+        // `{a,b}` -- a glob, meaningless inside a regex -- while `:regex` yields
+        // `(a|b)` and escapes metacharacters. Where the variable *is* the whole
+        // matcher (`instance_id=~"$mzClusterList"`) either form works, so the
+        // plain ones above stay as they are.
+        (
+            "mzClusterListRegex",
+            format!("${{{}:regex}}", variables::MZ_CLUSTER_LIST),
+        ),
+        (
+            "mzReplicaListRegex",
+            format!("${{{}:regex}}", variables::MZ_REPLICA_LIST),
+        ),
         (
             "mzNamespaceList",
             format!("${}", variables::MZ_NAMESPACE_LIST),
@@ -320,7 +353,7 @@ mod tests {
 
     #[test]
     fn node_is_declared_but_not_supplied_by_any_parameter() {
-        // The node families write `$node` literally, so no parameter can carry
+        // The node families write `$nodeList` literally, so no parameter can carry
         // it; the point of declaring it is that a dashboard must define it.
         let registry = QueryRegistry::new();
         let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());

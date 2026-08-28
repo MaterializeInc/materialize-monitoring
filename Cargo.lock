@@ -1499,6 +1499,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mz-dashboards"
+version = "0.9.0"
+dependencies = [
+ "mzmon-lib",
+ "serde_json",
+ "serde_yaml_ng",
+ "thiserror",
+]
+
+[[package]]
 name = "mz-monitoring-build"
 version = "0.1.0"
 dependencies = [
@@ -1506,6 +1516,7 @@ dependencies = [
  "clap",
  "glob",
  "indexmap",
+ "mz-dashboards",
  "mzmon-lib",
  "reqwest",
  "serde",

@@ -10,6 +10,7 @@
 use clap::{Parser, Subcommand};
 
 mod extract_metrics;
+mod gen_dashboards;
 mod gen_metric_tiers;
 mod gen_pipelines;
 mod gen_scrape_configs;
@@ -31,6 +32,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Render the dashboards into the chart's pre-rendered tree and docs assets.
+    GenDashboards(gen_dashboards::GenDashboardsArgs),
     /// Render alloy pipeline definitions into config.alloy files.
     GenPipelines(gen_pipelines::GenPipelinesArgs),
     /// Transpile prometheus-operator Monitors into a classic scrape_configs file.
@@ -51,6 +54,7 @@ enum Command {
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
+        Command::GenDashboards(args) => gen_dashboards::gen_dashboards(args),
         Command::GenPipelines(args) => gen_pipelines::gen_pipelines(args),
         Command::GenScrapeConfigs(args) => gen_scrape_configs::gen_scrape_configs(args),
         Command::ExtractMetrics(args) => extract_metrics::extract_metrics(args),

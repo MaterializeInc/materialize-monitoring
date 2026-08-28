@@ -198,6 +198,9 @@ fn extraction_context<'a>(
     let parameters = [
         ("interval", "[51m]"),
         ("range", "[42m]"),
+        // The bare window, for a subquery: `range` carries its own brackets, so
+        // `%%{range}:1m` would render `[42m]:1m`, which is not valid PromQL.
+        ("rangeWindow", "42m"),
         ("mzSqlPrefix", mz_sql_prefix),
         (
             "mzEnvironmentFilter",
@@ -210,6 +213,10 @@ fn extraction_context<'a>(
         ("mzOperatorNamespaceFilter", r#"namespace=~"materialize""#),
         ("mzClusterList", ".+"),
         ("mzReplicaList", ".+"),
+        // Extraction only reads metric names, so the regex-escaped forms resolve to
+        // the same sentinel as the plain ones.
+        ("mzClusterListRegex", ".+"),
+        ("mzReplicaListRegex", ".+"),
         ("mzNamespaceList", "materialize-environment"),
         (
             "cAdvisorFilter",
