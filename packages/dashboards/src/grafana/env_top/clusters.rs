@@ -17,8 +17,9 @@ use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::{theme, transform};
+use super::theme;
 use crate::grafana::queries::Queries;
+use crate::grafana::transform;
 
 /// The tab's theme, applied to every shaded panel here.
 const SHADE: &str = theme::CLUSTERS.shade;

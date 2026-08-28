@@ -69,6 +69,13 @@ pub mod variables {
     pub const OPERATOR_NAMESPACE: &str = "operatorNamespace";
     /// Logs (Loki) datasource.
     pub const LOGS_DATASOURCE: &str = "logsDatasource";
+    /// Selected deployment generations, for blue/green.
+    ///
+    /// Optional, like [`OPERATOR_NAMESPACE`]: only a dashboard that reasons about
+    /// rollouts defines it. Held as generation *numbers*, which reach a query as a
+    /// fragment of a name pattern rather than as a label value — see
+    /// [`variable::generations`](crate::grafana::variable::generations).
+    pub const MZ_GENERATION_LIST: &str = "mzGenerationList";
     /// Selected node-exporter instances.
     ///
     /// Unlike the others, this one is not supplied by any parameter: the
@@ -116,6 +123,35 @@ pub const NODE_VARIABLES: &[&str] = &[variables::NODE_LIST];
 /// all.
 pub const OPERATOR_VARIABLES: &[&str] = &[variables::OPERATOR_NAMESPACE];
 
+/// Variables required only by a dashboard that filters by deployment generation.
+///
+/// Unlike [`OPERATOR_VARIABLES`], no scope flag gates these: the two generation
+/// parameters always reference `$mzGenerationList`, so a dashboard using a query
+/// that names one must define it. Only queries about rollouts do.
+pub const GENERATION_VARIABLES: &[&str] = &[variables::MZ_GENERATION_LIST];
+
+/// The object-name pattern a generation appears in, as a regex with the
+/// generation itself left as `{}`.
+///
+/// Two shapes, because orchestratord names the two workloads differently:
+/// `…-environmentd-<generation>-<ordinal>` and, for a replica,
+/// `…-gen-<generation>-<ordinal>`. Both are matched, so one filter covers
+/// environmentd and clusterd rather than the caller picking.
+///
+/// The generation is deliberately *not* a label anywhere — orchestratord records
+/// it as a Kubernetes annotation, which neither kube-state-metrics nor the event
+/// pipeline surfaces. The name is the only place it reaches a query.
+const GENERATION_NAME_PATTERN: &str = r".*-(environmentd|gen)-({})-[0-9]+";
+
+/// The same pattern as a *capture*, for `label_replace` to lift the generation
+/// out of a pod name into a label of its own.
+///
+/// Non-capturing on the workload alternation so `$1` is the generation and
+/// nothing else. Kept beside [`GENERATION_NAME_PATTERN`] because the two must
+/// agree: a filter that admits a pod shape the capture cannot parse produces
+/// series with an empty `generation` label, which reads as a legend of blanks.
+const GENERATION_CAPTURE_PATTERN: &str = r".*-(?:environmentd|gen)-([0-9]+)-[0-9]+";
+
 /// Render a scope's namespace value as a regex-alternation fragment.
 ///
 /// A pinned namespace is a literal and goes in as it is. A `$variable` needs
@@ -127,6 +163,14 @@ fn regex_form(namespace: &str) -> String {
         Some(name) => format!("${{{name}:regex}}"),
         None => namespace.to_string(),
     }
+}
+
+/// [`GENERATION_NAME_PATTERN`] with the selected generations spliced in.
+fn generation_pattern_for_selection() -> String {
+    GENERATION_NAME_PATTERN.replace(
+        "{}",
+        &format!("${{{}:regex}}", variables::MZ_GENERATION_LIST),
+    )
 }
 
 /// The `%%{interval}` window for `engine`, as that datasource spells it.
@@ -322,6 +366,40 @@ pub fn dashboard_context<'a>(
             "excludeEnvironmentFilter",
             scope.exclude_environments.clone(),
         ),
+        // Generation, which is a *name* pattern rather than a label matcher --
+        // see `GENERATION_NAME_PATTERN`. `:regex` for the same reason as the
+        // cluster and replica forms: the value is a fragment of a larger regex,
+        // and Grafana's default multi-value interpolation is a glob.
+        (
+            "mzGenerationFilter",
+            format!(r#"pod=~"{}""#, generation_pattern_for_selection()),
+        ),
+        // The same idea for events, where the generation is in the object's name
+        // and the filter is a pipeline stage rather than a stream selector.
+        //
+        // The `or` is load-bearing. Only a handful of the objects a rollout
+        // touches carry a generation at all -- on this deployment, 6 of 70 event
+        // names -- and every operator lifecycle event is filed against the
+        // `Materialize` resource, which carries none. A bare `name=~` would drop
+        // the entire narrative and keep the pod noise. So: keep what belongs to a
+        // selected generation, and keep what belongs to no generation.
+        // The capture form, for a query that needs the generation as a *label*.
+        // A parameter rather than a template function because the `label_replace`
+        // has to wrap an inner selector, while a function wraps the whole
+        // template -- `label_replace(count by (generation) (...))` would be
+        // backwards.
+        (
+            "mzGenerationPattern",
+            GENERATION_CAPTURE_PATTERN.to_string(),
+        ),
+        (
+            "mzGenerationEventFilter",
+            format!(
+                r#"name=~"{}" or name!~"{}""#,
+                generation_pattern_for_selection(),
+                GENERATION_NAME_PATTERN.replace("{}", "[0-9]+"),
+            ),
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
@@ -389,6 +467,9 @@ mod tests {
             "mzEnvironmentNamespaceFilter",
             "mzSystemNamespaceFilter",
             "mzDeploymentNamespaceFilter",
+            "mzGenerationFilter",
+            "mzGenerationEventFilter",
+            "mzGenerationPattern",
             "mzEnvironmentFilter",
             "excludeEnvironmentFilter",
             "mzClusterList",
@@ -419,7 +500,8 @@ mod tests {
                     let known = builtins.contains(&reference.as_str())
                         || REQUIRED_VARIABLES.contains(&reference.as_str())
                         || NODE_VARIABLES.contains(&reference.as_str())
-                        || OPERATOR_VARIABLES.contains(&reference.as_str());
+                        || OPERATOR_VARIABLES.contains(&reference.as_str())
+                        || GENERATION_VARIABLES.contains(&reference.as_str());
                     assert!(
                         known,
                         "{engine} parameter {name} references unknown ${reference}"
@@ -554,6 +636,62 @@ mod tests {
             ctx.parameters["mzDeploymentNamespaceFilter"],
             r#"namespace=~"materialize|${mzNamespaceList:regex}""#
         );
+    }
+
+    #[test]
+    fn the_generation_filters_match_both_workload_naming_shapes() {
+        // environmentd is `…-environmentd-<gen>-<ordinal>` and a replica is
+        // `…-gen-<gen>-<ordinal>`. One filter has to cover both, or a tab about a
+        // rollout shows environmentd and silently omits its replicas.
+        let registry = QueryRegistry::new();
+        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
+        let filter = &ctx.parameters["mzGenerationFilter"];
+        assert_eq!(
+            filter,
+            r#"pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+""#
+        );
+    }
+
+    #[test]
+    fn the_generation_event_filter_keeps_objects_that_have_no_generation() {
+        // Most objects a rollout touches carry no generation, and every operator
+        // lifecycle event is filed against the `Materialize` resource, which
+        // carries none. A bare `name=~` would drop the whole narrative and keep
+        // the pod noise, so the `or` arm is the point of this parameter.
+        let registry = QueryRegistry::new();
+        let ctx = dashboard_context(&registry, QueryEngine::LogQl, &DashboardScope::default());
+        let filter = &ctx.parameters["mzGenerationEventFilter"];
+        assert_eq!(
+            filter,
+            concat!(
+                r#"name=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+""#,
+                r#" or name!~".*-(environmentd|gen)-([0-9]+)-[0-9]+""#
+            )
+        );
+        // The escape hatch is a negated matcher, not a second positive one --
+        // two positives would keep everything and the control would do nothing.
+        assert!(filter.contains(" or name!~"), "{filter}");
+    }
+
+    #[test]
+    fn the_generation_filters_interpolate_as_a_regex_fragment() {
+        // The value is spliced into a larger pattern, where Grafana's default
+        // multi-value interpolation (`{a,b}`) is a glob and matches nothing.
+        let registry = QueryRegistry::new();
+        for engine in [QueryEngine::PromQl, QueryEngine::LogQl] {
+            let ctx = dashboard_context(&registry, engine, &DashboardScope::default());
+            for key in ["mzGenerationFilter", "mzGenerationEventFilter"] {
+                let value = &ctx.parameters[key];
+                assert!(
+                    value.contains("${mzGenerationList:regex}"),
+                    "{key} does not use the regex form: {value}"
+                );
+                assert!(
+                    !value.contains("\"$mzGenerationList\""),
+                    "{key} uses the plain form: {value}"
+                );
+            }
+        }
     }
 
     #[test]

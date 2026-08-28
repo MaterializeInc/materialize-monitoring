@@ -103,6 +103,16 @@ $defs:
       # above cannot be combined by writing both, since repeating a label in one
       # selector is an AND and matches nothing.
       - "mzDeploymentNamespaceFilter"
+      # Deployment-generation filters, for blue/green. The generation is not a
+      # label anywhere -- orchestratord records it as an annotation -- so both of
+      # these match the object *name*: a pod matcher for metrics, and a label
+      # filter expression for events. The event form deliberately also keeps
+      # lines whose object carries no generation, since most do not.
+      - "mzGenerationFilter"
+      - "mzGenerationEventFilter"
+      # The same naming shape as a capture, for label_replace to lift the
+      # generation into a label of its own.
+      - "mzGenerationPattern"
       # Environment (org) scope filter fragment, e.g.
       # materialize_cloud_organization_name=~"$environmentIdList".
       - "mzEnvironmentFilter"

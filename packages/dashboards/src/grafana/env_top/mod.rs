@@ -36,7 +36,6 @@ pub mod selector;
 pub mod sources_sinks;
 pub mod summary;
 pub mod theme;
-pub mod transform;
 
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};

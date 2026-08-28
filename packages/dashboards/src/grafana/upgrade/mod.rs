@@ -55,6 +55,7 @@
 //! meanings of "what am I looking at" at once.
 
 pub mod events;
+pub mod generations;
 pub mod reconciliation;
 pub mod theme;
 
@@ -96,6 +97,7 @@ pub const REC_MZ_VERSION: &str = "v26.40.0";
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::EVENTS.title).rows(events::rows(q)),
+        Tab::new(theme::GENERATIONS.title).rows(generations::rows(q)),
         Tab::new(theme::RECONCILIATION.title).rows(reconciliation::rows(q)),
     ]
 }

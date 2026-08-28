@@ -146,6 +146,7 @@ recommended:
 - mz_active_sessions
 - mz_active_subscribes
 - mz_arrangement_maintenance_seconds_total
+- mz_compute_commands_total
 - mz_compute_controller_hydration_queue_size
 - mz_compute_peek_duration_seconds_bucket
 - mz_compute_replica_history_dataflow_count

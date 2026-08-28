@@ -37,6 +37,78 @@
     "description": "What happened during a Materialize upgrade.\n\nThe operator's own account of a rollout, alongside\nwhat the cluster did underneath it.",
     "editable": true,
     "elements": {
+      "active-generations": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count(\n  count by (generation) (\n    label_replace(\n      mz_compute_commands_total{\n        materialize_cloud_organization_name=~\"$environmentNameList\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    )\n  )\n)\n",
+                        "legendFormat": "generations",
+                        "qryType": 1,
+                        "query": "count(\n  count by (generation) (\n    label_replace(\n      mz_compute_commands_total{\n        materialize_cloud_organization_name=~\"$environmentNameList\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How many deployment generations are currently running — one between rollouts, two while one is in flight.**\n\n**Nominal:** One. A settled environment runs a single generation.\n\n**Degraded:** Two, for as long as a rollout takes. Both generations hold read holds and both cost compute, so this is the state you want to leave promptly rather than linger in.\n\n**Unhealthy:** Two for far longer than a rollout should take. Either the new generation never became ready, or it is ready and waiting for a manual promotion — _Events -> Rollout_ tells you which, and a `WaitingForApproval` there means the rollout is doing what it was configured to do.\n\nCounted from the environmentd pods that are reporting, so a generation appears here as soon as its environmentd starts serving metrics and disappears once it is torn down.",
+          "id": 1010,
+          "links": [],
+          "title": "Active Generations",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE7733",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No generations match the current filters"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "all-event-feed": {
         "kind": "Panel",
         "spec": {
@@ -55,7 +127,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\"}\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\"}\n  | name=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\" or name!~\".*-(environmentd|gen)-([0-9]+)-[0-9]+\"\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
                       },
                       "version": "v0"
                     },
@@ -97,6 +169,145 @@
           }
         }
       },
+      "collections-by-generation": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (generation) (\n  max by (generation, instance_id, collection_id) (\n    label_replace(\n      mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentNameList\",\n        pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    )\n  )\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "count by (generation) (\n  max by (generation, instance_id, collection_id) (\n    label_replace(\n      mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentNameList\",\n        pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Collections each generation is tracking — the denominator for hydration, and the shape of a new generation building out its dataflows.**\n\n**Nominal:** Both generations converging on the same count. The new one is meant to end up serving what the old one served.\n\n**Unhealthy:** A new generation whose count settles well below the old one's. It did not build every dataflow, so promoting it would lose what is missing.\n\nCounts every collection reporting a wallclock lag, hydrated or not, which is what makes it the denominator for _Hydration -> Hydrating Collections by Generation_.",
+          "id": 1016,
+          "links": [],
+          "title": "Collections by Generation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No generations match the current filters"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cpu-by-generation": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (generation) (\n  label_replace(\n    rate(\n      container_cpu_usage_seconds_total{\n        namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      }\n      [$__rate_interval]\n    ),\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  )\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "sum by (generation) (\n  label_replace(\n    rate(\n      container_cpu_usage_seconds_total{\n        namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      }\n      [$__rate_interval]\n    ),\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**CPU used by each generation's pods — what a rollout costs while both sides are up.**\n\n**Nominal:** The new generation drawing heavily while it hydrates, then settling to something like the old one's draw.\n\n**Unhealthy:** A new generation pinned at its limit long after hydration should have finished, or an old one still drawing after promotion, which means it was never torn down.\n\nCovers environmentd and the cluster replicas of each generation together. This is the panel that says whether the cluster can actually afford to run two generations at once — the answer is roughly double, for as long as the rollout lasts.",
+          "id": 1018,
+          "links": [],
+          "title": "CPU by Generation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "unit": "cores"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "environments-needing-update": {
         "kind": "Panel",
         "spec": {
@@ -131,7 +342,7 @@
             }
           },
           "description": "**How many environments in this cluster are still running an outdated pod template — the count an upgrade is working to bring to zero.**\n\n**Nominal:** Zero between upgrades. Non-zero during one, falling as environments are rolled.\n\n**Unhealthy:** A count that stops falling. The rollout has stalled rather than finished; read _Reconciliation Passes -> Pass Outcomes_ for whether the operator is still trying, and the Events tab for what it said about why.\n\nDeliberately not alarm-coloured. A non-zero reading is what an upgrade in progress looks like, and colouring it red would fire on every routine one. What matters is the *direction*, which is why this is a sparkline rather than a bare number.\n\nOnly the leader observes this, and it resets to zero when a replica loses the lease, so summing across replicas does not double-count an environment across a leadership handoff.",
-          "id": 1011,
+          "id": 1021,
           "links": [],
           "title": "Environments Needing Update",
           "vizConfig": {
@@ -187,7 +398,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\"}\n    [$__auto]\n  )\n)\n",
+                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\"}\n    | name=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\" or name!~\".*-(environmentd|gen)-([0-9]+)-[0-9]+\"\n    [$__auto]\n  )\n)\n",
                         "legendFormat": "{{reason}}"
                       },
                       "version": "v0"
@@ -270,7 +481,7 @@
             }
           },
           "description": "**Reconciliation passes that returned an error over the selected time range.**\n\n**Nominal:** Zero.\n\n**Degraded:** A handful that stopped. The operator retries on a backoff, and a cause that clears itself — a webhook still starting, a secret created moments later — resolves without intervention.\n\n**Unhealthy:** A count that keeps climbing. Something the operator needs is not there and retrying will not make it appear. Each failure is also published as a Kubernetes event carrying the error's cause chain — see _Events -> Operator Health_.\n\nA count over the selected range rather than a rate, so the number answers \"how many\" directly. The rate over time is the `failed` series on _Reconciliation Passes -> Pass Outcomes_.",
-          "id": 1013,
+          "id": 1023,
           "links": [],
           "title": "Failed Passes (Select Time Range)",
           "vizConfig": {
@@ -367,7 +578,7 @@
             }
           },
           "description": "**Failing passes broken out by which controller failed and which of its entry points was running — the first question after \"something is failing\".**\n\n**Nominal:** Nothing.\n\n**Unhealthy:** `materialize` failing is the environment itself not reaching the state it was asked for. `balancer` or `console` failing leaves the environment running but unreachable or unmanageable, which is a different urgency.\n\n`event_type` is which entry point ran: `apply` is the ordinary path, and `cleanup` runs while a resource is being deleted. A `cleanup` failure is what leaves a resource stuck with its finalizer still attached.",
-          "id": 1015,
+          "id": 1025,
           "links": [],
           "title": "Failed Passes by Controller",
           "vizConfig": {
@@ -379,6 +590,217 @@
                   "min": 0,
                   "noValue": "No failing passes",
                   "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "hydrating-by-generation": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (generation) (\n  max by (generation, instance_id, collection_id) (\n    label_replace(\n      mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentNameList\",\n        pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    ) > 1e15\n  )\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "count by (generation) (\n  max by (generation, instance_id, collection_id) (\n    label_replace(\n      mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentNameList\",\n        pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    ) > 1e15\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Collections still rebuilding their in-memory state, split by generation — the panel that answers whether a new generation is ready to promote.**\n\n**Nominal:** Nothing for the serving generation. A new generation starts high and drains toward zero as its dataflows rebuild from persisted storage; that descent *is* the rollout making progress.\n\n**Degraded:** A new generation whose count is still falling. Normal, and the rate of descent is the honest estimate of how much longer it needs.\n\n**Unhealthy:** A count that stops falling while still above zero. Something cannot finish hydrating, and the rollout will not complete on its own. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.\n\n**A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no established output frontier. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as \"Currently Hydrating\", split by generation instead of summed across both sides of a rollout.\n\nThe series is **sparse**: `count` emits nothing rather than zero when nothing matches, so a generation that has finished hydrating leaves the line rather than drawing a zero. A panel that has gone blank has finished, which is why this one says so instead of reporting a filter mismatch.\n\n`instance_id!=\"\"` is load-bearing — it keeps this to collections attached to a compute instance.",
+          "id": 1015,
+          "links": [],
+          "title": "Hydrating Collections by Generation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Nothing hydrating — every collection has a frontier"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "hydrating-now": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (generation) (\n  max by (generation, instance_id, collection_id) (\n    label_replace(\n      mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentNameList\",\n        pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    ) > 1e15\n  )\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "count by (generation) (\n  max by (generation, instance_id, collection_id) (\n    label_replace(\n      mz_dataflow_wallclock_lag_seconds{\n        materialize_cloud_organization_name=~\"$environmentNameList\",\n        pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n        instance_id=~\"$mzClusterList\",\n        instance_id!=\"\",\n        quantile=\"1\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    ) > 1e15\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Collections still rebuilding their in-memory state, split by generation — the panel that answers whether a new generation is ready to promote.**\n\n**Nominal:** Nothing for the serving generation. A new generation starts high and drains toward zero as its dataflows rebuild from persisted storage; that descent *is* the rollout making progress.\n\n**Degraded:** A new generation whose count is still falling. Normal, and the rate of descent is the honest estimate of how much longer it needs.\n\n**Unhealthy:** A count that stops falling while still above zero. Something cannot finish hydrating, and the rollout will not complete on its own. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.\n\n**A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no established output frontier. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as \"Currently Hydrating\", split by generation instead of summed across both sides of a rollout.\n\nThe series is **sparse**: `count` emits nothing rather than zero when nothing matches, so a generation that has finished hydrating leaves the line rather than drawing a zero. A panel that has gone blank has finished, which is why this one says so instead of reporting a filter mismatch.\n\n`instance_id!=\"\"` is load-bearing — it keeps this to collections attached to a compute instance.",
+          "id": 1011,
+          "links": [],
+          "title": "Currently Hydrating",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE7733",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Nothing hydrating — every collection has a frontier"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "lag-by-generation": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (generation) (\n  label_replace(\n    mz_dataflow_wallclock_lag_seconds{\n      materialize_cloud_organization_name=~\"$environmentNameList\",\n      pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n      instance_id=~\"$mzClusterList\",\n      instance_id!=\"\",\n      quantile=\"1\"\n    },\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  ) < 1e9\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "max by (generation) (\n  label_replace(\n    mz_dataflow_wallclock_lag_seconds{\n      materialize_cloud_organization_name=~\"$environmentNameList\",\n      pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n      instance_id=~\"$mzClusterList\",\n      instance_id!=\"\",\n      quantile=\"1\"\n    },\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  ) < 1e9\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The worst frontier lag in each generation — how far behind wallclock its most-lagged collection is.**\n\n**Nominal:** Seconds, and comparable between generations. A new generation that has hydrated should track the old one closely.\n\n**Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it has a frontier — but it is not keeping up, so promoting it would move traffic onto staler data.\n\nHydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that *have* a frontier, and that one counts the collections that do not.\n\nThe metric is a summary carrying only `quantile` `0` and `1`, so `quantile=\"1\"` is the worst case rather than a percentile.",
+          "id": 1017,
+          "links": [],
+          "title": "Frontier Lag by Generation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No generations match the current filters",
+                  "unit": "s"
                 },
                 "overrides": []
               },
@@ -599,6 +1021,148 @@
           }
         }
       },
+      "max-lag-now": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (generation) (\n  label_replace(\n    mz_dataflow_wallclock_lag_seconds{\n      materialize_cloud_organization_name=~\"$environmentNameList\",\n      pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n      instance_id=~\"$mzClusterList\",\n      instance_id!=\"\",\n      quantile=\"1\"\n    },\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  ) < 1e9\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "max by (generation) (\n  label_replace(\n    mz_dataflow_wallclock_lag_seconds{\n      materialize_cloud_organization_name=~\"$environmentNameList\",\n      pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\",\n      instance_id=~\"$mzClusterList\",\n      instance_id!=\"\",\n      quantile=\"1\"\n    },\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  ) < 1e9\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The worst frontier lag in each generation — how far behind wallclock its most-lagged collection is.**\n\n**Nominal:** Seconds, and comparable between generations. A new generation that has hydrated should track the old one closely.\n\n**Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it has a frontier — but it is not keeping up, so promoting it would move traffic onto staler data.\n\nHydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that *have* a frontier, and that one counts the collections that do not.\n\nThe metric is a summary carrying only `quantile` `0` and `1`, so `quantile=\"1\"` is the worst case rather than a percentile.",
+          "id": 1012,
+          "links": [],
+          "title": "Max Frontier Lag",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE7733",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No generations match the current filters",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "memory-by-generation": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (generation) (\n  label_replace(\n    container_memory_working_set_bytes{\n      namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n    },\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  )\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "sum by (generation) (\n  label_replace(\n    container_memory_working_set_bytes{\n      namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n    },\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Memory used by each generation's pods.**\n\n**Nominal:** The new generation climbing as it rebuilds arrangements in memory, then levelling off near the old one's footprint.\n\n**Unhealthy:** A new generation that keeps climbing past the old one's footprint, or one whose pods are being OOM-killed — _Events -> Kubernetes Activity_ shows the restarts if so.\n\nWorking set rather than the container limit, so this is what the generation is really holding. Rehydration is the memory-hungriest part of a rollout, because both generations hold their arrangements at once.",
+          "id": 1019,
+          "links": [],
+          "title": "Memory by Generation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "pass-duration": {
         "kind": "Panel",
         "spec": {
@@ -675,7 +1239,7 @@
             }
           },
           "description": "**How long one reconciliation pass takes, at the 50th, 90th and 99th percentiles.**\n\n**Nominal:** Tens to hundreds of milliseconds. Reconciliation is a handful of Kubernetes API calls, not a long-running job.\n\n**Unhealthy:** Passes stretching into seconds, which points at the Kubernetes API rather than at Materialize — a slow or throttling API server, or an admission webhook the operator's writes have to wait on.\n\n**This is not how long a rollout takes.** A pass that is waiting on the new generation's pods returns promptly and asks to be run again rather than blocking, so this measures work done per pass, not the wall-clock length of the change. The rollout's own duration is the span between its first and last transition on the Events tab.\n\nThe histogram's buckets are deliberately coarse — 10ms, 50ms, 250ms, 1s, 5s, 30s — so a percentile here is the boundary of the bucket the value fell in rather than the value itself. Read it as an order of magnitude. That is the trade the operator made on purpose: finer buckets would cost several times the series for detail no operator question asks for.\n\nCovers the reconciler only, not the finalizer bookkeeping the controller does around it.",
-          "id": 1016,
+          "id": 1026,
           "links": [],
           "title": "Pass Duration",
           "vizConfig": {
@@ -745,7 +1309,7 @@
             }
           },
           "description": "**What reconciliation passes concluded, by outcome. The shape of a rollout: `waiting` climbs while the new generation's pods come up, then gives way to `applied` when they are ready.**\n\n**Nominal:** `applied` with `waiting` alongside it during a change. Both are success.\n\n**Degraded:** `waiting` that stays high long after a change should have settled. The operator is still trying and the thing it is waiting for has not happened — usually pods that will not become ready.\n\n**Unhealthy:** A sustained `failed` rate. The pass is erroring rather than waiting, and _Steps -> Step Failures and Abandonments_ localizes which phase.\n\nThe five outcomes are the operator's own vocabulary: `applied` reached the desired state or found it already there; `waiting` made progress and asked to run again; `skipped` had nothing to act on, because what it manages is disabled or absent from the spec; `failed` returned an error; `abandoned` did not reach a conclusion.\n\n`abandoned` is rare at the pass level and is not a failure signal — it covers a pass cancelled by a leadership handoff or a shutdown as well as one that errored out.\n\n`apply` and `cleanup` passes are summed together here. Cleanup runs when a resource is being deleted, so it is rare, and splitting it out would double every series to distinguish a case that is usually absent.",
-          "id": 1014,
+          "id": 1024,
           "links": [],
           "title": "Pass Outcomes",
           "vizConfig": {
@@ -775,6 +1339,78 @@
                   "mode": "single",
                   "sort": "asc"
                 }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pods-now": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (generation) (\n  group by (pod, generation) (\n    label_replace(\n      container_memory_working_set_bytes{\n        namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    )\n  )\n)\n",
+                        "legendFormat": "gen {{generation}}",
+                        "qryType": 1,
+                        "query": "count by (generation) (\n  group by (pod, generation) (\n    label_replace(\n      container_memory_working_set_bytes{\n        namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      },\n      \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Pods belonging to each generation — its environmentd and the cluster replicas standing behind it.**\n\n**Nominal:** A steady count per generation. During a rollout the new generation's count climbs as its replicas are created.\n\n**Unhealthy:** A new generation whose pod count stalls below the old one's. The pods it is missing never scheduled; _Events -> Kubernetes Activity_ names the reason, which is usually that the cluster has nowhere to put them.\n\nCounted from cAdvisor, so it counts pods that have *started*. A pod that is scheduled but not yet running does not appear, which is why a stalled rollout can show a count that simply stops climbing rather than one that drops.",
+          "id": 1013,
+          "links": [],
+          "title": "Pods",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE7733",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No generations match the current filters"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
               }
             },
             "version": ""
@@ -1011,7 +1647,7 @@
             }
           },
           "description": "**Reconciliation passes per second across every controller — whether the loop is turning at all.**\n\n**Nominal:** A low steady rate, rising while something is changing. The controllers re-run on every watch event and on a backoff, so an idle operator still ticks over.\n\n**Unhealthy:** Flat at zero while work is outstanding. Check _Operator Status -> Reconciling Replicas_ first: an operator that lost the lease stops reconciling and this is what that looks like.\n\nNot a load signal. A high rate is normal during a rollout and says nothing about cost; it is the *absence* of passes that is diagnostic.",
-          "id": 1012,
+          "id": 1022,
           "links": [],
           "title": "Reconciliation Rate",
           "vizConfig": {
@@ -1083,7 +1719,7 @@
             }
           },
           "description": "**How many operator replicas hold the leadership lease and are therefore reconciling. This should be exactly one.**\n\n**Nominal:** One. The lease is held, and something is acting on your resources.\n\n**Unhealthy:** Zero means no replica can take the lease and the operator is reconciling nothing — every other panel here goes quiet and nothing on the cluster changes, however healthy the pods look. The usual cause is the service account lacking permission on leases. More than one should not be possible; treat it as a stale reading rather than a real split.\n\nSummed across replicas on purpose. A non-leader exports the metric at zero rather than not at all, so this is a count of leaders and not a count of pods.",
-          "id": 1010,
+          "id": 1020,
           "links": [],
           "title": "Reconciling Replicas",
           "vizConfig": {
@@ -1168,7 +1804,7 @@
             }
           },
           "description": "**Which phases of reconciliation are running, and how often. A rollout moves through these in order, so the set that is active says where the operator has got to.**\n\n**Nominal:** The steps of whichever controllers have work. `promote` and `teardown_generation` appear only around a deployment; the rest tick over with the loop.\n\nA step is the only level at which \"there was nothing to do\" is distinguishable from \"the desired state was reached\" — the reconciler interface reports both as success. That distinction is the `outcome` label, which this panel sums over; see _Steps -> Step Failures and Abandonments_ for the half that matters.",
-          "id": 1018,
+          "id": 1028,
           "links": [],
           "title": "Step Activity",
           "vizConfig": {
@@ -1238,7 +1874,7 @@
             }
           },
           "description": "**The slowest phase of a reconciliation pass, at the 99th percentile per step — where the time in a pass actually goes.**\n\n**Nominal:** Most steps in the low tens of milliseconds. The two that touch a generation's resources — `global_resources` and `generation_resources` — are the expensive ones, in the hundreds.\n\n**Unhealthy:** A step that leaves its usual band. Because each step is a group of Kubernetes API calls, a step that slows down names the resource kind whose writes are being held up.\n\nSame coarse buckets as the whole-pass histogram, and the same reading: an order of magnitude rather than a measurement. Steps and passes share one bucket set precisely so a step's latency reads against the pass it belongs to.",
-          "id": 1017,
+          "id": 1027,
           "links": [],
           "title": "Step Duration (p99)",
           "vizConfig": {
@@ -1308,7 +1944,7 @@
             }
           },
           "description": "**Steps that did not complete, by step and by how they ended — the panel that turns \"reconciliation is failing\" into \"reconciliation is failing *here*\".**\n\n**Nominal:** Nothing.\n\n**Unhealthy:** Any sustained rate names the phase to investigate. Pair it with the matching event on _Events -> Operator Health_, which carries the cause; this panel says where and that one says why.\n\n**`abandoned` is not by itself a failure.** A step records it when it did not reach a conclusion, which covers an error propagating out of it *and* a pass cancelled by a leadership handoff or a shutdown — a `Drop` cannot tell those apart. So a burst of `abandoned` around an operator restart is expected. Alert on _Operator Status -> Failed Passes (Select Time Range)_, which is recorded from the reconciler's actual result and which a cancelled pass never reaches, and read this to locate the step.\n\nAn `abandoned` step alongside a `failed` pass is the useful pairing: the pass says it errored, and the step says where it was when it did.",
-          "id": 1019,
+          "id": 1029,
           "links": [],
           "title": "Step Failures and Abandonments",
           "vizConfig": {
@@ -1344,6 +1980,127 @@
           }
         }
       },
+      "version-by-generation": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "group by (generation, mz_version) (\n  label_replace(\n    max_over_time(\n      mz_compute_cluster_status{\n        materialize_cloud_organization_name=~\"$environmentNameList\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      }\n      [$__range]\n    ),\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  )\n)\n",
+                        "instant": true,
+                        "qryType": 1,
+                        "query": "group by (generation, mz_version) (\n  label_replace(\n    max_over_time(\n      mz_compute_cluster_status{\n        materialize_cloud_organization_name=~\"$environmentNameList\", pod=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\"\n      }\n      [$__range]\n    ),\n    \"generation\", \"$1\", \"pod\", \".*-(?:environmentd|gen)-([0-9]+)-[0-9]+\"\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "labelsToFields",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "keepLabels": [
+                        "generation",
+                        "mz_version"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "group": "merge",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "group": "organize",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "Value": true,
+                        "mz_compute_cluster_status": true,
+                        "v2_mz_compute_cluster_status": true
+                      },
+                      "indexByName": {
+                        "generation": 0,
+                        "mz_version": 1
+                      }
+                    }
+                  }
+                },
+                {
+                  "group": "sortBy",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "desc": true,
+                          "field": "generation"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**The Materialize version each generation is running — what the rollout is actually changing.**\n\n**Nominal:** One row between rollouts. Two during one, and the pair of versions is the upgrade you are performing: the older is what is serving now, the newer is what will serve once the new generation is promoted.\n\n**Unhealthy:** Two rows showing the *same* version. The rollout is replacing a generation with its own version, which is a restart rather than an upgrade — usually a forced rollout, and worth confirming that is what was intended before it costs a rehydration.\n\nRead off `compute_cluster_status`, whose `mz_version` label each generation's own environmentd reports, so the two sides genuinely disagree during a rollout rather than one overwriting the other. The string carries the build commit and the Helm chart version alongside the release.\n\n**Covers the whole selected time range, not the current instant.** A promoted generation is torn down, so a table evaluated at \"now\" would show only the survivor and a finished rollout would look like it never happened. `max_over_time` over the range is what keeps both sides present: widen the time picker to span a rollout and its old generation comes back, which is the same reason `$mzGenerationList` refreshes on a time-range change.\n\nEvaluated once rather than per step, so the table has one row per generation rather than one per generation per scrape.\n\nA generation appears here only once its environmentd is serving the SQL-derived metrics. A brand-new generation is therefore missing from this table for the first moments of its life, while it is already visible in _Rollout Status -> Pods_.",
+          "id": 1014,
+          "links": [],
+          "title": "Version by Generation (Select Time Range)",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "No generations match the current filters"
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "warning-event-feed": {
         "kind": "Panel",
         "spec": {
@@ -1362,7 +2119,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\", level=\"WARN\"}\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\", level=\"WARN\"}\n  | name=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\" or name!~\".*-(environmentd|gen)-([0-9]+)-[0-9]+\"\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
                       },
                       "version": "v0"
                     },
@@ -1422,7 +2179,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\", level=\"WARN\"}\n    [$__auto]\n  )\n)\n",
+                        "expr": "sum(\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"${operatorNamespace:regex}|${mzNamespaceList:regex}\", level=\"WARN\"}\n    | name=~\".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+\" or name!~\".*-(environmentd|gen)-([0-9]+)-[0-9]+\"\n    [$__auto]\n  )\n)\n",
                         "legendFormat": "warnings"
                       },
                       "version": "v0"
@@ -1674,6 +2431,204 @@
                 }
               },
               "title": "Events"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "active-generations"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "hydrating-now"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "max-lag-now"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "pods-now"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 4,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "Rollout Status"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "version-by-generation"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "Versions"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "hydrating-by-generation"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "collections-by-generation"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Hydration"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "lag-by-generation"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Freshness"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cpu-by-generation"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "memory-by-generation"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Footprint"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Generations"
             }
           },
           {
@@ -2126,6 +3081,42 @@
         }
       },
       {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentNameList\"}, pod)",
+          "description": "The deployment generation(s) to filter to, for blue/green rollouts",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "Generation",
+          "multi": true,
+          "name": "mzGenerationList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentNameList\"}, pod)",
+              "qryType": 1,
+              "query": "label_values(mz_compute_commands_total{materialize_cloud_organization_name=~\"$environmentNameList\"}, pod)"
+            },
+            "version": "v0"
+          },
+          "refresh": "onTimeRangeChanged",
+          "regex": "/.*-environmentd-(?<value>[0-9]+)-[0-9]+/",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "numericalDesc"
+        }
+      },
+      {
         "datasource": {
           "name": "$metricsDatasource"
         },
@@ -2148,6 +3139,25 @@
           "hide": "inControlsMenu",
           "label": "Advanced Metric Filter",
           "name": "metricAdhoc",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "datasource": {
+          "name": "$logsDatasource"
+        },
+        "group": "",
+        "kind": "AdhocVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "baseFilters": [],
+          "defaultKeys": [],
+          "description": "Adhoc filters to apply to all logs queries",
+          "enableGroupBy": false,
+          "filters": [],
+          "hide": "inControlsMenu",
+          "label": "Advanced Log Filter",
+          "name": "logsAdhoc",
           "skipUrlSync": false
         }
       }

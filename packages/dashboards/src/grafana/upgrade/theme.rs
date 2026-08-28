@@ -34,6 +34,12 @@ pub const EVENTS: Theme = Theme {
     shade: palette::THEME[5], // magenta
 };
 
+/// The two sides of a blue/green rollout, and whether the new one has caught up.
+pub const GENERATIONS: Theme = Theme {
+    title: "Generations",
+    shade: palette::THEME[3], // orange
+};
+
 /// The operator's reconciliation loop, as counters and histograms.
 pub const RECONCILIATION: Theme = Theme {
     title: "Reconciliation",
@@ -41,7 +47,7 @@ pub const RECONCILIATION: Theme = Theme {
 };
 
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 2] = [EVENTS, RECONCILIATION];
+pub const THEMED: [Theme; 3] = [EVENTS, GENERATIONS, RECONCILIATION];
 
 #[cfg(test)]
 mod tests {
@@ -77,6 +83,7 @@ mod tests {
     fn the_shades_are_pinned() {
         // So a palette reorder is a visible change rather than a silent recolour.
         assert_eq!(EVENTS.shade, "#EE3377");
+        assert_eq!(GENERATIONS.shade, "#EE7733");
         assert_eq!(RECONCILIATION.shade, "#009988");
     }
 }

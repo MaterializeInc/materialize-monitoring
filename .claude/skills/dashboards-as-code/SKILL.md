@@ -169,12 +169,14 @@ the target audience.
 
 ## `upgrade` tabs
 
-Two tabs. Shades come from `upgrade/theme.rs`.
+Three tabs, ordered by descending altitude: what happened, which side of the rollout is ready, is the operator itself
+healthy. Shades come from `upgrade/theme.rs`.
 
 | # | Tab title | Module | Shade |
 |---|---|---|---|
 | 1 | Events | `events.rs` | `EVENTS` `#EE3377` (magenta) |
-| 2 | Reconciliation | `reconciliation.rs` | `RECONCILIATION` `#009988` (teal) |
+| 2 | Generations | `generations.rs` | `GENERATIONS` `#EE7733` (orange) |
+| 3 | Reconciliation | `reconciliation.rs` | `RECONCILIATION` `#009988` (teal) |
 
 **This is the repo's first mixed-datasource dashboard.** Events is Loki, Reconciliation is Thanos, and the two are
 separate tabs partly because they are scoped differently — see the namespace note below.
@@ -189,12 +191,84 @@ separate tabs partly because they are scoped differently — see the namespace n
 
 Each rate panel sits beside the feed it summarizes, in the same row: the chart says *when*, the feed says *what*.
 
+**Generations** — the two sides of a blue/green rollout, split apart:
+
+1. Rollout Status (**header hidden**) — Active Generations, Currently Hydrating, Max Frontier Lag, Pods
+2. Versions — Version by Generation (table)
+3. Hydration — Hydrating Collections by Generation, Collections by Generation
+4. Freshness — Frontier Lag by Generation
+5. Footprint — CPU by Generation, Memory by Generation
+
+**Version by Generation** is the row that says what the rollout is *for*. It reads the `mz_version` label off
+`compute_cluster_status`, which each generation's own environmentd reports, so the two sides genuinely disagree during
+a rollout — over a window spanning one, the table reads `gen 2 → v26.38.2` beside `gen 3 → v26.40.0-rc.1`. A table
+rather than a stat because the value is a *string* and a stat cannot show two of those legibly. Two rows with the
+*same* version means a forced rollout rather than an upgrade, which is worth confirming before it costs a rehydration.
+
 **Reconciliation** — the operator's control loop, as counters and histograms:
 
 1. Operator Status (**header hidden**) — Reconciling Replicas, Environments Needing Update, Reconciliation Rate, Failed Passes (Select Time Range)
 2. Reconciliation Passes — Pass Outcomes, Failed Passes by Controller
 3. Duration — Pass Duration (p50/p90/p99), Step Duration (p99)
 4. Steps — Step Activity, Step Failures and Abandonments
+
+## Deployment generations (blue/green)
+
+What the Generations tab is built on, and the `$mzGenerationList` selector that drives it.
+
+**The generation is not a label on anything.** orchestratord records it as the `materialize.cloud/generation`
+*annotation*, which neither kube-state-metrics nor cAdvisor nor the event pipeline surfaces. Where it does reach a query
+is the object **name**, in two shapes:
+
+| Workload | Name shape |
+|---|---|
+| environmentd | `<prefix>-environmentd-<generation>-<ordinal>` |
+| cluster replica | `<prefix>-cluster-<cluster>-replica-<replica>-gen-<generation>-<ordinal>` |
+
+Three render-context parameters carry that, so the pattern lives in one place and cannot drift:
+
+- `%%{mzGenerationFilter}` — `pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+"`, for metrics.
+- `%%{mzGenerationPattern}` — the same shape as a *capture*, for the `label_replace` that lifts the number into a
+  `generation` label panels can group and legend by. A parameter rather than a template function, because the
+  `label_replace` has to wrap an inner selector while a function wraps the whole template.
+- `%%{mzGenerationEventFilter}` — for events, where the generation is in the object name and the filter is a pipeline
+  stage rather than a stream selector.
+
+**Two ad-hoc filters, not one.** An ad-hoc variable resolves its label keys *from a datasource*, so `metricAdhoc`
+(Prometheus) cannot offer Loki's stream labels — `upgrade` defines `logsAdhoc` beside it, and both sit at the tail of
+the controls row as escape hatches rather than steps in the funnel. `logsAdhoc` seeds **no base filter**, unlike the
+metrics one: Grafana ANDs a base filter into the query's own selector, and the obvious seed (the environment namespace)
+would narrow a stream selector that deliberately spans the operator's namespace too, silently dropping every event the
+operator published. Its keys are Loki *stream* labels; structured metadata like `reason` and `kind` is filtered in the
+query instead.
+
+`grafana/transform.rs` was promoted out of `env_top/` when the version table became its second consumer — it builds
+Grafana transformation JSON and knows nothing about Materialize, so copying it would have started two divergent copies
+of the same unschematized blobs.
+
+**The event filter's `or` arm is load-bearing.** Only a handful of the objects a rollout touches carry a generation —
+on a representative deployment, 6 of 70 event names — and every operator lifecycle event is filed against the
+`Materialize` resource, which carries none. So the filter is
+`name=~"<selected>" or name!~"<any generation>"`: keep what belongs to a selected generation, and keep what belongs to
+no generation. A bare `name=~` would drop the entire rollout narrative and keep only the pod noise. RE2 has no negative
+lookahead, which is why this is an `or` rather than one clever pattern.
+
+Only the four deployment-wide event feeds filter by generation. The operator's own queries do not — their events carry
+no generation, so it could only ever be a no-op there.
+
+**`$mzGenerationList` refreshes on time-range change**, alone among the variables here. Which generations exist is a
+property of the *window*: the old side is torn down after promotion, so widening the range to cover a rollout is exactly
+how its other side comes back into view. It has no `all_value` — a literal like `[0-9]+` would be regex-*escaped* by the
+`:regex` format and match nothing.
+
+**Hydration is still the wallclock-lag sentinel**, now split by generation. `mz_dataflow_wallclock_lag_seconds` is
+emitted by environmentd, so its `pod` label carries the generation and the split is free. Two things about the series:
+
+- `instance_id!=""` is load-bearing, keeping it to collections attached to a compute instance.
+- **The series is sparse.** `count` emits *no sample* rather than a zero when nothing matches, so a generation that has
+  finished hydrating leaves the graph rather than drawing a zero line. Do not read "all emitted points are non-zero" as
+  "hydrating continuously" — that misreading looks exactly like a Thanos downsampling artifact and is not one. Values
+  were verified identical across query windows.
 
 ## orchestratord reconciliation metrics
 

@@ -7,7 +7,13 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Panel transformations.
+//! Panel transformations, shared by every dashboard.
+//!
+//! These build Grafana transformation JSON and know nothing about Materialize, so
+//! they sit beside the dashboards rather than inside one. They lived under
+//! `env_top/` while it was the only dashboard; `upgrade`'s version table is the
+//! second consumer, and copying them would have been the start of two divergent
+//! copies of the same unschematized JSON.
 //!
 //! Grafana's transformation options are unschematized — the dashboard schema types
 //! `TransformationSpec::options` as an open object, so there is nothing to

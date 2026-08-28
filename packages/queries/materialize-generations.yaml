@@ -1,0 +1,319 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Deployment generation (blue/green) queries
+
+description: |
+  What each deployment generation of an environment is doing, during and after a
+  blue/green rollout.
+
+  A rollout stands a *new* generation of `environmentd` and its replicas up beside
+  the old one, lets it rehydrate from persisted storage, and promotes it only once
+  it has caught up. Both generations are live and scraped at the same time, so
+  every ordinary panel sums them together — which is exactly the wrong thing while
+  the question is whether one of them is ready yet.
+
+  **The generation is not a label.** orchestratord records it as a Kubernetes
+  annotation, which neither kube-state-metrics nor cAdvisor surfaces. Where it
+  does reach a query is the object *name*, in two shapes:
+  `…-environmentd-<generation>-<ordinal>` and, for a replica,
+  `…-gen-<generation>-<ordinal>`. `%%{mzGenerationFilter}` selects on those, and
+  `%%{mzGenerationPattern}` is the same shape as a capture, for the
+  `label_replace` that lifts the number into a `generation` label panels can group
+  by. Both live in the render context, so they cannot drift apart.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- what exists -----------------------------------------------------------
+  - id: materialize.generations.active
+    stability: experimental
+    description:
+      summary: |
+        How many deployment generations are currently running — one between
+        rollouts, two while one is in flight.
+      nominal: |
+        One. A settled environment runs a single generation.
+      degraded: |
+        Two, for as long as a rollout takes. Both generations hold read holds and
+        both cost compute, so this is the state you want to leave promptly rather
+        than linger in.
+      unhealthy: |
+        Two for far longer than a rollout should take. Either the new generation
+        never became ready, or it is ready and waiting for a manual promotion —
+        _Events -> Rollout_ tells you which, and a `WaitingForApproval` there
+        means the rollout is doing what it was configured to do.
+      notes: |
+        Counted from the environmentd pods that are reporting, so a generation
+        appears here as soon as its environmentd starts serving metrics and
+        disappears once it is torn down.
+    promQL: |
+      count(
+        count by (generation) (
+          label_replace(
+            mz_compute_commands_total{
+              %%{mzEnvironmentFilter}, %%{mzGenerationFilter}
+            },
+            "generation", "$1", "pod", "%%{mzGenerationPattern}"
+          )
+        )
+      )
+
+  - id: materialize.generations.version
+    stability: experimental
+    description:
+      summary: |
+        The Materialize version each generation is running — what the rollout is
+        actually changing.
+      nominal: |
+        One row between rollouts. Two during one, and the pair of versions is the
+        upgrade you are performing: the older is what is serving now, the newer
+        is what will serve once the new generation is promoted.
+      unhealthy: |
+        Two rows showing the *same* version. The rollout is replacing a
+        generation with its own version, which is a restart rather than an
+        upgrade — usually a forced rollout, and worth confirming that is what was
+        intended before it costs a rehydration.
+      notes: |
+        Read off `compute_cluster_status`, whose `mz_version` label each
+        generation's own environmentd reports, so the two sides genuinely
+        disagree during a rollout rather than one overwriting the other. The
+        string carries the build commit and the Helm chart version alongside the
+        release.
+
+        **Covers the whole selected time range, not the current instant.** A
+        promoted generation is torn down, so a table evaluated at "now" would show
+        only the survivor and a finished rollout would look like it never
+        happened. `max_over_time` over the range is what keeps both sides
+        present: widen the time picker to span a rollout and its old generation
+        comes back, which is the same reason `$mzGenerationList` refreshes on a
+        time-range change.
+
+        Evaluated once rather than per step, so the table has one row per
+        generation rather than one per generation per scrape.
+
+        A generation appears here only once its environmentd is serving the
+        SQL-derived metrics. A brand-new generation is therefore missing from
+        this table for the first moments of its life, while it is already
+        visible in _Rollout Status -> Pods_.
+    promQL: |
+      group by (generation, mz_version) (
+        label_replace(
+          max_over_time(
+            %%{mzSqlPrefix}compute_cluster_status{
+              %%{mzEnvironmentFilter}, %%{mzGenerationFilter}
+            }
+            %%{range}
+          ),
+          "generation", "$1", "pod", "%%{mzGenerationPattern}"
+        )
+      )
+    # Evaluated once rather than per step, so the table draws a row per generation
+    # instead of a row per generation *per scrape*. The `max_over_time` over the
+    # selected range is what keeps that from collapsing to "whatever is running
+    # right now" -- see the notes.
+    instant: true
+
+  - id: materialize.generations.pods
+    stability: experimental
+    description:
+      summary: |
+        Pods belonging to each generation — its environmentd and the cluster
+        replicas standing behind it.
+      nominal: |
+        A steady count per generation. During a rollout the new generation's
+        count climbs as its replicas are created.
+      unhealthy: |
+        A new generation whose pod count stalls below the old one's. The pods it
+        is missing never scheduled; _Events -> Kubernetes Activity_ names the
+        reason, which is usually that the cluster has nowhere to put them.
+      notes: |
+        Counted from cAdvisor, so it counts pods that have *started*. A pod that
+        is scheduled but not yet running does not appear, which is why a stalled
+        rollout can show a count that simply stops climbing rather than one that
+        drops.
+    promQL: |
+      count by (generation) (
+        group by (pod, generation) (
+          label_replace(
+            container_memory_working_set_bytes{
+              %%{cAdvisorFilter}, %%{mzGenerationFilter}
+            },
+            "generation", "$1", "pod", "%%{mzGenerationPattern}"
+          )
+        )
+      )
+
+  - id: materialize.generations.hydrating
+    stability: experimental
+    description:
+      summary: |
+        Collections still rebuilding their in-memory state, split by generation —
+        the panel that answers whether a new generation is ready to promote.
+      nominal: |
+        Nothing for the serving generation. A new generation starts high and
+        drains toward zero as its dataflows rebuild from persisted storage; that
+        descent *is* the rollout making progress.
+      degraded: |
+        A new generation whose count is still falling. Normal, and the rate of
+        descent is the honest estimate of how much longer it needs.
+      unhealthy: |
+        A count that stops falling while still above zero. Something cannot
+        finish hydrating, and the rollout will not complete on its own. Confirm
+        what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT
+        hydrated`.
+      notes: |
+        **A proxy, not a hydration state.** Self-managed Materialize exposes no
+        hydration-state metric, so this counts collections parked at the
+        wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no
+        established output frontier. Retire it once a real hydration metric
+        exists. It is the same signal the environment overview
+        reports as "Currently Hydrating", split by generation instead of summed
+        across both sides of a rollout.
+
+        The series is **sparse**: `count` emits nothing rather than zero when
+        nothing matches, so a generation that has finished hydrating leaves the
+        line rather than drawing a zero. A panel that has gone blank has
+        finished, which is why this one says so instead of reporting a filter
+        mismatch.
+
+        `instance_id!=""` is load-bearing — it keeps this to collections attached
+        to a compute instance.
+    promQL: |
+      count by (generation) (
+        max by (generation, instance_id, collection_id) (
+          label_replace(
+            mz_dataflow_wallclock_lag_seconds{
+              %%{mzEnvironmentFilter},
+              %%{mzGenerationFilter},
+              instance_id=~"%%{mzClusterList}",
+              instance_id!="",
+              quantile="1"
+            },
+            "generation", "$1", "pod", "%%{mzGenerationPattern}"
+          ) > 1e15
+        )
+      )
+
+  - id: materialize.generations.collections
+    stability: experimental
+    description:
+      summary: |
+        Collections each generation is tracking — the denominator for hydration,
+        and the shape of a new generation building out its dataflows.
+      nominal: |
+        Both generations converging on the same count. The new one is meant to
+        end up serving what the old one served.
+      unhealthy: |
+        A new generation whose count settles well below the old one's. It did not
+        build every dataflow, so promoting it would lose what is missing.
+      notes: |
+        Counts every collection reporting a wallclock lag, hydrated or not, which
+        is what makes it the denominator for
+        _Hydration -> Hydrating Collections by Generation_.
+    promQL: |
+      count by (generation) (
+        max by (generation, instance_id, collection_id) (
+          label_replace(
+            mz_dataflow_wallclock_lag_seconds{
+              %%{mzEnvironmentFilter},
+              %%{mzGenerationFilter},
+              instance_id=~"%%{mzClusterList}",
+              instance_id!="",
+              quantile="1"
+            },
+            "generation", "$1", "pod", "%%{mzGenerationPattern}"
+          )
+        )
+      )
+
+  - id: materialize.generations.lag.max
+    stability: experimental
+    description:
+      summary: |
+        The worst frontier lag in each generation — how far behind wallclock its
+        most-lagged collection is.
+      nominal: |
+        Seconds, and comparable between generations. A new generation that has
+        hydrated should track the old one closely.
+      unhealthy: |
+        A new generation whose lag stays far above the serving one's. It has
+        hydrated — it has a frontier — but it is not keeping up, so promoting it
+        would move traffic onto staler data.
+      notes: |
+        Hydrating collections are excluded (`< 1e9`), since their sentinel would
+        swamp every real reading. That makes this and
+        _Hydration -> Hydrating Collections by Generation_ complementary: this
+        one covers the collections that *have* a frontier, and that one counts
+        the collections that do not.
+
+        The metric is a summary carrying only `quantile` `0` and `1`, so
+        `quantile="1"` is the worst case rather than a percentile.
+    promQL: |
+      max by (generation) (
+        label_replace(
+          mz_dataflow_wallclock_lag_seconds{
+            %%{mzEnvironmentFilter},
+            %%{mzGenerationFilter},
+            instance_id=~"%%{mzClusterList}",
+            instance_id!="",
+            quantile="1"
+          },
+          "generation", "$1", "pod", "%%{mzGenerationPattern}"
+        ) < 1e9
+      )
+
+  - id: materialize.generations.cpu
+    stability: experimental
+    description:
+      summary: |
+        CPU used by each generation's pods — what a rollout costs while both
+        sides are up.
+      nominal: |
+        The new generation drawing heavily while it hydrates, then settling to
+        something like the old one's draw.
+      unhealthy: |
+        A new generation pinned at its limit long after hydration should have
+        finished, or an old one still drawing after promotion, which means it was
+        never torn down.
+      notes: |
+        Covers environmentd and the cluster replicas of each generation together.
+        This is the panel that says whether the cluster can actually afford to
+        run two generations at once — the answer is roughly double, for as long
+        as the rollout lasts.
+    promQL: |
+      sum by (generation) (
+        label_replace(
+          rate(
+            container_cpu_usage_seconds_total{
+              %%{cAdvisorFilter}, %%{mzGenerationFilter}
+            }
+            %%{interval}
+          ),
+          "generation", "$1", "pod", "%%{mzGenerationPattern}"
+        )
+      )
+
+  - id: materialize.generations.memory
+    stability: experimental
+    description:
+      summary: |
+        Memory used by each generation's pods.
+      nominal: |
+        The new generation climbing as it rebuilds arrangements in memory, then
+        levelling off near the old one's footprint.
+      unhealthy: |
+        A new generation that keeps climbing past the old one's footprint, or one
+        whose pods are being OOM-killed — _Events -> Kubernetes Activity_ shows
+        the restarts if so.
+      notes: |
+        Working set rather than the container limit, so this is what the
+        generation is really holding. Rehydration is the memory-hungriest part of
+        a rollout, because both generations hold their arrangements at once.
+    promQL: |
+      sum by (generation) (
+        label_replace(
+          container_memory_working_set_bytes{
+            %%{cAdvisorFilter}, %%{mzGenerationFilter}
+          },
+          "generation", "$1", "pod", "%%{mzGenerationPattern}"
+        )
+      )

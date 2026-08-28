@@ -18,6 +18,7 @@
 pub mod env_top;
 pub mod queries;
 pub mod render;
+pub mod transform;
 pub mod upgrade;
 
 use mzmon_lib::grafana::dashboard::Resource;

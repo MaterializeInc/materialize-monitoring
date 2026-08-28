@@ -20,8 +20,9 @@ use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
-use super::{field_override, theme, transform};
+use super::{field_override, theme};
 use crate::grafana::queries::Queries;
+use crate::grafana::transform;
 
 /// The tab's theme.
 const SHADE: &str = theme::CONNECTIONS.shade;

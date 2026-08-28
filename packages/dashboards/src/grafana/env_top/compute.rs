@@ -30,8 +30,9 @@ use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
-use super::{selector, theme, transform};
+use super::{selector, theme};
 use crate::grafana::queries::Queries;
+use crate::grafana::transform;
 
 /// The tab's theme.
 const SHADE: &str = theme::COMPUTE.shade;

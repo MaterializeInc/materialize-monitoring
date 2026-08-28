@@ -236,7 +236,7 @@ Two dashboards are rendered, and `dashboards.selected` decides which of them a r
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Upgrade** (`upgrade` → `mz-mon-upgrade`), which is *not* selected by default.
-  Its Events tab reads Kubernetes events out of Loki; its Reconciliation tab reads the operator's own metrics out of
+  Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
   Both halves need a Materialize operator new enough to emit them — see the `min-mz-version` annotation on the
   rendered dashboard.

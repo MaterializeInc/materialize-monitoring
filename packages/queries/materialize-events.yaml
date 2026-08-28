@@ -27,6 +27,14 @@ description: |
   `reportingcontroller`, which is the reporter's identity and the only field
   that actually says an event came from orchestratord.
 
+  **Only the deployment-wide feeds filter by generation.** The operator's own
+  events are filed against the `Materialize`, `Balancer` and `Console` resources,
+  which carry no generation at all, so `%%{mzGenerationEventFilter}` could only
+  ever be a no-op on them. The filter itself keeps generation-less objects on
+  purpose — on a representative deployment only 6 of 70 event names carry a
+  generation, and dropping the other 64 would take the whole rollout narrative
+  with them.
+
 metricImportanceHint: recommended
 
 queries:
@@ -47,6 +55,7 @@ queries:
         forwarding addresses, and expanding a line shows all of them.
     logQL: |
       {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+        | %%{mzGenerationEventFilter}
         | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
 
   - id: materialize.events.deployment.warnings
@@ -72,6 +81,7 @@ queries:
         than a threshold of ours.
     logQL: |
       {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}, level="WARN"}
+        | %%{mzGenerationEventFilter}
         | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
 
   - id: materialize.events.deployment.rate.by_reason
@@ -97,6 +107,7 @@ queries:
       sum by (reason) (
         count_over_time(
           {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+          | %%{mzGenerationEventFilter}
           %%{interval}
         )
       )
@@ -115,6 +126,7 @@ queries:
       sum(
         count_over_time(
           {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}, level="WARN"}
+          | %%{mzGenerationEventFilter}
           %%{interval}
         )
       )
