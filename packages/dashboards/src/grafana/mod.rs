@@ -18,6 +18,7 @@
 pub mod env_top;
 pub mod queries;
 pub mod render;
+pub mod upgrade;
 
 use mzmon_lib::grafana::dashboard::Resource;
 use mzmon_lib::query::QueryRegistry;
@@ -75,11 +76,18 @@ pub struct Renderable {
 }
 
 /// Every dashboard, in artifact order.
-pub const ALL: &[Renderable] = &[Renderable {
-    name: env_top::NAME_STEM,
-    summary: "High-level overview of one Materialize environment",
-    render: env_top::render,
-}];
+pub const ALL: &[Renderable] = &[
+    Renderable {
+        name: env_top::NAME_STEM,
+        summary: "High-level overview of one Materialize environment",
+        render: env_top::render,
+    },
+    Renderable {
+        name: upgrade::NAME_STEM,
+        summary: "What happened during a Materialize upgrade",
+        render: upgrade::render,
+    },
+];
 
 /// Look one up by artifact stem.
 pub fn find(name: &str) -> Option<&'static Renderable> {

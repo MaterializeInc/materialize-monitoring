@@ -82,7 +82,7 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | Improved Grafana 11 (dashboard v1) support for the public dashboards gallery ([DEP-206](https://linear.app/materializeinc/issue/DEP-206)) | OO-M1 | 🔨 |
 | [Troubleshooting](https://linear.app/materializeinc/issue/DEP-208) — symptom-first entry into the rest | OO-M2 | ⬜ |
 | [Logs & Events](https://linear.app/materializeinc/issue/DEP-209) (Loki + Alloy + logs now shipped) | OO-M2 | ⬜ |
-| [Upgrades](https://linear.app/materializeinc/issue/DEP-210) (Day 2 ops) — **customer-blocking**, see below | OO-M2 | ⛓️ (rollout half is buildable now) |
+| [Upgrades](https://linear.app/materializeinc/issue/DEP-210) (Day 2 ops) — **customer-blocking**, see below | OO-M2 | 🔨 (`upgrade` dashboard exists, `mz-mon-upgrade`, with two tabs: **Events** and **Reconciliation**. This is the repo's first dashboard on Loki, and the first LogQL family in the query registry — Kubernetes events from the operator and environment namespaces, with orchestratord's own lifecycle transitions and reconciliation failures picked out by `reportingcontroller`. **Reconciliation** is the operator's control loop as metrics — pass outcomes, durations, and the per-step counters that turn "reconciliation is failing" into "reconciliation is failing *here*". The two tabs are scoped differently on purpose: events are per-resource and therefore per-environment, while the operator's metrics carry no organization label at all, because one operator reconciles every environment in the cluster. Together they answer *is it stuck* from the rollout's own account of itself rather than from version counts. **Not installed by default**: `dashboards.selected` stays `["env-*"]` while the operator-side events depend on unreleased Materialize changes ([CLO-188](https://linear.app/materializeinc/issue/CLO-188)) — the Kubernetes Activity row works against any cluster today. **Outstanding:** *what do I do about it* beyond what the panel descriptions say, and a Day 2 change-operations view) |
 | [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ⬜ |
 | [Hydration Drilldown](https://linear.app/materializeinc/issue/DEP-212) | OO-M2 | ⛓️ |
 | [Freshness Drilldown](https://linear.app/materializeinc/issue/DEP-213) | OO-M2 | ⛓️ |
@@ -326,6 +326,14 @@ High-leverage asks, in priority order:
 - ⬜ Native **source/sink status** metrics (no genuine source exists today).
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
+
+The **operator-side** instrumentation the `upgrade` dashboard reads is a separate upstream dependency.
+Tracked as [CLO-188](https://linear.app/materializeinc/issue/CLO-188):
+
+- 🔨 `orchestratord_reconciliations_total`, `orchestratord_reconciliation_steps_total`, and the two duration histograms.
+  Plus Kubernetes events for reconciliation failures and `Materialize` lifecycle transitions.
+  Built and verified against a real cluster, but **not yet merged upstream** — which is why `upgrade` stays out of `dashboards.selected` by default.
+  `orchestratord_is_leader` and `environmentd_needs_update` predate this and are available today.
 
 The `_info` family is now available, so name enrichment is unblocked for every panel.
 The remaining drilldowns are still ⛓️ gated on the items above: **Sources / Sinks** await native status metrics, and **Hydration / Freshness** await the hydration and frontier signals.

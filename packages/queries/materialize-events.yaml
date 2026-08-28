@@ -1,0 +1,235 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Kubernetes event queries
+
+description: |
+  Kubernetes events from the namespaces a Materialize deployment occupies: the
+  operator's own namespace and the environments' namespace.
+
+  Events are logs, not metrics. They arrive through
+  `loki.source.kubernetes_events` in the monitoring gateway, which reads them
+  from the Kubernetes API and forwards them to Loki, so every query here is
+  LogQL against the logs datasource rather than PromQL. The gateway's processor
+  lifts `reason`, `name`, `kind`, `count`, `node` and `reportingcontroller` out
+  of each event into structured metadata, which is what these queries filter and
+  group on; the event `type` becomes the `level` stream label, `Normal` as
+  `INFO` and `Warning` as `WARN`.
+
+  Kubernetes keeps events for about an hour. Loki keeps them for as long as the
+  deployment's retention says, which is what makes a rollout that finished
+  yesterday still explainable.
+
+  **An event's namespace is the involved object's, not the reporter's.** The
+  operator runs in its own namespace and reconciles resources in the
+  environments' namespace, and every event it publishes is filed against the
+  resource — so the operator's own events are found in the *environment*
+  namespace, where nothing else about them suggests they would be. That is why
+  the queries below scope to both namespaces and pick the operator out by
+  `reportingcontroller`, which is the reporter's identity and the only field
+  that actually says an event came from orchestratord.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- the whole feed ---------------------------------------------------------
+  - id: materialize.events.deployment.stream
+    stability: experimental
+    description:
+      summary: |
+        Every Kubernetes event from the operator and environment namespaces,
+        newest first — the unfiltered record of what the cluster did.
+      notes: |
+        The reading of last resort. Prefer the warning and lifecycle feeds first;
+        come here when the cause is something neither of them names, or to see
+        an ordinary event in the context of the ones around it.
+
+        Lines are reformatted to `Reason Kind/name — message`. The raw event
+        carries a dozen more fields, most of them resource versions and
+        forwarding addresses, and expanding a line shows all of them.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: materialize.events.deployment.warnings
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes events the reporting component flagged as warnings — a pod
+        that will not schedule, an image that will not pull, a container failing
+        its probes.
+      nominal: |
+        Nothing, or a brief flurry that stops on its own. Warnings during a
+        rollout are expected while pods are replaced: a new pod is unschedulable
+        for as long as it takes a node to appear.
+      unhealthy: |
+        Warnings that keep arriving after a rollout should have settled. Read
+        the reason: `FailedScheduling` and `NotTriggerScaleUp` mean the cluster
+        has nowhere to put the new pods, `BackOff` means they start and die,
+        `Unhealthy` means they start and never become ready.
+      notes: |
+        Warning is the reporting component's own judgement, not this stack's.
+        Kubernetes marks an event `Warning` when the component that emitted it
+        thought something was wrong, so this is a filter on their opinion rather
+        than a threshold of ours.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}, level="WARN"}
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: materialize.events.deployment.rate.by_reason
+    stability: experimental
+    description:
+      summary: |
+        How often each kind of event is being reported, by reason. The shape of
+        a rollout: `Pulled`, `Created` and `Started` rise together as pods are
+        replaced, and fall back to nothing when it finishes.
+      nominal: |
+        Quiet, apart from bursts that coincide with a deliberate change.
+      unhealthy: |
+        A reason that keeps firing at a steady rate is a loop rather than a
+        transition. `FailedScheduling` and `BackOff` are the two that most often
+        look like this, and both mean the rollout is not going to finish on its
+        own.
+      notes: |
+        Counts events as Loki received them. Kubernetes aggregates a repeated
+        event into one object with a rising `count` rather than sending it
+        again, so a tight loop reports fewer lines than it has occurrences — the
+        `count` on each line is the number this one stands for.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.events.deployment.warning.rate
+    stability: experimental
+    description:
+      summary: |
+        Warning events per interval across both namespaces, as one series — the
+        at-a-glance answer to whether anything is complaining right now.
+      nominal: Flat at zero, or a spike that returns to zero.
+      unhealthy: |
+        A level that does not come back down. Read
+        _Kubernetes Activity -> Warning Events_ for which reasons make it up.
+    logQL: |
+      sum(
+        count_over_time(
+          {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}, level="WARN"}
+          %%{interval}
+        )
+      )
+
+  # --- the operator's own events ----------------------------------------------
+  - id: materialize.events.operator.lifecycle
+    stability: experimental
+    description:
+      summary: |
+        Every phase the Materialize resource moved through, as the operator
+        reported it: `Applying`, `ReadyToPromote`, `WaitingForApproval`,
+        `Promoting`, `Applied`, and the two that end a rollout badly,
+        `RolloutTimeout` and `FailedDeploy`.
+      nominal: |
+        A rollout reads as a short sequence ending in `Applied`. Nothing between
+        rollouts, since a phase is only reported when the status actually
+        changes.
+      unhealthy: |
+        `RolloutTimeout` or `FailedDeploy`. Both say the rollout stopped without
+        reaching the requested state; neither says why, which is what
+        _Operator Health -> Reconciliation Failures_ carries.
+      notes: |
+        The resource's status conditions record only the phase it is in *now*, so
+        a rollout that has moved on leaves no account of what it passed through.
+        This is that account.
+
+        Selected by `reportingcontroller` rather than by the operator's namespace:
+        the event is filed against the `Materialize` resource, which lives in the
+        environment's namespace rather than the operator's.
+
+        One line per transition rather than one per reconciliation pass: the
+        operator publishes an event only when the status substantively moved, so
+        a reconciler re-running on every watch event does not repeat itself here.
+
+        A `WaitingForApproval` that persists is not a failure — the rollout is
+        doing what it was configured to do and is waiting for a human to promote
+        it.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+        | reportingcontroller="orchestratord.materialize.cloud"
+        | kind="Materialize"
+        | reason!="ReconciliationFailed"
+        | line_format "{{.reason}} — {{.msg}}"
+
+  - id: materialize.events.operator.lifecycle.rate
+    stability: experimental
+    description:
+      summary: |
+        Lifecycle transitions over time, by phase — where a rollout got to, and
+        when.
+      notes: |
+        Read as a sequence rather than a rate: each point is one transition, and
+        the interesting reading is which phases appear and in what order. A
+        rollout that reaches `Promoting` and never reaches `Applied` stopped in
+        promotion.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+          | reportingcontroller="orchestratord.materialize.cloud"
+          | kind="Materialize"
+          | reason!="ReconciliationFailed"
+          %%{interval}
+        )
+      )
+
+  - id: materialize.events.operator.reconciliation.failures
+    stability: experimental
+    description:
+      summary: |
+        Why the operator could not reconcile a resource. The event carries the
+        error's whole cause chain, which is usually the actionable half — an
+        admission webhook that is down, a secret that does not exist yet, a
+        license key that will not parse.
+      nominal: Nothing. A reconciliation that succeeds reports no failure.
+      degraded: |
+        A failure that appears once and stops. The operator retries on a backoff,
+        and a cause that clears itself — a webhook still starting up, a resource
+        created moments later — resolves without intervention.
+      unhealthy: |
+        Failures that keep arriving. The `Kind` says which resource is stuck:
+        `Materialize` is the environment itself, `Balancer` and `Console` are
+        the components around it, and a failure on those leaves the environment
+        running but unreachable or unmanageable.
+      notes: |
+        Repeats of one failure aggregate into a single event carrying a count,
+        rather than one line each. When the message changes — a missing secret
+        first, the real cause once it appears — the operator files a fresh
+        event, so a changing cause reads as several lines rather than one stale
+        one.
+
+        A `FailedDeploy` reports twice: once here with the cause, and once in
+        _Rollout -> Lifecycle Events_ with the phase.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+        | reportingcontroller="orchestratord.materialize.cloud"
+        | reason="ReconciliationFailed"
+        | line_format "{{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: materialize.events.operator.reconciliation.failures.rate
+    stability: experimental
+    description:
+      summary: |
+        Reconciliation failures over time, by the kind of resource that failed.
+      nominal: Flat at zero.
+      unhealthy: |
+        A sustained rate on any kind. The operator retries with a backoff that
+        tops out around four minutes, so a steady low rate is a resource that has
+        been stuck for as long as the line has been above zero.
+    logQL: |
+      sum by (kind) (
+        count_over_time(
+          {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
+          | reportingcontroller="orchestratord.materialize.cloud"
+          | reason="ReconciliationFailed"
+          %%{interval}
+        )
+      )

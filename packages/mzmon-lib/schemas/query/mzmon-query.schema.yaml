@@ -98,6 +98,11 @@ $defs:
       - "mzOperatorNamespaceFilter"
       - "mzEnvironmentNamespaceFilter"
       - "mzSystemNamespaceFilter"
+      # Every namespace a Materialize deployment occupies -- the operator's and
+      # the environments' -- as one matcher: namespace=~"a|b". The two filters
+      # above cannot be combined by writing both, since repeating a label in one
+      # selector is an AND and matches nothing.
+      - "mzDeploymentNamespaceFilter"
       # Environment (org) scope filter fragment, e.g.
       # materialize_cloud_organization_name=~"$environmentIdList".
       - "mzEnvironmentFilter"

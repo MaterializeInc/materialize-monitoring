@@ -37,26 +37,54 @@ use mzmon_lib::grafana::context::{DashboardScope, dashboard_context};
 use mzmon_lib::grafana::query::{PanelQuery, panel_query, query_group};
 use mzmon_lib::query::{QueryEngine, QueryRegistry, render::TemplateContext};
 
-/// A registry plus the context a dashboard renders it in.
+/// A registry plus the contexts a dashboard renders it in.
+///
+/// Two contexts, not one. A query's engine is a property of the query — a
+/// Kubernetes event has no PromQL form and a peek histogram has no LogQL one — so
+/// the engine cannot be a per-dashboard setting. It is chosen per lookup instead:
+/// [`Queries::get`] renders PromQL and [`Queries::logs`] renders LogQL, and each
+/// carries the datasource variable its engine belongs to.
+///
+/// Both contexts share one scope, so a filter fragment resolves identically
+/// whichever engine reads it. That is what lets a stream selector and a metric
+/// selector agree on which namespaces they are looking at.
 pub struct Queries<'a> {
     registry: &'a QueryRegistry,
-    ctx: TemplateContext<'a>,
+    metrics: TemplateContext<'a>,
+    logs: TemplateContext<'a>,
     failures: RefCell<Vec<String>>,
 }
 
 impl<'a> Queries<'a> {
-    /// Bind a registry to the Grafana/PromQL rendering context.
+    /// Bind a registry to the Grafana rendering contexts.
     pub fn new(registry: &'a QueryRegistry, scope: &DashboardScope) -> Self {
         Queries {
             registry,
-            ctx: dashboard_context(registry, QueryEngine::PromQl, scope),
+            metrics: dashboard_context(registry, QueryEngine::PromQl, scope),
+            logs: dashboard_context(registry, QueryEngine::LogQl, scope),
             failures: RefCell::new(Vec::new()),
         }
     }
 
     /// Bridge a registry query into a panel's query group and description.
     pub fn get(&self, id: &str) -> PanelQuery {
-        match panel_query(self.registry, id, &self.ctx) {
+        self.bridge(id, &self.metrics)
+    }
+
+    /// [`Queries::get`] for a query written in LogQL, against the logs datasource.
+    ///
+    /// Asking for the wrong engine is recorded as a failure rather than falling
+    /// back: a query with no LogQL form would otherwise render its PromQL against
+    /// Loki, which parses far enough to produce an empty panel rather than an
+    /// error.
+    pub fn logs(&self, id: &str) -> PanelQuery {
+        self.bridge(id, &self.logs)
+    }
+
+    /// Look `id` up in one of the contexts, recording a failure rather than
+    /// propagating it.
+    fn bridge(&self, id: &str, ctx: &TemplateContext) -> PanelQuery {
+        match panel_query(self.registry, id, ctx) {
             Ok(panel) => panel,
             Err(e) => {
                 self.failures.borrow_mut().push(format!("{id}: {e}"));
@@ -119,5 +147,19 @@ pub(crate) fn test_queries() -> Queries<'static> {
     // all these tests need, and the alternative is threading a scope binding
     // through every call site.
     let scope: &'static DashboardScope = Box::leak(Box::new(DashboardScope::default()));
+    Queries::new(test_registry(), scope)
+}
+
+/// [`test_queries`] in the scope a dashboard that defines `$operatorNamespace`
+/// builds in.
+///
+/// A tab has to be tested in the scope its dashboard renders it in, or an
+/// assertion about what a query resolves to is about a rendering that never
+/// ships. The two differ in exactly one parameter, and it is the one the operator
+/// queries are built on.
+#[cfg(test)]
+pub(crate) fn test_operator_queries() -> Queries<'static> {
+    let scope: &'static DashboardScope =
+        Box::leak(Box::new(DashboardScope::default().operator_variable()));
     Queries::new(test_registry(), scope)
 }

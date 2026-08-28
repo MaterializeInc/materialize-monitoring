@@ -90,12 +90,19 @@ from.
 | Artifact stem | Module | UID | Title |
 |---|---|---|---|
 | `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview |
+| `upgrade` | `grafana/upgrade/` | `mz-mon-upgrade` | Materialize Upgrade |
 
-Rendered to `charts/…/pre-rendered/dashboards/grafana/env-top.yaml` (chart) and `docs/assets/dashboards/grafana/env-top.json`
-plus `gcp-env-top.json` (docsite). The two clouds differ only in the `target-cloud` annotation.
+Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and `docs/assets/dashboards/grafana/<stem>.json`
+plus `gcp-<stem>.json` (docsite). The two clouds differ only in the `target-cloud` annotation.
+
+**`upgrade` is not installed by default.** `dashboards.selected` defaults to `["env-*"]`, so a release has to opt in
+with `upgrade`. Deliberate while the operator-side events it reads are unreleased — the Kubernetes Activity row works
+against any cluster, but the Rollout and Operator Health rows need an operator that publishes events.
 
 The live UID diverged from the codified one before `mz-mon-env-top` became authoritative — see
 [UID selection and behavior](../../../docs/content/reference/internal/dashboard/generating.md#uid-selection-and-behavior).
+
+## `env-top` tabs
 
 Six tabs, in declared order. Shades come from `env_top/theme.rs`, which is the source of truth for visual identity:
 
@@ -159,6 +166,117 @@ Generated from the rendered artifact; regenerate rather than hand-editing when t
 
 Replica AZs are intentionally unwired: `materialize_cloud_availability_zone` is cloud-only, and AZ semantics confuse
 the target audience.
+
+## `upgrade` tabs
+
+Two tabs. Shades come from `upgrade/theme.rs`.
+
+| # | Tab title | Module | Shade |
+|---|---|---|---|
+| 1 | Events | `events.rs` | `EVENTS` `#EE3377` (magenta) |
+| 2 | Reconciliation | `reconciliation.rs` | `RECONCILIATION` `#009988` (teal) |
+
+**This is the repo's first mixed-datasource dashboard.** Events is Loki, Reconciliation is Thanos, and the two are
+separate tabs partly because they are scoped differently — see the namespace note below.
+
+**Events** — the first tab in this repo built on Loki rather than Thanos. Rows narrow from verdict to cause:
+
+1. Event Summary (**header hidden**) — Warning Events, Reconciliation Failures, Lifecycle Transitions
+2. Rollout — Lifecycle Transitions (timeseries), Lifecycle Events (logs)
+3. Operator Health — Reconciliation Failures (timeseries), Reconciliation Failure Events (logs)
+4. Kubernetes Activity — Event Rate by Reason (timeseries), Warning Events (logs)
+5. All Events (**collapsed**) — All Events (logs)
+
+Each rate panel sits beside the feed it summarizes, in the same row: the chart says *when*, the feed says *what*.
+
+**Reconciliation** — the operator's control loop, as counters and histograms:
+
+1. Operator Status (**header hidden**) — Reconciling Replicas, Environments Needing Update, Reconciliation Rate, Failed Passes (Select Time Range)
+2. Reconciliation Passes — Pass Outcomes, Failed Passes by Controller
+3. Duration — Pass Duration (p50/p90/p99), Step Duration (p99)
+4. Steps — Step Activity, Step Failures and Abandonments
+
+## orchestratord reconciliation metrics
+
+What the Reconciliation tab is built on. Sources: `src/orchestratord/src/reconcile.rs` and `metrics.rs` in the
+Materialize repo, which carry the authoritative prose in their `help` strings and doc comments.
+
+| Metric | Labels | Notes |
+|---|---|---|
+| `orchestratord_reconciliations_total` | `controller`, `event_type`, `outcome` | One trip through a controller's work |
+| `orchestratord_reconciliation_duration_seconds` | `controller`, `event_type` | Histogram |
+| `orchestratord_reconciliation_steps_total` | `controller`, `step`, `outcome` | The named phases within a pass |
+| `orchestratord_reconciliation_step_duration_seconds` | `controller`, `step` | Histogram, same buckets |
+| `orchestratord_is_leader` | — | Predates the rest |
+| `environmentd_needs_update` | — | Predates the rest |
+
+**They carry no organization label**, so the environment picker does not narrow them — one operator reconciles every
+environment in the cluster. `%%{mzOperatorNamespaceFilter}` is the only scope that applies, and unlike the *events*
+(which are filed in the involved object's namespace) these metrics really do carry `namespace="<operator namespace>"`.
+The two tabs therefore scope in opposite directions, which is the trap worth remembering.
+
+**Sum across replicas, always.** Only the leader reconciles; the others export the same families sitting at zero.
+`environmentd_needs_update` is explicitly reset on losing the lease so a former leader does not go on publishing its
+last observation.
+
+**Outcome vocabulary** (`applied`, `waiting`, `skipped`, `failed`, `abandoned`):
+
+- `waiting` is **success**, not a warning — a rollout spends most of its passes there while the new generation's pods
+  come up.
+- `abandoned` is **not a failure signal**. A step records it when it did not reach a conclusion, which covers an error
+  propagating out *and* a pass cancelled by a leadership handoff or shutdown; a `Drop` cannot tell them apart. Alert on
+  `orchestratord_reconciliations_total{outcome="failed"}`, which is recorded from the reconciler's actual result and
+  which a cancelled pass never reaches, and read the step counter to *locate* it.
+
+**Duration is not rollout duration.** A pass waiting on pods returns promptly and asks to run again rather than
+blocking, so the histogram measures work done per pass. The rollout's wall-clock length is the span between its first
+and last transition on the Events tab.
+
+**The buckets are deliberately coarse** — 10ms, 50ms, 250ms, 1s, 5s, 30s. A percentile is therefore the boundary of the
+bucket the value fell in, not the value; read it as an order of magnitude. Finer buckets would cost several times the
+series for detail no operator question asks for, and steps share the pass's bucket set so a step's latency reads
+against the pass it belongs to.
+
+**Test tabs in the scope their dashboard builds them in.** `queries::test_operator_queries()` exists because
+`test_queries()` uses `DashboardScope::default()`, where the operator namespace is the pinned literal rather than
+`$operatorNamespace` — an assertion about a rendered selector under the default scope is about a rendering that never
+ships.
+
+## Kubernetes events in Loki
+
+What the `upgrade` Events tab is built on, and the parts that are not guessable.
+
+**Where they come from.** `loki.source.kubernetes_events` in `packages/alloy-pipelines/gateway.yaml` reads events off
+the Kubernetes API and forwards them to the main processor, which lifts `reason`, `name`, `kind`, `count`, `node` and
+`reportingcontroller` into **structured metadata** and maps the event `type` onto the `level` stream label
+(`Normal` → `INFO`, `Warning` → `WARN`). Stream labels are therefore `job="loki.source.kubernetes_events"`, `namespace`
+and `level`; everything else a query groups on is structured metadata, which LogQL matches and aggregates the same way.
+
+**An event's namespace is the involved object's, not the reporter's.** This is the one that bites. orchestratord runs
+in the operator namespace and reconciles resources in the environments' namespace, so *every event it publishes is
+filed in the environment namespace*. Scoping the operator's events by `%%{mzOperatorNamespaceFilter}` returns nothing
+— it looks right, renders empty, and gives no hint why. The operator queries scope to both namespaces
+(`%%{mzDeploymentNamespaceFilter}`) and pick orchestratord out by
+`| reportingcontroller="orchestratord.materialize.cloud"`, which is the reporter's identity and the only field that
+actually says where an event came from.
+
+**`line_format` is what makes a feed readable.** A raw event line is logfmt carrying a dozen fields, most of them
+resource versions and forwarding addresses. `| line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"` renders the
+three that matter; expanding a line still shows the rest.
+
+**The operator's event vocabulary** (see `src/orchestratord/src/reconcile.rs` and `controller/materialize.rs` in the
+Materialize repo): `ReconciliationFailed` from the generic reconciliation wrapper, carrying the error's whole cause
+chain; and the lifecycle transitions on the `Materialize` resource — `Applying`, `ReadyToPromote`,
+`WaitingForApproval`, `Promoting`, `Applied`, `RolloutTimeout`, `FailedDeploy`. A `FailedDeploy` reports twice, once
+with the phase and once with the cause; the reasons tell them apart. Repeats aggregate into one event with a rising
+`count` rather than one line each, so a feed under-reports a tight loop — the `count` on the line is how many it
+stands for.
+
+**Two namespace controls, scoped differently.** `$operatorNamespace` is a visible single-select discovered from
+`label_values(orchestratord_is_leader, namespace)` — the operator is a cluster-wide singleton that no environment
+selection narrows. The environment namespace stays the hidden, environment-derived `$mzNamespaceList` that `env-top`
+already uses. `%%{mzDeploymentNamespaceFilter}` is the two as **one** matcher; writing both filters side by side
+repeats the `namespace` label in one selector, which is an AND and matches nothing.
 
 ## Notes on the trickier panels
 

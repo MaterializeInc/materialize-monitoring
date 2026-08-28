@@ -1,0 +1,342 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Materialize operator (orchestratord) reconciliation queries
+
+description: |
+  How the Materialize operator's reconciliation loop is behaving.
+
+  orchestratord watches the `Materialize`, `Balancer` and `Console` resources
+  and drives each toward the state its spec asks for. One trip through that
+  work is a *pass*, and a pass moves through named *steps*. Both are counted by
+  outcome, and both are timed, which is what lets a stuck rollout say not just
+  that it is stuck but which phase it is stuck in.
+
+  These are the operator's own metrics, scraped from its pods in the operator
+  namespace, so they are scoped by `%%{mzOperatorNamespaceFilter}` and by
+  nothing else. **They carry no organization label**, so the environment picker
+  does not narrow them: one operator reconciles every environment in the
+  cluster, and its loop is a single shared thing rather than a per-environment
+  one.
+
+  Only the replica holding the leadership lease reconciles. The others export
+  the same metric families sitting at zero, which is why every query here sums
+  across replicas rather than picking one out.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- is the operator working at all --------------------------------------
+  - id: materialize.operator.reconciling.replicas
+    stability: experimental
+    description:
+      summary: |
+        How many operator replicas hold the leadership lease and are therefore
+        reconciling. This should be exactly one.
+      nominal: One. The lease is held, and something is acting on your resources.
+      unhealthy: |
+        Zero means no replica can take the lease and the operator is reconciling
+        nothing — every other panel here goes quiet and nothing on the cluster
+        changes, however healthy the pods look. The usual cause is the service
+        account lacking permission on leases. More than one should not be
+        possible; treat it as a stale reading rather than a real split.
+      notes: |
+        Summed across replicas on purpose. A non-leader exports the metric at
+        zero rather than not at all, so this is a count of leaders and not a
+        count of pods.
+    promQL: |
+      sum(
+        orchestratord_is_leader{%%{mzOperatorNamespaceFilter}}
+      )
+
+  - id: materialize.operator.environments.needing_update
+    stability: experimental
+    description:
+      summary: |
+        How many environments in this cluster are still running an outdated pod
+        template — the count an upgrade is working to bring to zero.
+      nominal: |
+        Zero between upgrades. Non-zero during one, falling as environments are
+        rolled.
+      unhealthy: |
+        A count that stops falling. The rollout has stalled rather than
+        finished; read _Reconciliation Passes -> Pass Outcomes_ for whether the
+        operator is still trying, and the Events tab for what it said about why.
+      notes: |
+        Deliberately not alarm-coloured. A non-zero reading is what an upgrade in
+        progress looks like, and colouring it red would fire on every routine
+        one. What matters is the *direction*, which is why this is a sparkline
+        rather than a bare number.
+
+        Only the leader observes this, and it resets to zero when a replica loses
+        the lease, so summing across replicas does not double-count an
+        environment across a leadership handoff.
+    promQL: |
+      sum(
+        environmentd_needs_update{%%{mzOperatorNamespaceFilter}}
+      )
+
+  - id: materialize.operator.reconciliation.rate
+    stability: experimental
+    description:
+      summary: |
+        Reconciliation passes per second across every controller — whether the
+        loop is turning at all.
+      nominal: |
+        A low steady rate, rising while something is changing. The controllers
+        re-run on every watch event and on a backoff, so an idle operator still
+        ticks over.
+      unhealthy: |
+        Flat at zero while work is outstanding. Check
+        _Operator Status -> Reconciling Replicas_ first: an operator that lost
+        the lease stops reconciling and this is what that looks like.
+      notes: |
+        Not a load signal. A high rate is normal during a rollout and says
+        nothing about cost; it is the *absence* of passes that is diagnostic.
+    promQL: |
+      sum(
+        rate(
+          orchestratord_reconciliations_total{%%{mzOperatorNamespaceFilter}}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.operator.reconciliation.failures.total
+    stability: experimental
+    description:
+      summary: |
+        Reconciliation passes that returned an error over the selected time
+        range.
+      nominal: Zero.
+      degraded: |
+        A handful that stopped. The operator retries on a backoff, and a cause
+        that clears itself — a webhook still starting, a secret created moments
+        later — resolves without intervention.
+      unhealthy: |
+        A count that keeps climbing. Something the operator needs is not there
+        and retrying will not make it appear. Each failure is also published as
+        a Kubernetes event carrying the error's cause chain — see
+        _Events -> Operator Health_.
+      notes: |
+        A count over the selected range rather than a rate, so the number answers
+        "how many" directly. The rate over time is the `failed` series on
+        _Reconciliation Passes -> Pass Outcomes_.
+    promQL: |
+      sum(
+        increase(
+          orchestratord_reconciliations_total{
+            %%{mzOperatorNamespaceFilter}, outcome="failed"
+          }
+          %%{range}
+        )
+      )
+
+  # --- what the passes concluded -------------------------------------------
+  - id: materialize.operator.reconciliation.outcomes
+    stability: experimental
+    description:
+      summary: |
+        What reconciliation passes concluded, by outcome. The shape of a
+        rollout: `waiting` climbs while the new generation's pods come up, then
+        gives way to `applied` when they are ready.
+      nominal: |
+        `applied` with `waiting` alongside it during a change. Both are success.
+      degraded: |
+        `waiting` that stays high long after a change should have settled. The
+        operator is still trying and the thing it is waiting for has not
+        happened — usually pods that will not become ready.
+      unhealthy: |
+        A sustained `failed` rate. The pass is erroring rather than waiting, and
+        _Steps -> Step Failures and Abandonments_ localizes which phase.
+      notes: |
+        The five outcomes are the operator's own vocabulary: `applied` reached
+        the desired state or found it already there; `waiting` made progress and
+        asked to run again; `skipped` had nothing to act on, because what it
+        manages is disabled or absent from the spec; `failed` returned an error;
+        `abandoned` did not reach a conclusion.
+
+        `abandoned` is rare at the pass level and is not a failure signal — it
+        covers a pass cancelled by a leadership handoff or a shutdown as well as
+        one that errored out.
+
+        `apply` and `cleanup` passes are summed together here. Cleanup runs when
+        a resource is being deleted, so it is rare, and splitting it out would
+        double every series to distinguish a case that is usually absent.
+    promQL: |
+      sum by (outcome) (
+        rate(
+          orchestratord_reconciliations_total{%%{mzOperatorNamespaceFilter}}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.operator.reconciliation.failures.by_controller
+    stability: experimental
+    description:
+      summary: |
+        Failing passes broken out by which controller failed and which of its
+        entry points was running — the first question after "something is
+        failing".
+      nominal: Nothing.
+      unhealthy: |
+        `materialize` failing is the environment itself not reaching the state
+        it was asked for. `balancer` or `console` failing leaves the environment
+        running but unreachable or unmanageable, which is a different urgency.
+      notes: |
+        `event_type` is which entry point ran: `apply` is the ordinary path, and
+        `cleanup` runs while a resource is being deleted. A `cleanup` failure is
+        what leaves a resource stuck with its finalizer still attached.
+    promQL: |
+      sum by (controller, event_type) (
+        rate(
+          orchestratord_reconciliations_total{
+            %%{mzOperatorNamespaceFilter}, outcome="failed"
+          }
+          %%{interval}
+        )
+      )
+
+  # --- how long the work takes ---------------------------------------------
+  - id: materialize.operator.reconciliation.duration
+    stability: experimental
+    description:
+      summary: |
+        How long one reconciliation pass takes, at the 50th, 90th and 99th
+        percentiles.
+      nominal: |
+        Tens to hundreds of milliseconds. Reconciliation is a handful of
+        Kubernetes API calls, not a long-running job.
+      unhealthy: |
+        Passes stretching into seconds, which points at the Kubernetes API
+        rather than at Materialize — a slow or throttling API server, or an
+        admission webhook the operator's writes have to wait on.
+      notes: |
+        **This is not how long a rollout takes.** A pass that is waiting on the
+        new generation's pods returns promptly and asks to be run again rather
+        than blocking, so this measures work done per pass, not the wall-clock
+        length of the change. The rollout's own duration is the span between its
+        first and last transition on the Events tab.
+
+        The histogram's buckets are deliberately coarse — 10ms, 50ms, 250ms, 1s,
+        5s, 30s — so a percentile here is the boundary of the bucket the value
+        fell in rather than the value itself. Read it as an order of magnitude.
+        That is the trade the operator made on purpose: finer buckets would cost
+        several times the series for detail no operator question asks for.
+
+        Covers the reconciler only, not the finalizer bookkeeping the controller
+        does around it.
+    promQL:
+      - |
+        histogram_quantile(0.5, sum by (le) (
+          rate(
+            orchestratord_reconciliation_duration_seconds_bucket{
+              %%{mzOperatorNamespaceFilter}
+            }
+            %%{interval}
+          )
+        ))
+      - |
+        histogram_quantile(0.9, sum by (le) (
+          rate(
+            orchestratord_reconciliation_duration_seconds_bucket{
+              %%{mzOperatorNamespaceFilter}
+            }
+            %%{interval}
+          )
+        ))
+      - |
+        histogram_quantile(0.99, sum by (le) (
+          rate(
+            orchestratord_reconciliation_duration_seconds_bucket{
+              %%{mzOperatorNamespaceFilter}
+            }
+            %%{interval}
+          )
+        ))
+
+  - id: materialize.operator.reconciliation.step.duration.p99
+    stability: experimental
+    description:
+      summary: |
+        The slowest phase of a reconciliation pass, at the 99th percentile per
+        step — where the time in a pass actually goes.
+      nominal: |
+        Most steps in the low tens of milliseconds. The two that touch a
+        generation's resources — `global_resources` and `generation_resources` —
+        are the expensive ones, in the hundreds.
+      unhealthy: |
+        A step that leaves its usual band. Because each step is a group of
+        Kubernetes API calls, a step that slows down names the resource kind
+        whose writes are being held up.
+      notes: |
+        Same coarse buckets as the whole-pass histogram, and the same reading:
+        an order of magnitude rather than a measurement. Steps and passes share
+        one bucket set precisely so a step's latency reads against the pass it
+        belongs to.
+    promQL: |
+      histogram_quantile(0.99, sum by (le, step) (
+        rate(
+          orchestratord_reconciliation_step_duration_seconds_bucket{
+            %%{mzOperatorNamespaceFilter}
+          }
+          %%{interval}
+        )
+      ))
+
+  # --- which phase -----------------------------------------------------------
+  - id: materialize.operator.reconciliation.steps.rate
+    stability: experimental
+    description:
+      summary: |
+        Which phases of reconciliation are running, and how often. A rollout
+        moves through these in order, so the set that is active says where the
+        operator has got to.
+      nominal: |
+        The steps of whichever controllers have work. `promote` and
+        `teardown_generation` appear only around a deployment; the rest tick
+        over with the loop.
+      notes: |
+        A step is the only level at which "there was nothing to do" is
+        distinguishable from "the desired state was reached" — the reconciler
+        interface reports both as success. That distinction is the `outcome`
+        label, which this panel sums over; see
+        _Steps -> Step Failures and Abandonments_ for the half that matters.
+    promQL: |
+      sum by (step) (
+        rate(
+          orchestratord_reconciliation_steps_total{%%{mzOperatorNamespaceFilter}}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.operator.reconciliation.steps.incomplete
+    stability: experimental
+    description:
+      summary: |
+        Steps that did not complete, by step and by how they ended — the panel
+        that turns "reconciliation is failing" into "reconciliation is failing
+        *here*".
+      nominal: Nothing.
+      unhealthy: |
+        Any sustained rate names the phase to investigate. Pair it with the
+        matching event on _Events -> Operator Health_, which carries the cause;
+        this panel says where and that one says why.
+      notes: |
+        **`abandoned` is not by itself a failure.** A step records it when it did
+        not reach a conclusion, which covers an error propagating out of it *and*
+        a pass cancelled by a leadership handoff or a shutdown — a `Drop` cannot
+        tell those apart. So a burst of `abandoned` around an operator restart is
+        expected. Alert on
+        _Operator Status -> Failed Passes (Select Time Range)_, which is recorded
+        from the reconciler's actual result and which a cancelled pass never
+        reaches, and read this to locate the step.
+
+        An `abandoned` step alongside a `failed` pass is the useful pairing: the
+        pass says it errored, and the step says where it was when it did.
+    promQL: |
+      sum by (step, outcome) (
+        rate(
+          orchestratord_reconciliation_steps_total{
+            %%{mzOperatorNamespaceFilter}, outcome=~"failed|abandoned"
+          }
+          %%{interval}
+        )
+      )

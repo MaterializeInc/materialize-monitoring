@@ -54,8 +54,9 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::grafana::generated::{
-    BARCHART_PLUGIN_ID, GAUGE_PLUGIN_ID, PIECHART_PLUGIN_ID, STAT_PLUGIN_ID, TABLE_PLUGIN_ID,
-    TIMESERIES_PLUGIN_ID, barchart, dashboardv2, gauge, piechart, stat, table, timeseries,
+    BARCHART_PLUGIN_ID, GAUGE_PLUGIN_ID, LOGS_PLUGIN_ID, PIECHART_PLUGIN_ID, STAT_PLUGIN_ID,
+    TABLE_PLUGIN_ID, TIMESERIES_PLUGIN_ID, barchart, dashboardv2, gauge, logs, piechart, stat,
+    table, timeseries,
 };
 use crate::grafana::query::PanelQuery;
 
@@ -448,6 +449,70 @@ impl PanelOptions for BarChart {
     }
 }
 
+// --------------------------------------------------------------------- logs
+
+/// Log panel preset, for a LogQL query rendered as log lines rather than a chart.
+///
+/// The first plugin here with no baseline to copy: `env-top` has no log panel, so
+/// these defaults are chosen rather than measured. They target reading an event
+/// stream — newest first, with the timestamp shown, because "when did this start"
+/// is the first question asked of one.
+///
+/// `show_labels` stays off deliberately. Loki's stream labels repeat on every
+/// line (`namespace`, `job`, `level` are constant within a panel that selected on
+/// them), so rendering them inline costs most of the line width to say nothing.
+/// What actually varies per event is structured metadata, which `enable_log_details`
+/// puts one click away.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Logs {
+    /// Newest line first. `Descending` is the reading order for an event feed;
+    /// `Ascending` suits a panel meant to be read as a narrative.
+    pub sort_order: logs::LogsSortOrder,
+    /// Wrap long lines rather than truncating them. Event notes carry the cause of
+    /// a failure at the end of the line, so truncation hides the answer.
+    pub wrap_log_message: bool,
+    /// Show the per-line timestamp.
+    pub show_time: bool,
+}
+
+impl Default for Logs {
+    fn default() -> Self {
+        Logs {
+            sort_order: logs::LogsSortOrder::Descending,
+            wrap_log_message: true,
+            show_time: true,
+        }
+    }
+}
+
+impl PanelOptions for Logs {
+    fn plugin_id(&self) -> &'static str {
+        LOGS_PLUGIN_ID
+    }
+
+    fn options(&self) -> Map<String, Value> {
+        erase(&logs::Options {
+            // `Exact` would collapse the repeated lines that make a crash loop
+            // legible as a crash loop.
+            dedup_strategy: logs::LogsDedupStrategy::None,
+            enable_log_details: true,
+            prettify_log_message: false,
+            show_common_labels: false,
+            show_labels: false,
+            show_log_context_toggle: false,
+            show_time: self.show_time,
+            sort_order: self.sort_order,
+            wrap_log_message: self.wrap_log_message,
+            details_mode: None,
+            enable_infinite_scrolling: None,
+            font_size: None,
+            show_controls: None,
+            show_field_selector: None,
+            syntax_highlighting: None,
+        })
+    }
+}
+
 // -------------------------------------------------------------------- Panel
 
 /// A panel under construction. Generic over its plugin's options so that
@@ -570,6 +635,26 @@ impl Panel<Gauge> {
 impl Panel<BarChart> {
     pub fn barchart(title: impl Into<String>) -> Self {
         Self::new(title)
+    }
+}
+
+impl Panel<Logs> {
+    pub fn logs(title: impl Into<String>) -> Self {
+        Self::new(title)
+    }
+
+    /// Read oldest-first, for a panel meant to be followed as a sequence rather
+    /// than checked for what just happened.
+    pub fn oldest_first(mut self) -> Self {
+        self.options.sort_order = logs::LogsSortOrder::Ascending;
+        self
+    }
+
+    /// Truncate long lines instead of wrapping them, for a dense feed where the
+    /// leading text is the whole signal.
+    pub fn truncate_lines(mut self) -> Self {
+        self.options.wrap_log_message = false;
+        self
     }
 }
 

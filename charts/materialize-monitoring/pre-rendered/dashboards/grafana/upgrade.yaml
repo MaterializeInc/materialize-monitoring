@@ -1,0 +1,1916 @@
+apiVersion: dashboard.grafana.app/v2
+kind: Dashboard
+metadata:
+  annotations:
+    monitoring.materialize.cloud/min-mz-version: v26.40.0
+    monitoring.materialize.cloud/rec-mz-version: v26.40.0
+    monitoring.materialize.cloud/sql-metric-prefix: mz_
+    monitoring.materialize.cloud/target-cloud: generic
+    monitoring.materialize.cloud/target-export: generic
+  name: mz-mon-upgrade
+spec:
+  annotations:
+  - kind: AnnotationQuery
+    spec:
+      builtIn: true
+      enable: true
+      hide: true
+      iconColor: rgba(0, 211, 255, 1)
+      name: Annotations & Alerts
+      query:
+        datasource:
+          name: -- Grafana --
+        group: grafana
+        kind: DataQuery
+        spec: {}
+        version: v0
+  cursorSync: Crosshair
+  description: |-
+    What happened during a Materialize upgrade.
+
+    The operator's own account of a rollout, alongside
+    what the cluster did underneath it.
+  editable: true
+  elements:
+    all-event-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Every Kubernetes event from the operator and environment namespaces, newest first — the unfiltered record of what the cluster did.**
+
+          The reading of last resort. Prefer the warning and lifecycle feeds first; come here when the cause is something neither of them names, or to see an ordinary event in the context of the ones around it.
+
+          Lines are reformatted to `Reason Kind/name — message`. The raw event carries a dozen more fields, most of them resource versions and forwarding addresses, and expanding a line shows all of them.
+        id: 1009
+        links: []
+        title: All Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No events in this time range
+              overrides: []
+            options:
+              dedupStrategy: none
+              enableLogDetails: true
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showLabels: false
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              wrapLogMessage: true
+          version: ''
+    environments-needing-update:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        environmentd_needs_update{namespace=~"$operatorNamespace"}
+                      )
+                    legendFormat: outdated
+                    qryType: 1
+                    query: |
+                      sum(
+                        environmentd_needs_update{namespace=~"$operatorNamespace"}
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How many environments in this cluster are still running an outdated pod template — the count an upgrade is working to bring to zero.**
+
+          **Nominal:** Zero between upgrades. Non-zero during one, falling as environments are rolled.
+
+          **Unhealthy:** A count that stops falling. The rollout has stalled rather than finished; read _Reconciliation Passes -> Pass Outcomes_ for whether the operator is still trying, and the Events tab for what it said about why.
+
+          Deliberately not alarm-coloured. A non-zero reading is what an upgrade in progress looks like, and colouring it red would fire on every routine one. What matters is the *direction*, which is why this is a sparkline rather than a bare number.
+
+          Only the leader observes this, and it resets to zero when a replica loses the lease, so summing across replicas does not double-count an environment across a leadership handoff.
+        id: 1011
+        links: []
+        title: Environments Needing Update
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#009988'
+                  mode: shades
+                decimals: 0
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    event-rate-by-reason:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (reason) (
+                        count_over_time(
+                          {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{reason}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How often each kind of event is being reported, by reason. The shape of a rollout: `Pulled`, `Created` and `Started` rise together as pods are replaced, and fall back to nothing when it finishes.**
+
+          **Nominal:** Quiet, apart from bursts that coincide with a deliberate change.
+
+          **Unhealthy:** A reason that keeps firing at a steady rate is a loop rather than a transition. `FailedScheduling` and `BackOff` are the two that most often look like this, and both mean the rollout is not going to finish on its own.
+
+          Counts events as Loki received them. Kubernetes aggregates a repeated event into one object with a rising `count` rather than sending it again, so a tight loop reports fewer lines than it has occurrences — the `count` on each line is the number this one stands for.
+        id: 1007
+        links: []
+        title: Event Rate by Reason
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No events in this time range
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    failed-passes:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        increase(
+                          orchestratord_reconciliations_total{
+                            namespace=~"$operatorNamespace", outcome="failed"
+                          }
+                          [$__range]
+                        )
+                      )
+                    legendFormat: failed
+                    qryType: 1
+                    query: |
+                      sum(
+                        increase(
+                          orchestratord_reconciliations_total{
+                            namespace=~"$operatorNamespace", outcome="failed"
+                          }
+                          [$__range]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Reconciliation passes that returned an error over the selected time range.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** A handful that stopped. The operator retries on a backoff, and a cause that clears itself — a webhook still starting, a secret created moments later — resolves without intervention.
+
+          **Unhealthy:** A count that keeps climbing. Something the operator needs is not there and retrying will not make it appear. Each failure is also published as a Kubernetes event carrying the error's cause chain — see _Events -> Operator Health_.
+
+          A count over the selected range rather than a rate, so the number answers "how many" directly. The rate over time is the `failed` series on _Reconciliation Passes -> Pass Outcomes_.
+        id: 1013
+        links: []
+        title: Failed Passes (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#FEDA8B'
+                    value: 1
+                  - color: '#FDB366'
+                    value: 25.75
+                  - color: '#F67E4B'
+                    value: 50.5
+                  - color: '#DD3D2D'
+                    value: 75.25
+                  - color: '#A50026'
+                    value: 100
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    failures-by-controller:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (controller, event_type) (
+                        rate(
+                          orchestratord_reconciliations_total{
+                            namespace=~"$operatorNamespace", outcome="failed"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{controller}} / {{event_type}}'
+                    qryType: 1
+                    query: |
+                      sum by (controller, event_type) (
+                        rate(
+                          orchestratord_reconciliations_total{
+                            namespace=~"$operatorNamespace", outcome="failed"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Failing passes broken out by which controller failed and which of its entry points was running — the first question after "something is failing".**
+
+          **Nominal:** Nothing.
+
+          **Unhealthy:** `materialize` failing is the environment itself not reaching the state it was asked for. `balancer` or `console` failing leaves the environment running but unreachable or unmanageable, which is a different urgency.
+
+          `event_type` is which entry point ran: `apply` is the ordinary path, and `cleanup` runs while a resource is being deleted. A `cleanup` failure is what leaves a resource stuck with its finalizer still attached.
+        id: 1015
+        links: []
+        title: Failed Passes by Controller
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No failing passes
+                unit: reqps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    lifecycle-events:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                        | reportingcontroller="orchestratord.materialize.cloud"
+                        | kind="Materialize"
+                        | reason!="ReconciliationFailed"
+                        | line_format "{{.reason}} — {{.msg}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Every phase the Materialize resource moved through, as the operator reported it: `Applying`, `ReadyToPromote`, `WaitingForApproval`, `Promoting`, `Applied`, and the two that end a rollout badly, `RolloutTimeout` and `FailedDeploy`.**
+
+          **Nominal:** A rollout reads as a short sequence ending in `Applied`. Nothing between rollouts, since a phase is only reported when the status actually changes.
+
+          **Unhealthy:** `RolloutTimeout` or `FailedDeploy`. Both say the rollout stopped without reaching the requested state; neither says why, which is what _Operator Health -> Reconciliation Failures_ carries.
+
+          The resource's status conditions record only the phase it is in *now*, so a rollout that has moved on leaves no account of what it passed through. This is that account.
+
+          Selected by `reportingcontroller` rather than by the operator's namespace: the event is filed against the `Materialize` resource, which lives in the environment's namespace rather than the operator's.
+
+          One line per transition rather than one per reconciliation pass: the operator publishes an event only when the status substantively moved, so a reconciler re-running on every watch event does not repeat itself here.
+
+          A `WaitingForApproval` that persists is not a failure — the rollout is doing what it was configured to do and is waiting for a human to promote it.
+        id: 1004
+        links: []
+        title: Lifecycle Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No rollout activity in this time range
+              overrides: []
+            options:
+              dedupStrategy: none
+              enableLogDetails: true
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showLabels: false
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              wrapLogMessage: true
+          version: ''
+    lifecycle-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (reason) (
+                        count_over_time(
+                          {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                          | reportingcontroller="orchestratord.materialize.cloud"
+                          | kind="Materialize"
+                          | reason!="ReconciliationFailed"
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{reason}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Lifecycle transitions over time, by phase — where a rollout got to, and when.**
+
+          Read as a sequence rather than a rate: each point is one transition, and the interesting reading is which phases appear and in what order. A rollout that reaches `Promoting` and never reaches `Applied` stopped in promotion.
+        id: 1003
+        links: []
+        title: Lifecycle Transitions
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No rollout activity in this time range
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    lifecycle-transitions:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (reason) (
+                        count_over_time(
+                          {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                          | reportingcontroller="orchestratord.materialize.cloud"
+                          | kind="Materialize"
+                          | reason!="ReconciliationFailed"
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{reason}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Lifecycle transitions over time, by phase — where a rollout got to, and when.**
+
+          Read as a sequence rather than a rate: each point is one transition, and the interesting reading is which phases appear and in what order. A rollout that reaches `Promoting` and never reaches `Applied` stopped in promotion.
+        id: 1002
+        links: []
+        title: Lifecycle Transitions
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#EE3377'
+                  mode: shades
+                min: 0
+                noValue: No rollout activity in this time range
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ''
+    pass-duration:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.5, sum by (le) (
+                        rate(
+                          orchestratord_reconciliation_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                    legendFormat: p50
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.5, sum by (le) (
+                        rate(
+                          orchestratord_reconciliation_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.9, sum by (le) (
+                        rate(
+                          orchestratord_reconciliation_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                    legendFormat: p90
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.9, sum by (le) (
+                        rate(
+                          orchestratord_reconciliation_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.99, sum by (le) (
+                        rate(
+                          orchestratord_reconciliation_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                    legendFormat: p99
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.99, sum by (le) (
+                        rate(
+                          orchestratord_reconciliation_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How long one reconciliation pass takes, at the 50th, 90th and 99th percentiles.**
+
+          **Nominal:** Tens to hundreds of milliseconds. Reconciliation is a handful of Kubernetes API calls, not a long-running job.
+
+          **Unhealthy:** Passes stretching into seconds, which points at the Kubernetes API rather than at Materialize — a slow or throttling API server, or an admission webhook the operator's writes have to wait on.
+
+          **This is not how long a rollout takes.** A pass that is waiting on the new generation's pods returns promptly and asks to be run again rather than blocking, so this measures work done per pass, not the wall-clock length of the change. The rollout's own duration is the span between its first and last transition on the Events tab.
+
+          The histogram's buckets are deliberately coarse — 10ms, 50ms, 250ms, 1s, 5s, 30s — so a percentile here is the boundary of the bucket the value fell in rather than the value itself. Read it as an order of magnitude. That is the trade the operator made on purpose: finer buckets would cost several times the series for detail no operator question asks for.
+
+          Covers the reconciler only, not the finalizer bookkeeping the controller does around it.
+        id: 1016
+        links: []
+        title: Pass Duration
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    pass-outcomes:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (outcome) (
+                        rate(
+                          orchestratord_reconciliations_total{namespace=~"$operatorNamespace"}
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{outcome}}'
+                    qryType: 1
+                    query: |
+                      sum by (outcome) (
+                        rate(
+                          orchestratord_reconciliations_total{namespace=~"$operatorNamespace"}
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **What reconciliation passes concluded, by outcome. The shape of a rollout: `waiting` climbs while the new generation's pods come up, then gives way to `applied` when they are ready.**
+
+          **Nominal:** `applied` with `waiting` alongside it during a change. Both are success.
+
+          **Degraded:** `waiting` that stays high long after a change should have settled. The operator is still trying and the thing it is waiting for has not happened — usually pods that will not become ready.
+
+          **Unhealthy:** A sustained `failed` rate. The pass is erroring rather than waiting, and _Steps -> Step Failures and Abandonments_ localizes which phase.
+
+          The five outcomes are the operator's own vocabulary: `applied` reached the desired state or found it already there; `waiting` made progress and asked to run again; `skipped` had nothing to act on, because what it manages is disabled or absent from the spec; `failed` returned an error; `abandoned` did not reach a conclusion.
+
+          `abandoned` is rare at the pass level and is not a failure signal — it covers a pass cancelled by a leadership handoff or a shutdown as well as one that errored out.
+
+          `apply` and `cleanup` passes are summed together here. Cleanup runs when a resource is being deleted, so it is rare, and splitting it out would double every series to distinguish a case that is usually absent.
+        id: 1014
+        links: []
+        title: Pass Outcomes
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                unit: reqps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    reconciliation-failure-events:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                        | reportingcontroller="orchestratord.materialize.cloud"
+                        | reason="ReconciliationFailed"
+                        | line_format "{{.kind}}/{{.name}} — {{.msg}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Why the operator could not reconcile a resource. The event carries the error's whole cause chain, which is usually the actionable half — an admission webhook that is down, a secret that does not exist yet, a license key that will not parse.**
+
+          **Nominal:** Nothing. A reconciliation that succeeds reports no failure.
+
+          **Degraded:** A failure that appears once and stops. The operator retries on a backoff, and a cause that clears itself — a webhook still starting up, a resource created moments later — resolves without intervention.
+
+          **Unhealthy:** Failures that keep arriving. The `Kind` says which resource is stuck: `Materialize` is the environment itself, `Balancer` and `Console` are the components around it, and a failure on those leaves the environment running but unreachable or unmanageable.
+
+          Repeats of one failure aggregate into a single event carrying a count, rather than one line each. When the message changes — a missing secret first, the real cause once it appears — the operator files a fresh event, so a changing cause reads as several lines rather than one stale one.
+
+          A `FailedDeploy` reports twice: once here with the cause, and once in _Rollout -> Lifecycle Events_ with the phase.
+        id: 1006
+        links: []
+        title: Reconciliation Failure Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No reconciliation failures in this time range
+              overrides: []
+            options:
+              dedupStrategy: none
+              enableLogDetails: true
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showLabels: false
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              wrapLogMessage: true
+          version: ''
+    reconciliation-failure-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (kind) (
+                        count_over_time(
+                          {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                          | reportingcontroller="orchestratord.materialize.cloud"
+                          | reason="ReconciliationFailed"
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{kind}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Reconciliation failures over time, by the kind of resource that failed.**
+
+          **Nominal:** Flat at zero.
+
+          **Unhealthy:** A sustained rate on any kind. The operator retries with a backoff that tops out around four minutes, so a steady low rate is a resource that has been stuck for as long as the line has been above zero.
+        id: 1005
+        links: []
+        title: Reconciliation Failures
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No reconciliation failures in this time range
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    reconciliation-failures:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (kind) (
+                        count_over_time(
+                          {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}"}
+                          | reportingcontroller="orchestratord.materialize.cloud"
+                          | reason="ReconciliationFailed"
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{kind}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Reconciliation failures over time, by the kind of resource that failed.**
+
+          **Nominal:** Flat at zero.
+
+          **Unhealthy:** A sustained rate on any kind. The operator retries with a backoff that tops out around four minutes, so a steady low rate is a resource that has been stuck for as long as the line has been above zero.
+        id: 1001
+        links: []
+        title: Reconciliation Failures
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#EE3377'
+                  mode: shades
+                min: 0
+                noValue: No reconciliation failures in this time range
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ''
+    reconciliation-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          orchestratord_reconciliations_total{namespace=~"$operatorNamespace"}
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: passes
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          orchestratord_reconciliations_total{namespace=~"$operatorNamespace"}
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Reconciliation passes per second across every controller — whether the loop is turning at all.**
+
+          **Nominal:** A low steady rate, rising while something is changing. The controllers re-run on every watch event and on a backoff, so an idle operator still ticks over.
+
+          **Unhealthy:** Flat at zero while work is outstanding. Check _Operator Status -> Reconciling Replicas_ first: an operator that lost the lease stops reconciling and this is what that looks like.
+
+          Not a load signal. A high rate is normal during a rollout and says nothing about cost; it is the *absence* of passes that is diagnostic.
+        id: 1012
+        links: []
+        title: Reconciliation Rate
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#009988'
+                  mode: shades
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                unit: reqps
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    reconciling-replicas:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        orchestratord_is_leader{namespace=~"$operatorNamespace"}
+                      )
+                    legendFormat: leaders
+                    qryType: 1
+                    query: |
+                      sum(
+                        orchestratord_is_leader{namespace=~"$operatorNamespace"}
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How many operator replicas hold the leadership lease and are therefore reconciling. This should be exactly one.**
+
+          **Nominal:** One. The lease is held, and something is acting on your resources.
+
+          **Unhealthy:** Zero means no replica can take the lease and the operator is reconciling nothing — every other panel here goes quiet and nothing on the cluster changes, however healthy the pods look. The usual cause is the service account lacking permission on leases. More than one should not be possible; treat it as a stale reading rather than a real split.
+
+          Summed across replicas on purpose. A non-leader exports the metric at zero rather than not at all, so this is a count of leaders and not a count of pods.
+        id: 1010
+        links: []
+        title: Reconciling Replicas
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#AB0003'
+                    value: null
+                  - color: '#A2F49B'
+                    value: 1
+                  - color: '#AB0003'
+                    value: 2
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    step-activity:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (step) (
+                        rate(
+                          orchestratord_reconciliation_steps_total{namespace=~"$operatorNamespace"}
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{step}}'
+                    qryType: 1
+                    query: |
+                      sum by (step) (
+                        rate(
+                          orchestratord_reconciliation_steps_total{namespace=~"$operatorNamespace"}
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Which phases of reconciliation are running, and how often. A rollout moves through these in order, so the set that is active says where the operator has got to.**
+
+          **Nominal:** The steps of whichever controllers have work. `promote` and `teardown_generation` appear only around a deployment; the rest tick over with the loop.
+
+          A step is the only level at which "there was nothing to do" is distinguishable from "the desired state was reached" — the reconciler interface reports both as success. That distinction is the `outcome` label, which this panel sums over; see _Steps -> Step Failures and Abandonments_ for the half that matters.
+        id: 1018
+        links: []
+        title: Step Activity
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                unit: reqps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    step-duration:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.99, sum by (le, step) (
+                        rate(
+                          orchestratord_reconciliation_step_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                    legendFormat: '{{step}}'
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.99, sum by (le, step) (
+                        rate(
+                          orchestratord_reconciliation_step_duration_seconds_bucket{
+                            namespace=~"$operatorNamespace"
+                          }
+                          [$__rate_interval]
+                        )
+                      ))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The slowest phase of a reconciliation pass, at the 99th percentile per step — where the time in a pass actually goes.**
+
+          **Nominal:** Most steps in the low tens of milliseconds. The two that touch a generation's resources — `global_resources` and `generation_resources` — are the expensive ones, in the hundreds.
+
+          **Unhealthy:** A step that leaves its usual band. Because each step is a group of Kubernetes API calls, a step that slows down names the resource kind whose writes are being held up.
+
+          Same coarse buckets as the whole-pass histogram, and the same reading: an order of magnitude rather than a measurement. Steps and passes share one bucket set precisely so a step's latency reads against the pass it belongs to.
+        id: 1017
+        links: []
+        title: Step Duration (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: the Materialize operator is not being scraped'
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    step-failures:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (step, outcome) (
+                        rate(
+                          orchestratord_reconciliation_steps_total{
+                            namespace=~"$operatorNamespace", outcome=~"failed|abandoned"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{step}} / {{outcome}}'
+                    qryType: 1
+                    query: |
+                      sum by (step, outcome) (
+                        rate(
+                          orchestratord_reconciliation_steps_total{
+                            namespace=~"$operatorNamespace", outcome=~"failed|abandoned"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Steps that did not complete, by step and by how they ended — the panel that turns "reconciliation is failing" into "reconciliation is failing *here*".**
+
+          **Nominal:** Nothing.
+
+          **Unhealthy:** Any sustained rate names the phase to investigate. Pair it with the matching event on _Events -> Operator Health_, which carries the cause; this panel says where and that one says why.
+
+          **`abandoned` is not by itself a failure.** A step records it when it did not reach a conclusion, which covers an error propagating out of it *and* a pass cancelled by a leadership handoff or a shutdown — a `Drop` cannot tell those apart. So a burst of `abandoned` around an operator restart is expected. Alert on _Operator Status -> Failed Passes (Select Time Range)_, which is recorded from the reconciler's actual result and which a cancelled pass never reaches, and read this to locate the step.
+
+          An `abandoned` step alongside a `failed` pass is the useful pairing: the pass says it errored, and the step says where it was when it did.
+        id: 1019
+        links: []
+        title: Step Failures and Abandonments
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No incomplete steps
+                unit: reqps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    warning-event-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}", level="WARN"}
+                        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Kubernetes events the reporting component flagged as warnings — a pod that will not schedule, an image that will not pull, a container failing its probes.**
+
+          **Nominal:** Nothing, or a brief flurry that stops on its own. Warnings during a rollout are expected while pods are replaced: a new pod is unschedulable for as long as it takes a node to appear.
+
+          **Unhealthy:** Warnings that keep arriving after a rollout should have settled. Read the reason: `FailedScheduling` and `NotTriggerScaleUp` mean the cluster has nowhere to put the new pods, `BackOff` means they start and die, `Unhealthy` means they start and never become ready.
+
+          Warning is the reporting component's own judgement, not this stack's. Kubernetes marks an event `Warning` when the component that emitted it thought something was wrong, so this is a filter on their opinion rather than a threshold of ours.
+        id: 1008
+        links: []
+        title: Warning Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No warnings in this time range
+              overrides: []
+            options:
+              dedupStrategy: none
+              enableLogDetails: true
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showLabels: false
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              wrapLogMessage: true
+          version: ''
+    warning-events:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        count_over_time(
+                          {job="loki.source.kubernetes_events", namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}", level="WARN"}
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: warnings
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Warning events per interval across both namespaces, as one series — the at-a-glance answer to whether anything is complaining right now.**
+
+          **Nominal:** Flat at zero, or a spike that returns to zero.
+
+          **Unhealthy:** A level that does not come back down. Read _Kubernetes Activity -> Warning Events_ for which reasons make it up.
+        id: 1000
+        links: []
+        title: Warning Events
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#EE3377'
+                  mode: shades
+                min: 0
+                noValue: No warnings in this time range
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+  layout:
+    kind: TabsLayout
+    spec:
+      tabs:
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: warning-events
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: reconciliation-failures
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lifecycle-transitions
+                      maxColumnCount: 3
+                      rowHeightMode: short
+                  title: Event Summary
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lifecycle-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lifecycle-events
+                      maxColumnCount: 2
+                      rowHeightMode: tall
+                  title: Rollout
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: reconciliation-failure-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: reconciliation-failure-events
+                      maxColumnCount: 2
+                      rowHeightMode: tall
+                  title: Operator Health
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: event-rate-by-reason
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: warning-event-feed
+                      maxColumnCount: 2
+                      rowHeightMode: tall
+                  title: Kubernetes Activity
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: all-event-feed
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: All Events
+          title: Events
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: reconciling-replicas
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: environments-needing-update
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: reconciliation-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: failed-passes
+                      maxColumnCount: 4
+                      rowHeightMode: short
+                  title: Operator Status
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: pass-outcomes
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: failures-by-controller
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Reconciliation Passes
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: pass-duration
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: step-duration
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Duration
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: step-activity
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: step-failures
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Steps
+          title: Reconciliation
+  links: []
+  liveNow: false
+  preload: false
+  tags:
+  - materialize
+  - monitoring
+  - upgrade
+  timeSettings:
+    autoRefresh: ''
+    autoRefreshIntervals:
+    - 5s
+    - 10s
+    - 30s
+    - 1m
+    - 5m
+    - 15m
+    - 30m
+    - 1h
+    - 2h
+    - 1d
+    fiscalYearStartMonth: 0
+    from: now-6h
+    hideTimepicker: false
+    timezone: browser
+    to: now
+  title: Materialize Upgrade
+  variables:
+  - kind: DatasourceVariable
+    spec:
+      allowCustomValue: false
+      current:
+        text: ''
+        value: ''
+      description: Datasource for metrics queries
+      hide: dontHide
+      includeAll: false
+      label: Metrics Datasource
+      multi: false
+      name: metricsDatasource
+      options: []
+      pluginId: prometheus
+      refresh: never
+      regex: ''
+      skipUrlSync: false
+  - kind: DatasourceVariable
+    spec:
+      allowCustomValue: false
+      current:
+        text: ''
+        value: ''
+      description: Datasource for log and event queries
+      hide: dontHide
+      includeAll: false
+      label: Logs Datasource
+      multi: false
+      name: logsDatasource
+      options: []
+      pluginId: loki
+      refresh: never
+      regex: ''
+      skipUrlSync: false
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(orchestratord_is_leader, namespace)
+      description: The namespace the Materialize operator (orchestratord) runs in
+      hide: dontHide
+      includeAll: false
+      label: Operator Namespace
+      multi: false
+      name: operatorNamespace
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(orchestratord_is_leader, namespace)
+          qryType: 1
+          query: label_values(orchestratord_is_leader, namespace)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: alphabeticalAsc
+  - kind: QueryVariable
+    spec:
+      allValue: .*
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
+      description: The current environment to view
+      hide: dontHide
+      includeAll: false
+      label: Environment
+      multi: false
+      name: environmentNameList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
+          qryType: 1
+          query: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: alphabeticalAsc
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
+      description: The current materialize namespace where environments live
+      hide: hideVariable
+      includeAll: true
+      label: Materialize Namespace
+      multi: true
+      name: mzNamespaceList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
+          qryType: 1
+          query: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: true
+      sort: alphabeticalAsc
+  - kind: SwitchVariable
+    spec:
+      current: .*
+      description: Whether to include materialize system clusters in the cluster list.
+      disabledValue: ^[^s].*
+      enabledValue: .*
+      hide: inControlsMenu
+      label: Include System Clusters
+      name: includeSystemClusters
+      skipUrlSync: true
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentNameList", compute_cluster_id=~"$includeSystemClusters" })
+      description: The cluster within the current environment to filter to
+      hide: inControlsMenu
+      includeAll: true
+      label: Cluster
+      multi: true
+      name: mzClusterList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentNameList", compute_cluster_id=~"$includeSystemClusters" })
+          qryType: 1
+          query: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentNameList", compute_cluster_id=~"$includeSystemClusters" })
+        version: v0
+      refresh: never
+      regex: .*compute_cluster_id=\"(?<value>[^\"]+)\",.*compute_cluster_name=\"(?<text>[^\"]+)\",.*
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: naturalAsc
+  - kind: QueryVariable
+    spec:
+      allValue: .*
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(mz_compute_commands_total{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList"}, replica_id)
+      description: The replica within the current cluster to filter to
+      hide: inControlsMenu
+      includeAll: true
+      label: Replica
+      multi: true
+      name: mzReplicaList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(mz_compute_commands_total{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList"}, replica_id)
+          qryType: 1
+          query: label_values(mz_compute_commands_total{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList"}, replica_id)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: naturalAsc
+  - datasource:
+      name: $metricsDatasource
+    group: ''
+    kind: AdhocVariable
+    spec:
+      allowCustomValue: true
+      baseFilters:
+      - key: namespace
+        operator: =~
+        origin: dashboard
+        value: $mzNamespaceList
+      defaultKeys: []
+      description: Adhoc filters to apply to all metrics queries
+      enableGroupBy: false
+      filters: []
+      hide: inControlsMenu
+      label: Advanced Metric Filter
+      name: metricAdhoc
+      skipUrlSync: false
