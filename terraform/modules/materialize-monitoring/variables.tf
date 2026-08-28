@@ -98,21 +98,17 @@ variable "enable_sql_scraper" {
   description = <<-EOT
     Enable the SQL-on-scrape collector against environmentd.
 
-    Off by default. The chart enables it with an empty password, and no `mz_support` role is
-    provisioned by the Materialize Terraform modules, so it would come up failing authentication.
-    It also targets the legacy metric surface that native endpoints are replacing.
-
-    Supply `sql_scraper_password` when enabling it.
+    On by default. The chart currently works with an empty password.
   EOT
   type        = bool
-  default     = false
+  default     = true
   nullable    = false
 }
 
 variable "sql_scraper_password" {
-  description = "Password for the SQL scraper's database user. Required when `enable_sql_scraper` is true."
+  description = "Password for the SQL scraper's database user."
   type        = string
-  default     = null
+  default     = ""
   sensitive   = true
 }
 
