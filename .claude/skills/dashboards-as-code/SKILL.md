@@ -90,14 +90,19 @@ from.
 | Artifact stem | Module | UID | Title |
 |---|---|---|---|
 | `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview |
-| `upgrade` | `grafana/upgrade/` | `mz-mon-upgrade` | Materialize Upgrade |
+| `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
 
-Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and `docs/assets/dashboards/grafana/<stem>.json`
-plus `gcp-<stem>.json` (docsite). The two clouds differ only in the `target-cloud` annotation.
+Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
+`docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
+prefixed set until the clouds stopped differing in panel content, which left it recording nothing but its own name.
+The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-cloud` annotation went with it.
 
-**`upgrade` is not installed by default.** `dashboards.selected` defaults to `["env-*"]`, so a release has to opt in
-with `upgrade`. Deliberate while the operator-side events it reads are unreleased — the Kubernetes Activity row works
-against any cluster, but the Rollout and Operator Health rows need an operator that publishes events.
+**`env-upgrade` is installed by default**, because `dashboards.selected` defaults to `["env-*"]` and the stem matches.
+While the operator-side instrumentation is unreleased it degrades unevenly, and the split is worth knowing: **Generations
+works fully** (every panel reads metrics that predate the change, and the blue/green split comes from pod names), Events
+keeps its Kubernetes Activity row, and Reconciliation is empty apart from its two pre-existing gauges. `MIN_MZ_VERSION`
+in `env_upgrade/mod.rs` is `v26.41.0` and must stay in step with the Materialize row of
+`docs/content/reference/compatibility.md`. Narrow `dashboards.selected` to `["env-top"]` to hold it back.
 
 The live UID diverged from the codified one before `mz-mon-env-top` became authoritative — see
 [UID selection and behavior](../../../docs/content/reference/internal/dashboard/generating.md#uid-selection-and-behavior).
@@ -167,7 +172,7 @@ Generated from the rendered artifact; regenerate rather than hand-editing when t
 Replica AZs are intentionally unwired: `materialize_cloud_availability_zone` is cloud-only, and AZ semantics confuse
 the target audience.
 
-## `upgrade` tabs
+## `env-upgrade` tabs
 
 Three tabs, ordered by descending altitude: what happened, which side of the rollout is ready, is the operator itself
 healthy. Shades come from `upgrade/theme.rs`.
@@ -235,7 +240,7 @@ Three render-context parameters carry that, so the pattern lives in one place an
   stage rather than a stream selector.
 
 **Two ad-hoc filters, not one.** An ad-hoc variable resolves its label keys *from a datasource*, so `metricAdhoc`
-(Prometheus) cannot offer Loki's stream labels — `upgrade` defines `logsAdhoc` beside it, and both sit at the tail of
+(Prometheus) cannot offer Loki's stream labels — `env-upgrade` defines `logsAdhoc` beside it, and both sit at the tail of
 the controls row as escape hatches rather than steps in the funnel. `logsAdhoc` seeds **no base filter**, unlike the
 metrics one: Grafana ANDs a base filter into the query's own selector, and the obvious seed (the environment namespace)
 would narrow a stream selector that deliberately spans the operator's namespace too, silently dropping every event the
@@ -318,7 +323,7 @@ ships.
 
 ## Kubernetes events in Loki
 
-What the `upgrade` Events tab is built on, and the parts that are not guessable.
+What the `env-upgrade` Events tab is built on, and the parts that are not guessable.
 
 **Where they come from.** `loki.source.kubernetes_events` in `packages/alloy-pipelines/gateway.yaml` reads events off
 the Kubernetes API and forwards them to the main processor, which lifts `reason`, `name`, `kind`, `count`, `node` and

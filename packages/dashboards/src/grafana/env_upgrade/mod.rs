@@ -69,29 +69,40 @@ use crate::grafana::queries::Queries;
 
 /// Resource name. Stable independently of the title, since it is what permalinks
 /// and the chart's manifest key are built from.
-pub const NAME: &str = "mz-mon-upgrade";
+pub const NAME: &str = "mz-mon-env-upgrade";
 
 /// Artifact filename stem, which is *not* the resource name. See
 /// [`crate::grafana::env_top::NAME_STEM`] for why the two are separate.
-pub const NAME_STEM: &str = "upgrade";
+pub const NAME_STEM: &str = "env-upgrade";
 
 /// Dashboard title.
 pub const TITLE: &str = "Materialize Upgrade";
 
-/// Minimum Materialize version this dashboard's events require.
+/// Minimum Materialize version this dashboard's operator signals require.
 ///
-/// The operator publishes lifecycle transitions and reconciliation failures as
-/// Kubernetes events, and exports the reconciliation counters and histograms,
-/// from this version on. Against an older operator the Events tab's Kubernetes
-/// Activity row still works — those events come from the kubelet and the
-/// scheduler, which have always emitted them — while the Rollout and Operator
-/// Health rows are empty, which is why they carry a "no rollout activity" message
-/// rather than a filter-mismatch one. The Reconciliation tab is empty entirely,
-/// apart from `Reconciling Replicas` and `Environments Needing Update`, whose two
-/// gauges predate the rest.
-pub const MIN_MZ_VERSION: &str = "v26.40.0";
+/// From this version on the operator publishes lifecycle transitions and
+/// reconciliation failures as Kubernetes events, and exports the reconciliation
+/// counters and histograms. What that floor covers is narrower than the whole
+/// dashboard, and the degradation is worth knowing panel by panel:
+///
+/// * **Generations** works entirely without it. Every panel reads metrics that
+///   predate this release — the wallclock lag, cAdvisor, `compute_cluster_status`
+///   — and the generation split comes from pod *names*, not from anything the
+///   operator newly exports.
+/// * **Events** keeps its Kubernetes Activity row, whose events come from the
+///   kubelet and the scheduler and have always been emitted. Its Rollout and
+///   Operator Health rows are empty, which is why they carry a "no rollout
+///   activity" message rather than a filter-mismatch one.
+/// * **Reconciliation** is empty apart from `Reconciling Replicas` and
+///   `Environments Needing Update`, whose two gauges predate the rest.
+///
+/// Kept in step with the Materialize row of `docs/content/reference/compatibility.md`,
+/// which states the same floor in prose. This constant is what reaches the
+/// `min-mz-version` annotation the docsite's dashboard table reads, so the two
+/// disagreeing would be visible to a reader.
+pub const MIN_MZ_VERSION: &str = "v26.41.0";
 /// Recommended Materialize version.
-pub const REC_MZ_VERSION: &str = "v26.40.0";
+pub const REC_MZ_VERSION: &str = "v26.41.0";
 
 /// The tabs, in order.
 fn tabs(q: &Queries) -> Vec<Tab> {
@@ -112,11 +123,7 @@ const TARGET_EXPORT: &str = "generic";
 /// points the operator-namespace parameter at `$operatorNamespace` rather than
 /// pinning `materialize`, which is sound only because [`variable::operator_scoped`]
 /// defines that variable. The two have to move together.
-pub fn build(
-    cloud: crate::grafana::Cloud,
-    sql_metric_prefix: &str,
-    registry: &QueryRegistry,
-) -> dashboard::Result<Resource> {
+pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Result<Resource> {
     let scope = DashboardScope::for_prefix(sql_metric_prefix).operator_variable();
     let queries = Queries::new(registry, &scope);
     let layout = Layout::tabs(tabs(&queries));
@@ -149,10 +156,6 @@ pub fn build(
             "monitoring.materialize.cloud/sql-metric-prefix",
             sql_metric_prefix,
         )
-        .metadata_annotation(
-            "monitoring.materialize.cloud/target-cloud",
-            cloud.to_string(),
-        )
         .metadata_annotation("monitoring.materialize.cloud/target-export", TARGET_EXPORT)
         .layout(layout)
         .build()
@@ -165,7 +168,7 @@ pub fn render(
 ) -> crate::grafana::render::Result<Resource> {
     use crate::grafana::render::Error;
 
-    build(options.cloud, &options.sql_metric_prefix, registry).map_err(|source| Error::Build {
+    build(&options.sql_metric_prefix, registry).map_err(|source| Error::Build {
         name: NAME_STEM,
         source,
     })
@@ -177,14 +180,13 @@ mod tests {
     use crate::grafana::queries::test_registry;
 
     fn built() -> Resource {
-        build(crate::grafana::Cloud::Generic, "mz_", test_registry()).expect("build")
+        build("mz_", test_registry()).expect("build")
     }
 
     #[test]
     fn it_builds_for_both_deployments() {
         for prefix in ["mz_", "v2_mz_"] {
-            let resource =
-                build(crate::grafana::Cloud::Generic, prefix, test_registry()).expect("build");
+            let resource = build(prefix, test_registry()).expect("build");
             assert_eq!(resource.metadata.name, NAME);
             assert_eq!(resource.spec.title, TITLE);
         }

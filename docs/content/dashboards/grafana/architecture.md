@@ -235,12 +235,12 @@ Treat operator-managed dashboards as read-only: copy to a new dashboard rather t
 Two dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
-- **Materialize Upgrade** (`upgrade` → `mz-mon-upgrade`), which is *not* selected by default.
+- **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
   Both halves need a Materialize operator new enough to emit them — see the `min-mz-version` annotation on the
-  rendered dashboard.
-  Add `upgrade` to `dashboards.selected` to install it.
+  rendered dashboard — and render empty against an older one.
+  Narrow `dashboards.selected` to `["env-top"]` to leave it out.
 
 ### Instance selection
 
@@ -287,7 +287,7 @@ silently break every query on the board.
 The consequence is a hard requirement: **exactly one Prometheus-type datasource must be marked default** in the target Grafana.
 If none is default, every panel on the dashboard renders empty with no obvious error.
 
-`upgrade` declares a second one, `logsDatasource` with `pluginId: loki`, on the same terms.
+`env-upgrade` declares a second one, `logsDatasource` with `pluginId: loki`, on the same terms.
 Two variables rather than one because a `DatasourceVariable` resolves against a single plugin id, so one cannot offer
 both a Prometheus and a Loki datasource; a dashboard mixing engines needs one of each, and each panel's dataquery names
 the one matching its engine.

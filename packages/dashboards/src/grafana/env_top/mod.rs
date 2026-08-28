@@ -119,11 +119,7 @@ const TARGET_EXPORT: &str = "generic";
 /// Every panel's expression and description come from `registry` — see
 /// [`crate::grafana::queries`]. A panel naming an id that does not exist is
 /// reported here rather than by the panel, so a typo lists every bad id at once.
-pub fn build(
-    cloud: crate::grafana::Cloud,
-    sql_metric_prefix: &str,
-    registry: &QueryRegistry,
-) -> dashboard::Result<Resource> {
+pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Result<Resource> {
     let scope = DashboardScope::for_prefix(sql_metric_prefix);
     let queries = Queries::new(registry, &scope);
     let layout = Layout::tabs(tabs(&queries));
@@ -158,12 +154,6 @@ pub fn build(
             "monitoring.materialize.cloud/sql-metric-prefix",
             sql_metric_prefix,
         )
-        // What the artifact targets. Nothing in the chart reads these today, but
-        // they are how a rendered file says which variant it is.
-        .metadata_annotation(
-            "monitoring.materialize.cloud/target-cloud",
-            cloud.to_string(),
-        )
         .metadata_annotation("monitoring.materialize.cloud/target-export", TARGET_EXPORT)
         .layout(layout)
         .build()
@@ -188,7 +178,7 @@ pub fn render(
 ) -> crate::grafana::render::Result<Resource> {
     use crate::grafana::render::Error;
 
-    build(options.cloud, &options.sql_metric_prefix, registry).map_err(|source| Error::Build {
+    build(&options.sql_metric_prefix, registry).map_err(|source| Error::Build {
         name: NAME_STEM,
         source,
     })
@@ -201,12 +191,7 @@ mod tests {
     #[test]
     fn it_builds_for_both_deployments() {
         for prefix in ["mz_", "v2_mz_"] {
-            let resource = build(
-                crate::grafana::Cloud::Generic,
-                prefix,
-                crate::grafana::queries::test_registry(),
-            )
-            .expect("build");
+            let resource = build(prefix, crate::grafana::queries::test_registry()).expect("build");
             assert_eq!(resource.metadata.name, NAME);
             assert_eq!(resource.spec.title, TITLE);
         }
@@ -214,12 +199,7 @@ mod tests {
 
     #[test]
     fn the_sql_prefix_reaches_the_cluster_variable_and_nothing_else() {
-        let cloud = build(
-            crate::grafana::Cloud::Generic,
-            "v2_mz_",
-            crate::grafana::queries::test_registry(),
-        )
-        .expect("build");
+        let cloud = build("v2_mz_", crate::grafana::queries::test_registry()).expect("build");
         let json = serde_json::to_string(&cloud.spec.variables).expect("serialize");
         assert!(
             json.contains("v2_mz_compute_cluster_status"),
@@ -241,12 +221,7 @@ mod tests {
         // against tabs actually called `Sources and Sinks` and `Compute Objects`.
         // It reads like a tab rename that never reached the prose, which is
         // exactly the class of rot a check can hold back.
-        let resource = build(
-            crate::grafana::Cloud::Generic,
-            "mz_",
-            crate::grafana::queries::test_registry(),
-        )
-        .expect("build");
+        let resource = build("mz_", crate::grafana::queries::test_registry()).expect("build");
         let mut destinations: Vec<String> = std::iter::once(theme::SUMMARY_TITLE.to_string())
             .chain(theme::THEMED.iter().map(|t| t.title.to_string()))
             .collect();
@@ -336,12 +311,7 @@ mod tests {
     fn the_metadata_annotations_the_docsite_reads_are_present() {
         // Consumed by the grafana-dashboards Hugo shortcode. Grafana drops them on
         // a UI save, so they are informational rather than a gate.
-        let resource = build(
-            crate::grafana::Cloud::Generic,
-            "mz_",
-            crate::grafana::queries::test_registry(),
-        )
-        .expect("build");
+        let resource = build("mz_", crate::grafana::queries::test_registry()).expect("build");
         for key in [
             "monitoring.materialize.cloud/min-mz-version",
             "monitoring.materialize.cloud/rec-mz-version",

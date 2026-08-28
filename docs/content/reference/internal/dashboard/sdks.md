@@ -207,9 +207,6 @@ Two consumers, one command:
 | `--format yaml` into `charts/…/pre-rendered/dashboards/grafana/` | the Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
 
-The JSON target renders twice, once per cloud, because the docsite links `env-top.json` and `gcp-env-top.json`
-separately; `--prefix` names the second.
-
 Both trees are checked in, which makes byte-stability the property that matters most.
 Every render therefore goes through `render::canonical` first, which does two things:
 
@@ -230,13 +227,10 @@ plain `make` can consider them up to date and skip rendering — which would mak
 Deleting the outputs first does not fix it either, because removing files inside a directory target updates that
 directory's mtime, making it look newer than its prerequisites rather than missing.
 
-#### Cloud variants
+#### Cloud variants (retired)
 
-`--cloud generic` and `--cloud gcp` render the same panels.
-The only difference is the `monitoring.materialize.cloud/target-cloud` annotation, which records what a file was
-rendered for; both are shipped because the docsite links each one.
+There is one render per dashboard, and nothing left in the CLI that selects a cloud.
 
-That is a recent simplification.
 The Python branched on `cloud_hint` in eleven panels, because GKE's *managed* cAdvisor and kube-state-metrics shipped a
 reduced metric allowlist that omitted the container limit and spec series:
 
@@ -249,9 +243,11 @@ subset, and every `container_*` series these queries reference is present — se
 [Scraping]({{< relref "../../../metrics/scraping.md" >}}#kubelet).
 So the fallbacks are obsolete, and GCP gets the percent-of-limit gauges like everywhere else.
 
-`render.rs` keeps a test asserting the two renders are identical apart from that annotation.
-If a cloud ever needs different panels again, that test fails and the divergence gets named — rather than showing up as
-an unexplained diff in a checked-in artifact.
+Once the panels converged, the `gcp-` artifact recorded nothing but its own name in a
+`monitoring.materialize.cloud/target-cloud` annotation, so it and the machinery behind it — the `Cloud` enum, the
+`cloud` render option, and the `--cloud` / `--prefix` flags — were removed.
+`render.rs` keeps a test asserting no dashboard emits that annotation, so a half-reverted reintroduction is caught.
+If a cloud ever needs different panels again, the branch goes back in `env_top::render`, which says so.
 
 <!-- One nuance if this comes up again: the kubelet scrape covers the cAdvisor series
 (`container_spec_cpu_quota`, `container_spec_memory_limit_bytes`, `container_start_time_seconds`). The CPU gauge's

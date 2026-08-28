@@ -21,11 +21,13 @@
 //! `mz_dashboards::grafana::render`. Repeated runs over unchanged sources produce
 //! byte-identical files, which is what keeps a regeneration reviewable.
 //!
-//! Every artifact the chart and the docsite ship comes from here, including the
-//! `gcp-` prefixed one.
+//! Every artifact the chart and the docsite ship comes from here, one file per
+//! dashboard. There was briefly a second, `gcp-` prefixed set; it recorded nothing
+//! but its own name once the clouds stopped differing in panel content, and was
+//! dropped along with the `--cloud` and `--prefix` flags that produced it.
 
 use anyhow::Context;
-use mz_dashboards::grafana::{self, Cloud, Options, render};
+use mz_dashboards::grafana::{self, Options, render};
 use mzmon_lib::query::QueryRegistry;
 use std::path::PathBuf;
 
@@ -45,22 +47,6 @@ impl From<OutputFormat> for render::Format {
     }
 }
 
-/// Cloud variant, mirroring `grafana::Cloud`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
-pub enum CloudTarget {
-    Generic,
-    Gcp,
-}
-
-impl From<CloudTarget> for Cloud {
-    fn from(target: CloudTarget) -> Self {
-        match target {
-            CloudTarget::Generic => Cloud::Generic,
-            CloudTarget::Gcp => Cloud::Gcp,
-        }
-    }
-}
-
 /// Arguments for the `gen-dashboards` command.
 #[derive(clap::Args)]
 pub struct GenDashboardsArgs {
@@ -74,23 +60,9 @@ pub struct GenDashboardsArgs {
     #[arg(long, value_enum, default_value = "yaml")]
     format: OutputFormat,
 
-    /// Filename prefix, for rendering a variant alongside the default
-    /// (`--cloud gcp --prefix gcp-`).
-    #[arg(long, default_value = "")]
-    prefix: String,
-
     /// Specific dashboard(s) to render by filename stem. Defaults to all.
     #[arg(long)]
     dashboard: Vec<String>,
-
-    /// Cloud metric surface to target.
-    ///
-    /// Reaches only the `target-cloud` annotation today. The variants used to
-    /// differ in panel content, back when GKE's managed collectors shipped a
-    /// reduced allowlist; the gateway now scrapes the kubelet's cAdvisor directly,
-    /// so every cloud gets the same panels.
-    #[arg(long, value_enum, default_value = "generic")]
-    cloud: CloudTarget,
 
     /// SQL-exporter metric prefix. `mz_` self-managed, `v2_mz_` on Cloud.
     #[arg(long, default_value = "mz_")]
@@ -145,7 +117,6 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
         .with_context(|| format!("loading query registry from {}", args.queries_dir.display()))?;
 
     let options = Options {
-        cloud: args.cloud.into(),
         sql_metric_prefix: args.sql_metric_prefix.clone(),
     };
     let format = render::Format::from(args.format);
@@ -166,12 +137,7 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
     for dashboard in selected {
         let rendered = render::render(dashboard, &options, &registry, format)
             .with_context(|| format!("rendering {}", dashboard.name))?;
-        let path = output_dir.join(format!(
-            "{}{}.{}",
-            args.prefix,
-            dashboard.name,
-            format.extension()
-        ));
+        let path = output_dir.join(format!("{}.{}", dashboard.name, format.extension()));
 
         if args.check {
             match std::fs::read_to_string(&path) {

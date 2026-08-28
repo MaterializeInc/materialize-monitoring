@@ -1478,7 +1478,6 @@ dashboards:
       # -- Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
       enabled: false
   # -- List of dashboard patterns to render
-  # @default -- `["env-*"]`
   selected:
     - env-*
 

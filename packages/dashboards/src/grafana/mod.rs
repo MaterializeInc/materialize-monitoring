@@ -16,42 +16,17 @@
 //! plus one entry — nothing in the CLI needs to know their names.
 
 pub mod env_top;
+pub mod env_upgrade;
 pub mod queries;
 pub mod render;
 pub mod transform;
-pub mod upgrade;
 
 use mzmon_lib::grafana::dashboard::Resource;
 use mzmon_lib::query::QueryRegistry;
 
-/// Which cloud's metric surface a dashboard is rendered against.
-///
-/// Not cosmetic. GCP's cAdvisor does not expose the container memory *limit*, so
-/// the usage gauges there cannot be a fraction of the limit and become absolute
-/// panels with absolute thresholds instead — different plugin, title, and query.
-/// That is why an unported variant is an error rather than a fallback.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Cloud {
-    /// Best effort for any Kubernetes with cAdvisor and kube-state-metrics.
-    #[default]
-    Generic,
-    /// Google Cloud, via Google Managed Prometheus.
-    Gcp,
-}
-
-impl std::fmt::Display for Cloud {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Cloud::Generic => "generic",
-            Cloud::Gcp => "gcp",
-        })
-    }
-}
-
 /// Everything a dashboard needs from its deployment.
 #[derive(Debug, Clone)]
 pub struct Options {
-    pub cloud: Cloud,
     /// `mz_` on self-managed, `v2_mz_` on Materialize Cloud. Reaches the
     /// cluster-discovery variable, which reads a SQL-derived metric.
     pub sql_metric_prefix: String,
@@ -60,7 +35,6 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            cloud: Cloud::default(),
             sql_metric_prefix: "mz_".to_string(),
         }
     }
@@ -84,9 +58,9 @@ pub const ALL: &[Renderable] = &[
         render: env_top::render,
     },
     Renderable {
-        name: upgrade::NAME_STEM,
+        name: env_upgrade::NAME_STEM,
         summary: "What happened during a Materialize upgrade",
-        render: upgrade::render,
+        render: env_upgrade::render,
     },
 ];
 
