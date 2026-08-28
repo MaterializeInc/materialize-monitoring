@@ -8,13 +8,20 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.12.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards v0.13.0 (Unreleased)
 
 _Changes Pending_
 
-## mzmon-lib (shared library) v0.11.0 (Unreleased)
+## mzmon-lib (shared library) v0.11.0
 
-_Changes Pending_
+* DEP-222 Remove the old python implementation for dashboards fully
+    * [materialize-monitoring#291](https://github.com/MaterializeInc/materialize-monitoring/pull/291)
+* Release Dashboards v0.12.0
+    * [materialize-monitoring#46](https://github.com/MaterializeInc/materialize-monitoring/pull/46)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.20.0 (Unreleased)
 
