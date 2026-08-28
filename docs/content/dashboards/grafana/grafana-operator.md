@@ -47,7 +47,8 @@ helm upgrade --install mzmon-crds charts/materialize-monitoring-crds -n monitori
 ```
 
 `grafana-operator.crds.immutable` is pinned to `true` in `values.yaml` to keep the operator's own copies out of this release.
-The upstream operator chart has no way to skip its CRDs outright — `immutable` only chooses where they come from — so leaving it `true` keeps them install-only and lets `--skip-crds` drop them entirely.
+The upstream operator chart has no way to skip its CRDs outright — `immutable` only chooses where they come from — so
+leaving it `true` keeps them install-only and lets `--skip-crds` drop them entirely.
 Setting it `false` makes this chart template and upgrade the CRDs itself, which fights the CRDs chart for ownership of the same objects.
 
 See [CRDs](../../../reference/crds/) for the full list.
@@ -64,7 +65,8 @@ grafana-operator:
       value: monitoring
 ```
 
-Scoping the watch also narrows the operator's effective blast radius, but it does not narrow its RBAC — the chart still grants a ClusterRole over `grafana.integreatly.org/*`.
+Scoping the watch also narrows the operator's effective blast radius, but it does not narrow its RBAC — the chart still
+grants a ClusterRole over `grafana.integreatly.org/*`.
 
 ## Connecting your Grafana Instance to Grafana Operator
 
@@ -83,7 +85,8 @@ connections:
         key: apiKey
 ```
 
-The resource always carries a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is also the default `instanceSelector` for every dashboard the chart ships.
+The resource always carries a static `monitoring.materialize.cloud/grafana-instance: mzmon` label, which is also the
+default `instanceSelector` for every dashboard the chart ships.
 `connections.grafana.labels` merges over it and applies to both sides at once, so use it to narrow the selector rather than to re-state it.
 
 Credentials are secret references only.
@@ -127,7 +130,8 @@ dashboards:
       mode: operator
 ```
 
-Each pattern in `dashboards.selected` is globbed against the pre-rendered dashboards in the chart, and each match becomes a `GrafanaManifest` resource.
+Each pattern in `dashboards.selected` is globbed against the pre-rendered dashboards in the chart, and each match
+becomes a `GrafanaManifest` resource.
 
 Inspect what was created:
 
@@ -164,4 +168,4 @@ Use the [downloadable v1 JSON](../importing/#grafana-10-and-11-dashboard-schema-
 ### Drift
 
 Operator-managed dashboards are re-pushed every `resyncPeriod`, so UI edits are reverted on the next resync.
-To customize, copy the dashboard to a new UID and edit the copy — or fork the source under `packages/grafana-dashboards/` and render your own.
+To customize, copy the dashboard to a new UID and edit the copy — or fork the source under `packages/dashboards/` and render your own.

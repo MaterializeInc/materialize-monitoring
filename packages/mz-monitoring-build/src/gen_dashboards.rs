@@ -21,8 +21,8 @@
 //! `mz_dashboards::grafana::render`. Repeated runs over unchanged sources produce
 //! byte-identical files, which is what keeps a regeneration reviewable.
 //!
-//! This replaces `python -m dashboards.render` for every artifact the chart and the
-//! docsite ship, including the `gcp-` prefixed one.
+//! Every artifact the chart and the docsite ship comes from here, including the
+//! `gcp-` prefixed one.
 
 use anyhow::Context;
 use mz_dashboards::grafana::{self, Cloud, Options, render};

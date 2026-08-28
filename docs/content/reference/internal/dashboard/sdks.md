@@ -194,7 +194,7 @@ and that the prefix lands on the cluster query alone.
 
 ### Rendering
 
-`mz-monitoring-build gen-dashboards` is the entrypoint, replacing `python -m dashboards.render`.
+`mz-monitoring-build gen-dashboards` is the entrypoint.
 `packages/dashboards/src/grafana/render.rs` does the work; `packages/dashboards/src/grafana/mod.rs` holds the registry
 of what can be rendered.
 
@@ -361,7 +361,7 @@ variable name appears in Grafana URLs as `?var-environmentNameList=…`.
 Catalog enrichment lives in `mzmon_lib::query::enrich`, beside the renderer rather than under `grafana`, because the
 joins are plain PromQL shared between the registry's template functions and the dashboards — the same split the Python
 makes, for the same reason.
-Output is byte-identical to `py_mzmon_lib.enrich`, pinned by tests against captured Python output, so the two
+Output is byte-identical to the Python `enrich` it was ported from, pinned by tests against captured output from it, so the two
 implementations do not churn against each other.
 
 One gap:
@@ -502,7 +502,7 @@ Two details worth knowing:
 
 - **Prometheus compat fields.** Grafana's Prometheus datasource reads `query` and `qryType`, while the schema cog
   generates calls them `expr` and `queryType`.
-  Sending only the schema spelling loses data on push, so the bridge emits both — matching `py_mzmon_lib.query_v2.CompatPrometheusDataQuery`.
+  Sending only the schema spelling loses data on push, so the bridge emits both, as the Python it was ported from did.
 - **Description formatting.** The registry's `Description` is structured (summary / nominal / degraded / unhealthy /
   notes).
   The bridge emits the summary in bold followed by the behavioral fields as labeled paragraphs, and unwraps the YAML hard-wrapping.
@@ -556,15 +556,16 @@ That test is what caught the one place the schemas are narrower than Grafana its
 golden dashboard emits and Grafana accepts.
 The generation script widens it, with the reasoning recorded inline.
 
-## py-mzmon-lib and Grafana Foundation SDK
+## Why not the Grafana Foundation SDK
 
-For Python dashboard implementations, we use **grafana-foundation-sdk** for most of the codegen surface, and
-**py-mzmon-lib** (lives at `packages/py-mzmon-lib`, included as a uv workspace) for shared utilities, best practices,
-and gap-filling patches.
+The dashboards were originally built in Python against **grafana-foundation-sdk**, with a `py-mzmon-lib` layer of
+wrappers and shims over it. Both are gone; the schemas the SDK is generated *from* are vendored directly instead, and
+the Rust models come from those — see [Vendored schemas](#vendored-schemas) and [Rust models](#rust-models).
 
-When reaching for an SDK building block, first check what `py-mzmon-lib` already exposes — there are wrappers and
-helpers for common shapes that aren't covered well by the upstream SDK.
+The reason is that the foundation SDK adds little over the schemas for what these dashboards do. Its builders are
+mostly information shuttling, and the one place it genuinely adds something — hand-written unmarshallers keyed on
+`kind`, which the schemas cannot express because the `*Kind` unions carry no `discriminator` — matters only on the
+read path, which a generator does not take.
 
-As of May 2026, grafana-foundation-sdk has not yet merged its v2 schema upstream, so some local tweaks may be
-necessary to get things working with the latest Grafana.
-Check `py-mzmon-lib`'s shims before adding new compatibility code.
+The Python is recoverable from git history if a comparison is ever wanted; the last render it produced is frozen at
+`packages/mzmon-lib/tests/fixtures/env-top.python-baseline.yaml` and still backs the parity suite.

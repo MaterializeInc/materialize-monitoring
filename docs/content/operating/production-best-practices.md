@@ -1033,7 +1033,7 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` **grafana-operator manages dashboards and datasources as code** — `GrafanaManifest` and `GrafanaDatasource` resources, reconciled in one direction with Kubernetes as the source of truth. Anything the operator owns is re-pushed on drift; anything it does not is yours to keep.
 - [x] `[chart]` `grafana.ini` is a **verbatim passthrough**, so any section Grafana understands — auth, SMTP, feature toggles, unified alerting, user provisioning — is reachable from values and deep-merges over the chart's own keys.
 - [x] `[chart]` `connections.grafana.operator.spec` is the **break-glass** for `mode: operator`, where grafana-operator owns the server lifecycle and none of the above applies. Prefer `mode: bundled`.
-- [ ] `[operator]` Treat the running Grafana as a **cache, not a source**. Dashboards edited in the UI are overwritten at the next resync; change them in `packages/grafana-dashboards/` instead.
+- [ ] `[operator]` Treat the running Grafana as a **cache, not a source**. Dashboards edited in the UI are overwritten at the next resync; change them in `packages/dashboards/` instead.
 
 #### 7. Network & meta-monitoring
 

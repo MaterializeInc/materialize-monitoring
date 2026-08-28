@@ -30,7 +30,6 @@ GO ?= go
 
 # Prefix for all python commands
 # TODO: detect other cases
-PY_RUN := uv run
 
 # Invoke hugo as a tool (you can use HUGO_BIN=hugo to use brew)
 # By default, we get the one from go.mod.

@@ -406,3 +406,14 @@ main.container {
     background: #bff3c9;
   }
 }
+
+.important {
+  border: 1px solid #8144dd;
+
+  // dog ear triangle in the top right corner
+  &::after {
+    content: "";
+    border-color: var(--body-background) var(--body-background) rgba(129, 68, 221, 0.1) rgba(129, 68, 221, 0.1);
+    background: rgba(129, 68, 221, 0.1);
+  }
+}
