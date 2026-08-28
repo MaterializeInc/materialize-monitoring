@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.11.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.20.0 (Unreleased)
 
 _Changes Pending_
@@ -182,9 +186,54 @@ _Changes Pending_
 * Included Prometheus Scrapers @ v0.3.0..v0.4.0
 * Included mzmon-lib (shared library) @ v0.9.0..v0.10.0
 
-## mzmon-lib (shared library) v0.10.0 (Unreleased)
+## mzmon-lib (shared library) v0.10.0
 
-_Changes Pending_
+* DEP-222 Port Materialize Environment Overview to rust sdk
+    * [materialize-monitoring#285](https://github.com/MaterializeInc/materialize-monitoring/pull/285)
+    * Dashboards have been rewritten under a different dashboard framework
+        * Dashboard queries have adopted queries from our query registry
+* DEP-222 Rust implementation of Grafana Dashboard framework
+    * [materialize-monitoring#280](https://github.com/MaterializeInc/materialize-monitoring/pull/280)
+* DEP-222 Add generated grafana models
+    * [materialize-monitoring#282](https://github.com/MaterializeInc/materialize-monitoring/pull/282)
+* DEP-238 Refresh vendored grafana foundation sdk schemas; keep updated
+    * [materialize-monitoring#275](https://github.com/MaterializeInc/materialize-monitoring/pull/275)
+* DEP-127 Policy for deprecations and breaking changes
+    * [materialize-monitoring#271](https://github.com/MaterializeInc/materialize-monitoring/pull/271)
+* DEP-237 Support additional release notes in changelogs
+    * [materialize-monitoring#268](https://github.com/MaterializeInc/materialize-monitoring/pull/268)
+* Update Rust crate rustls-pki-types to v1.15.1
+    * [materialize-monitoring#256](https://github.com/MaterializeInc/materialize-monitoring/pull/256)
+* DEP-195 Implement TLS across stack
+    * [materialize-monitoring#254](https://github.com/MaterializeInc/materialize-monitoring/pull/254)
+* Update Rust crate jsonschema to v0.49.9
+    * [materialize-monitoring#209](https://github.com/MaterializeInc/materialize-monitoring/pull/209)
+    * [`v0.49.9`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0499---2026-08-09)
+    * [`v0.49.8`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0498---2026-08-08)
+    * [`v0.49.7`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0497---2026-08-07)
+    * [`v0.49.6`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0496---2026-08-06)
+    * [`v0.49.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0495---2026-08-05)
+* Provide Datadog queries in documentation
+    * [materialize-monitoring#249](https://github.com/MaterializeInc/materialize-monitoring/pull/249)
+* DEP-185 Add an E2E test suite
+    * [materialize-monitoring#233](https://github.com/MaterializeInc/materialize-monitoring/pull/233)
+* Update Rust crate thiserror to v2.0.20
+    * [materialize-monitoring#229](https://github.com/MaterializeInc/materialize-monitoring/pull/229)
+    * [`v2.0.20`](https://redirect.github.com/dtolnay/thiserror/releases/tag/2.0.20)
+* DEP-187 Scrape cadvisor from kubelet instead of via daemonset
+    * [materialize-monitoring#222](https://github.com/MaterializeInc/materialize-monitoring/pull/222)
+* Update Rust crate clap to v4.6.6
+    * [materialize-monitoring#219](https://github.com/MaterializeInc/materialize-monitoring/pull/219)
+    * [`v4.6.6`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#466---2026-08-06)
+* DEP-190 Provide separate sizing profiles for thanos
+    * [materialize-monitoring#210](https://github.com/MaterializeInc/materialize-monitoring/pull/210)
+* Update Rust crate jsonschema to v0.49.4
+    * [materialize-monitoring#206](https://github.com/MaterializeInc/materialize-monitoring/pull/206)
+    * [`v0.49.4`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0494---2026-08-04)
+* Convert raw blocks into structured configs
+    * [materialize-monitoring#203](https://github.com/MaterializeInc/materialize-monitoring/pull/203)
+* DEP-187 Collect cAdvisor metrics with Alloy
+    * [materialize-monitoring#200](https://github.com/MaterializeInc/materialize-monitoring/pull/200)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.14.0
 
