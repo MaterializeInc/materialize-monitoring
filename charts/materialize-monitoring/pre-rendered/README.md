@@ -7,11 +7,13 @@ sources under `packages/`:
 
 | Subdirectory                  | Generated from                                         | By                                      |
 |-------------------------------|--------------------------------------------------------|-----------------------------------------|
-| `dashboards/grafana/`         | `packages/grafana-dashboards/`                         | `mz-monitoring-build` + Grafonnet/SDK   |
-| `dashboards/datadog/`         | `packages/datadog-dashboards/`                         | `mz-monitoring-build` + Datadog SDK     |
-| `rules/prometheus/`           | `packages/mz-monitoring/rules/`                        | `mz-monitoring-build` rule expander     |
-| `rules/loki/`                 | `packages/mz-monitoring/rules/`                        | `mz-monitoring-build` rule expander     |
-| `rules/thanos/`               | `packages/mz-monitoring/rules/`                        | `mz-monitoring-build` rule expander     |
+| `dashboards/grafana/`         | `packages/dashboards/` + `packages/queries/`           | `mz-monitoring-build gen-dashboards`    |
+| `pipelines/`                  | `packages/alloy-pipelines/`                            | `mz-monitoring-build gen-pipelines`     |
+| `scrapers/`                   | `packages/prometheus-scrapers/`                        | `mz-monitoring-build gen-scrape-configs`|
+| `metrics/`                    | `packages/queries/`                                    | `mz-monitoring-build gen-metric-tiers`  |
+
+Empty placeholders, kept so the chart's `.Files.Get` globs resolve: `dashboards/datadog/`, `rules/prometheus/`,
+`rules/loki/`, `rules/thanos/`. Nothing generates into them yet.
 
 The chart's templates load these files via `{{ .Files.Get }}` because
 Helm restricts that directive to the chart directory itself.

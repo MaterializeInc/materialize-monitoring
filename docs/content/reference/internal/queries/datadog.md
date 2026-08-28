@@ -6,12 +6,15 @@ weight: 20
 # Datadog Translations
 
 Every query in `packages/queries/` carries a `datadogQuery` alongside its `promQL`.
-They render side by side as tabs on [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}); this page is the conventions behind them, for whoever is adding or correcting one.
+They render side by side as tabs on [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}); this
+page is the conventions behind them, for whoever is adding or correcting one.
 
-These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has been run against a real Datadog account.
+These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has
+been run against a real Datadog account.
 Treat them as a starting point you copy into a widget or monitor and correct, not as something that works unedited.
 
-The native Datadog dashboard set is [DEP-115](https://linear.app/materializeinc/issue/DEP-115), scheduled for OO-M3 on the [roadmap]({{< relref "../roadmap.md" >}}).
+The native Datadog dashboard set is [DEP-115](https://linear.app/materializeinc/issue/DEP-115), scheduled for OO-M3 on
+the [roadmap]({{< relref "../roadmap.md" >}}).
 
 ## What language these are in
 
@@ -22,7 +25,8 @@ p99:mz_compute_peek_duration_seconds{materialize_cloud_organization_name:your-en
 ```
 
 Not DDSQL.
-DDSQL over metrics is preview-only and cannot express rates, histogram quantiles, or arithmetic between series, which is most of what these queries do.
+DDSQL over metrics is preview-only and cannot express rates, histogram quantiles, or arithmetic between series, which is
+most of what these queries do.
 The schema field was called `datadogSQL` until this landed; it is now `datadogQuery`.
 
 Queries that back an **alert** are written as full monitor queries, with the evaluation window from the alert's `for:` and the threshold inlined:
@@ -47,9 +51,11 @@ The naming consequences the translations assume:
 | **Counters** | Arrive as Datadog counts (the exporter converts cumulative to delta), so they need `.as_rate()` or `.as_count()`. |
 | **Histograms** | Collapse from `_bucket`/`_sum`/`_count` to one distribution under the base name, so `histogram_quantile(0.99, …)` becomes the `p99:` aggregator. |
 
-That last point is the one place Datadog is *better* than the PromQL: a percentile is an aggregator prefix rather than a `histogram_quantile` over a summed bucket rate.
+That last point is the one place Datadog is *better* than the PromQL: a percentile is an aggregator prefix rather than a
+`histogram_quantile` over a summed bucket rate.
 
-The `.count` suffix used by a few Loki queries (`loki_request_duration_seconds.count`) requires `histograms::send_aggregation_metrics` on the exporter; without it those two queries have nothing to divide.
+The `.count` suffix used by a few Loki queries (`loki_request_duration_seconds.count`) requires
+`histograms::send_aggregation_metrics` on the exporter; without it those two queries have nothing to divide.
 
 ## The translation table
 
@@ -76,43 +82,59 @@ Datadog's query language is deliberately narrower than PromQL, and these gaps ar
 Where a query hits one, the `datadogQuery` carries the closest expressible thing and a comment above it says what was dropped.
 
 **Value filters.** There is no `m > 1e15` or `m < 1e9` that removes series from a result.
-`materialize.compute.hydration.currently_hydrating` counts collections parked at the `u64::MAX` sentinel; the Datadog version counts every collection reporting a lag, which is a different number.
+`materialize.compute.hydration.currently_hydrating` counts collections parked at the `u64::MAX` sentinel; the Datadog
+version counts every collection reporting a lag, which is a different number.
 The freshness queries drop their `< 1e9` sentinel exclusion the same way.
 
 **Boolean comparison operators.** `> bool` produces a 0/1 series in PromQL and has no Datadog equivalent.
 `materialize.storage.sources.upstream_errors` becomes a raw difference where a positive value means disconnected, rather than a 1.
 
 **`time()`.** Nothing in Datadog reads the current wall clock inside a query, so anything shaped `time() - <timestamp metric>` is not derivable.
-`materialize.kubernetes.last_restart`, `infra.cockroachdb.backup_missing`, and both `materialize.launchdarkly.stale_*` queries report the raw timestamp instead of the age.
+`materialize.kubernetes.last_restart`, `infra.cockroachdb.backup_missing`, and both `materialize.launchdarkly.stale_*`
+queries report the raw timestamp instead of the age.
 This also removes the pod-start grace periods from several alerts — use the monitor's own new-data delay instead.
 
-**`label_replace`.** No renaming or extraction of tag values, so the id→name enrichment (`mzClusterName`, `mzObjectName`) is gone: Datadog panels show `u123`, not the object's name, unless the metric already carries a name tag.
+**`label_replace`.** No renaming or extraction of tag values, so the id→name enrichment (`mzClusterName`, `mzObjectName`
+) is gone: Datadog panels show `u123`, not the object's name, unless the metric already carries a name tag.
 `materialize.environmentd.pod_pending_critical` also loses its generation-suffix deduplication.
 
-**Joins (`and on (…)`, `group_left`).** Datadog matches tags automatically in arithmetic between two queries, but there is no way to use one series purely as a filter for another.
-This costs the exit-code exclusions on `materialize.clusterd.error_kill`, the swap-headroom condition on `materialize.clusterd.swap_cluster_oom`, and the egress-gateway node restriction on all five `infra.egress_gateway.*` queries — those now cover every node, not just the gateway pool.
+**Joins (`and on (…)`, `group_left`).** Datadog matches tags automatically in arithmetic between two queries, but there
+is no way to use one series purely as a filter for another.
+This costs the exit-code exclusions on `materialize.clusterd.error_kill`, the swap-headroom condition on
+`materialize.clusterd.swap_cluster_oom`, and the egress-gateway node restriction on all five `infra.egress_gateway.*`
+queries — those now cover every node, not just the gateway pool.
 A composite monitor is the usual way back.
 
 **Nested aggregation.** `count by (size) (group by (id, size) (m))` has no single-query form: Datadog aggregates once.
-Where the underlying metric is a 0/1 gauge, `sum:` by the outer label gets close (`materialize.clusters.replicas.sizes` counts *ready* replicas per size rather than all of them).
+Where the underlying metric is a 0/1 gauge, `sum:` by the outer label gets close (`materialize.clusters.replicas.sizes`
+counts *ready* replicas per size rather than all of them).
 
-**`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`; Datadog needs one monitor per counter, so three representative ones are given.
+**`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with
+`label_replace` and `or`; Datadog needs one monitor per counter, so three representative ones are given.
 
 ## Template parameters
 
-The `%%{…}` parameters are the same names as the PromQL, but the *values* a Datadog context supplies are tag matchers rather than label matchers — `mzEnvironmentFilter` renders as `materialize_cloud_organization_name:your-env-name`, `mzClusterList` as `*` rather than `.+`, and `interval` / `range` as bare seconds for `.rollup()` rather than bracketed ranges.
-`py_mzmon_lib.registry.query_cli.doc_context` carries both sets.
+The `%%{…}` parameters are the same names as the PromQL, but the *values* a Datadog context supplies are tag matchers
+rather than label matchers — `mzEnvironmentFilter` renders as `materialize_cloud_organization_name:your-env-name`,
+`mzClusterList` as `*` rather than `.+`, and `interval` / `range` as bare seconds for `.rollup()` rather than bracketed
+ranges.
+`mzmon_lib::query::render::doc_context` carries both sets.
 
-To render a query for Datadog, build a context on the `datadog` engine:
+To render a query for Datadog, build a context on the `Datadog` engine:
 
-```python
-from pathlib import Path
-from py_mzmon_lib.registry.queries import QueryEngine, QueryRegistry
-from py_mzmon_lib.registry.query_cli import doc_context
+```rust
+use std::path::Path;
 
-registry = QueryRegistry.from_directory(Path("packages/queries"))
-context = doc_context(engine=QueryEngine.DATADOG, resolve_query=registry.get)
-print(registry.get("materialize.connections.peek_latency.p99").render(context)[0])
+use mzmon_lib::query::render::doc_context;
+use mzmon_lib::query::{QueryEngine, QueryRegistry};
+
+let registry = QueryRegistry::from_directory(Path::new("packages/queries"))?;
+let ctx = doc_context(&registry, QueryEngine::Datadog, "mz_");
+let rendered = registry
+    .get("materialize.connections.peek_latency.p99")
+    .expect("query exists")
+    .render(&ctx)?;
+println!("{}", rendered[0]);
 ```
 
 The `docgen` action is not useful here: metric extraction parses PromQL, so `--engine datadog` finds nothing.

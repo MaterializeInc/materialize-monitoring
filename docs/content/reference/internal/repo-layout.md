@@ -30,14 +30,11 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `fetch-grafana-schemas.sh`: vendor the cog-generated Grafana JSON Schema documents from grafana-foundation-sdk
     * `gen-grafana-models.sh`: generate the Rust Grafana models from those vendored schemas (typify)
     * `extract-grafana-operator-crds.sh`: deflate the Grafana Operator CRDs into the CRDs chart (`make grafana-operator-crds`)
-    * `grafonnet-render`: grafonnet rendering helper
     * `helm-deps.sh`: vendor each chart's locked subchart tarballs into `charts/*/charts/` (`make helm-deps`)
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables); `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `grafana-dashboards/`: the Python implementation, fully replaced for every shipped artifact by `packages/dashboards` — no Makefile target or CI job renders from it any more; sources under `dashboards/` (e.g. `mz_environment/`, `render.py`, `palette.py`)
-    * `py-mzmon-lib/`: Python helper library imported by the dashboard packages; not consumed by customers. Also home to the original query registry (`registry/`), now ported to `mzmon-lib`'s Rust `query` module
     * `queries/`: query-registry YAML inputs (`materialize-*.yaml`) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-cadvisor.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`
@@ -79,7 +76,6 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`
   * `tools/`: ancillary ecosystems kept out of `bin/`
     * `chartlib/`: helm-docs templates
-    * `grafonnet/`: grafonnet/jsonnet vendoring (`jsonnetfile.json` + lock)
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
   * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`; also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever

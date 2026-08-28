@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 //! `extract-metrics`: the Rust equivalent of
-//! `python3 -m py_mzmon_lib.registry.query_cli docgen`.
+//! the Python `query_cli docgen` this was ported from (since removed).
 //!
 //! Loads the query registry from a directory of YAML files, renders every
 //! metric query through the documentation [`TemplateContext`], extracts the

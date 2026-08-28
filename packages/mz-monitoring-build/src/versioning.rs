@@ -1720,17 +1720,17 @@ mod tests {
 
     #[test]
     fn pyproject_name_takes_first_top_level_name() {
-        let text = "[project]\nname = \"grafana-dashboards\"\nversion = \"0.7.0\"\n";
-        assert_eq!(pyproject_name(text).as_deref(), Some("grafana-dashboards"));
+        let text = "[project]\nname = \"sample-pkg\"\nversion = \"0.7.0\"\n";
+        assert_eq!(pyproject_name(text).as_deref(), Some("sample-pkg"));
         assert_eq!(pyproject_name("[project]\nversion = \"1\"\n"), None);
     }
 
     #[test]
     fn rewrite_lock_version_bumps_matching_package() {
-        let lock = "[[package]]\nname = \"other\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"grafana-dashboards\"\nversion = \"0.0.0\"\nsource = { editable = \"packages/grafana-dashboards\" }\n";
-        let (old, new) = rewrite_lock_version(lock, "grafana-dashboards", "0.7.0").unwrap();
+        let lock = "[[package]]\nname = \"other\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"sample-pkg\"\nversion = \"0.0.0\"\nsource = { editable = \"packages/sample-pkg\" }\n";
+        let (old, new) = rewrite_lock_version(lock, "sample-pkg", "0.7.0").unwrap();
         assert_eq!(old, "0.0.0");
-        assert!(new.contains("name = \"grafana-dashboards\"\nversion = \"0.7.0\""));
+        assert!(new.contains("name = \"sample-pkg\"\nversion = \"0.7.0\""));
         assert!(new.contains("name = \"other\"\nversion = \"1.0.0\"")); // untouched
         assert!(new.ends_with('\n'));
 

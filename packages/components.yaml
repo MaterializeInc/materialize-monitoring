@@ -71,12 +71,14 @@ components:
   dashboards:
     changelog: true
     title: "Dashboards"
-    version_paths:
-      # Only grafana dashboard supported for now
-      - packages/grafana-dashboards/pyproject.toml
+    # No independent version: `packages/dashboards` is a workspace crate that
+    # inherits `version.workspace`, so the workspace `Cargo.toml` the `mzmon-lib`
+    # component bumps is the only version file involved. The generated-artifact
+    # components (pipelines, scrapers) are the same shape.
+    version_paths: []
     content_paths:
       - packages/queries/
-      - packages/grafana-dashboards/
+      - packages/dashboards/
       # Generated dashboard output bundled into the chart.
       - charts/materialize-monitoring/pre-rendered/dashboards/
     dependencies:
@@ -143,7 +145,6 @@ components:
       - packages/mz-monitoring-build/
       - packages/mz-monitoring-check/
       - packages/mzmon-lib/
-      - packages/py-mzmon-lib/
     dependencies:
       - repo-common
 

@@ -9,6 +9,10 @@
 
 //! Registry of monitoring queries, ported from `py_mzmon_lib.registry`.
 //!
+//! The Python original was removed once this became the only loader; the
+//! `py_mzmon_lib` references in these module docs are provenance, not live paths.
+//! Find it in git history if a comparison is ever needed.
+//!
 //! A [`registry::QueryRegistry`] is a set of [`model::Query`] definitions (plus
 //! recording [`model::Rule`]s and [`model::Alert`]s) loaded from the YAML files
 //! under `packages/queries/`, each validated against

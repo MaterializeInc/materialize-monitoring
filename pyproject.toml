@@ -13,38 +13,23 @@ classifiers = [
     "Topic :: System :: Monitoring",
 ]
 
+# The dashboards and the query registry are Rust now (`packages/dashboards`,
+# `packages/mzmon-lib`). What is left of Python here is the helper scripts under
+# `bin/`, which only read YAML.
 dependencies = [
-    "py-mzmon-lib",
-    "grafana-dashboards",
-    # WARNING: package managers may see "later" versions that are actually earlier releases
-    # due to some epoch issues with grafana-foundation-sdk.
-    "grafana-foundation-sdk==0.0.18",
-    "pydantic>=2.13.3",
     "pyyaml>=6.0.3",
-    "promql-parser>=0.10.0",
 ]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
     "pyright>=1.1.409",
-    "pytest>=9.0.3",
     "ruff>=0.15.12",
 ]
 
 [tool.uv]
 package = false
 default-groups = "all"
-
-[tool.uv.sources]
-grafana-dashboards = { workspace = true }
-py-mzmon-lib = { workspace = true }
-
-[tool.uv.workspace]
-members = [
-    "packages/py-mzmon-lib",  # internal library for shared defs (python)
-    "packages/grafana-dashboards",  # grafana dashboards
-]
 
 [tool.ruff]
 # https://docs.astral.sh/ruff/configuration/
@@ -116,7 +101,6 @@ ignore = [
     "D300",
 
     # Add any additional ignore rules for mz-monitoring
-    "FBT",  # grafana-foundation-sdk
 ]
 
 dummy-variable-rgx = "(^unused_\\w*|_\\w*$)"
@@ -191,16 +175,12 @@ docstring-code-format = false
 docstring-code-line-length = "dynamic"
 
 [tool.pyright]
+# `scratch/` is gitignored working space, not repo code. It previously lived at
+# `packages/ref-alloy-pipelines/` and was matched by a `packages/ref*/**` pattern;
+# the move left that pattern matching nothing, which surfaced its dead imports as
+# type errors.
 ignore = [
-    "packages/ref*/**"
-]
-
-[tool.pytest]
-addopts = ["--showlocals", "-v", "--doctest-modules"]
-testpaths = [
-    # default to unit tests (in-package)
-    "packages/py-mzmon-lib/py_mzmon_lib",
-    "packages/grafana-dashboards/dashboards",
+    "scratch/**"
 ]
 
 [build-system]
