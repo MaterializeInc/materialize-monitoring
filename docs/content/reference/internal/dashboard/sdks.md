@@ -26,6 +26,8 @@ Planned (stubs are acceptable for now):
 What you need to know to navigate the Grafana SDK landscape:
 
 - **grafonnet** (jsonnet) was the canonical way to do dashboards-as-code through Grafana 11.
+  The original plan here used it, and a vendored `tools/grafonnet/` tree existed for a while, but no dashboard was
+  ever authored against it — both are gone.
 - **grafana-foundation-sdk** was introduced for Grafana 12 with backwards-compatible support to Grafana 10.
   Repository: <https://github.com/grafana/grafana-foundation-sdk/>.
 - grafana-foundation-sdk is built on Grafana's [cog codegen framework](https://github.com/grafana/cog/) using cue-based or openapi schemas.

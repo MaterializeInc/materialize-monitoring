@@ -26,7 +26,7 @@ Where docs, tickets, or comments disagree with the repo, the repo wins and this 
 | Original plan (May 2026) | As built |
 |---|---|
 | Grafana dashboards via Jsonnet/Grafonnet (`sources/jsonnet/`) | Rust against the vendored Grafana schemas (`packages/dashboards/`) |
-| `crates/` Rust workspace + `sources/` input tree | `packages/` monorepo where Rust (`mzmon-lib`) and Python coexist |
+| `crates/` Rust workspace + `sources/` input tree | `packages/` monorepo; Rust throughout after the Python dashboards were retired |
 | Datadog dashboards via a Datadog Rust SDK | Not pursued; OTLP-forward is the export path (see Pipelines) |
 | Four fixed profiles, incl. a `datadog-agent` profile | Profile set deliberately left open; no `datadog-agent` profile |
 

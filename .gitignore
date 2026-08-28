@@ -34,12 +34,6 @@ secrets.dec.*
 # ---- Docker ----
 *.iid
 
-# ---- Jsonnet ----
-# jsonnet-bundler vendored libs (comment when we start vendoring)
-vendor/
-# Compiled output
-*.jsonnet.json
-dashboards_out/
 manifests_out/
 
 # ---- Hugo (docs) ----

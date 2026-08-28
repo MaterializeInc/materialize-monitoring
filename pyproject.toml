@@ -175,8 +175,12 @@ docstring-code-format = false
 docstring-code-line-length = "dynamic"
 
 [tool.pyright]
+# `scratch/` is gitignored working space, not repo code. It previously lived at
+# `packages/ref-alloy-pipelines/` and was matched by a `packages/ref*/**` pattern;
+# the move left that pattern matching nothing, which surfaced its dead imports as
+# type errors.
 ignore = [
-    "packages/ref*/**"
+    "scratch/**"
 ]
 
 [build-system]
