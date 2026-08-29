@@ -233,6 +233,16 @@ fn extraction_context<'a>(
             "mzGenerationPattern",
             r".*-(?:environmentd|gen)-([0-9]+)-[0-9]+",
         ),
+        // Log scope. Extraction reads metric names out of a rendered selector, so
+        // sentinels are all these need to be.
+        (
+            "mzLogNamespaceFilter",
+            r#"namespace=~"materialize-environment""#,
+        ),
+        ("mzLogAppFilter", r#"app=~"environmentd""#),
+        ("mzLogLevelFilter", r#"level=~"INFO""#),
+        ("mzLogJobFilter", r#"job=~".+""#),
+        ("mzLogSearchFilter", r#"|~ "(?i)""#),
         ("mzClusterList", ".+"),
         ("mzReplicaList", ".+"),
         // Extraction only reads metric names, so the regex-escaped forms resolve to

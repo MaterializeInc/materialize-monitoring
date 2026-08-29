@@ -1,0 +1,213 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Container and node log queries
+
+description: |
+  Logs, as collected by the monitoring stack and stored in Loki.
+
+  Every query here is LogQL, and the scope is **Loki-discovered end to end**:
+  namespace, app and level come from Loki's own label values rather than from the
+  metrics pipeline. That is deliberate. Reading logs is frequently how an operator
+  works out why the *metrics* pipeline is broken, and a logs dashboard that
+  derived its scope from Prometheus would go blind at exactly the moment it is
+  most needed.
+
+  The label contract the agent and gateway produce is documented under
+  [Logs and Events](../../../logs-and-events/querying/). What matters here:
+  `namespace`, `app`, `level` and `container` are stream labels and belong in the
+  selector; `pod`, `node`, `organization_name` and the rest are structured
+  metadata and are filtered after a `|`. Narrowing the selector before the line
+  filters is the single biggest speedup.
+
+  Every selector here carries `%%{mzLogJobFilter}`, and it is not only a filter.
+  LogQL rejects a stream selector whose every matcher can match the empty string —
+  *"queries require at least one regexp or equality matcher that does not have an
+  empty-compatible value"* — and a dashboard built from `=~` pickers is exactly
+  that shape. The job picker's "All" is `.+` rather than the discovered values, so
+  it always contributes a non-empty matcher and the selector parses whatever the
+  other pickers are set to. Without it, "All" everywhere is a query error rather
+  than a wide result.
+
+  The event queries in `materialize-events.yaml` need no such anchor: they pin
+  `job="loki.source.kubernetes_events"`, which is already a non-empty equality
+  matcher, and a second `job` matcher would AND with it and zero the panel.
+
+  `level` is normalized by the pipeline where it can be and falls back to
+  `UNKNOWN`, so the levels present are a property of the workloads running rather
+  than a fixed vocabulary — which is why the dashboard discovers them instead of
+  hard-coding a list.
+
+metricImportanceHint: recommended
+
+queries:
+  - id: materialize.logs.stream
+    stability: experimental
+    description:
+      summary: |
+        The log feed for the selected namespaces, apps and levels, newest first.
+      notes: |
+        The dashboard's primary panel; everything above it exists to narrow what
+        lands here.
+
+        The free-text search is a case-insensitive line filter applied last, after
+        the stream selector has done its work. An empty search matches every line
+        rather than none, so the panel is useful before anything is typed.
+    logQL: |
+      {
+        %%{mzLogNamespaceFilter},
+        %%{mzLogAppFilter},
+        %%{mzLogLevelFilter},
+        %%{mzLogJobFilter}
+      }
+        %%{mzLogSearchFilter}
+
+  - id: materialize.logs.rate.by_app
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second by application — which component is doing the
+        talking.
+      nominal: |
+        A steady baseline per app, rising with load. `environmentd` dominates on
+        any busy deployment and that is expected.
+      unhealthy: |
+        A sharp step up, usually one app entering a retry loop and narrating it.
+        Pair it with _Volume -> Log Rate by Level_: a rise concentrated in
+        warnings is a different story from a rise in ordinary chatter.
+
+        A drop to zero for an app that should be running is the other reading, and
+        it means either the workload stopped or collection did.
+      notes: |
+        Rate rather than count, so the panel reads the same at any time range.
+    logQL: |
+      sum by (app) (
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            %%{mzLogLevelFilter},
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.logs.rate.by_level
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second by severity — the shape of how much of the volume is
+        something going wrong.
+      nominal: |
+        Overwhelmingly `INFO`, with warnings a thin band above it.
+      degraded: |
+        A rising `WARN` band. Worth reading, not necessarily worth acting on.
+      unhealthy: |
+        `ERROR` present at a sustained rate, or a warning band that overtakes the
+        informational one.
+      notes: |
+        `UNKNOWN` is not a severity. It is what the pipeline records when it could
+        not find a level in the line — some components do not emit one in a form
+        the parser recognizes — so a large `UNKNOWN` band says something about
+        the log format rather than about health.
+    logQL: |
+      sum by (level) (
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            %%{mzLogLevelFilter},
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.logs.rate.total
+    stability: experimental
+    description:
+      summary: |
+        Total log lines per second reaching Loki for the current selection,
+        averaged over each interval.
+      nominal: |
+        A steady rate that tracks load.
+      unhealthy: |
+        Flat at zero while workloads are running: collection has stopped rather
+        than the deployment going quiet. Check the agent and gateway — their own
+        logs are in this same feed under the `monitoring` namespace, which is why
+        the namespace picker can reach outside Materialize.
+      notes: |
+        Also the volume signal for storage: a sustained step up here is what
+        precedes a retention or cost surprise.
+    logQL: |
+      sum(
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            %%{mzLogLevelFilter},
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.logs.warnings.rate
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse log lines per minute, as one series — the at-a-glance
+        answer to whether anything is complaining.
+      nominal: Flat, or a spike that returns to baseline.
+      unhealthy: |
+        A level that does not come back down. _Volume -> Log Rate by App_ says
+        which component, and the feed below says what.
+      notes: |
+        Matches on the normalized `level` label rather than on the text of the
+        line, so it does not depend on how a component spells "error".
+
+        Deliberately independent of the level picker above it: this panel answers
+        "is anything wrong" and would be meaningless if narrowing the selection to
+        `INFO` silently zeroed it.
+
+        Reported per **minute** rather than per second. Warnings are rare enough
+        on a healthy deployment that a per-second rate spends its life displaying
+        a small fraction, and "0.03" reads as noise where "2 per minute" reads as
+        two warnings.
+    logQL: |
+      sum(
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            level=~"WARN|WARNING|ERROR|CRITICAL|FATAL",
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      ) * 60
+
+  - id: materialize.logs.warnings.stream
+    stability: experimental
+    description:
+      summary: |
+        The warning-and-worse feed, newest first — what the components are
+        actually complaining about.
+      nominal: Quiet, or a burst that stops on its own.
+      unhealthy: |
+        A steady stream. Read the app and the message; a repeating identical line
+        is a loop, and a changing one is a workload in trouble.
+      notes: |
+        Same level vocabulary as _Volume -> Warning Rate_ and, like it, deliberately
+        not narrowed by the level picker.
+    logQL: |
+      {
+        %%{mzLogNamespaceFilter},
+        %%{mzLogAppFilter},
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL",
+        %%{mzLogJobFilter}
+      }
+        %%{mzLogSearchFilter}

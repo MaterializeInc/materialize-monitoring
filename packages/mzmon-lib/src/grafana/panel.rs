@@ -453,26 +453,52 @@ impl PanelOptions for BarChart {
 
 /// Log panel preset, for a LogQL query rendered as log lines rather than a chart.
 ///
-/// The first plugin here with no baseline to copy: `env-top` has no log panel, so
-/// these defaults are chosen rather than measured. They target reading an event
-/// stream — newest first, with the timestamp shown, because "when did this start"
-/// is the first question asked of one.
+/// The defaults are lifted from dashboards built by hand against a live Grafana
+/// and refined in use, rather than invented here: field selector, log details,
+/// infinite scrolling, the controls bar, the level badge, small type, and syntax
+/// highlighting are all on, because a log panel is something you *work in* rather
+/// than glance at.
 ///
-/// `show_labels` stays off deliberately. Loki's stream labels repeat on every
-/// line (`namespace`, `job`, `level` are constant within a panel that selected on
-/// them), so rendering them inline costs most of the line width to say nothing.
-/// What actually varies per event is structured metadata, which `enable_log_details`
-/// puts one click away.
+/// `show_labels` and `show_common_labels` stay off. Loki's stream labels repeat
+/// on every line — `namespace`, `job` and `level` are constant within a panel that
+/// selected on them — so rendering them inline costs most of the line width to say
+/// nothing. What actually varies per line is structured metadata, which the field
+/// selector and `enable_log_details` reach.
+///
+/// # Options newer than the vendored schema
+///
+/// `displayedFields`, `showLevel`, `timestampResolution` and `unwrappedColumns`
+/// are not in `logs.jsonschema.json`, which tracks Grafana 13.0.2; they are real
+/// options in 13.2 and later, taken from what Grafana itself wrote into a live
+/// dashboard. They are inserted into the options map directly rather than through
+/// the generated struct. Fold them into the typed fields when the schemas are
+/// re-vendored.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Logs {
-    /// Newest line first. `Descending` is the reading order for an event feed;
-    /// `Ascending` suits a panel meant to be read as a narrative.
+    /// Newest line first. `Descending` is the reading order for a feed.
     pub sort_order: logs::LogsSortOrder,
-    /// Wrap long lines rather than truncating them. Event notes carry the cause of
-    /// a failure at the end of the line, so truncation hides the answer.
+    /// Wrap long lines rather than truncating them.
+    ///
+    /// On for a prose feed, where the cause of a failure is at the end of the
+    /// line. Off where [`Logs::displayed_fields`] has turned the panel into
+    /// columns, since a wrapped column stops lining up.
     pub wrap_log_message: bool,
     /// Show the per-line timestamp.
     pub show_time: bool,
+    /// How aggressively to collapse repeated lines. Grafana badges a collapsed
+    /// group with its count, so nothing is hidden by this — only compacted.
+    pub dedup_strategy: logs::LogsDedupStrategy,
+    /// Reformat structured lines (JSON) for readability.
+    pub prettify_log_message: bool,
+    /// Render these fields as columns instead of the raw line.
+    ///
+    /// Empty leaves the line as it is. Naming fields turns the panel into a
+    /// table, which is what makes a Kubernetes event feed readable — `reason`,
+    /// `msg` and `name` are the three that matter and the rest is forwarding
+    /// metadata.
+    pub displayed_fields: Vec<String>,
+    /// Render each displayed field in its own column rather than inline.
+    pub unwrapped_columns: bool,
 }
 
 impl Default for Logs {
@@ -481,6 +507,13 @@ impl Default for Logs {
             sort_order: logs::LogsSortOrder::Descending,
             wrap_log_message: true,
             show_time: true,
+            // `Exact` collapses only byte-identical consecutive lines, which is
+            // the repetition that carries no information. The count badge keeps a
+            // crash loop legible, and the rate panels above carry its volume.
+            dedup_strategy: logs::LogsDedupStrategy::Exact,
+            prettify_log_message: false,
+            displayed_fields: Vec::new(),
+            unwrapped_columns: false,
         }
     }
 }
@@ -491,25 +524,38 @@ impl PanelOptions for Logs {
     }
 
     fn options(&self) -> Map<String, Value> {
-        erase(&logs::Options {
-            // `Exact` would collapse the repeated lines that make a crash loop
-            // legible as a crash loop.
-            dedup_strategy: logs::LogsDedupStrategy::None,
+        let mut options = erase(&logs::Options {
+            dedup_strategy: self.dedup_strategy,
             enable_log_details: true,
-            prettify_log_message: false,
+            prettify_log_message: self.prettify_log_message,
             show_common_labels: false,
             show_labels: false,
             show_log_context_toggle: false,
             show_time: self.show_time,
             sort_order: self.sort_order,
             wrap_log_message: self.wrap_log_message,
-            details_mode: None,
-            enable_infinite_scrolling: None,
-            font_size: None,
-            show_controls: None,
-            show_field_selector: None,
-            syntax_highlighting: None,
-        })
+            // Read a log panel like a terminal: small type fits more of it.
+            font_size: Some(logs::OptionsFontSize::Small),
+            // Details in place rather than in a side panel, so opening a line
+            // does not cost the list its width.
+            details_mode: Some(logs::OptionsDetailsMode::Inline),
+            enable_infinite_scrolling: Some(true),
+            show_controls: Some(true),
+            show_field_selector: Some(true),
+            syntax_highlighting: Some(true),
+        });
+        // See the note on `Logs`: newer than the vendored schema.
+        options.insert("showLevel".to_string(), serde_json::json!(true));
+        options.insert("timestampResolution".to_string(), serde_json::json!("ms"));
+        options.insert(
+            "unwrappedColumns".to_string(),
+            serde_json::json!(self.unwrapped_columns),
+        );
+        options.insert(
+            "displayedFields".to_string(),
+            serde_json::json!(self.displayed_fields),
+        );
+        options
     }
 }
 
@@ -654,6 +700,33 @@ impl Panel<Logs> {
     /// leading text is the whole signal.
     pub fn truncate_lines(mut self) -> Self {
         self.options.wrap_log_message = false;
+        self
+    }
+
+    /// Render these fields as columns instead of the raw line.
+    ///
+    /// Turns the panel into a table, so it also stops wrapping — a wrapped column
+    /// stops lining up with its neighbours.
+    pub fn displayed_fields<I, S>(mut self, fields: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.options.displayed_fields = fields.into_iter().map(Into::into).collect();
+        self.options.unwrapped_columns = true;
+        self.options.wrap_log_message = false;
+        self
+    }
+
+    /// Collapse lines sharing a shape rather than only byte-identical ones.
+    pub fn dedup_by_signature(mut self) -> Self {
+        self.options.dedup_strategy = logs::LogsDedupStrategy::Signature;
+        self
+    }
+
+    /// Reformat structured lines for readability.
+    pub fn prettify(mut self) -> Self {
+        self.options.prettify_log_message = true;
         self
     }
 }
@@ -817,6 +890,51 @@ impl<O: PanelOptions> Panel<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_logs_preset_turns_on_the_controls_a_reader_works_with() {
+        // These are the difference between a panel you glance at and one you
+        // investigate in. They came from dashboards refined by hand against a
+        // live Grafana, so a silent revert to the schema defaults would be a real
+        // regression with no failing query to announce it.
+        let options = Logs::default().options();
+        for (key, want) in [
+            ("enableLogDetails", true),
+            ("enableInfiniteScrolling", true),
+            ("showControls", true),
+            ("showFieldSelector", true),
+            ("syntaxHighlighting", true),
+            ("showLevel", true),
+            ("showTime", true),
+        ] {
+            assert_eq!(options[key], serde_json::json!(want), "{key}");
+        }
+        assert_eq!(options["fontSize"], serde_json::json!("small"));
+        assert_eq!(options["detailsMode"], serde_json::json!("inline"));
+        // Stream labels repeat on every line and say nothing a panel that
+        // selected on them does not already state.
+        assert_eq!(options["showLabels"], serde_json::json!(false));
+        assert_eq!(options["showCommonLabels"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn displayed_fields_turn_the_panel_into_columns() {
+        // Naming fields makes the panel a table, so wrapping has to stop --
+        // a wrapped column stops lining up with its neighbours.
+        let panel = Panel::logs("Events").displayed_fields(["reason", "msg", "name"]);
+        let options = panel.options.options();
+        assert_eq!(
+            options["displayedFields"],
+            serde_json::json!(["reason", "msg", "name"])
+        );
+        assert_eq!(options["unwrappedColumns"], serde_json::json!(true));
+        assert_eq!(options["wrapLogMessage"], serde_json::json!(false));
+
+        // And the default stays a prose feed.
+        let default = Logs::default().options();
+        assert_eq!(default["displayedFields"], serde_json::json!([]));
+        assert_eq!(default["wrapLogMessage"], serde_json::json!(true));
+    }
 
     fn options_of(panel: &dashboardv2::PanelKind) -> &Map<String, Value> {
         panel

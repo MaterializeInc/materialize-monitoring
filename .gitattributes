@@ -1,1 +1,19 @@
 charts/*/charts/*.tgz filter=lfs diff=lfs merge=lfs -text
+
+# Docsite copies of generated artifacts: collapsed in pull requests.
+#
+# These are a second serialization of what the chart already ships, so a change
+# to a panel or a scrape source shows up twice in a diff and only one of the two
+# is worth reading. The chart's copy is the reviewable one — it is what a release
+# installs — and these exist so the docsite can offer a download.
+#
+# `linguist-generated` collapses the file in a GitHub diff and drops it from the
+# repository's language statistics. It does *not* change `git diff` locally, so
+# verifying a render still works normally; and the `dashboards` workflow still
+# asserts both trees are fresh, so collapsing the view cannot hide a stale file.
+#
+# `docs/assets/metrics/metrics.yaml` is deliberately absent: it is generated too,
+# but it is the only copy of the metric-to-usage index rather than a second one,
+# so its diff is the only place a tier change is visible.
+docs/assets/dashboards/grafana/*.json linguist-generated=true
+docs/assets/prometheus-scrapers/**/*.yaml linguist-generated=true

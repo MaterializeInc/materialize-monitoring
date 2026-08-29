@@ -90,6 +90,7 @@ from.
 | Artifact stem | Module | UID | Title |
 |---|---|---|---|
 | `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview |
+| `env-logs` | `grafana/env_logs/` | `mz-mon-env-logs` | Materialize Logs and Events |
 | `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
@@ -278,6 +279,85 @@ emitted by environmentd, so its `pod` label carries the generation and the split
   generation: that appends a series carrying no labels.
 - A sparse series also invites a specific misreading — "all emitted points are non-zero" looks exactly like a Thanos
   downsampling artifact and is not one. Values were verified identical across query windows.
+
+## `env-logs` tabs
+
+Two tabs. Shades from `env_logs/theme.rs`; Events keeps the magenta it has on `env-upgrade`, since it is the same kind
+of content.
+
+| # | Tab title | Module | Shade |
+|---|---|---|---|
+| 1 | Logs | `logs.rs` | `LOGS` `#33BBEE` (cyan) |
+| 2 | Events | `events.rs` | `EVENTS` `#EE3377` (magenta) |
+
+**Logs** — Volume (Log Rate, Warning Rate, Log Rate by App, Log Rate by Level), Warnings (feed), All Logs (feed).
+**Events** — Activity (rate by reason, rate by namespace), Warnings (feed), All Events (feed).
+
+## Logs dashboard conventions
+
+**Loki end to end, and that is the point.** `env-logs` defines *no* metrics datasource and shares nothing with
+`environment_scoped` — its namespace, app and level pickers are Loki-discovered. Reading logs is frequently how you work
+out why the *metrics* pipeline is broken, so a logs dashboard deriving its scope from Prometheus would go blind exactly
+when it is needed. A test asserts no query references `$mzNamespaceList`, `$mzClusterList` or `$environmentNameList`.
+
+**Loki answers a variable differently from Prometheus.** Not `label_values(...)` text but a `{label, stream, type: 1}`
+object — `logql_variable_query` builds it, and `LogQueryVariable` is the Loki-side counterpart to `QueryVariable`. A
+Prometheus-shaped variable query against Loki resolves to nothing, silently. `stream` may reference other variables,
+which is what chains namespace → app/level.
+
+**Materialize-first, not Materialize-only.** `$materializeNamespacesOnly` gates namespace *discovery*
+(`.*materialize.*|mz-.*|environment-.*` on, `.*` off, on by default). Three conventions rather than one, because the
+naming differs by install: this repo's charts (`materialize`, `materialize-environment`), the shorter `mz-` prefix, and
+Cloud's `environment-<uuid>-0`. A filter rather than a hard scope, because the monitoring stack's own logs are what you
+need when telemetry itself is failing, and because the narrow value is a naming convention rather than a derived fact —
+being wrong about it has to be one click to recover from, not a blank dashboard.
+
+**Every log picker states its own `all_value`; none is left to expand into the discovered values.** An expansion is
+*empty* whenever discovery has not run or has failed, and `label=~""` matches only the streams **missing** that label
+rather than all of them — so one picker failing to load takes the panels down with it, and it reads as "selects no log
+lines" rather than as the error it is.
+
+| Picker | `all_value` | Why |
+|---|---|---|
+| `logNamespaceList` | `.+` | It is the sole matcher of the app / level / job discovery selectors, so it must not be empty-compatible. Safe because every line carries a namespace — the pipeline coerces cluster-scoped events to `kube-system` rather than omitting the label. |
+| `logAppList` | `.*` | `app` is genuinely absent from some streams and `.+` drops them — 2,407 of 30,432 lines in half an hour on a representative install, most of `kube-system`. |
+| `logLevelList` | `.*` | Same inclusive form; costs nothing and does not depend on every line carrying a level. |
+| `logJobList` | `.+` | The second anchor. Free, since `job` is present on every line, so `.+` and `.*` select identically. |
+
+`$materializeNamespacesOnly` has the same constraint and it bites harder: the switch **is** the whole stream selector of
+the namespace discovery query, so its off position is `.+`, not `.*`. With `.*` the variable itself fails to load and
+every picker chained below it empties out.
+
+Watch the shape of the check — `.*materialize.*` *starts* with `.*` but cannot match empty, because it requires a
+literal. A pattern is empty-compatible only when stripping every `.*` leaves nothing.
+
+**Every log selector needs a non-empty-compatible matcher.** LogQL rejects one where every matcher can match the empty
+string — *"queries require at least one regexp or equality matcher that does not have an empty-compatible value"* — and
+a dashboard built from `=~` pickers is exactly that shape. `$logJobList` is the anchor: its `all_value` is `.+` rather
+than the discovered values, so it always contributes something non-empty and every panel parses whatever the other
+pickers are set to. It doubles as the most direct way to isolate one workload, since `job` is `<namespace>/<container>`.
+Verified against a live Loki, including the worst case where every other picker expands to nothing.
+
+The *event* queries need no anchor and must not get this one: they pin `job="loki.source.kubernetes_events"`, already a
+non-empty equality matcher, and a second `job` matcher would AND with it and zero the panel the moment a container job
+was picked. Tests hold both halves.
+
+**The search box must be harmless when empty.** It renders as `|~ "(?i)$logSearch"`, and an empty pattern matches every
+line rather than none — verified against a live Loki, since the opposite would blank the dashboard until something is
+typed.
+
+**Warning panels ignore the level picker**, deliberately. They answer "is anything wrong", and a selection of `INFO`
+silently zeroing them would make them lie. A test holds that.
+
+**Stream labels vs structured metadata.** `namespace`, `app`, `level`, `container`, `job`, `k8s_*`, `service_name` and
+`unit` are stream labels and belong in the selector. `pod`, `node`, `organization_name`, `container_id`, `region`,
+`zone`, `detected_level` and friends are structured metadata, filtered after a `|`. `organization_name` is the
+self-managed stand-in for the cloud dashboards' Snowflake org lookup, which does not exist here.
+
+**Two event scopes, two query families.** `materialize.events.deployment.*` / `.operator.*` are rollout-scoped and
+belong to `env-upgrade`; `materialize.events.cluster.*` is the general browser and belongs to `env-logs`. Separate
+definitions on purpose — the rollout queries carry generation and reporting-controller filters that a general browser
+must not inherit, or it would quietly drop events for belonging to the wrong side of a rollout.
 
 ## orchestratord reconciliation metrics
 
