@@ -54,7 +54,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\"}\n  |~ \"(?i)$logSearch\"\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\"}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -66,7 +66,7 @@
               "transformations": []
             }
           },
-          "description": "**Every Kubernetes event in the selected namespaces, newest first.**\n\nThe general-purpose event feed, scoped by the same namespace picker as the logs beside it rather than by a deployment's own namespaces. Turning the Materialize-only switch off reaches `kube-system` and the rest of the cluster, which is where the answer lives when the question is about nodes or storage rather than about Materialize.\n\nDistinct from the rollout feed on the upgrade dashboard: this one carries no generation or reporting-controller filter, because a general browser should not quietly drop events for belonging to the wrong side of a rollout.\n\nLines are reformatted to `Reason Kind/name — message`; expanding one shows the dozen raw fields behind it.",
+          "description": "**Every Kubernetes event in the selected namespaces, newest first.**\n\nThe general-purpose event feed, scoped by the same namespace picker as the logs beside it rather than by a deployment's own namespaces. Turning the Materialize-only switch off reaches `kube-system` and the rest of the cluster, which is where the answer lives when the question is about nodes or storage rather than about Materialize.\n\nDistinct from the rollout feed on the upgrade dashboard: this one carries no generation or reporting-controller filter, because a general browser should not quietly drop events for belonging to the wrong side of a rollout.\n\nThe consuming panel renders `reason`, `msg` and `name` as columns rather than showing the raw line, so this query deliberately does **not** `line_format`: displayed fields supersede the line, and formatting one would be work thrown away. The rollout feeds on the upgrade dashboard do reformat, because they show the line.",
           "id": 1009,
           "links": [],
           "title": "All Events",
@@ -81,15 +81,29 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "signature",
+                "detailsMode": "inline",
+                "displayedFields": [
+                  "reason",
+                  "name",
+                  "msg"
+                ],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
-                "wrapLogMessage": true
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": true,
+                "wrapLogMessage": false
               }
             },
             "version": ""
@@ -275,14 +289,24 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
                 "wrapLogMessage": true
               }
             },
@@ -333,7 +357,7 @@
                 "defaults": {
                   "min": 0,
                   "noValue": "No logs match the current filters",
-                  "unit": "logs"
+                  "unit": "suffix:logs/s"
                 },
                 "overrides": []
               },
@@ -401,7 +425,7 @@
                 "defaults": {
                   "min": 0,
                   "noValue": "No logs match the current filters",
-                  "unit": "logs"
+                  "unit": "suffix:logs/s"
                 },
                 "overrides": []
               },
@@ -457,10 +481,10 @@
               "transformations": []
             }
           },
-          "description": "**Total log lines per second reaching Loki for the current selection.**\n\n**Nominal:** A steady rate that tracks load.\n\n**Unhealthy:** Flat at zero while workloads are running: collection has stopped rather than the deployment going quiet. Check the agent and gateway — their own logs are in this same feed under the `monitoring` namespace, which is why the namespace picker can reach outside Materialize.\n\nAlso the volume signal for storage: a sustained step up here is what precedes a retention or cost surprise.",
+          "description": "**Total log lines per second reaching Loki for the current selection, averaged over each interval.**\n\n**Nominal:** A steady rate that tracks load.\n\n**Unhealthy:** Flat at zero while workloads are running: collection has stopped rather than the deployment going quiet. Check the agent and gateway — their own logs are in this same feed under the `monitoring` namespace, which is why the namespace picker can reach outside Materialize.\n\nAlso the volume signal for storage: a sustained step up here is what precedes a retention or cost surprise.",
           "id": 1000,
           "links": [],
-          "title": "Log Rate",
+          "title": "Average Log Rate",
           "vizConfig": {
             "group": "stat",
             "kind": "VizConfig",
@@ -473,7 +497,7 @@
                   },
                   "min": 0,
                   "noValue": "No logs match the current filters",
-                  "unit": "logs"
+                  "unit": "suffix:logs/s"
                 },
                 "overrides": []
               },
@@ -514,7 +538,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", level=\"WARN\"}\n  |~ \"(?i)$logSearch\"\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", level=\"WARN\"}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -541,15 +565,29 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "signature",
+                "detailsMode": "inline",
+                "displayedFields": [
+                  "reason",
+                  "name",
+                  "msg"
+                ],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
-                "wrapLogMessage": true
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": true,
+                "wrapLogMessage": false
               }
             },
             "version": ""
@@ -601,14 +639,24 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
                 "wrapLogMessage": true
               }
             },
@@ -634,8 +682,8 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      app=~\"$logAppList\",\n      level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
-                        "legendFormat": "warnings/s"
+                        "expr": "sum(\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      app=~\"$logAppList\",\n      level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n) * 60\n",
+                        "legendFormat": "warnings/min"
                       },
                       "version": "v0"
                     },
@@ -647,10 +695,10 @@
               "transformations": []
             }
           },
-          "description": "**Warning-and-worse log lines per second, as one series — the at-a-glance answer to whether anything is complaining.**\n\n**Nominal:** Flat, or a spike that returns to baseline.\n\n**Unhealthy:** A level that does not come back down. _Volume -> Log Rate by App_ says which component, and the feed below says what.\n\nMatches on the normalized `level` label rather than on the text of the line, so it does not depend on how a component spells \"error\".\n\nDeliberately independent of the level picker above it: this panel answers \"is anything wrong\" and would be meaningless if narrowing the selection to `INFO` silently zeroed it.",
+          "description": "**Warning-and-worse log lines per minute, as one series — the at-a-glance answer to whether anything is complaining.**\n\n**Nominal:** Flat, or a spike that returns to baseline.\n\n**Unhealthy:** A level that does not come back down. _Volume -> Log Rate by App_ says which component, and the feed below says what.\n\nMatches on the normalized `level` label rather than on the text of the line, so it does not depend on how a component spells \"error\".\n\nDeliberately independent of the level picker above it: this panel answers \"is anything wrong\" and would be meaningless if narrowing the selection to `INFO` silently zeroed it.\n\nReported per **minute** rather than per second. Warnings are rare enough on a healthy deployment that a per-second rate spends its life displaying a small fraction, and \"0.03\" reads as noise where \"2 per minute\" reads as two warnings.",
           "id": 1001,
           "links": [],
-          "title": "Warning Rate",
+          "title": "Average Warning Rate",
           "vizConfig": {
             "group": "stat",
             "kind": "VizConfig",
@@ -663,7 +711,7 @@
                   },
                   "min": 0,
                   "noValue": "No warnings in this time range",
-                  "unit": "logs"
+                  "unit": "suffix:logs/min"
                 },
                 "overrides": []
               },
@@ -976,26 +1024,18 @@
         }
       },
       {
-        "kind": "SwitchVariable",
-        "spec": {
-          "current": ".*materialize.*|mz-.*|environment-.*",
-          "description": "Narrow namespace discovery to the Materialize namespaces. Turn off to reach the monitoring stack and the rest of the cluster.",
-          "disabledValue": ".+",
-          "enabledValue": ".*materialize.*|mz-.*|environment-.*",
-          "hide": "dontHide",
-          "label": "Materialize Namespaces Only",
-          "name": "materializeNamespacesOnly",
-          "skipUrlSync": false
-        }
-      },
-      {
         "kind": "QueryVariable",
         "spec": {
           "allValue": ".+",
           "allowCustomValue": true,
           "current": {
-            "text": "",
-            "value": ""
+            "selected": true,
+            "text": [
+              ".*materialize.*|mz-.*|environment-.*"
+            ],
+            "value": [
+              ".*materialize.*|mz-.*|environment-.*"
+            ]
           },
           "definition": "label_values(namespace)",
           "description": "The namespace(s) to read logs from",
@@ -1014,7 +1054,7 @@
             "spec": {
               "label": "namespace",
               "refId": "LokiVariableQueryEditor-VariableQuery",
-              "stream": "{namespace=~\"$materializeNamespacesOnly\"}",
+              "stream": "",
               "type": 1
             },
             "version": "v0"

@@ -71,9 +71,14 @@ const LOKI_PLUGIN: &str = "loki";
 /// Three conventions rather than one, because the naming differs by how the
 /// deployment was installed: `materialize` / `materialize-environment` from this
 /// repo's own charts, `mz-…` from the shorter-prefixed installs, and
-/// `environment-<uuid>-0` from Materialize Cloud. Matching all three costs
-/// nothing — a namespace that matches none of them is reached by turning the
-/// switch off.
+/// `environment-<uuid>-0` from Materialize Cloud.
+///
+/// Used as the namespace picker's **opening selection**, not as a filter on what
+/// it offers. The distinction is the whole point: a gate would hide the
+/// monitoring stack and `kube-system`, which are what you need when collection
+/// itself is failing, whereas a default merely means you do not start buried in
+/// them. Every namespace stays one click away, and an install matching none of
+/// these conventions picks its own from a list that was never narrowed.
 const MATERIALIZE_NAMESPACE_PATTERN: &str = ".*materialize.*|mz-.*|environment-.*";
 
 /// Extra controls the baseline defines beyond what the render context requires.
@@ -84,8 +89,6 @@ pub mod extra {
     pub const METRIC_ADHOC: &str = "metricAdhoc";
     /// Free-form label filters applied to every logs query.
     pub const LOGS_ADHOC: &str = "logsAdhoc";
-    /// Whether namespace discovery is narrowed to the Materialize namespaces.
-    pub const MATERIALIZE_NAMESPACES_ONLY: &str = "materializeNamespacesOnly";
     /// Free-text line filter applied to every logs query.
     pub const LOG_SEARCH: &str = "logSearch";
 }
@@ -456,6 +459,13 @@ struct LogQueryVariable {
     /// the panel with it. And the choice between `.*` and `.+` is a real one per
     /// label, not a default: see [`log_apps`].
     all_value: &'static str,
+    /// The selection the picker opens on, as a custom value.
+    ///
+    /// `None` leaves it to Grafana, which picks "All". A value here is a
+    /// *default*, not a constraint — the picker still lists everything discovery
+    /// found, and `allow_custom_value` is what lets a pattern stand in for a
+    /// value that is not one of them.
+    current: Option<&'static str>,
     hide: dashboardv2::VariableHide,
 }
 
@@ -481,7 +491,17 @@ impl LogQueryVariable {
                 // Log labels come and go with the workloads emitting them, so the
                 // list is a property of the window rather than of the deployment.
                 refresh: dashboardv2::VariableRefresh::OnTimeRangeChanged,
-                current: no_selection(),
+                current: match self.current {
+                    // Arrays, because the variable is multi-select: that is the
+                    // shape Grafana writes and reads back for one.
+                    Some(value) => dashboardv2::VariableOption {
+                        selected: Some(true),
+                        text: dashboardv2::VariableOptionText::Array(vec![value.to_string()]),
+                        value: dashboardv2::VariableOptionValue::Array(vec![value.to_string()]),
+                        properties: Default::default(),
+                    },
+                    None => no_selection(),
+                },
                 options: Vec::new(),
                 static_options: Vec::new(),
                 static_options_order: None,
@@ -492,58 +512,23 @@ impl LogQueryVariable {
     }
 }
 
-/// Whether namespace discovery lists only the Materialize namespaces.
+/// Namespaces that have logs.
 ///
-/// This is what makes the logs dashboard *Materialize-first without being
-/// Materialize-only*. On by default, so the namespace picker opens on the
-/// deployment's own namespaces rather than on every namespace in the cluster —
-/// on a representative install that is 5 namespaces and thousands of unrelated
-/// lines from `kube-system`.
-///
-/// **Both values must be non-empty-compatible.** This switch *is* the whole
-/// stream selector of the namespace discovery query, and LogQL rejects a selector
-/// whose every matcher can match the empty string — so the off position is `.+`,
-/// not `.*`. With `.*` the variable itself fails to load, and every picker
-/// chained below it empties out, which reads as a dashboard that selects no log
-/// lines rather than as the query error it is.
-///
-/// The narrow value is a set of naming conventions rather than a derived fact,
-/// which is why it is an alternation — see [`MATERIALIZE_NAMESPACE_PATTERN`]. An
-/// install that follows none of them turns the switch off and sees everything,
-/// which is a visible, one-click failure rather than a silently empty dashboard:
-/// the reason this is a discovery filter and not a hard scope.
-pub fn materialize_namespaces_only() -> dashboardv2::VariableKind {
-    dashboardv2::VariableKind::SwitchVariableKind(dashboardv2::SwitchVariableKind {
-        kind: "SwitchVariable".to_string(),
-        spec: dashboardv2::SwitchVariableSpec {
-            name: extra::MATERIALIZE_NAMESPACES_ONLY.to_string(),
-            label: Some("Materialize Namespaces Only".to_string()),
-            description: Some(
-                "Narrow namespace discovery to the Materialize namespaces. Turn off to reach the \
-                 monitoring stack and the rest of the cluster."
-                    .to_string(),
-            ),
-            enabled_value: MATERIALIZE_NAMESPACE_PATTERN.to_string(),
-            disabled_value: ".+".to_string(),
-            current: MATERIALIZE_NAMESPACE_PATTERN.to_string(),
-            hide: dashboardv2::VariableHide::DontHide,
-            skip_url_sync: false,
-            origin: None,
-        },
-    })
-}
-
-/// Namespaces that have logs, gated by [`materialize_namespaces_only`].
+/// Discovered with **no stream selector at all**, which is Loki's "every value of
+/// this label" mode. That is not just simpler than selecting on something — it is
+/// the one form that cannot trip the empty-matcher rule, since there is no
+/// selector to be empty-compatible.
 pub fn log_namespaces() -> dashboardv2::VariableKind {
     LogQueryVariable {
         name: variables::LOG_NAMESPACE_LIST,
         label: "Namespace",
         description: "The namespace(s) to read logs from",
         loki_label: "namespace",
-        stream: format!(
-            r#"{{namespace=~"${}"}}"#,
-            extra::MATERIALIZE_NAMESPACES_ONLY
-        ),
+        stream: String::new(),
+        // Opens on the deployment's own namespaces rather than on every namespace
+        // in the cluster -- on a representative install the difference is 838
+        // lines an hour against 30,432, most of the remainder being `kube-system`.
+        current: Some(MATERIALIZE_NAMESPACE_PATTERN),
         // `.+`, not `.*`: this value becomes the sole matcher of the app, level
         // and job discovery selectors, so an empty-compatible one would stop
         // those loading. Safe because every line carries a namespace — the
@@ -563,6 +548,7 @@ pub fn log_apps() -> dashboardv2::VariableKind {
         description: "The application(s) to read logs from",
         loki_label: "app",
         stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        current: None,
         // `.*`, deliberately. `app` is the one label here that is genuinely
         // absent from some streams, and `.+` silently drops them — on a
         // representative install that is 2,407 of 30,432 lines in half an hour,
@@ -585,6 +571,7 @@ pub fn log_levels() -> dashboardv2::VariableKind {
         description: "The severity level(s) to include",
         loki_label: "level",
         stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        current: None,
         // `.*` for the same reason as `app`, even though every line carries a
         // level today: the inclusive form costs nothing and does not depend on
         // that staying true.
@@ -620,6 +607,7 @@ pub fn log_jobs() -> dashboardv2::VariableKind {
         description: "The collection job(s) to read logs from",
         loki_label: "job",
         stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        current: None,
         // See the note above: this must never interpolate to something that can
         // match the empty string. Free here — `job` is present on every line, so
         // `.+` and `.*` select identically and only the parseability differs.
@@ -807,10 +795,14 @@ pub fn operator_scoped(sql_metric_prefix: &str) -> Vec<dashboardv2::VariableKind
 ///
 /// Ordered as a funnel like the others: what to look at, then how to narrow it,
 /// with the free-text search and the ad-hoc filter last as escape hatches.
+///
+/// Unscoped by default. There was briefly a switch narrowing namespace discovery
+/// to the ones a Materialize deployment conventionally occupies; it was dropped
+/// because the naming it guessed at is not a fact, and because the namespace
+/// picker on its own is a better answer than a filter in front of it.
 pub fn logs_scoped() -> Vec<dashboardv2::VariableKind> {
     vec![
         logs_datasource(),
-        materialize_namespaces_only(),
         log_namespaces(),
         log_apps(),
         log_levels(),
@@ -1105,7 +1097,6 @@ mod tests {
             names(&set),
             vec![
                 "logsDatasource",
-                "materializeNamespacesOnly",
                 "logNamespaceList",
                 "logAppList",
                 "logLevelList",
@@ -1114,50 +1105,6 @@ mod tests {
                 "logsAdhoc",
             ]
         );
-    }
-
-    #[test]
-    fn namespace_discovery_is_gated_by_the_materialize_switch() {
-        // The switch is what makes the dashboard Materialize-*first* rather than
-        // Materialize-only: it filters which namespaces the picker offers, and
-        // turning it off reaches the whole cluster.
-        let stream = |variable| match variable {
-            dashboardv2::VariableKind::QueryVariableKind(v) => v
-                .spec
-                .query
-                .spec
-                .as_ref()
-                .and_then(|s| s.get("stream"))
-                .and_then(|s| s.as_str())
-                .unwrap_or_default()
-                .to_string(),
-            other => panic!("unexpected {other:?}"),
-        };
-        assert!(stream(log_namespaces()).contains("$materializeNamespacesOnly"));
-        // And the two below it chain off the namespace selection, not off the
-        // switch, so widening the scope widens them too.
-        assert!(stream(log_apps()).contains("$logNamespaceList"));
-        assert!(stream(log_levels()).contains("$logNamespaceList"));
-
-        match materialize_namespaces_only() {
-            dashboardv2::VariableKind::SwitchVariableKind(v) => {
-                // Three install conventions: this repo's charts, the
-                // shorter `mz-` prefix, and Cloud's `environment-<uuid>-0`.
-                assert_eq!(v.spec.enabled_value, ".*materialize.*|mz-.*|environment-.*");
-                assert_eq!(v.spec.disabled_value, ".+");
-                for convention in ["materialize-environment", "mz-prod", "environment-abc-0"] {
-                    assert!(
-                        regex_lite_matches(&v.spec.enabled_value, convention),
-                        "{convention} is not covered by {}",
-                        v.spec.enabled_value
-                    );
-                }
-                // On by default -- opening on every namespace in the cluster
-                // buries the deployment in unrelated lines.
-                assert_eq!(v.spec.current, v.spec.enabled_value);
-            }
-            other => panic!("unexpected {other:?}"),
-        }
     }
 
     /// Whether a pattern can match the empty string, which is what LogQL rejects
@@ -1171,16 +1118,6 @@ mod tests {
         pattern
             .split('|')
             .any(|branch| branch.replace(".*", "").is_empty())
-    }
-
-    /// Whether `value` is matched by one branch of a simple `a|b|c` alternation
-    /// of `.*`/prefix patterns. Enough for the convention check above without
-    /// pulling in a regex engine.
-    fn regex_lite_matches(pattern: &str, value: &str) -> bool {
-        pattern.split('|').any(|branch| {
-            let literal = branch.trim_start_matches(".*").trim_end_matches(".*");
-            !literal.is_empty() && value.contains(literal)
-        })
     }
 
     #[test]
@@ -1198,15 +1135,67 @@ mod tests {
         };
         assert_eq!(anchor(log_namespaces()).as_deref(), Some(".+"));
         assert_eq!(anchor(log_jobs()).as_deref(), Some(".+"));
+        assert!(!matches_empty(".+"));
+        assert!(matches_empty(".*"));
 
-        match materialize_namespaces_only() {
-            dashboardv2::VariableKind::SwitchVariableKind(v) => {
-                assert_eq!(v.spec.disabled_value, ".+", "the off position must parse");
-                for value in [&v.spec.enabled_value, &v.spec.disabled_value] {
-                    assert!(!matches_empty(value), "{value} is empty-compatible");
-                }
+        // Namespace discovery selects on nothing at all, which is the one shape
+        // that cannot be empty-compatible.
+        match log_namespaces() {
+            dashboardv2::VariableKind::QueryVariableKind(v) => {
+                let stream = v.spec.query.spec.as_ref().expect("spec")["stream"]
+                    .as_str()
+                    .expect("stream");
+                assert!(stream.is_empty(), "expected no selector, got {stream}");
             }
             other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_namespace_picker_opens_on_materialize_but_offers_everything() {
+        // The distinction the dropped switch got wrong. A *filter* hid the
+        // monitoring stack and `kube-system`, which are exactly what you need
+        // when collection itself is failing. A *default* only decides where you
+        // start; every namespace stays one click away.
+        match log_namespaces() {
+            dashboardv2::VariableKind::QueryVariableKind(v) => {
+                let selected = match &v.spec.current.value {
+                    dashboardv2::VariableOptionValue::Array(values) => values.clone(),
+                    dashboardv2::VariableOptionValue::String(value) => vec![value.clone()],
+                };
+                assert_eq!(
+                    selected,
+                    vec![".*materialize.*|mz-.*|environment-.*".to_string()]
+                );
+
+                // Discovery is unnarrowed, so the picker lists every namespace.
+                let stream = v.spec.query.spec.as_ref().expect("spec")["stream"]
+                    .as_str()
+                    .expect("stream");
+                assert!(stream.is_empty(), "discovery was narrowed: {stream}");
+                // A pattern is not one of the discovered values, so this is what
+                // lets it be the opening selection at all.
+                assert!(v.spec.allow_custom_value);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn only_the_namespace_picker_opens_on_anything() {
+        // The pickers below it chain off the namespace selection, so a default
+        // there would fight whatever the namespace picker just narrowed to.
+        for picker in [log_apps(), log_levels(), log_jobs()] {
+            match picker {
+                dashboardv2::VariableKind::QueryVariableKind(v) => {
+                    let empty = matches!(
+                        &v.spec.current.value,
+                        dashboardv2::VariableOptionValue::String(s) if s.is_empty()
+                    );
+                    assert!(empty, "{} opens on a pinned selection", v.spec.name);
+                }
+                other => panic!("unexpected {other:?}"),
+            }
         }
     }
 

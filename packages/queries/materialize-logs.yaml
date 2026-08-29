@@ -128,7 +128,8 @@ queries:
     stability: experimental
     description:
       summary: |
-        Total log lines per second reaching Loki for the current selection.
+        Total log lines per second reaching Loki for the current selection,
+        averaged over each interval.
       nominal: |
         A steady rate that tracks load.
       unhealthy: |
@@ -157,7 +158,7 @@ queries:
     stability: experimental
     description:
       summary: |
-        Warning-and-worse log lines per second, as one series — the at-a-glance
+        Warning-and-worse log lines per minute, as one series — the at-a-glance
         answer to whether anything is complaining.
       nominal: Flat, or a spike that returns to baseline.
       unhealthy: |
@@ -170,6 +171,11 @@ queries:
         Deliberately independent of the level picker above it: this panel answers
         "is anything wrong" and would be meaningless if narrowing the selection to
         `INFO` silently zeroed it.
+
+        Reported per **minute** rather than per second. Warnings are rare enough
+        on a healthy deployment that a per-second rate spends its life displaying
+        a small fraction, and "0.03" reads as noise where "2 per minute" reads as
+        two warnings.
     logQL: |
       sum(
         rate(
@@ -182,7 +188,7 @@ queries:
             %%{mzLogSearchFilter}
           %%{interval}
         )
-      )
+      ) * 60
 
   - id: materialize.logs.warnings.stream
     stability: experimental

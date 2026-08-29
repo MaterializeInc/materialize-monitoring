@@ -37,6 +37,13 @@ use crate::grafana::queries::Queries;
 /// The tab's theme, applied to every shaded panel here.
 const SHADE: &str = theme::LOGS.shade;
 
+/// Grafana has no unit for log lines, so these are its custom-suffix form.
+///
+/// `cps` and `cpm` are the nearest built-ins and render as "c/s" and "c/min",
+/// which says *counts* — true but less direct than saying lines.
+const LINES_PER_SECOND: &str = "suffix:logs/s";
+const LINES_PER_MINUTE: &str = "suffix:logs/min";
+
 /// What a panel shows when the selection matches nothing.
 ///
 /// Unlike the upgrade dashboard's event feeds, silence here is not the healthy
@@ -79,25 +86,31 @@ fn all_logs(q: &Queries) -> Row {
 // -------------------------------------------------------------------- volume
 
 fn total_rate(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::stat("Log Rate")
+    Panel::stat("Average Log Rate")
         .query(q.logs("materialize.logs.rate.total").legend("lines/s"))
         .graph_mode(BigValueGraphMode::Area)
         .shade(SHADE)
-        .unit("logs")
+        // Grafana has no logs unit, so this is the custom-suffix form. `cps`
+        // would render "c/s", which says counts rather than lines.
+        .unit(LINES_PER_SECOND)
         .min(0.0)
         .no_value(nothing_matched())
         .build(0)
 }
 
 fn warning_rate(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::stat("Warning Rate")
+    // Per minute, not per second. Warnings are rare enough on a healthy
+    // deployment that a per-second rate spends its life showing a small
+    // fraction, and "0.6" reads as noise where "38 per minute" reads as a
+    // number. The query does the conversion; this only has to agree with it.
+    Panel::stat("Average Warning Rate")
         .query(
             q.logs("materialize.logs.warnings.rate")
-                .legend("warnings/s"),
+                .legend("warnings/min"),
         )
         .graph_mode(BigValueGraphMode::Area)
         .shade(SHADE)
-        .unit("logs")
+        .unit(LINES_PER_MINUTE)
         .min(0.0)
         // Zero warnings is the good reading, so this one says so rather than
         // implying the filters are wrong.
@@ -110,7 +123,7 @@ fn warning_rate(q: &Queries) -> dashboardv2::PanelKind {
 fn rate_by_app(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Log Rate by App")
         .query(q.logs("materialize.logs.rate.by_app").legend("{{app}}"))
-        .unit("logs")
+        .unit(LINES_PER_SECOND)
         .min(0.0)
         .no_value(nothing_matched())
         .build(0)
@@ -119,7 +132,7 @@ fn rate_by_app(q: &Queries) -> dashboardv2::PanelKind {
 fn rate_by_level(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Log Rate by Level")
         .query(q.logs("materialize.logs.rate.by_level").legend("{{level}}"))
-        .unit("logs")
+        .unit(LINES_PER_SECOND)
         .min(0.0)
         .no_value(nothing_matched())
         .build(0)
@@ -172,6 +185,50 @@ mod tests {
                 assert_eq!(query.spec.query.group, "loki", "{name} is not a Loki query");
             }
         }
+    }
+
+    #[test]
+    fn the_rate_panels_name_their_own_averaging_and_unit() {
+        // Two things that drift apart silently: a title that says "average" over
+        // a query that is not one, and a unit that disagrees with the query's
+        // normalization. The warning rate is the one that has both -- it is
+        // per *minute*, converted in the query.
+        let q = &test_log_queries();
+        for (panel, want_unit) in [
+            (total_rate(q), LINES_PER_SECOND),
+            (warning_rate(q), LINES_PER_MINUTE),
+            (rate_by_app(q), LINES_PER_SECOND),
+            (rate_by_level(q), LINES_PER_SECOND),
+        ] {
+            let title = panel.spec.title.clone();
+            let unit = panel
+                .spec
+                .viz_config
+                .spec
+                .field_config
+                .defaults
+                .unit
+                .clone()
+                .unwrap_or_default();
+            assert_eq!(unit, want_unit, "{title}");
+        }
+        assert_eq!(total_rate(q).spec.title, "Average Log Rate");
+        assert_eq!(warning_rate(q).spec.title, "Average Warning Rate");
+
+        // The per-minute unit has to be backed by a query that converts.
+        let expr = warning_rate(q).spec.data.spec.queries[0]
+            .spec
+            .query
+            .spec
+            .as_ref()
+            .expect("spec")["expr"]
+            .as_str()
+            .expect("expr")
+            .to_string();
+        assert!(
+            expr.contains("* 60"),
+            "warning rate is not normalized: {expr}"
+        );
     }
 
     #[test]

@@ -156,14 +156,24 @@ spec:
                 noValue: No events in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
               wrapLogMessage: true
           version: ''
     collections-by-generation:
@@ -953,14 +963,24 @@ spec:
                 noValue: No rollout activity in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
               wrapLogMessage: true
           version: ''
     lifecycle-rate:
@@ -1593,14 +1613,24 @@ spec:
                 noValue: No reconciliation failures in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
               wrapLogMessage: true
           version: ''
     reconciliation-failure-rate:
@@ -2252,14 +2282,24 @@ spec:
                 noValue: No warnings in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
               wrapLogMessage: true
           version: ''
     warning-events:

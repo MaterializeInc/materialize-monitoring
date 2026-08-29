@@ -30,6 +30,18 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use crate::grafana::queries::Queries;
 
+/// The three fields worth a column on an event feed.
+///
+/// An event carries a dozen more — resource versions, forwarding addresses, the
+/// source component — and none of them is what you are reading for. Rendering
+/// these as columns is also why the event queries do *not* reformat the line:
+/// displayed fields supersede the raw line, so a `line_format` would be work
+/// thrown away.
+///
+/// `reason` first because it is what you scan; `msg` carries the detail; `name`
+/// says which object it happened to.
+const EVENT_FIELDS: [&str; 3] = ["reason", "name", "msg"];
+
 /// What a panel shows when nothing matched.
 ///
 /// Quiet is the healthy reading for events, unlike for logs.
@@ -90,6 +102,8 @@ fn rate_by_namespace(q: &Queries) -> dashboardv2::PanelKind {
 fn warning_feed(q: &Queries) -> dashboardv2::PanelKind {
     Panel::logs("Warning Events")
         .query(q.logs("materialize.events.cluster.warnings"))
+        .displayed_fields(EVENT_FIELDS)
+        .dedup_by_signature()
         .no_value(quiet("warning events"))
         .build(0)
 }
@@ -97,6 +111,8 @@ fn warning_feed(q: &Queries) -> dashboardv2::PanelKind {
 fn event_feed(q: &Queries) -> dashboardv2::PanelKind {
     Panel::logs("All Events")
         .query(q.logs("materialize.events.cluster.stream"))
+        .displayed_fields(EVENT_FIELDS)
+        .dedup_by_signature()
         .no_value(quiet("events"))
         .build(0)
 }

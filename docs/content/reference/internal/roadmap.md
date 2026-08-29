@@ -99,6 +99,77 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | [Sizing](https://linear.app/materializeinc/issue/DEP-225) (Day 1) | OO-M3 | ⬜ |
 | [Replace dashboard management with a Rust implementation](https://linear.app/materializeinc/issue/DEP-222) | OO-M3 | 🔨 (`env-top` is rendered by Rust and is what ships: `mz-monitoring-build gen-dashboards` writes both the chart's YAML and the docsite's JSON, and the `dashboards` workflow asserts the checked-in output is fresh. All 69 panels ported, pinned against the frozen final Python render with seven allow-listed shell divergences — the threshold base step, the errors/load respacing, `cursorSync`, the `$environmentNameList` rename, the variable order, and the `liveNow` / built-in-annotations fields Grafana writes on save — plus seven description fixes, six of them broken cross-references in the baseline's own prose. Cloud variants are retired: they stopped differing in panel content once the gateway began scraping the kubelet's cAdvisor directly instead of consuming GKE's reduced allowlist, so the eleven panels the Python branched on collapsed to a bare `target-cloud` annotation, and that annotation and the `--cloud` / `--prefix` flags behind it were removed. No Makefile target or CI job renders from the Python any more. Panels take both their expressions and their descriptions from the query registry rather than restating them, which surfaced and fixed four real registry defects (a missing job-dedup on 14 rates, a lost regex-escape on the pod matchers, a missing exporter-including capacity query, and a missing name-join on system arrangements). `packages/grafana-dashboards` and `py-mzmon-lib` are deleted; nothing in the repo renders a dashboard from Python. **Outstanding:** the Grafana 11 (v1) gallery renders. The Python had a `to_v1()` path but never wired it to an artifact, so no v1 dashboard has ever shipped — the docsite's v1 table has always been empty) |
 
+### Infrastructure dashboards (`infra-*`)
+
+The table above is the **product** ask: dashboards a Materialize user needs, all of them scoped to an environment and
+all named `env-*`.
+An infrastructure admin running the cluster underneath has a different set, and today it is unserved — `env-logs` is
+the only place any of it surfaces, and only by widening a switch that was never meant to carry a second audience.
+
+The proposal is a sibling family, `infra-*`, scoped to the cluster rather than to an environment.
+Two consequences to settle before the first one lands:
+
+- **`dashboards.selected` defaults to `["env-*"]`**, so nothing `infra-*` ships without widening it.
+  Whether infra dashboards are on by default is a real choice: they are useful to the operator of a self-managed
+  install and noise to someone who only runs Materialize on someone else's platform.
+- **`env-logs` should narrow once `infra-logs` exists.**
+  Its `$materializeNamespacesOnly` switch exists only because one dashboard is currently serving both audiences; the
+  right end state is `env-logs` Materialize-scoped and `infra-*` owning the rest.
+
+None of the below is ticketed yet.
+The "collectable today" column is what a live self-managed install actually exposes, measured rather than assumed —
+it is the difference between a dashboard we could build this week and one that needs collection work first.
+
+| Item | Collectable today | Milestone | Status |
+|---|---|---|---|
+| **Nodes** — health, logs, journals, workloads, bin capacity | **Yes.** 282 `node_*` families and 69 `container_*`, plus node journal logs (`kubelet.service`, `gke-node-problem-detector.service`). The 9 `kube_node_*` families are present but mislabelled — see the KSM row below | OO-M3 | ⬜ |
+| **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
+| **Meta-monitoring** — every component of this stack | **Yes, and then some.** Grafana 523 families, Loki 439, Thanos 220, Alloy 35. **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | ⬜ |
+| **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
+| **Networking** — throughput, traffic shape, policy metrics | **Partly.** 8 `container_network_*` families carry throughput and errors (`env-top` already plots four of them). **No CNI or NetworkPolicy metrics at all** — no `cilium_*`, no `hubble_*` | OO-M3 | ⬜ |
+| **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents). **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics | OO-M3 | ⬜ |
+
+Ordering follows what is buildable and what an operator reaches for first.
+**Nodes** and **Meta-monitoring** need no collection work and answer the two questions that block everything else — is
+the platform healthy, and is the telemetry itself trustworthy.
+**Pods** is the natural drilldown target from both, and from `env-logs`.
+**Autoscaling** is buildable now as an events dashboard and becomes a real one when the controller is scraped.
+**Networking** and **External components** are gated on the collection gaps below.
+
+#### Collection gaps these depend on
+
+Found while surveying a live install; each is a scrape-side gap in *this* repo rather than an upstream metric contract.
+
+| Gap | Blocks | Notes |
+|---|---|---|
+| **kube-state-metrics label collision — already breaking `env-top`** | Pods, Nodes, and three shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fix is one value: `kube-state-metrics.prometheus.monitor.http.honorLabels: true` (the vendored 8.4.0 subchart defaults it to `false`). Verify afterwards that no query needs to move off `exported_*`, and add an E2E assertion, since this failed silently |
+| Alertmanager is not scraped | Meta-monitoring | Deployed by the chart and emitting nothing to Thanos. The smallest of these and the most embarrassing, since it is our own component |
+| No cluster-autoscaler / Karpenter scrape | Autoscaling | Distro-specific: GKE's autoscaler, Karpenter and Cluster Autoscaler each expose different endpoints, so this is a per-flavor scrape source rather than one config |
+| No CNI / NetworkPolicy metrics | Networking (policy half) | Needs a CNI that exports them and a scrape source for it. Throughput and traffic shape do not depend on this and can land first |
+| Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not |
+
+### Materialize components beyond the environment
+
+`env-top` covers `environmentd` and `clusterd`.
+The rest of a Materialize deployment has no dashboard, and for the two public ones the reason is the same: **they
+expose no metrics that reach Thanos.**
+Both appear in `env-logs` and in `env-upgrade`'s reconciliation counters, so today they are observable only as logs and
+as the operator's opinion of them.
+
+| Item | Collectable today | Milestone | Status |
+|---|---|---|---|
+| **balancerd** | Logs only — 0 metric families | OO-M3 | ⛓️ |
+| **console** | Logs only — 0 metric families | OO-M3 | ⛓️ |
+
+⛓️ rather than ⬜ because the gap is upstream instrumentation, not collection: there is nothing to scrape.
+Both are listed in [Metrics contract](#metrics-contract-upstream-dependency) alongside the other asks.
+
+A further set of Materialize **cloud services** would want dashboards too.
+They are deliberately not enumerated here: this repository is public, and neither their names nor their metric
+surfaces belong in it.
+Track them in the internal planning docs (internal), and if any of them ever ships in a self-managed deployment it
+earns a row above instead.
+
 We weight **Day 2 operations over Day 1**: upgrades, resizing, changing sources, changing external destinations, and managing users are the operations that matter most for a running deployment.
 Day 1 dashboards (Dependencies, Sizing) stay last.
 
@@ -326,6 +397,10 @@ High-leverage asks, in priority order:
 - ⬜ Native **source/sink status** metrics (no genuine source exists today).
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
+
+- ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
+  actually connects *through* are observable only as logs. Blocks the dashboards listed under
+  [Materialize components beyond the environment](#materialize-components-beyond-the-environment).
 
 The **operator-side** instrumentation the `env-upgrade` dashboard reads is a separate upstream dependency.
 Tracked as [CLO-188](https://linear.app/materializeinc/issue/CLO-188):

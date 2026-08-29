@@ -272,12 +272,14 @@ queries:
         should not quietly drop events for belonging to the wrong side of a
         rollout.
 
-        Lines are reformatted to `Reason Kind/name — message`; expanding one shows
-        the dozen raw fields behind it.
+        The consuming panel renders `reason`, `msg` and `name` as columns rather
+        than showing the raw line, so this query deliberately does **not**
+        `line_format`: displayed fields supersede the line, and formatting one
+        would be work thrown away. The rollout feeds on the upgrade dashboard do
+        reformat, because they show the line.
     logQL: |
       {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
         %%{mzLogSearchFilter}
-        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
 
   - id: materialize.events.cluster.warnings
     stability: experimental
@@ -298,7 +300,6 @@ queries:
     logQL: |
       {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, level="WARN"}
         %%{mzLogSearchFilter}
-        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
 
   - id: materialize.events.cluster.rate.by_reason
     stability: experimental

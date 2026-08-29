@@ -49,7 +49,6 @@ spec:
                     expr: |
                       {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
                         |~ "(?i)$logSearch"
-                        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -61,7 +60,7 @@ spec:
 
           Distinct from the rollout feed on the upgrade dashboard: this one carries no generation or reporting-controller filter, because a general browser should not quietly drop events for belonging to the wrong side of a rollout.
 
-          Lines are reformatted to `Reason Kind/name — message`; expanding one shows the dozen raw fields behind it.
+          The consuming panel renders `reason`, `msg` and `name` as columns rather than showing the raw line, so this query deliberately does **not** `line_format`: displayed fields supersede the line, and formatting one would be work thrown away. The rollout feeds on the upgrade dashboard do reformat, because they show the line.
         id: 1009
         links: []
         title: All Events
@@ -74,15 +73,28 @@ spec:
                 noValue: No events in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: signature
+              detailsMode: inline
+              displayedFields:
+              - reason
+              - name
+              - msg
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
-              wrapLogMessage: true
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: true
+              wrapLogMessage: false
           version: ''
     event-rate-by-namespace:
       kind: Panel
@@ -250,14 +262,24 @@ spec:
                 noValue: No logs match the current filters
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
               wrapLogMessage: true
           version: ''
     log-rate-by-app:
@@ -315,7 +337,7 @@ spec:
               defaults:
                 min: 0
                 noValue: No logs match the current filters
-                unit: logs
+                unit: suffix:logs/s
               overrides: []
             options:
               legend:
@@ -385,7 +407,7 @@ spec:
               defaults:
                 min: 0
                 noValue: No logs match the current filters
-                unit: logs
+                unit: suffix:logs/s
               overrides: []
             options:
               legend:
@@ -435,7 +457,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Total log lines per second reaching Loki for the current selection.**
+          **Total log lines per second reaching Loki for the current selection, averaged over each interval.**
 
           **Nominal:** A steady rate that tracks load.
 
@@ -444,7 +466,7 @@ spec:
           Also the volume signal for storage: a sustained step up here is what precedes a retention or cost surprise.
         id: 1000
         links: []
-        title: Log Rate
+        title: Average Log Rate
         vizConfig:
           group: stat
           kind: VizConfig
@@ -456,7 +478,7 @@ spec:
                   mode: shades
                 min: 0
                 noValue: No logs match the current filters
-                unit: logs
+                unit: suffix:logs/s
               overrides: []
             options:
               colorMode: none
@@ -490,7 +512,6 @@ spec:
                     expr: |
                       {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", level="WARN"}
                         |~ "(?i)$logSearch"
-                        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -515,15 +536,28 @@ spec:
                 noValue: No warning events in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: signature
+              detailsMode: inline
+              displayedFields:
+              - reason
+              - name
+              - msg
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
-              wrapLogMessage: true
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: true
+              wrapLogMessage: false
           version: ''
     warning-feed:
       kind: Panel
@@ -573,14 +607,24 @@ spec:
                 noValue: No warnings in this time range
               overrides: []
             options:
-              dedupStrategy: none
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
               enableLogDetails: true
+              fontSize: small
               prettifyLogMessage: false
               showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
               showLabels: false
+              showLevel: true
               showLogContextToggle: false
               showTime: true
               sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
               wrapLogMessage: true
           version: ''
     warning-rate:
@@ -611,14 +655,14 @@ spec:
                             |~ "(?i)$logSearch"
                           [$__auto]
                         )
-                      )
-                    legendFormat: warnings/s
+                      ) * 60
+                    legendFormat: warnings/min
                   version: v0
                 refId: query-0
             queryOptions: {}
             transformations: []
         description: |-
-          **Warning-and-worse log lines per second, as one series — the at-a-glance answer to whether anything is complaining.**
+          **Warning-and-worse log lines per minute, as one series — the at-a-glance answer to whether anything is complaining.**
 
           **Nominal:** Flat, or a spike that returns to baseline.
 
@@ -627,9 +671,11 @@ spec:
           Matches on the normalized `level` label rather than on the text of the line, so it does not depend on how a component spells "error".
 
           Deliberately independent of the level picker above it: this panel answers "is anything wrong" and would be meaningless if narrowing the selection to `INFO` silently zeroed it.
+
+          Reported per **minute** rather than per second. Warnings are rare enough on a healthy deployment that a per-second rate spends its life displaying a small fraction, and "0.03" reads as noise where "2 per minute" reads as two warnings.
         id: 1001
         links: []
-        title: Warning Rate
+        title: Average Warning Rate
         vizConfig:
           group: stat
           kind: VizConfig
@@ -641,7 +687,7 @@ spec:
                   mode: shades
                 min: 0
                 noValue: No warnings in this time range
-                unit: logs
+                unit: suffix:logs/min
               overrides: []
             options:
               colorMode: none
@@ -846,23 +892,16 @@ spec:
       refresh: never
       regex: ''
       skipUrlSync: false
-  - kind: SwitchVariable
-    spec:
-      current: .*materialize.*|mz-.*|environment-.*
-      description: Narrow namespace discovery to the Materialize namespaces. Turn off to reach the monitoring stack and the rest of the cluster.
-      disabledValue: .+
-      enabledValue: .*materialize.*|mz-.*|environment-.*
-      hide: dontHide
-      label: Materialize Namespaces Only
-      name: materializeNamespacesOnly
-      skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        selected: true
+        text:
+        - .*materialize.*|mz-.*|environment-.*
+        value:
+        - .*materialize.*|mz-.*|environment-.*
       definition: label_values(namespace)
       description: The namespace(s) to read logs from
       hide: dontHide
@@ -879,7 +918,7 @@ spec:
         spec:
           label: namespace
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{namespace=~"$materializeNamespacesOnly"}'
+          stream: ''
           type: 1
         version: v0
       refresh: onTimeRangeChanged
