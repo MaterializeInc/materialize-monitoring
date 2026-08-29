@@ -95,6 +95,26 @@ mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
 ```
 
 `--list` enumerates what is available, `--dashboard <stem>` renders one, `--format json` emits the docsite shape, and
+### Two copies, one review
+
+Every dashboard is written twice: `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
+`docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
+Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
+reading.
+
+`.gitattributes` marks the docsite copies `linguist-generated=true`, which collapses them in a GitHub pull request and
+drops them from the repository's language statistics.
+**The chart's copy is the reviewable one**, since it is what a release installs.
+The docsite's copies of the rendered scrapers carry the same mark for the same reason; those are byte-identical to the
+chart's.
+
+This changes the *view*, not the content.
+`git diff` locally is unaffected, so verifying a render still works normally, and the freshness check below still runs
+over both trees — collapsing a diff cannot hide a stale file.
+
+`docs/assets/metrics/metrics.yaml` is deliberately left out: it is generated too, but it is the only copy of the
+metric-to-usage index rather than a second one, so its diff is the only place a tier change is visible.
+
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
 `make dashboards` wires the two shipped output trees; see
 [SDKs and Schemas]({{< relref "sdks.md" >}}#rendering) for the determinism guarantees.
