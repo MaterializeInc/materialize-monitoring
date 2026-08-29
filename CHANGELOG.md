@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Prometheus Scrapers v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.12.0 (Unreleased)
 
 _Changes Pending_
@@ -367,9 +371,138 @@ _Changes Pending_
     * Update Rust crate clap to v4.6.2
         * [materialize-monitoring#124](https://github.com/MaterializeInc/materialize-monitoring/pull/124)
 
-## Prometheus Scrapers v0.4.0 (Unreleased)
+## Prometheus Scrapers v0.4.0
 
-_Changes Pending_
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * DEP-240 Ensure kube-state-metrics metrics do not have namespace overwritten
+        * [materialize-monitoring#297](https://github.com/MaterializeInc/materialize-monitoring/pull/297)
+        * regression: kube-state-metrics were namespaced as `export_namespace=$target` with `namespace=monitoring` on all because the scraper overwrote that label with the namespace KSM was running in
+    * DEP-209 Create a dashboard for Materialize logs and events
+        * [materialize-monitoring#296](https://github.com/MaterializeInc/materialize-monitoring/pull/296)
+        * Adds the new mz-mon-env-logs dashboard, installed by default
+    * DEP-210 Upgrade visibility dashboard
+        * [materialize-monitoring#294](https://github.com/MaterializeInc/materialize-monitoring/pull/294)
+        * Adds a new mz-env-upgrade dashboard, enabled by default
+            * Requires materialize v26.41.0
+        * Enable sql scrapers by default
+    * Release mzmon-lib (shared library) v0.11.0
+        * [materialize-monitoring#290](https://github.com/MaterializeInc/materialize-monitoring/pull/290)
+    * DEP-222 Remove the old python implementation for dashboards fully
+        * [materialize-monitoring#291](https://github.com/MaterializeInc/materialize-monitoring/pull/291)
+    * Release Dashboards v0.12.0
+        * [materialize-monitoring#46](https://github.com/MaterializeInc/materialize-monitoring/pull/46)
+    * Release mzmon-lib (shared library) v0.10.0
+        * [materialize-monitoring#201](https://github.com/MaterializeInc/materialize-monitoring/pull/201)
+    * DEP-222 Port Materialize Environment Overview to rust sdk
+        * [materialize-monitoring#285](https://github.com/MaterializeInc/materialize-monitoring/pull/285)
+        * Dashboards have been rewritten under a different dashboard framework
+            * Dashboard queries have adopted queries from our query registry
+    * DEP-222 Rust implementation of Grafana Dashboard framework
+        * [materialize-monitoring#280](https://github.com/MaterializeInc/materialize-monitoring/pull/280)
+    * DEP-222 Add generated grafana models
+        * [materialize-monitoring#282](https://github.com/MaterializeInc/materialize-monitoring/pull/282)
+    * DEP-238 Refresh vendored grafana foundation sdk schemas; keep updated
+        * [materialize-monitoring#275](https://github.com/MaterializeInc/materialize-monitoring/pull/275)
+    * DEP-127 Policy for deprecations and breaking changes
+        * [materialize-monitoring#271](https://github.com/MaterializeInc/materialize-monitoring/pull/271)
+    * DEP-237 Support additional release notes in changelogs
+        * [materialize-monitoring#268](https://github.com/MaterializeInc/materialize-monitoring/pull/268)
+    * Update Rust crate rustls-pki-types to v1.15.1
+        * [materialize-monitoring#256](https://github.com/MaterializeInc/materialize-monitoring/pull/256)
+    * DEP-195 Implement TLS across stack
+        * [materialize-monitoring#254](https://github.com/MaterializeInc/materialize-monitoring/pull/254)
+    * Update Rust crate jsonschema to v0.49.9
+        * [materialize-monitoring#209](https://github.com/MaterializeInc/materialize-monitoring/pull/209)
+        * [`v0.49.9`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0499---2026-08-09)
+        * [`v0.49.8`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0498---2026-08-08)
+        * [`v0.49.7`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0497---2026-08-07)
+        * [`v0.49.6`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0496---2026-08-06)
+        * [`v0.49.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0495---2026-08-05)
+    * Provide Datadog queries in documentation
+        * [materialize-monitoring#249](https://github.com/MaterializeInc/materialize-monitoring/pull/249)
+    * DEP-185 Add an E2E test suite
+        * [materialize-monitoring#233](https://github.com/MaterializeInc/materialize-monitoring/pull/233)
+    * Update Rust crate thiserror to v2.0.20
+        * [materialize-monitoring#229](https://github.com/MaterializeInc/materialize-monitoring/pull/229)
+        * [`v2.0.20`](https://redirect.github.com/dtolnay/thiserror/releases/tag/2.0.20)
+    * DEP-187 Scrape cadvisor from kubelet instead of via daemonset
+        * [materialize-monitoring#222](https://github.com/MaterializeInc/materialize-monitoring/pull/222)
+    * Update Rust crate clap to v4.6.6
+        * [materialize-monitoring#219](https://github.com/MaterializeInc/materialize-monitoring/pull/219)
+        * [`v4.6.6`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#466---2026-08-06)
+    * DEP-190 Provide separate sizing profiles for thanos
+        * [materialize-monitoring#210](https://github.com/MaterializeInc/materialize-monitoring/pull/210)
+    * Update Rust crate jsonschema to v0.49.4
+        * [materialize-monitoring#206](https://github.com/MaterializeInc/materialize-monitoring/pull/206)
+        * [`v0.49.4`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0494---2026-08-04)
+    * Convert raw blocks into structured configs
+        * [materialize-monitoring#203](https://github.com/MaterializeInc/materialize-monitoring/pull/203)
+    * DEP-187 Collect cAdvisor metrics with Alloy
+        * [materialize-monitoring#200](https://github.com/MaterializeInc/materialize-monitoring/pull/200)
+    * Release mzmon-lib (shared library) v0.9.0
+        * [materialize-monitoring#114](https://github.com/MaterializeInc/materialize-monitoring/pull/114)
+    * DEP-188 Add node-exporter; support priorityClasses
+        * [materialize-monitoring#196](https://github.com/MaterializeInc/materialize-monitoring/pull/196)
+    * Update Rust crate clap to v4.6.5
+        * [materialize-monitoring#190](https://github.com/MaterializeInc/materialize-monitoring/pull/190)
+        * [`v4.6.5`](https://redirect.github.com/clap-rs/clap/compare/clap_complete-v4.6.4...clap_complete-v4.6.5)
+    * Update dependency uv_build to >=0.12,<0.13
+        * [materialize-monitoring#168](https://github.com/MaterializeInc/materialize-monitoring/pull/168)
+        * [`v0.12.0`](https://redirect.github.com/astral-sh/uv/blob/HEAD/CHANGELOG.md#0120)
+    * Update Rust crate jsonschema to 0.49.0
+        * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
+        * [`v0.49.2`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0492---2026-07-28)
+        * [`v0.49.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0491---2026-07-25)
+        * [`v0.49.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0490---2026-07-25)
+        * [`v0.48.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0485---2026-07-22)
+        * [`v0.48.2`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0482---2026-07-21)
+        * [`v0.48.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0481---2026-07-17)
+        * [`v0.48.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0480---2026-07-16)
+    * Update Rust crate glob to v0.3.4
+        * [materialize-monitoring#149](https://github.com/MaterializeInc/materialize-monitoring/pull/149)
+        * [`v0.3.4`](https://redirect.github.com/rust-lang/glob/blob/HEAD/CHANGELOG.md#034---2026-07-21)
+    * Update Rust crate tokio to v1.53.1
+        * [materialize-monitoring#147](https://github.com/MaterializeInc/materialize-monitoring/pull/147)
+        * [`v1.53.1`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.1): Tokio v1.53.1
+    * Update Rust crate clap to v4.6.4
+        * [materialize-monitoring#146](https://github.com/MaterializeInc/materialize-monitoring/pull/146)
+        * [`v4.6.4`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#464---2026-07-21)
+        * [`v4.6.3`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#463---2026-07-20)
+    * CLO-152 Support splitting metrics into tiers
+        * [materialize-monitoring#151](https://github.com/MaterializeInc/materialize-monitoring/pull/151)
+    * Update Rust crate thiserror to v2.0.19
+        * [materialize-monitoring#143](https://github.com/MaterializeInc/materialize-monitoring/pull/143)
+        * [`v2.0.19`](https://redirect.github.com/dtolnay/thiserror/releases/tag/2.0.19)
+    * Update Rust crate tokio to v1.53.0
+        * [materialize-monitoring#139](https://github.com/MaterializeInc/materialize-monitoring/pull/139)
+        * [`v1.53.0`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.0): Tokio v1.53.0
+    * Update Rust crate serde to v1.0.229
+        * [materialize-monitoring#142](https://github.com/MaterializeInc/materialize-monitoring/pull/142)
+        * [`v1.0.229`](https://redirect.github.com/serde-rs/serde/releases/tag/v1.0.229)
+    * Update Rust crate anyhow to v1.0.104
+        * [materialize-monitoring#141](https://github.com/MaterializeInc/materialize-monitoring/pull/141)
+        * [`v1.0.104`](https://redirect.github.com/dtolnay/anyhow/releases/tag/1.0.104)
+    * Update Rust crate serde_json to v1.0.151
+        * [materialize-monitoring#144](https://github.com/MaterializeInc/materialize-monitoring/pull/144)
+        * [`v1.0.151`](https://redirect.github.com/serde-rs/json/releases/tag/v1.0.151)
+    * Update Rust crate regex to v1.13.1
+        * [materialize-monitoring#133](https://github.com/MaterializeInc/materialize-monitoring/pull/133)
+        * [`v1.13.1`](https://redirect.github.com/rust-lang/regex/blob/HEAD/CHANGELOG.md#1131-2026-07-15)
+        * [`v1.13.0`](https://redirect.github.com/rust-lang/regex/blob/HEAD/CHANGELOG.md#1130-2026-07-09)
+        * [`v1.12.4`](https://redirect.github.com/rust-lang/regex/blob/HEAD/CHANGELOG.md#1124-2025-06-09)
+    * CLO-152 Support importance axis for extracted metrics
+        * [materialize-monitoring#132](https://github.com/MaterializeInc/materialize-monitoring/pull/132)
+    * Update Rust crate tokio to v1.52.4
+        * [materialize-monitoring#131](https://github.com/MaterializeInc/materialize-monitoring/pull/131)
+    * Port metric registry to rust
+        * [materialize-monitoring#129](https://github.com/MaterializeInc/materialize-monitoring/pull/129)
+    * Implement a Query Registry for reducing total metric set
+        * [materialize-monitoring#125](https://github.com/MaterializeInc/materialize-monitoring/pull/125)
+    * Update Rust crate clap to v4.6.2
+        * [materialize-monitoring#124](https://github.com/MaterializeInc/materialize-monitoring/pull/124)
+        * [`v4.6.2`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#462---2026-07-15)
 
 ## materialize-monitoring Helm Chart v0.7.0
 
