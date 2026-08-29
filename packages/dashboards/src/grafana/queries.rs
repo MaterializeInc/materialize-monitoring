@@ -150,6 +150,16 @@ pub(crate) fn test_queries() -> Queries<'static> {
     Queries::new(test_registry(), scope)
 }
 
+/// [`test_queries`] for a logs dashboard.
+///
+/// The same scope; the distinction is only that log queries resolve their filters
+/// from Loki-discovered variables, which no scope field feeds. Named separately so
+/// a logs tab's tests read as being about a logs dashboard.
+#[cfg(test)]
+pub(crate) fn test_log_queries() -> Queries<'static> {
+    test_queries()
+}
+
 /// [`test_queries`] in the scope a dashboard that defines `$operatorNamespace`
 /// builds in.
 ///

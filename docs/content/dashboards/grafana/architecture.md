@@ -235,6 +235,11 @@ Treat operator-managed dashboards as read-only: copy to a new dashboard rather t
 Two dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
+- **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
+  Loki only — it defines no metrics datasource, so it keeps working when the metrics pipeline is the thing being
+  investigated.
+  Needs no particular Materialize version: everything it reads is produced by the monitoring stack rather than by
+  Materialize.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
@@ -291,8 +296,10 @@ If none is default, every panel on the dashboard renders empty with no obvious e
 Two variables rather than one because a `DatasourceVariable` resolves against a single plugin id, so one cannot offer
 both a Prometheus and a Loki datasource; a dashboard mixing engines needs one of each, and each panel's dataquery names
 the one matching its engine.
-The same requirement follows: **exactly one Loki-type datasource must be marked default**, or every panel on the
-Events tab renders empty.
+`env-logs` declares `logsDatasource` and nothing else — no metrics datasource at all.
+
+The same requirement follows: **exactly one Loki-type datasource must be marked default**, or every panel on those
+tabs renders empty.
 
 The chart ships two, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
 

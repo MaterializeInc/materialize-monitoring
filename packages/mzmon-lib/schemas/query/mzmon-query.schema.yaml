@@ -113,6 +113,18 @@ $defs:
       # The same naming shape as a capture, for label_replace to lift the
       # generation into a label of its own.
       - "mzGenerationPattern"
+      # Log scope, all Loki-discovered and independent of the metric namespace
+      # filter -- a logs dashboard is often how you work out why the metrics
+      # pipeline is broken. The search filter is a *line* filter, so it goes
+      # after a `|` rather than inside a stream selector.
+      - "mzLogNamespaceFilter"
+      - "mzLogAppFilter"
+      - "mzLogLevelFilter"
+      # Also the matcher that keeps a log stream selector parseable: LogQL
+      # rejects one whose every matcher can match the empty string, and this
+      # one's "All" is `.+`.
+      - "mzLogJobFilter"
+      - "mzLogSearchFilter"
       # Environment (org) scope filter fragment, e.g.
       # materialize_cloud_organization_name=~"$environmentIdList".
       - "mzEnvironmentFilter"

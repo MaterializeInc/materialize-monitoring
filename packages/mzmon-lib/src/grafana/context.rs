@@ -69,6 +69,22 @@ pub mod variables {
     pub const OPERATOR_NAMESPACE: &str = "operatorNamespace";
     /// Logs (Loki) datasource.
     pub const LOGS_DATASOURCE: &str = "logsDatasource";
+    /// Namespaces a logs dashboard reads from.
+    ///
+    /// Loki-discovered, unlike [`MZ_NAMESPACE_LIST`], which comes from the metrics
+    /// side. A logs dashboard is answering "why is this broken", and deriving its
+    /// own scope from the metrics pipeline would make it depend on the thing it is
+    /// often being used to investigate.
+    pub const LOG_NAMESPACE_LIST: &str = "logNamespaceList";
+    /// Applications a logs dashboard reads from.
+    pub const LOG_APP_LIST: &str = "logAppList";
+    /// Severity levels a logs dashboard includes.
+    pub const LOG_LEVEL_LIST: &str = "logLevelList";
+    /// Collection jobs a logs dashboard reads from.
+    ///
+    /// Also the matcher that keeps a log stream selector parseable — see
+    /// [`variable::log_jobs`](crate::grafana::variable::log_jobs).
+    pub const LOG_JOB_LIST: &str = "logJobList";
     /// Selected deployment generations, for blue/green.
     ///
     /// Optional, like [`OPERATOR_NAMESPACE`]: only a dashboard that reasons about
@@ -129,6 +145,18 @@ pub const OPERATOR_VARIABLES: &[&str] = &[variables::OPERATOR_NAMESPACE];
 /// parameters always reference `$mzGenerationList`, so a dashboard using a query
 /// that names one must define it. Only queries about rollouts do.
 pub const GENERATION_VARIABLES: &[&str] = &[variables::MZ_GENERATION_LIST];
+
+/// Variables required only by a logs dashboard.
+///
+/// Its scope is Loki-discovered end to end, so it shares none of
+/// [`REQUIRED_VARIABLES`] — a dashboard defining these need not define those, and
+/// vice versa.
+pub const LOG_VARIABLES: &[&str] = &[
+    variables::LOG_NAMESPACE_LIST,
+    variables::LOG_APP_LIST,
+    variables::LOG_LEVEL_LIST,
+    variables::LOG_JOB_LIST,
+];
 
 /// The object-name pattern a generation appears in, as a regex with the
 /// generation itself left as `{}`.
@@ -388,6 +416,36 @@ pub fn dashboard_context<'a>(
         // has to wrap an inner selector, while a function wraps the whole
         // template -- `label_replace(count by (generation) (...))` would be
         // backwards.
+        // Log scope, all three Loki-discovered. Separate from the metric
+        // namespace filter: a logs dashboard is often the tool for working out
+        // why the metrics pipeline is broken, so it must not depend on it.
+        (
+            "mzLogNamespaceFilter",
+            format!(r#"namespace=~"${}""#, variables::LOG_NAMESPACE_LIST),
+        ),
+        (
+            "mzLogAppFilter",
+            format!(r#"app=~"${}""#, variables::LOG_APP_LIST),
+        ),
+        (
+            "mzLogLevelFilter",
+            format!(r#"level=~"${}""#, variables::LOG_LEVEL_LIST),
+        ),
+        // Load-bearing beyond being a filter: LogQL rejects a stream selector
+        // whose every matcher can match the empty string, and a dashboard of
+        // `=~` pickers is exactly that. This one's "All" is `.+` rather than the
+        // discovered values, so it always contributes a non-empty matcher and the
+        // selector parses whatever the other pickers are set to. Log queries only
+        // -- the event queries pin `job="loki.source.kubernetes_events"`, which
+        // already anchors them, and a second `job` matcher would AND with it.
+        (
+            "mzLogJobFilter",
+            format!(r#"job=~"${}""#, variables::LOG_JOB_LIST),
+        ),
+        // A line filter rather than a label matcher, so it goes after a `|` in the
+        // pipeline. Empty is the resting state: `|~ "(?i)"` matches every line,
+        // which is what keeps an untouched search box from blanking the panel.
+        ("mzLogSearchFilter", r#"|~ "(?i)$logSearch""#.to_string()),
         (
             "mzGenerationPattern",
             GENERATION_CAPTURE_PATTERN.to_string(),
@@ -470,6 +528,11 @@ mod tests {
             "mzGenerationFilter",
             "mzGenerationEventFilter",
             "mzGenerationPattern",
+            "mzLogNamespaceFilter",
+            "mzLogAppFilter",
+            "mzLogLevelFilter",
+            "mzLogJobFilter",
+            "mzLogSearchFilter",
             "mzEnvironmentFilter",
             "excludeEnvironmentFilter",
             "mzClusterList",
@@ -501,7 +564,9 @@ mod tests {
                         || REQUIRED_VARIABLES.contains(&reference.as_str())
                         || NODE_VARIABLES.contains(&reference.as_str())
                         || OPERATOR_VARIABLES.contains(&reference.as_str())
-                        || GENERATION_VARIABLES.contains(&reference.as_str());
+                        || GENERATION_VARIABLES.contains(&reference.as_str())
+                        || LOG_VARIABLES.contains(&reference.as_str())
+                        || reference == "logSearch";
                     assert!(
                         known,
                         "{engine} parameter {name} references unknown ${reference}"

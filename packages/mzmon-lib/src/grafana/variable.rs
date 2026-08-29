@@ -37,7 +37,9 @@
 
 use crate::grafana::context::variables;
 use crate::grafana::generated::dashboardv2;
-use crate::grafana::query::{LOGS_DATASOURCE_VAR, METRICS_DATASOURCE_VAR, promql_data_query};
+use crate::grafana::query::{
+    LOGS_DATASOURCE_VAR, METRICS_DATASOURCE_VAR, logql_variable_query, promql_data_query,
+};
 
 /// The info metric the discovery queries read.
 ///
@@ -64,6 +66,16 @@ const PROMETHEUS_PLUGIN: &str = "prometheus";
 /// Grafana plugin id for the logs datasource.
 const LOKI_PLUGIN: &str = "loki";
 
+/// Namespaces a Materialize deployment conventionally occupies.
+///
+/// Three conventions rather than one, because the naming differs by how the
+/// deployment was installed: `materialize` / `materialize-environment` from this
+/// repo's own charts, `mz-…` from the shorter-prefixed installs, and
+/// `environment-<uuid>-0` from Materialize Cloud. Matching all three costs
+/// nothing — a namespace that matches none of them is reached by turning the
+/// switch off.
+const MATERIALIZE_NAMESPACE_PATTERN: &str = ".*materialize.*|mz-.*|environment-.*";
+
 /// Extra controls the baseline defines beyond what the render context requires.
 pub mod extra {
     /// Whether cluster discovery includes Materialize's own system clusters.
@@ -72,6 +84,10 @@ pub mod extra {
     pub const METRIC_ADHOC: &str = "metricAdhoc";
     /// Free-form label filters applied to every logs query.
     pub const LOGS_ADHOC: &str = "logsAdhoc";
+    /// Whether namespace discovery is narrowed to the Materialize namespaces.
+    pub const MATERIALIZE_NAMESPACES_ONLY: &str = "materializeNamespacesOnly";
+    /// Free-text line filter applied to every logs query.
+    pub const LOG_SEARCH: &str = "logSearch";
 }
 
 /// An empty current selection.
@@ -417,6 +433,226 @@ pub fn generations() -> dashboardv2::VariableKind {
     variable
 }
 
+/// Shared skeleton for the Loki-backed query variables.
+///
+/// Separate from [`QueryVariable`] because the two datasources answer a variable
+/// differently: Prometheus takes `label_values(...)` text, Loki takes a
+/// `{label, stream}` object. See [`logql_variable_query`].
+struct LogQueryVariable {
+    name: &'static str,
+    label: &'static str,
+    description: &'static str,
+    /// The Loki label to enumerate.
+    loki_label: &'static str,
+    /// Stream selector narrowing which streams are consulted. May reference other
+    /// variables, which is what chains these together.
+    stream: String,
+    /// What "All" interpolates to.
+    ///
+    /// Always stated rather than left to expand into the discovered values. Two
+    /// reasons, both learned the hard way: an expansion is empty when discovery
+    /// has not run or has failed, and `label=~""` matches only streams *missing*
+    /// that label rather than all of them — so a picker that fails to load takes
+    /// the panel with it. And the choice between `.*` and `.+` is a real one per
+    /// label, not a default: see [`log_apps`].
+    all_value: &'static str,
+    hide: dashboardv2::VariableHide,
+}
+
+impl LogQueryVariable {
+    fn build(self) -> dashboardv2::VariableKind {
+        dashboardv2::VariableKind::QueryVariableKind(dashboardv2::QueryVariableKind {
+            kind: "QueryVariable".to_string(),
+            spec: dashboardv2::QueryVariableSpec {
+                name: self.name.to_string(),
+                label: Some(self.label.to_string()),
+                description: Some(self.description.to_string()),
+                definition: Some(format!("label_values({})", self.loki_label)),
+                query: logql_variable_query(self.loki_label, &self.stream, LOGS_DATASOURCE_VAR),
+                multi: true,
+                include_all: true,
+                all_value: Some(self.all_value.to_string()),
+                hide: self.hide,
+                sort: dashboardv2::VariableSort::AlphabeticalAsc,
+                skip_url_sync: false,
+                regex: String::new(),
+                regex_apply_to: Some(dashboardv2::VariableRegexApplyTo::Value),
+                allow_custom_value: true,
+                // Log labels come and go with the workloads emitting them, so the
+                // list is a property of the window rather than of the deployment.
+                refresh: dashboardv2::VariableRefresh::OnTimeRangeChanged,
+                current: no_selection(),
+                options: Vec::new(),
+                static_options: Vec::new(),
+                static_options_order: None,
+                placeholder: None,
+                origin: None,
+            },
+        })
+    }
+}
+
+/// Whether namespace discovery lists only the Materialize namespaces.
+///
+/// This is what makes the logs dashboard *Materialize-first without being
+/// Materialize-only*. On by default, so the namespace picker opens on the
+/// deployment's own namespaces rather than on every namespace in the cluster —
+/// on a representative install that is 5 namespaces and thousands of unrelated
+/// lines from `kube-system`.
+///
+/// **Both values must be non-empty-compatible.** This switch *is* the whole
+/// stream selector of the namespace discovery query, and LogQL rejects a selector
+/// whose every matcher can match the empty string — so the off position is `.+`,
+/// not `.*`. With `.*` the variable itself fails to load, and every picker
+/// chained below it empties out, which reads as a dashboard that selects no log
+/// lines rather than as the query error it is.
+///
+/// The narrow value is a set of naming conventions rather than a derived fact,
+/// which is why it is an alternation — see [`MATERIALIZE_NAMESPACE_PATTERN`]. An
+/// install that follows none of them turns the switch off and sees everything,
+/// which is a visible, one-click failure rather than a silently empty dashboard:
+/// the reason this is a discovery filter and not a hard scope.
+pub fn materialize_namespaces_only() -> dashboardv2::VariableKind {
+    dashboardv2::VariableKind::SwitchVariableKind(dashboardv2::SwitchVariableKind {
+        kind: "SwitchVariable".to_string(),
+        spec: dashboardv2::SwitchVariableSpec {
+            name: extra::MATERIALIZE_NAMESPACES_ONLY.to_string(),
+            label: Some("Materialize Namespaces Only".to_string()),
+            description: Some(
+                "Narrow namespace discovery to the Materialize namespaces. Turn off to reach the \
+                 monitoring stack and the rest of the cluster."
+                    .to_string(),
+            ),
+            enabled_value: MATERIALIZE_NAMESPACE_PATTERN.to_string(),
+            disabled_value: ".+".to_string(),
+            current: MATERIALIZE_NAMESPACE_PATTERN.to_string(),
+            hide: dashboardv2::VariableHide::DontHide,
+            skip_url_sync: false,
+            origin: None,
+        },
+    })
+}
+
+/// Namespaces that have logs, gated by [`materialize_namespaces_only`].
+pub fn log_namespaces() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_NAMESPACE_LIST,
+        label: "Namespace",
+        description: "The namespace(s) to read logs from",
+        loki_label: "namespace",
+        stream: format!(
+            r#"{{namespace=~"${}"}}"#,
+            extra::MATERIALIZE_NAMESPACES_ONLY
+        ),
+        // `.+`, not `.*`: this value becomes the sole matcher of the app, level
+        // and job discovery selectors, so an empty-compatible one would stop
+        // those loading. Safe because every line carries a namespace — the
+        // collection pipeline coerces cluster-scoped events to `kube-system`
+        // rather than leaving the label off.
+        all_value: ".+",
+        hide: dashboardv2::VariableHide::DontHide,
+    }
+    .build()
+}
+
+/// Applications emitting logs in the selected namespaces.
+pub fn log_apps() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_APP_LIST,
+        label: "App",
+        description: "The application(s) to read logs from",
+        loki_label: "app",
+        stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        // `.*`, deliberately. `app` is the one label here that is genuinely
+        // absent from some streams, and `.+` silently drops them — on a
+        // representative install that is 2,407 of 30,432 lines in half an hour,
+        // most of `kube-system`. "All" has to mean all.
+        all_value: ".*",
+        hide: dashboardv2::VariableHide::DontHide,
+    }
+    .build()
+}
+
+/// Severity levels present in the selected namespaces.
+///
+/// Discovered rather than hard-coded: the pipeline normalizes what it can and
+/// falls back to `UNKNOWN`, so which levels exist is a property of the workloads
+/// running, not a fixed vocabulary.
+pub fn log_levels() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_LEVEL_LIST,
+        label: "Level",
+        description: "The severity level(s) to include",
+        loki_label: "level",
+        stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        // `.*` for the same reason as `app`, even though every line carries a
+        // level today: the inclusive form costs nothing and does not depend on
+        // that staying true.
+        all_value: ".*",
+        hide: dashboardv2::VariableHide::DontHide,
+    }
+    .build()
+}
+
+/// Collection jobs, and the matcher that keeps every log selector parseable.
+///
+/// Two jobs in one. As a *filter* it is the most direct way to isolate a single
+/// workload's logs, since `job` is `<namespace>/<container>` for container logs
+/// and names the source outright for everything else.
+///
+/// As a *matcher* it is load-bearing. LogQL rejects a stream selector in which
+/// every matcher can match the empty string — "queries require at least one
+/// regexp or equality matcher that does not have an empty-compatible value" — and
+/// a dashboard whose pickers are all `=~` is exactly that shape. `all_value` is
+/// therefore `.+` rather than the discovered values: it always matches something
+/// non-empty, so the selector parses even when every other picker is on "All" or
+/// has discovered nothing at all. Without it the panels error rather than coming
+/// back empty.
+///
+/// Only the *log* queries need it. The event queries pin
+/// `job="loki.source.kubernetes_events"`, which is already a non-empty equality
+/// matcher, and adding a second `job` matcher there would AND the two and zero
+/// the panel the moment a container job was picked.
+pub fn log_jobs() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_JOB_LIST,
+        label: "Job",
+        description: "The collection job(s) to read logs from",
+        loki_label: "job",
+        stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        // See the note above: this must never interpolate to something that can
+        // match the empty string. Free here — `job` is present on every line, so
+        // `.+` and `.*` select identically and only the parseability differs.
+        all_value: ".+",
+        hide: dashboardv2::VariableHide::InControlsMenu,
+    }
+    .build()
+}
+
+/// Free-text line filter applied to every log and event query.
+///
+/// Empty is the resting state and must stay harmless: the filter renders as
+/// `|~ "(?i)$logSearch"`, and an empty pattern matches every line rather than
+/// none. Verified against a live Loki, since the opposite would make the
+/// dashboard blank until something is typed.
+pub fn log_search() -> dashboardv2::VariableKind {
+    dashboardv2::VariableKind::TextVariableKind(dashboardv2::TextVariableKind {
+        kind: "TextVariable".to_string(),
+        spec: dashboardv2::TextVariableSpec {
+            name: extra::LOG_SEARCH.to_string(),
+            label: Some("Search".to_string()),
+            description: Some(
+                "Case-insensitive text to match anywhere in the log line".to_string(),
+            ),
+            query: String::new(),
+            current: no_selection(),
+            hide: dashboardv2::VariableHide::DontHide,
+            skip_url_sync: false,
+            origin: None,
+        },
+    })
+}
+
 /// Free-form label filters applied to every metrics query.
 ///
 /// Seeded with the namespace selector so an operator's ad-hoc filters compose
@@ -558,6 +794,30 @@ pub fn operator_scoped(sql_metric_prefix: &str) -> Vec<dashboardv2::VariableKind
     // of the controls row rather than one of them hiding mid-funnel.
     set.push(logs_adhoc());
     set
+}
+
+/// The variable set for a logs dashboard.
+///
+/// **Loki end to end, and deliberately disjoint from [`environment_scoped`].** A
+/// logs dashboard is frequently the tool for working out why the *metrics*
+/// pipeline is broken, so deriving its scope from Prometheus — as
+/// `$mzNamespaceList` does — would make it depend on the thing being
+/// investigated. Nothing here defines or reads a metrics variable, and the
+/// dashboard needs no metrics datasource at all.
+///
+/// Ordered as a funnel like the others: what to look at, then how to narrow it,
+/// with the free-text search and the ad-hoc filter last as escape hatches.
+pub fn logs_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        logs_datasource(),
+        materialize_namespaces_only(),
+        log_namespaces(),
+        log_apps(),
+        log_levels(),
+        log_jobs(),
+        log_search(),
+        logs_adhoc(),
+    ]
 }
 
 /// The environment scope fragment the chained queries share.
@@ -802,6 +1062,223 @@ mod tests {
                 assert_eq!(v.spec.base_filters.len(), 1);
             }
             other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_logs_set_is_loki_end_to_end() {
+        // The property that matters: a logs dashboard must not depend on the
+        // metrics pipeline, since it is often how you find out why that pipeline
+        // is broken.
+        let set = logs_scoped();
+        let names = names(&set);
+        assert!(!names.contains(&"metricsDatasource"), "{names:?}");
+        for metric_scoped in REQUIRED_VARIABLES {
+            assert!(
+                !names.contains(metric_scoped),
+                "logs set pulled in the metric-side ${metric_scoped}"
+            );
+        }
+        for variable in &set {
+            if let dashboardv2::VariableKind::QueryVariableKind(v) = variable {
+                let ds = v
+                    .spec
+                    .query
+                    .datasource
+                    .as_ref()
+                    .and_then(|d| d.name.as_deref())
+                    .unwrap_or_default();
+                assert_eq!(
+                    ds, "${logsDatasource}",
+                    "{} is not a Loki query",
+                    v.spec.name
+                );
+                assert_eq!(v.spec.query.group, "loki", "{}", v.spec.name);
+            }
+        }
+    }
+
+    #[test]
+    fn the_logs_funnel_narrows_in_order() {
+        let set = logs_scoped();
+        assert_eq!(
+            names(&set),
+            vec![
+                "logsDatasource",
+                "materializeNamespacesOnly",
+                "logNamespaceList",
+                "logAppList",
+                "logLevelList",
+                "logJobList",
+                "logSearch",
+                "logsAdhoc",
+            ]
+        );
+    }
+
+    #[test]
+    fn namespace_discovery_is_gated_by_the_materialize_switch() {
+        // The switch is what makes the dashboard Materialize-*first* rather than
+        // Materialize-only: it filters which namespaces the picker offers, and
+        // turning it off reaches the whole cluster.
+        let stream = |variable| match variable {
+            dashboardv2::VariableKind::QueryVariableKind(v) => v
+                .spec
+                .query
+                .spec
+                .as_ref()
+                .and_then(|s| s.get("stream"))
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            other => panic!("unexpected {other:?}"),
+        };
+        assert!(stream(log_namespaces()).contains("$materializeNamespacesOnly"));
+        // And the two below it chain off the namespace selection, not off the
+        // switch, so widening the scope widens them too.
+        assert!(stream(log_apps()).contains("$logNamespaceList"));
+        assert!(stream(log_levels()).contains("$logNamespaceList"));
+
+        match materialize_namespaces_only() {
+            dashboardv2::VariableKind::SwitchVariableKind(v) => {
+                // Three install conventions: this repo's charts, the
+                // shorter `mz-` prefix, and Cloud's `environment-<uuid>-0`.
+                assert_eq!(v.spec.enabled_value, ".*materialize.*|mz-.*|environment-.*");
+                assert_eq!(v.spec.disabled_value, ".+");
+                for convention in ["materialize-environment", "mz-prod", "environment-abc-0"] {
+                    assert!(
+                        regex_lite_matches(&v.spec.enabled_value, convention),
+                        "{convention} is not covered by {}",
+                        v.spec.enabled_value
+                    );
+                }
+                // On by default -- opening on every namespace in the cluster
+                // buries the deployment in unrelated lines.
+                assert_eq!(v.spec.current, v.spec.enabled_value);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    /// Whether a pattern can match the empty string, which is what LogQL rejects
+    /// a selector for when every matcher does.
+    ///
+    /// A branch matches empty only if it is made entirely of `.*`: strip those and
+    /// anything left is a required literal or a `+` quantifier. So `.*` matches
+    /// empty, while `.*materialize.*` and `.+` do not — a check on the leading
+    /// characters alone gets that backwards.
+    fn matches_empty(pattern: &str) -> bool {
+        pattern
+            .split('|')
+            .any(|branch| branch.replace(".*", "").is_empty())
+    }
+
+    /// Whether `value` is matched by one branch of a simple `a|b|c` alternation
+    /// of `.*`/prefix patterns. Enough for the convention check above without
+    /// pulling in a regex engine.
+    fn regex_lite_matches(pattern: &str, value: &str) -> bool {
+        pattern.split('|').any(|branch| {
+            let literal = branch.trim_start_matches(".*").trim_end_matches(".*");
+            !literal.is_empty() && value.contains(literal)
+        })
+    }
+
+    #[test]
+    fn no_log_selector_can_become_empty_compatible() {
+        // LogQL rejects a stream selector whose every matcher can match the empty
+        // string. Two of these values are load-bearing for that: the switch is
+        // the *sole* matcher of the namespace discovery query, and the namespace
+        // "All" is the sole matcher of the app, level and job discovery queries.
+        // With `.*` in either place the variable fails to load, every picker
+        // below it empties, and the dashboard reads as selecting no log lines
+        // rather than as the query error it is.
+        let anchor = |variable| match variable {
+            dashboardv2::VariableKind::QueryVariableKind(v) => v.spec.all_value.clone(),
+            other => panic!("unexpected {other:?}"),
+        };
+        assert_eq!(anchor(log_namespaces()).as_deref(), Some(".+"));
+        assert_eq!(anchor(log_jobs()).as_deref(), Some(".+"));
+
+        match materialize_namespaces_only() {
+            dashboardv2::VariableKind::SwitchVariableKind(v) => {
+                assert_eq!(v.spec.disabled_value, ".+", "the off position must parse");
+                for value in [&v.spec.enabled_value, &v.spec.disabled_value] {
+                    assert!(!matches_empty(value), "{value} is empty-compatible");
+                }
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn all_means_all_for_the_labels_that_are_not_universal() {
+        // `app` is genuinely absent from some streams, and `.+` drops them --
+        // 2,407 of 30,432 lines in half an hour on a representative install,
+        // most of `kube-system`. These two are not the anchor, so they can and
+        // must be the inclusive form.
+        let all_value = |variable| match variable {
+            dashboardv2::VariableKind::QueryVariableKind(v) => v.spec.all_value.clone(),
+            other => panic!("unexpected {other:?}"),
+        };
+        assert_eq!(all_value(log_apps()).as_deref(), Some(".*"));
+        assert_eq!(all_value(log_levels()).as_deref(), Some(".*"));
+    }
+
+    #[test]
+    fn every_log_picker_states_what_all_means() {
+        // Left to expand into the discovered values, "All" is *empty* whenever
+        // discovery has not run or has failed -- and `label=~""` matches only the
+        // streams missing that label, so a picker that fails to load takes the
+        // panel down with it rather than widening it.
+        for picker in [log_namespaces(), log_apps(), log_levels(), log_jobs()] {
+            match picker {
+                dashboardv2::VariableKind::QueryVariableKind(v) => {
+                    assert!(
+                        v.spec.all_value.is_some(),
+                        "{} leaves \"All\" to the discovered values",
+                        v.spec.name
+                    );
+                    assert!(v.spec.include_all, "{}", v.spec.name);
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_job_picker_can_never_interpolate_to_an_empty_matcher() {
+        // LogQL rejects a stream selector whose every matcher can match the empty
+        // string, and a dashboard of `=~` pickers is exactly that shape. This
+        // variable's "All" is what keeps every log panel parseable, so a change
+        // to `None` here would turn every one of them into a query error rather
+        // than a wide result.
+        match log_jobs() {
+            dashboardv2::VariableKind::QueryVariableKind(v) => {
+                assert_eq!(v.spec.all_value.as_deref(), Some(".+"));
+                assert!(v.spec.include_all);
+                // Sits in the controls menu: it is an advanced filter that most
+                // readings never touch, but it must always be present.
+                assert_eq!(v.spec.hide, dashboardv2::VariableHide::InControlsMenu);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_log_variable_queries_carry_a_label_and_the_label_values_mode() {
+        // Loki answers a variable from a `{label, stream, type}` object rather
+        // than from an expression, so a Prometheus-shaped query here would
+        // silently resolve to nothing.
+        for variable in [log_namespaces(), log_apps(), log_levels()] {
+            match variable {
+                dashboardv2::VariableKind::QueryVariableKind(v) => {
+                    let spec = v.spec.query.spec.as_ref().expect("spec");
+                    assert!(spec.get("label").and_then(|l| l.as_str()).is_some());
+                    assert_eq!(spec["type"], serde_json::json!(1));
+                    assert!(spec.get("expr").is_none(), "{}", v.spec.name);
+                }
+                other => panic!("unexpected {other:?}"),
+            }
         }
     }
 

@@ -290,6 +290,36 @@ pub fn promql_data_query(
     data_query_kind(PROMETHEUS_PLUGIN_ID, datasource_var, spec)
 }
 
+/// A Loki *variable* query, which is not a dataquery.
+///
+/// Grafana's Loki datasource answers a variable from a `{label, stream, type}`
+/// object rather than from a LogQL expression: `label` is the label to enumerate,
+/// `stream` is an optional selector narrowing which streams are consulted, and
+/// `type: 1` selects the label-values mode. The Prometheus side spells the same
+/// idea as `label_values(...)` text, which is why this cannot reuse
+/// [`promql_data_query`].
+///
+/// `stream` may reference other dashboard variables, which is what chains one of
+/// these to the selection above it.
+pub fn logql_variable_query(
+    label: &str,
+    stream: &str,
+    datasource_var: &str,
+) -> dashboardv2::DataQueryKind {
+    let mut spec = serde_json::Map::new();
+    spec.insert("label".to_string(), serde_json::json!(label));
+    spec.insert("stream".to_string(), serde_json::json!(stream));
+    // 1 is the label-values mode. The enum is not in the vendored schemas -- the
+    // Loki document types dataqueries, not variable queries -- so this is the
+    // literal Grafana writes.
+    spec.insert("type".to_string(), serde_json::json!(1));
+    spec.insert(
+        "refId".to_string(),
+        serde_json::json!("LokiVariableQueryEditor-VariableQuery"),
+    );
+    data_query_kind(LOKI_PLUGIN_ID, datasource_var, spec)
+}
+
 /// A Loki dataquery against `${<datasource_var>}`.
 pub fn logql_data_query(
     expr: &str,

@@ -14,6 +14,14 @@ description: |
   group on; the event `type` becomes the `level` stream label, `Normal` as
   `INFO` and `Warning` as `WARN`.
 
+  **Two scopes live here.** The `deployment` and `operator` queries below are
+  rollout-scoped: they answer "is this upgrade going through", and the
+  `env-upgrade` dashboard is their consumer. The `cluster` queries at the end are
+  the general-purpose view, scoped by the same Loki-discovered namespace picker a
+  logs dashboard uses, and are deliberately separate definitions rather than the
+  same ones widened — the rollout queries carry filters (generation, reporting
+  controller) that a general event browser has no business inheriting.
+
   Kubernetes keeps events for about an hour. Loki keeps them for as long as the
   deployment's retention says, which is what makes a rollout that finished
   yesterday still explainable.
@@ -242,6 +250,93 @@ queries:
           {job="loki.source.kubernetes_events", %%{mzDeploymentNamespaceFilter}}
           | reportingcontroller="orchestratord.materialize.cloud"
           | reason="ReconciliationFailed"
+          %%{interval}
+        )
+      )
+
+  # --- general-purpose, for a logs and events dashboard -----------------------
+  - id: materialize.events.cluster.stream
+    stability: experimental
+    description:
+      summary: |
+        Every Kubernetes event in the selected namespaces, newest first.
+      notes: |
+        The general-purpose event feed, scoped by the same namespace picker as the
+        logs beside it rather than by a deployment's own namespaces. Turning the
+        Materialize-only switch off reaches `kube-system` and the rest of the
+        cluster, which is where the answer lives when the question is about nodes
+        or storage rather than about Materialize.
+
+        Distinct from the rollout feed on the upgrade dashboard: this one carries
+        no generation or reporting-controller filter, because a general browser
+        should not quietly drop events for belonging to the wrong side of a
+        rollout.
+
+        Lines are reformatted to `Reason Kind/name — message`; expanding one shows
+        the dozen raw fields behind it.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
+        %%{mzLogSearchFilter}
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: materialize.events.cluster.warnings
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes events the reporting component flagged as warnings, across the
+        selected namespaces.
+      nominal: |
+        Nothing, or a burst that stops on its own.
+      unhealthy: |
+        Warnings that keep arriving. The reason names the class: `FailedScheduling`
+        and `NotTriggerScaleUp` mean the cluster has nowhere to put a pod,
+        `BackOff` means it starts and dies, `Unhealthy` means it starts and never
+        becomes ready, `FailedMount` means storage did not attach.
+      notes: |
+        `Warning` is the reporting component's own judgement rather than a
+        threshold of ours — this filters on their opinion.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, level="WARN"}
+        %%{mzLogSearchFilter}
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: materialize.events.cluster.rate.by_reason
+    stability: experimental
+    description:
+      summary: |
+        How often each kind of event is being reported, by reason — the shape of
+        what the cluster is doing.
+      nominal: |
+        Quiet, apart from bursts that coincide with a deliberate change.
+      unhealthy: |
+        A reason that fires at a steady rate is a loop rather than a transition.
+      notes: |
+        Counts events as Loki received them. Kubernetes aggregates a repeat into
+        one object with a rising `count` rather than sending it again, so a tight
+        loop reports fewer lines than it has occurrences.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: materialize.events.cluster.rate.by_namespace
+    stability: experimental
+    description:
+      summary: |
+        Event rate by namespace — where in the cluster things are happening.
+      notes: |
+        Most useful with the Materialize-only switch off, which is when this stops
+        being one or two flat lines and starts saying whether the activity is in
+        the deployment, the monitoring stack, or the platform underneath both.
+    logQL: |
+      sum by (namespace) (
+        count_over_time(
+          {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
+            %%{mzLogSearchFilter}
           %%{interval}
         )
       )
