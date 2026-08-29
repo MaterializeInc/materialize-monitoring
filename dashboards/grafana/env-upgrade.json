@@ -153,14 +153,24 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
                 "wrapLogMessage": true
               }
             },
@@ -869,14 +879,24 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
                 "wrapLogMessage": true
               }
             },
@@ -1461,14 +1481,24 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
                 "wrapLogMessage": true
               }
             },
@@ -2145,14 +2175,24 @@
                 "overrides": []
               },
               "options": {
-                "dedupStrategy": "none",
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
                 "enableLogDetails": true,
+                "fontSize": "small",
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
                 "showLabels": false,
+                "showLevel": true,
                 "showLogContextToggle": false,
                 "showTime": true,
                 "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
                 "wrapLogMessage": true
               }
             },
