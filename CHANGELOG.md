@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.14.0 (Unreleased)
+
+_Changes Pending_
+
 ## Prometheus Scrapers v0.5.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,27 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Dashboards v0.13.0 (Unreleased)
+## Dashboards v0.13.0
 
-_Changes Pending_
+* DEP-240 Ensure kube-state-metrics metrics do not have namespace overwritten
+    * [materialize-monitoring#297](https://github.com/MaterializeInc/materialize-monitoring/pull/297)
+    * regression: kube-state-metrics were namespaced as `export_namespace=$target` with `namespace=monitoring` on all because the scraper overwrote that label with the namespace KSM was running in
+* DEP-209 Create a dashboard for Materialize logs and events
+    * [materialize-monitoring#296](https://github.com/MaterializeInc/materialize-monitoring/pull/296)
+    * Adds the new mz-mon-env-logs dashboard, installed by default
+* DEP-210 Upgrade visibility dashboard
+    * [materialize-monitoring#294](https://github.com/MaterializeInc/materialize-monitoring/pull/294)
+    * Adds a new mz-env-upgrade dashboard, enabled by default
+        * Requires materialize v26.41.0
+    * Enable sql scrapers by default
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Release mzmon-lib (shared library) v0.11.0
+        * [materialize-monitoring#290](https://github.com/MaterializeInc/materialize-monitoring/pull/290)
+    * DEP-222 Remove the old python implementation for dashboards fully
+        * [materialize-monitoring#291](https://github.com/MaterializeInc/materialize-monitoring/pull/291)
 
 ## mzmon-lib (shared library) v0.11.0
 
