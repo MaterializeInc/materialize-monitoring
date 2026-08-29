@@ -644,7 +644,7 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      count by (generation) (
+                      sum by (generation) (
                         max by (generation, instance_id, collection_id) (
                           label_replace(
                             mz_dataflow_wallclock_lag_seconds{
@@ -655,13 +655,13 @@ spec:
                               quantile="1"
                             },
                             "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
-                          ) > 1e15
+                          ) > bool 1e15
                         )
                       )
                     legendFormat: gen {{generation}}
                     qryType: 1
                     query: |
-                      count by (generation) (
+                      sum by (generation) (
                         max by (generation, instance_id, collection_id) (
                           label_replace(
                             mz_dataflow_wallclock_lag_seconds{
@@ -672,7 +672,7 @@ spec:
                               quantile="1"
                             },
                             "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
-                          ) > 1e15
+                          ) > bool 1e15
                         )
                       )
                   version: v0
@@ -690,7 +690,9 @@ spec:
 
           **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no established output frontier. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
 
-          The series is **sparse**: `count` emits nothing rather than zero when nothing matches, so a generation that has finished hydrating leaves the line rather than drawing a zero. A panel that has gone blank has finished, which is why this one says so instead of reporting a filter mismatch.
+          **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every collection 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
+
+          A generation drops out only when it has no collections at all, which is true of a brand-new one for its first moments and of one that has been torn down.
 
           `instance_id!=""` is load-bearing — it keeps this to collections attached to a compute instance.
         id: 1015
@@ -703,7 +705,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: Nothing hydrating — every collection has a frontier
+                noValue: No collections reporting for the selected generations
               overrides: []
             options:
               legend:
@@ -735,7 +737,7 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      count by (generation) (
+                      sum by (generation) (
                         max by (generation, instance_id, collection_id) (
                           label_replace(
                             mz_dataflow_wallclock_lag_seconds{
@@ -746,13 +748,13 @@ spec:
                               quantile="1"
                             },
                             "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
-                          ) > 1e15
+                          ) > bool 1e15
                         )
                       )
                     legendFormat: gen {{generation}}
                     qryType: 1
                     query: |
-                      count by (generation) (
+                      sum by (generation) (
                         max by (generation, instance_id, collection_id) (
                           label_replace(
                             mz_dataflow_wallclock_lag_seconds{
@@ -763,7 +765,7 @@ spec:
                               quantile="1"
                             },
                             "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
-                          ) > 1e15
+                          ) > bool 1e15
                         )
                       )
                   version: v0
@@ -781,7 +783,9 @@ spec:
 
           **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no established output frontier. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
 
-          The series is **sparse**: `count` emits nothing rather than zero when nothing matches, so a generation that has finished hydrating leaves the line rather than drawing a zero. A panel that has gone blank has finished, which is why this one says so instead of reporting a filter mismatch.
+          **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every collection 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
+
+          A generation drops out only when it has no collections at all, which is true of a brand-new one for its first moments and of one that has been torn down.
 
           `instance_id!=""` is load-bearing — it keeps this to collections attached to a compute instance.
         id: 1011
@@ -798,7 +802,7 @@ spec:
                   mode: shades
                 decimals: 0
                 min: 0
-                noValue: Nothing hydrating — every collection has a frontier
+                noValue: No collections reporting for the selected generations
               overrides: []
             options:
               colorMode: none

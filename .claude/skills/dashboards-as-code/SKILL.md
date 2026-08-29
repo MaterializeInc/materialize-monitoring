@@ -270,10 +270,14 @@ how its other side comes back into view. It has no `all_value` — a literal lik
 emitted by environmentd, so its `pod` label carries the generation and the split is free. Two things about the series:
 
 - `instance_id!=""` is load-bearing, keeping it to collections attached to a compute instance.
-- **The series is sparse.** `count` emits *no sample* rather than a zero when nothing matches, so a generation that has
-  finished hydrating leaves the graph rather than drawing a zero line. Do not read "all emitted points are non-zero" as
-  "hydrating continuously" — that misreading looks exactly like a Thanos downsampling artifact and is not one. Values
-  were verified identical across query windows.
+- **Score with `> bool`, do not filter with `>`.** A filtering comparison drops the non-matching series, so `count`
+  emits *no sample* once a generation finishes hydrating: the line stops instead of reaching zero, and a stat reducing
+  on the last non-null value goes on showing the last count it saw forever. `sum by (generation) (max by (…) (… > bool
+  1e15))` scores every collection 1 or 0, so the series stays present and lands on zero — the descent the panel exists
+  to show. `env-top`'s unsplit version gets there with `or vector(0)`, which is not an option once the panel groups by
+  generation: that appends a series carrying no labels.
+- A sparse series also invites a specific misreading — "all emitted points are non-zero" looks exactly like a Thanos
+  downsampling artifact and is not one. Values were verified identical across query windows.
 
 ## orchestratord reconciliation metrics
 

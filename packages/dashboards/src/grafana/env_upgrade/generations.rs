@@ -53,13 +53,14 @@ fn no_generations() -> NoValue {
     NoValue::Custom("No generations match the current filters".to_string())
 }
 
-/// What the hydration panels show when nothing is hydrating.
+/// What the hydration panels show when no generation reports at all.
 ///
-/// Absence is the *finished* reading here, not a broken panel: `count` emits no
-/// sample rather than a zero, so a generation that has caught up leaves the graph
-/// entirely.
-fn nothing_hydrating() -> NoValue {
-    NoValue::Custom("Nothing hydrating — every collection has a frontier".to_string())
+/// Not the same as "nothing is hydrating": the query scores every collection with
+/// `> bool`, so a generation that has caught up reports a genuine zero and stays
+/// on the graph. Reaching this message means no generation has any collection to
+/// score — a brand-new one in its first moments, or a torn-down one.
+fn no_collections() -> NoValue {
+    NoValue::Custom("No collections reporting for the selected generations".to_string())
 }
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -144,7 +145,7 @@ fn hydrating_now(q: &Queries) -> dashboardv2::PanelKind {
         .shade(SHADE)
         .min(0.0)
         .decimals(0.0)
-        .no_value(nothing_hydrating())
+        .no_value(no_collections())
         .build(0)
 }
 
@@ -223,7 +224,7 @@ fn hydrating_by_generation(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("gen {{generation}}"),
         )
         .min(0.0)
-        .no_value(nothing_hydrating())
+        .no_value(no_collections())
         .build(0)
 }
 
@@ -389,6 +390,28 @@ mod tests {
             options["excludeByName"]["v2_mz_compute_cluster_status"],
             true
         );
+    }
+
+    #[test]
+    fn hydration_counts_with_bool_so_the_line_reaches_zero() {
+        // A filtering `>` drops the non-matching series, so the query emits no
+        // sample once a generation finishes and the panel keeps showing the last
+        // count it saw. `> bool` scores every collection and `sum` adds them, so
+        // the series stays present and descends to zero -- which is the whole
+        // reading this tab is built around.
+        let q = &test_operator_queries();
+        let expr = hydrating_by_generation(q).spec.data.spec.queries[0]
+            .spec
+            .query
+            .spec
+            .as_ref()
+            .expect("spec")["expr"]
+            .as_str()
+            .expect("expr")
+            .to_string();
+        assert!(expr.contains("> bool 1e15"), "{expr}");
+        assert!(expr.starts_with("sum by (generation)"), "{expr}");
+        assert!(!expr.contains("count by (generation)"), "{expr}");
     }
 
     #[test]
