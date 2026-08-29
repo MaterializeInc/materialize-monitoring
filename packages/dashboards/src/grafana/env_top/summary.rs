@@ -20,8 +20,8 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
 use super::theme;
-use super::transform;
 use crate::grafana::queries::Queries;
+use crate::grafana::transform;
 
 /// The Summary tab's rows.
 pub fn rows(q: &Queries) -> Vec<Row> {

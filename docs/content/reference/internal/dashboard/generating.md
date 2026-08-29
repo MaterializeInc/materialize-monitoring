@@ -24,7 +24,10 @@ Each dashboard also owns:
 
 - `theme.rs` — the per-tab colours, coordinated in one place rather than spread across the tabs.
 - `selector.rs` — the PromQL selector fragments the tab modules share.
-- `transform.rs` / `field_override.rs` — Grafana transformation and field-override helpers.
+- `field_override.rs` — field-override helpers.
+
+`grafana/transform.rs` is shared rather than per-dashboard: it builds Grafana transformation JSON and knows nothing
+about Materialize, so a second dashboard uses it directly instead of copying it.
 
 `grafana/mod.rs` is the registry of what can be rendered; `grafana/render.rs` serializes.
 

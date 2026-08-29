@@ -10,8 +10,8 @@
 
 use std::path::PathBuf;
 
+use mz_dashboards::grafana::env_top;
 use mz_dashboards::grafana::queries::Queries;
-use mz_dashboards::grafana::{Cloud, env_top};
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::query::QueryRegistry;
 
@@ -26,7 +26,7 @@ fn every_dashboard_builds_against_the_real_registry() {
     // query that is gone, this fails and the error names them all.
     let registry = registry();
     for prefix in ["mz_", "v2_mz_"] {
-        env_top::build(Cloud::Generic, prefix, &registry)
+        env_top::build(prefix, &registry)
             .unwrap_or_else(|e| panic!("env-top does not build with prefix {prefix:?}: {e}"));
     }
 }

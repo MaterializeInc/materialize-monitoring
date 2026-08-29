@@ -552,17 +552,15 @@ serve-docs:
 	$(HUGO_BIN) --source docs serve --gc --buildDrafts --openBrowser
 .PHONY: serve-docs
 
-# Two files, same panels: the `gcp-` variant differs only in its `target-cloud`
-# annotation now that the gateway scrapes the kubelet's cAdvisor directly instead
-# of consuming GKE's reduced subset. It stays a separate artifact because the
-# docsite links it, and because a cloud could diverge again.
+# One file per dashboard. There was a second, `gcp-` prefixed set until the clouds
+# stopped differing in panel content -- the gateway scrapes the kubelet's cAdvisor
+# directly rather than consuming GKE's reduced subset -- which left it recording
+# nothing but its own name.
 docs/assets/dashboards/grafana: \
 		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.json
 	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json
-	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json \
-		--cloud gcp --prefix gcp-
 	touch "$@"
 
 # Generate docs

@@ -142,9 +142,11 @@ recommended:
 - (?:v2_)?mz_storage_objects
 - (?:v2_)?mz_tables_count
 - (?:v2_)?mz_views_count
+- environmentd_needs_update
 - mz_active_sessions
 - mz_active_subscribes
 - mz_arrangement_maintenance_seconds_total
+- mz_compute_commands_total
 - mz_compute_controller_hydration_queue_size
 - mz_compute_peek_duration_seconds_bucket
 - mz_compute_replica_history_dataflow_count
@@ -223,5 +225,10 @@ recommended:
 - node_vmstat_pgscan_kswapd
 - node_vmstat_pgsteal_direct
 - node_vmstat_pgsteal_kswapd
+- orchestratord_is_leader
+- orchestratord_reconciliation_duration_seconds_bucket
+- orchestratord_reconciliation_step_duration_seconds_bucket
+- orchestratord_reconciliation_steps_total
+- orchestratord_reconciliations_total
 extended: []
 diagnostic: []

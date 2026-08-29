@@ -211,6 +211,28 @@ fn extraction_context<'a>(
             r#"namespace=~"materialize-environment""#,
         ),
         ("mzOperatorNamespaceFilter", r#"namespace=~"materialize""#),
+        ("mzSystemNamespaceFilter", r#"namespace=~"kube-system""#),
+        // Both namespaces as one alternation, matching what the dashboard context
+        // builds. Extraction only reads metric names out of the rendered
+        // selector, so the sentinel just has to parse.
+        (
+            "mzDeploymentNamespaceFilter",
+            r#"namespace=~"materialize|materialize-environment""#,
+        ),
+        // Generation filters. Extraction reads metric names out of the rendered
+        // selector, so a sentinel generation is all these need to be.
+        (
+            "mzGenerationFilter",
+            r#"pod=~".*-(environmentd|gen)-([0-9]+)-[0-9]+""#,
+        ),
+        (
+            "mzGenerationEventFilter",
+            r#"name=~".*-(environmentd|gen)-([0-9]+)-[0-9]+""#,
+        ),
+        (
+            "mzGenerationPattern",
+            r".*-(?:environmentd|gen)-([0-9]+)-[0-9]+",
+        ),
         ("mzClusterList", ".+"),
         ("mzReplicaList", ".+"),
         // Extraction only reads metric names, so the regex-escaped forms resolve to

@@ -21,8 +21,16 @@
 //! undefined Grafana variable interpolates to nothing and the selector silently
 //! matches no series — a panel that looks fine and is empty. [`REQUIRED_VARIABLES`]
 //! is the list to assert against a dashboard's variable set; that is why the
-//! operator and system namespaces below are plain values rather than `$…`
-//! references, since no dashboard defines a variable for them.
+//! system namespace below is a plain value rather than a `$…` reference, since no
+//! dashboard defines a variable for it.
+//!
+//! The operator namespace is the one that goes both ways. It defaults to a plain
+//! value for the same reason, but a dashboard that defines
+//! [`variable::operator_namespace`](crate::grafana::variable::operator_namespace)
+//! sets [`DashboardScope::operator_namespace`] to `$operatorNamespace` and gets a
+//! control instead of a constant. That is a property of the scope rather than of
+//! the parameter, so the two kinds of dashboard coexist without either knowing
+//! about the other.
 
 use std::collections::HashMap;
 
@@ -52,6 +60,22 @@ pub mod variables {
     pub const MZ_CLUSTER_LIST: &str = "mzClusterList";
     /// Selected replicas within the selected clusters.
     pub const MZ_REPLICA_LIST: &str = "mzReplicaList";
+    /// Namespace the Materialize operator (orchestratord) runs in.
+    ///
+    /// Optional, unlike the four above: only a dashboard that scopes itself to the
+    /// operator defines it, and [`super::DashboardScope::operator_namespace`] is a
+    /// plain value everywhere else. Not a `*List` because it is single-select —
+    /// see [`variable::operator_namespace`](crate::grafana::variable::operator_namespace).
+    pub const OPERATOR_NAMESPACE: &str = "operatorNamespace";
+    /// Logs (Loki) datasource.
+    pub const LOGS_DATASOURCE: &str = "logsDatasource";
+    /// Selected deployment generations, for blue/green.
+    ///
+    /// Optional, like [`OPERATOR_NAMESPACE`]: only a dashboard that reasons about
+    /// rollouts defines it. Held as generation *numbers*, which reach a query as a
+    /// fragment of a name pattern rather than as a label value — see
+    /// [`variable::generations`](crate::grafana::variable::generations).
+    pub const MZ_GENERATION_LIST: &str = "mzGenerationList";
     /// Selected node-exporter instances.
     ///
     /// Unlike the others, this one is not supplied by any parameter: the
@@ -90,6 +114,79 @@ pub const REQUIRED_VARIABLES: &[&str] = &[
 /// treat their content as unreviewed rather than as a baseline to build on.
 pub const NODE_VARIABLES: &[&str] = &[variables::NODE_LIST];
 
+/// Variables required only by a dashboard that scopes itself to the operator with
+/// [`DashboardScope::operator_variable`].
+///
+/// Separate from [`REQUIRED_VARIABLES`] because a dashboard that leaves the
+/// operator namespace pinned never references it — `mzDeploymentNamespaceFilter`
+/// then renders the pinned value on the left of the alternation and no `$…` at
+/// all.
+pub const OPERATOR_VARIABLES: &[&str] = &[variables::OPERATOR_NAMESPACE];
+
+/// Variables required only by a dashboard that filters by deployment generation.
+///
+/// Unlike [`OPERATOR_VARIABLES`], no scope flag gates these: the two generation
+/// parameters always reference `$mzGenerationList`, so a dashboard using a query
+/// that names one must define it. Only queries about rollouts do.
+pub const GENERATION_VARIABLES: &[&str] = &[variables::MZ_GENERATION_LIST];
+
+/// The object-name pattern a generation appears in, as a regex with the
+/// generation itself left as `{}`.
+///
+/// Two shapes, because orchestratord names the two workloads differently:
+/// `…-environmentd-<generation>-<ordinal>` and, for a replica,
+/// `…-gen-<generation>-<ordinal>`. Both are matched, so one filter covers
+/// environmentd and clusterd rather than the caller picking.
+///
+/// The generation is deliberately *not* a label anywhere — orchestratord records
+/// it as a Kubernetes annotation, which neither kube-state-metrics nor the event
+/// pipeline surfaces. The name is the only place it reaches a query.
+const GENERATION_NAME_PATTERN: &str = r".*-(environmentd|gen)-({})-[0-9]+";
+
+/// The same pattern as a *capture*, for `label_replace` to lift the generation
+/// out of a pod name into a label of its own.
+///
+/// Non-capturing on the workload alternation so `$1` is the generation and
+/// nothing else. Kept beside [`GENERATION_NAME_PATTERN`] because the two must
+/// agree: a filter that admits a pod shape the capture cannot parse produces
+/// series with an empty `generation` label, which reads as a legend of blanks.
+const GENERATION_CAPTURE_PATTERN: &str = r".*-(?:environmentd|gen)-([0-9]+)-[0-9]+";
+
+/// Render a scope's namespace value as a regex-alternation fragment.
+///
+/// A pinned namespace is a literal and goes in as it is. A `$variable` needs
+/// Grafana's `:regex` format for the same reason the namespace list does — see
+/// `mzDeploymentNamespaceFilter` in [`dashboard_context`] — and the format
+/// suffix has to go inside the braces, so `$name` becomes `${name:regex}`.
+fn regex_form(namespace: &str) -> String {
+    match namespace.strip_prefix('$') {
+        Some(name) => format!("${{{name}:regex}}"),
+        None => namespace.to_string(),
+    }
+}
+
+/// [`GENERATION_NAME_PATTERN`] with the selected generations spliced in.
+fn generation_pattern_for_selection() -> String {
+    GENERATION_NAME_PATTERN.replace(
+        "{}",
+        &format!("${{{}:regex}}", variables::MZ_GENERATION_LIST),
+    )
+}
+
+/// The `%%{interval}` window for `engine`, as that datasource spells it.
+///
+/// Not cosmetic: an engine handed the other's spelling passes it through to the
+/// backend as literal text, and both backends reject it as a duration. The engines
+/// with no Grafana datasource never reach a dataquery (see
+/// [`crate::grafana::query::data_query`]), so what they get here only has to be
+/// something that renders.
+fn rate_interval(engine: QueryEngine) -> &'static str {
+    match engine {
+        QueryEngine::LogQl => "[$__auto]",
+        _ => "[$__rate_interval]",
+    }
+}
+
 /// The PromQL fragment scoping a query to the selected environment(s).
 ///
 /// Inlined rather than routed through a Grafana constant variable: constant
@@ -111,9 +208,12 @@ pub struct DashboardScope {
     /// version: the two prefixes are two deployments of the SQL-based metric
     /// endpoints.
     pub sql_metric_prefix: String,
-    /// Namespace selector value for the Materialize operator. A plain value, not
-    /// a `$variable`: no dashboard defines an operator-namespace variable, and
-    /// referencing a missing one would match nothing.
+    /// Namespace selector value for the Materialize operator.
+    ///
+    /// A plain value by default, since referencing a variable no dashboard defines
+    /// would match nothing. A dashboard that defines
+    /// [`variable::operator_namespace`](crate::grafana::variable::operator_namespace)
+    /// sets this to `$operatorNamespace` — see [`Self::operator_variable`].
     pub operator_namespace: String,
     /// Namespace selector value for system / infrastructure components.
     pub system_namespace: String,
@@ -148,6 +248,17 @@ impl DashboardScope {
         }
     }
 
+    /// Point the operator-namespace parameter at the `$operatorNamespace`
+    /// variable rather than pinning a namespace.
+    ///
+    /// Only for a dashboard whose variable set includes
+    /// [`variable::operator_namespace`](crate::grafana::variable::operator_namespace);
+    /// on any other it renders a selector that matches nothing.
+    pub fn operator_variable(mut self) -> Self {
+        self.operator_namespace = format!("${}", variables::OPERATOR_NAMESPACE);
+        self
+    }
+
     /// Whichever of the above matches `prefix`.
     ///
     /// The prefix reaches a dashboard as a plain string from the command line, so
@@ -177,10 +288,17 @@ pub fn dashboard_context<'a>(
 
     let namespace_selector = format!(r#"namespace=~"${}""#, variables::MZ_NAMESPACE_LIST);
     let parameters = [
-        // Grafana built-ins: `$__rate_interval` adapts to the panel's resolution
-        // and scrape interval, which is what a dashboard wants where the doc
-        // context hardcodes a window.
-        ("interval", "[$__rate_interval]".to_string()),
+        // Grafana built-ins, and the one place the two engines genuinely differ:
+        // `$__rate_interval` is a *Prometheus* datasource variable. Grafana's Loki
+        // datasource does not define it, so it reaches Loki uninterpolated and the
+        // query fails to parse — "not a valid duration string" — rather than
+        // rendering empty. Loki's equivalent is `$__auto`, which resolves to the
+        // step for a range query and to the selected range for an instant one.
+        //
+        // Both adapt to the panel's resolution, which is what a dashboard wants
+        // where the extraction contexts hardcode a window.
+        ("interval", rate_interval(engine).to_string()),
+        // `$__range` is defined by both, and means the same thing in each.
         ("range", "[$__range]".to_string()),
         // The bare window, for a subquery. `range` carries its own brackets, so
         // `%%{range}:1m` would render `[$__range]:1m` -- not valid PromQL. A
@@ -197,6 +315,24 @@ pub fn dashboard_context<'a>(
         (
             "mzSystemNamespaceFilter",
             format!(r#"namespace=~"{}""#, scope.system_namespace),
+        ),
+        // Both namespaces in one matcher. Writing the operator and environment
+        // filters side by side would repeat the `namespace` label in one
+        // selector, which is an AND: a namespace cannot be two things at once, so
+        // it matches nothing and the panel is silently empty.
+        //
+        // The `:regex` forms are load-bearing here in a way they are not for the
+        // two single filters. Each of those *is* the whole matcher, where
+        // Grafana's default multi-value interpolation (`{a,b}`) still works; as a
+        // fragment of a larger alternation it is a glob, which means nothing to a
+        // regex engine.
+        (
+            "mzDeploymentNamespaceFilter",
+            format!(
+                r#"namespace=~"{}|${{{}:regex}}""#,
+                regex_form(&scope.operator_namespace),
+                variables::MZ_NAMESPACE_LIST
+            ),
         ),
         ("mzClusterList", format!("${}", variables::MZ_CLUSTER_LIST)),
         ("mzReplicaList", format!("${}", variables::MZ_REPLICA_LIST)),
@@ -229,6 +365,40 @@ pub fn dashboard_context<'a>(
         (
             "excludeEnvironmentFilter",
             scope.exclude_environments.clone(),
+        ),
+        // Generation, which is a *name* pattern rather than a label matcher --
+        // see `GENERATION_NAME_PATTERN`. `:regex` for the same reason as the
+        // cluster and replica forms: the value is a fragment of a larger regex,
+        // and Grafana's default multi-value interpolation is a glob.
+        (
+            "mzGenerationFilter",
+            format!(r#"pod=~"{}""#, generation_pattern_for_selection()),
+        ),
+        // The same idea for events, where the generation is in the object's name
+        // and the filter is a pipeline stage rather than a stream selector.
+        //
+        // The `or` is load-bearing. Only a handful of the objects a rollout
+        // touches carry a generation at all -- on this deployment, 6 of 70 event
+        // names -- and every operator lifecycle event is filed against the
+        // `Materialize` resource, which carries none. A bare `name=~` would drop
+        // the entire narrative and keep the pod noise. So: keep what belongs to a
+        // selected generation, and keep what belongs to no generation.
+        // The capture form, for a query that needs the generation as a *label*.
+        // A parameter rather than a template function because the `label_replace`
+        // has to wrap an inner selector, while a function wraps the whole
+        // template -- `label_replace(count by (generation) (...))` would be
+        // backwards.
+        (
+            "mzGenerationPattern",
+            GENERATION_CAPTURE_PATTERN.to_string(),
+        ),
+        (
+            "mzGenerationEventFilter",
+            format!(
+                r#"name=~"{}" or name!~"{}""#,
+                generation_pattern_for_selection(),
+                GENERATION_NAME_PATTERN.replace("{}", "[0-9]+"),
+            ),
         ),
     ]
     .into_iter()
@@ -296,6 +466,10 @@ mod tests {
             "mzOperatorNamespaceFilter",
             "mzEnvironmentNamespaceFilter",
             "mzSystemNamespaceFilter",
+            "mzDeploymentNamespaceFilter",
+            "mzGenerationFilter",
+            "mzGenerationEventFilter",
+            "mzGenerationPattern",
             "mzEnvironmentFilter",
             "excludeEnvironmentFilter",
             "mzClusterList",
@@ -315,19 +489,64 @@ mod tests {
     fn every_dollar_reference_is_a_grafana_builtin_or_a_required_variable() {
         // An undefined variable interpolates to nothing and the selector matches
         // no series, so this is the check that keeps a silently-empty panel from
-        // shipping.
+        // shipping. Both engines, since they do not share every built-in.
         let registry = QueryRegistry::new();
-        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
-        let builtins = ["__rate_interval", "__range"];
+        let builtins = ["__rate_interval", "__auto", "__range"];
 
-        for (name, value) in &ctx.parameters {
-            for reference in dollar_references(value) {
-                let known = builtins.contains(&reference.as_str())
-                    || REQUIRED_VARIABLES.contains(&reference.as_str())
-                    || NODE_VARIABLES.contains(&reference.as_str());
-                assert!(known, "parameter {name} references unknown ${reference}");
+        for engine in [QueryEngine::PromQl, QueryEngine::LogQl] {
+            let ctx = dashboard_context(&registry, engine, &DashboardScope::default());
+            for (name, value) in &ctx.parameters {
+                for reference in dollar_references(value) {
+                    let known = builtins.contains(&reference.as_str())
+                        || REQUIRED_VARIABLES.contains(&reference.as_str())
+                        || NODE_VARIABLES.contains(&reference.as_str())
+                        || OPERATOR_VARIABLES.contains(&reference.as_str())
+                        || GENERATION_VARIABLES.contains(&reference.as_str());
+                    assert!(
+                        known,
+                        "{engine} parameter {name} references unknown ${reference}"
+                    );
+                }
             }
         }
+    }
+
+    #[test]
+    fn each_engine_gets_its_own_datasources_spelling_of_the_interval() {
+        // `$__rate_interval` is a Prometheus datasource variable and `$__auto` is
+        // Loki's. Handing an engine the other one does not degrade to an empty
+        // panel: the literal text reaches the backend and is rejected as a
+        // duration, so the panel errors.
+        let registry = QueryRegistry::new();
+        let scope = DashboardScope::default();
+
+        let prom = dashboard_context(&registry, QueryEngine::PromQl, &scope);
+        assert_eq!(prom.parameters["interval"], "[$__rate_interval]");
+
+        let loki = dashboard_context(&registry, QueryEngine::LogQl, &scope);
+        assert_eq!(loki.parameters["interval"], "[$__auto]");
+
+        // `$__range` is spelled the same by both, so it is the one that must NOT
+        // diverge.
+        assert_eq!(prom.parameters["range"], loki.parameters["range"]);
+    }
+
+    #[test]
+    fn the_interval_is_the_only_parameter_that_varies_by_engine() {
+        // Everything else is a label matcher or a metric-name prefix, which the
+        // engine has no bearing on. A second divergence should be a deliberate
+        // edit here rather than a surprise.
+        let registry = QueryRegistry::new();
+        let scope = DashboardScope::default();
+        let prom = dashboard_context(&registry, QueryEngine::PromQl, &scope);
+        let loki = dashboard_context(&registry, QueryEngine::LogQl, &scope);
+
+        let differing: Vec<&String> = prom
+            .parameters
+            .keys()
+            .filter(|k| prom.parameters[*k] != loki.parameters[*k])
+            .collect();
+        assert_eq!(differing, vec!["interval"], "unexpected engine divergence");
     }
 
     /// Every `$name` in a string.
@@ -363,6 +582,115 @@ mod tests {
                 !dollar_references(value).contains(&"nodeList".to_string()),
                 "no parameter should supply $nodeList"
             );
+        }
+    }
+
+    #[test]
+    fn the_operator_namespace_is_pinned_by_default_and_a_variable_on_request() {
+        let registry = QueryRegistry::new();
+        let pinned = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
+        assert_eq!(
+            pinned.parameters["mzOperatorNamespaceFilter"],
+            r#"namespace=~"materialize""#
+        );
+
+        let scope = DashboardScope::default().operator_variable();
+        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &scope);
+        assert_eq!(
+            ctx.parameters["mzOperatorNamespaceFilter"],
+            r#"namespace=~"$operatorNamespace""#
+        );
+        // The switch is scoped to that one parameter: the system namespace stays
+        // pinned, since no dashboard defines a variable for it.
+        assert_eq!(
+            ctx.parameters["mzSystemNamespaceFilter"],
+            pinned.parameters["mzSystemNamespaceFilter"]
+        );
+    }
+
+    #[test]
+    fn the_deployment_filter_is_one_matcher_over_both_namespaces() {
+        let registry = QueryRegistry::new();
+        let scope = DashboardScope::default().operator_variable();
+        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &scope);
+        assert_eq!(
+            ctx.parameters["mzDeploymentNamespaceFilter"],
+            r#"namespace=~"${operatorNamespace:regex}|${mzNamespaceList:regex}""#
+        );
+        // One `namespace=` matcher, not two: repeating the label ANDs it.
+        assert_eq!(
+            ctx.parameters["mzDeploymentNamespaceFilter"]
+                .matches("namespace=")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn the_deployment_filter_inlines_a_pinned_operator_namespace() {
+        // With the operator namespace pinned there is no variable to format, and
+        // the literal goes straight into the alternation.
+        let registry = QueryRegistry::new();
+        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
+        assert_eq!(
+            ctx.parameters["mzDeploymentNamespaceFilter"],
+            r#"namespace=~"materialize|${mzNamespaceList:regex}""#
+        );
+    }
+
+    #[test]
+    fn the_generation_filters_match_both_workload_naming_shapes() {
+        // environmentd is `…-environmentd-<gen>-<ordinal>` and a replica is
+        // `…-gen-<gen>-<ordinal>`. One filter has to cover both, or a tab about a
+        // rollout shows environmentd and silently omits its replicas.
+        let registry = QueryRegistry::new();
+        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
+        let filter = &ctx.parameters["mzGenerationFilter"];
+        assert_eq!(
+            filter,
+            r#"pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+""#
+        );
+    }
+
+    #[test]
+    fn the_generation_event_filter_keeps_objects_that_have_no_generation() {
+        // Most objects a rollout touches carry no generation, and every operator
+        // lifecycle event is filed against the `Materialize` resource, which
+        // carries none. A bare `name=~` would drop the whole narrative and keep
+        // the pod noise, so the `or` arm is the point of this parameter.
+        let registry = QueryRegistry::new();
+        let ctx = dashboard_context(&registry, QueryEngine::LogQl, &DashboardScope::default());
+        let filter = &ctx.parameters["mzGenerationEventFilter"];
+        assert_eq!(
+            filter,
+            concat!(
+                r#"name=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+""#,
+                r#" or name!~".*-(environmentd|gen)-([0-9]+)-[0-9]+""#
+            )
+        );
+        // The escape hatch is a negated matcher, not a second positive one --
+        // two positives would keep everything and the control would do nothing.
+        assert!(filter.contains(" or name!~"), "{filter}");
+    }
+
+    #[test]
+    fn the_generation_filters_interpolate_as_a_regex_fragment() {
+        // The value is spliced into a larger pattern, where Grafana's default
+        // multi-value interpolation (`{a,b}`) is a glob and matches nothing.
+        let registry = QueryRegistry::new();
+        for engine in [QueryEngine::PromQl, QueryEngine::LogQl] {
+            let ctx = dashboard_context(&registry, engine, &DashboardScope::default());
+            for key in ["mzGenerationFilter", "mzGenerationEventFilter"] {
+                let value = &ctx.parameters[key];
+                assert!(
+                    value.contains("${mzGenerationList:regex}"),
+                    "{key} does not use the regex form: {value}"
+                );
+                assert!(
+                    !value.contains("\"$mzGenerationList\""),
+                    "{key} uses the plain form: {value}"
+                );
+            }
         }
     }
 

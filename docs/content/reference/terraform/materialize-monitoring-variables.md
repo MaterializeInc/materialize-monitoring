@@ -201,13 +201,9 @@ takes the resource types out from under it. Destroy in the module's own order, a
         <td class="tf-var-type"><code>bool</code></td>
       <td class="tf-var-desc">Enable the SQL-on-scrape collector against environmentd.
 
-Off by default. The chart enables it with an empty password, and no `mz_support` role is
-provisioned by the Materialize Terraform modules, so it would come up failing authentication.
-It also targets the legacy metric surface that native endpoints are replacing.
-
-Supply `sql_scraper_password` when enabling it.
+On by default. The chart currently works with an empty password.
 </td>
-        <td class="tf-var-default"><code>false</code></td>
+        <td class="tf-var-default"><code>true</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="gateway_service_account_annotations" href="#gateway_service_account_annotations">gateway_<wbr>service_<wbr>account_<wbr>annotations</a></td>
@@ -707,8 +703,8 @@ is how Thanos sizing will start applying once those profiles land.
     <tr>
       <td class="tf-var-name"><a name="sql_scraper_password" href="#sql_scraper_password">sql_<wbr>scraper_<wbr>password</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Password for the SQL scraper's database user. Required when `enable_sql_scraper` is true.</td>
-        <td class="tf-var-default"><code>&{}</code></td>
+      <td class="tf-var-desc">Password for the SQL scraper's database user.</td>
+        <td class="tf-var-default"><code></code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="storage_class" href="#storage_class">storage_<wbr>class</a></td>

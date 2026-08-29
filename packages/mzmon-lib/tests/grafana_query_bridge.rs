@@ -166,14 +166,18 @@ fn log_queries_bridge_to_loki() {
 #[test]
 fn every_query_renders_through_the_dashboard_context() {
     use mzmon_lib::grafana::context::{
-        DashboardScope, NODE_VARIABLES, REQUIRED_VARIABLES, dashboard_context,
+        DashboardScope, GENERATION_VARIABLES, NODE_VARIABLES, OPERATOR_VARIABLES,
+        REQUIRED_VARIABLES, dashboard_context,
     };
 
     let registry = registry();
     let scope = DashboardScope::default();
     let ctx = dashboard_context(&registry, QueryEngine::PromQl, &scope);
 
-    // Grafana's own built-ins, plus the variables a dashboard must define.
+    // Grafana's own built-ins, plus the variables a dashboard must define --
+    // including the optional sets, which only some dashboards provide. A query
+    // naming one of those is asserting that its dashboard defines it; that
+    // pairing is checked on the dashboard side, in `mz-dashboards`.
     let builtins = ["__rate_interval", "__range", "__interval", "__auto"];
 
     let mut failures = Vec::new();
@@ -203,6 +207,8 @@ fn every_query_renders_through_the_dashboard_context() {
                 if !builtins.contains(&reference.as_str())
                     && !REQUIRED_VARIABLES.contains(&reference.as_str())
                     && !NODE_VARIABLES.contains(&reference.as_str())
+                    && !OPERATOR_VARIABLES.contains(&reference.as_str())
+                    && !GENERATION_VARIABLES.contains(&reference.as_str())
                 {
                     failures.push(format!("{}: references unknown ${reference}", query.id));
                 }

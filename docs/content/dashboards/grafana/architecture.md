@@ -232,7 +232,15 @@ instead of being reinterpreted by the operator.
 `resyncPeriod` is how often the operator re-pushes the dashboard, which is also how quickly a hand-edit in the Grafana UI gets reverted.
 Treat operator-managed dashboards as read-only: copy to a new dashboard rather than editing in place.
 
-Currently one dashboard ships: **Materialize Environment Overview** (`env-top` → dashboard UID `mz-mon-env-top`).
+Two dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
+
+- **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
+- **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
+  Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
+  Thanos.
+  Both halves need a Materialize operator new enough to emit them — see the `min-mz-version` annotation on the
+  rendered dashboard — and render empty against an older one.
+  Narrow `dashboards.selected` to `["env-top"]` to leave it out.
 
 ### Instance selection
 
@@ -278,6 +286,13 @@ silently break every query on the board.
 
 The consequence is a hard requirement: **exactly one Prometheus-type datasource must be marked default** in the target Grafana.
 If none is default, every panel on the dashboard renders empty with no obvious error.
+
+`env-upgrade` declares a second one, `logsDatasource` with `pluginId: loki`, on the same terms.
+Two variables rather than one because a `DatasourceVariable` resolves against a single plugin id, so one cannot offer
+both a Prometheus and a Loki datasource; a dashboard mixing engines needs one of each, and each panel's dataquery names
+the one matching its engine.
+The same requirement follows: **exactly one Loki-type datasource must be marked default**, or every panel on the
+Events tab renders empty.
 
 The chart ships two, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
 

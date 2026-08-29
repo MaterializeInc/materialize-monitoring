@@ -104,7 +104,7 @@ fn baseline_panels() -> BTreeMap<String, (String, serde_json::Value)> {
 }
 
 fn ours() -> dashboardv2::Dashboard {
-    env_top::build(mz_dashboards::grafana::Cloud::Generic, "mz_", &registry())
+    env_top::build("mz_", &registry())
         .expect("build the dashboard")
         .spec
 }
