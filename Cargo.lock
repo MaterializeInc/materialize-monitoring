@@ -1550,6 +1550,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "libtest-mimic",
+ "mzmon-lib",
  "percent-encoding",
  "rustls",
  "rustls-pki-types",

@@ -18,6 +18,7 @@
 
 pub mod alloy;
 pub mod grafana;
+pub mod kube_state;
 pub mod loki;
 pub mod thanos;
 pub mod tls;

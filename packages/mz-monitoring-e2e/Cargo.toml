@@ -5,6 +5,13 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[dev-dependencies]
+# Test-only: the registry-coverage test reads the query YAML to prove the metric
+# list the runtime assertion walks is still the one the queries depend on. The
+# assertion binary itself needs no source tree, so this stays out of the runtime
+# dependencies.
+mzmon-lib = { path = "../mzmon-lib" }
+
 [dependencies]
 anyhow = "1.0.104"
 base64 = "0.23.1"

@@ -207,7 +207,7 @@ queries:
 
   # --- workload readiness --------------------------------------------------
   - id: materialize.kubernetes.pods.readiness
-    stability: best-effort
+    stability: canonical
     description:
       summary: |
         Pods in the Materialize namespace grouped by phase (Running, Pending,
@@ -216,7 +216,16 @@ queries:
       degraded: |
         Pending usually means Kubernetes can't schedule them (capacity, taints,
         AZ constraints); Failed means a container exited and won't be restarted.
-      notes: Requires kube-state-metrics.
+      notes: |
+        Requires kube-state-metrics.
+
+        Canonical because the `kube_*` families it reads are asserted against a
+        running stack by `kube_state::labels_are_honored` in the e2e suite. That
+        check exists for one specific failure: when the scrape does not set
+        `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are
+        renamed `exported_*` and replaced by the exporter pod's own identity, so
+        this query matches nothing while `up` and `scrape_samples_scraped` stay
+        healthy. It shipped that way once and was found by eye.
     promQL: |
       max by (phase, namespace) (
         sum by (phase, namespace, instance) (
@@ -229,14 +238,23 @@ queries:
       sum:kube_pod_status_phase{namespace:%%{mzNamespaceList}} by {phase,namespace}
     instant: true
   - id: materialize.kubernetes.statefulsets.ready
-    stability: best-effort
+    stability: canonical
     description:
       summary: |
         StatefulSet replicas reporting Ready. environmentd and the cluster pods
         are StatefulSets.
       nominal: Matches the configured replica count.
       degraded: A drop indicates a pod stuck in initialization or hydration.
-      notes: Requires kube-state-metrics.
+      notes: |
+        Requires kube-state-metrics.
+
+        Canonical because the `kube_*` families it reads are asserted against a
+        running stack by `kube_state::labels_are_honored` in the e2e suite. That
+        check exists for one specific failure: when the scrape does not set
+        `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are
+        renamed `exported_*` and replaced by the exporter pod's own identity, so
+        this query matches nothing while `up` and `scrape_samples_scraped` stay
+        healthy. It shipped that way once and was found by eye.
     promQL: |
       max by (namespace) (
         sum by (namespace, instance) (
@@ -247,14 +265,23 @@ queries:
       sum:kube_statefulset_status_replicas_ready{namespace:%%{mzNamespaceList}} by {namespace}
     instant: true
   - id: materialize.kubernetes.deployments.readiness
-    stability: best-effort
+    stability: canonical
     description:
       summary: |
         Deployment replica health — Ready vs Unavailable. Deployments back
         stateless services (e.g. the promsql exporter).
       nominal: All replicas Ready, zero Unavailable.
       degraded: Unavailable counts indicate failed rollouts or crashing pods.
-      notes: Requires kube-state-metrics.
+      notes: |
+        Requires kube-state-metrics.
+
+        Canonical because the `kube_*` families it reads are asserted against a
+        running stack by `kube_state::labels_are_honored` in the e2e suite. That
+        check exists for one specific failure: when the scrape does not set
+        `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are
+        renamed `exported_*` and replaced by the exporter pod's own identity, so
+        this query matches nothing while `up` and `scrape_samples_scraped` stay
+        healthy. It shipped that way once and was found by eye.
     promQL:
       - |
         max by (namespace) (
