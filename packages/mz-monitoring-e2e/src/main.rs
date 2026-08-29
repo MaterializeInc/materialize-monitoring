@@ -295,6 +295,24 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         checks::thanos::samples_scraped,
     ));
 
+    // Gated on both: the assertion reads kube-state-metrics series *through*
+    // Thanos, so either being absent makes it unanswerable rather than failing.
+    let kube_state = thanos && ctx.features.enabled("kube-state-metrics");
+    trials.push(trial(
+        runtime,
+        ctx,
+        "kube_state::labels_are_honored",
+        kube_state,
+        checks::kube_state::labels_are_honored,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "kube_state::pods_are_distinguishable",
+        kube_state,
+        checks::kube_state::pods_are_distinguishable,
+    ));
+
     trials.push(trial(
         runtime,
         ctx,

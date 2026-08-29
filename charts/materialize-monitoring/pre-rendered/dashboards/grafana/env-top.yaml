@@ -4501,6 +4501,8 @@ spec:
           **Degraded:** Unavailable counts indicate failed rollouts or crashing pods.
 
           Requires kube-state-metrics.
+
+          Canonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.
         id: 1014
         links: []
         title: Deployment Readiness
@@ -4580,6 +4582,8 @@ spec:
           **Degraded:** Pending usually means Kubernetes can't schedule them (capacity, taints, AZ constraints); Failed means a container exited and won't be restarted.
 
           Requires kube-state-metrics.
+
+          Canonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.
         id: 1012
         links: []
         title: Pod Readiness
@@ -4659,6 +4663,8 @@ spec:
           **Degraded:** A drop indicates a pod stuck in initialization or hydration.
 
           Requires kube-state-metrics.
+
+          Canonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.
         id: 1013
         links: []
         title: StatefulSet Readiness

@@ -5999,6 +5999,39 @@ the cluster network entirely. Narrow the CIDR to your control plane's where
 you know it.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.prometheus<wbr>.monitor<wbr>.http</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "honorLabels": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep kube-state-metrics' own labels when they collide with the scrape's.
+
+**Load-bearing, not a preference.**
+
+Every `kube_*` series carries its own `namespace`, `pod` and `container`
+labels describing *the object it reports on* — that is the entire point of
+the exporter. Those names collide with the target labels of the scrape,
+which describe the kube-state-metrics pod itself. Without this, Prometheus
+resolves the collision by renaming the exporter's labels to
+`exported_namespace` / `exported_pod` and writing the *target's* identity
+into `namespace` / `pod`.
+
+The result is not missing data, which is why it went unnoticed: every
+series arrives, `up` is 1 and `scrape_samples_scraped` is healthy, but
+every series reads `namespace="<the monitoring namespace>"`.
+`kube_pod_info` collapses from one series per pod to a single identity,
+and any query written as `kube_*{namespace=…}` — which is all of ours —
+silently matches nothing.
+
+Both endpoints, so turning `selfMonitor` on does not reintroduce it on the
+half nobody was looking at. The subchart defaults both to `false`.
+
+Asserted by the e2e suite: `kube_state::labels_are_honored`.
+</td>
+    </tr>
   </tbody>
 </table>
 
