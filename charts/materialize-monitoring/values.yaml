@@ -4070,6 +4070,11 @@ kube-state-metrics:
     monitor:
       enabled: true
 
+      http:
+        honorLabels: true
+      metrics:
+        honorLabels: true
+
 # -- (h4) node-exporter for hardware and OS metrics from every node.
 # @notationType -- (sectionstart) Node Exporter
 # @raw
