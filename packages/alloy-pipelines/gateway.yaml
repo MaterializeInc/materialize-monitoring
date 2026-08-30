@@ -950,12 +950,26 @@ blocks:
               stream: ""
               pod_ready: ""
               msg: ""
+        # The Kubernetes-derived labels, deliberately few. Not the whole label
+        # set -- `level`, `component`, `job` and `service_name` are applied by
+        # earlier stages, and journal logs carry `unit` instead of `namespace` --
+        # but every label anywhere multiplies stream cardinality, which Loki
+        # charges for on both write and read, so anything a reader might filter
+        # on that is not worth an index entry stays structured metadata.
+        #
+        # `pod` is structured metadata *only*, and that is the sharp edge of this
+        # set: a pod name is unbounded and changes on every restart, so promoting
+        # it to a label makes a new stream per pod per rollout. Filter on it after
+        # a `|`, not inside `{}`.
+        #
+        # There were four `k8s_`-prefixed aliases here — `k8s_namespace`,
+        # `k8s_app`, `k8s_container`, `k8s_pod` — carried for compatibility with
+        # an earlier pipeline. The first three duplicated the unprefixed labels
+        # exactly, doubling the label count for nothing; `k8s_pod` was the only
+        # one that carried anything new, and what it carried was the cardinality
+        # problem above. All four are removed.
         - stage.labels:
             values:
-              k8s_namespace: namespace
-              k8s_app: app
-              k8s_container: container
-              k8s_pod: pod
               namespace: namespace
               app: app
               container: container
