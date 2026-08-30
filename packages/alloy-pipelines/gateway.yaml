@@ -950,10 +950,12 @@ blocks:
               stream: ""
               pod_ready: ""
               msg: ""
-        # The label set, deliberately small. Every label here multiplies the
-        # stream cardinality, and Loki charges for that on both write and read;
-        # everything else a reader might filter on is structured metadata, which
-        # is queryable without being part of a stream's identity.
+        # The Kubernetes-derived labels, deliberately few. Not the whole label
+        # set -- `level`, `component`, `job` and `service_name` are applied by
+        # earlier stages, and journal logs carry `unit` instead of `namespace` --
+        # but every label anywhere multiplies stream cardinality, which Loki
+        # charges for on both write and read, so anything a reader might filter
+        # on that is not worth an index entry stays structured metadata.
         #
         # `pod` is structured metadata *only*, and that is the sharp edge of this
         # set: a pod name is unbounded and changes on every restart, so promoting

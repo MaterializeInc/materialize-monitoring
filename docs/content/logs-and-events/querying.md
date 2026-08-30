@@ -52,7 +52,9 @@ In both cases the cost lands on every query against that namespace, not only the
 
 ## Keeping queries fast
 
-- **Narrow the stream selector first.** Selecting by `namespace`, `app`, `container` or `level` before line filters is the biggest single speedup — those four are the whole label set, so anything else you filter on is structured metadata and belongs after a `|`.
+- **Narrow the stream selector first.** Selecting by `namespace`, `app`, `container` or `level` before line filters is the biggest single speedup.
+  Those are the labels you will reach for most; a stream also carries `component`, `job` and `service_name`, node journal logs carry `unit` instead of `namespace`, and a per-environment namespace adds `environment_id`.
+  Anything not in that set — `pod`, `node`, `trace_id`, and the rest — is structured metadata and belongs after a `|`.
 - **Bound the time range.** Shorter ranges scan fewer chunks; the frontend also caches by range.
 - **Let the frontend split.** Long-range queries parallelize across queriers automatically when the frontend is in the path.
 - **Scale the read side independently.** Queriers are stateless — add replicas for heavier query load without touching the write path.
