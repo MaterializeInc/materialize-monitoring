@@ -1,10 +1,10 @@
 dependencies:
 - name: alloy
   repository: https://grafana.github.io/helm-charts
-  version: 1.11.1
+  version: 1.12.1
 - name: alloy
   repository: https://grafana.github.io/helm-charts
-  version: 1.11.1
+  version: 1.12.1
 - name: loki
   repository: oci://ghcr.io/grafana-community/helm-charts
   version: 18.11.0
@@ -29,5 +29,5 @@ dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
-digest: sha256:116ed6e1704a1a7da75c1615a4222288ab97c372163f0d3460b73d088f42a890
-generated: "2026-08-22T10:57:05.804361-04:00"
+digest: sha256:75e6a03faa7fb9ebfe3a970394afcbff9201b753b4b1de44a15d4fa0adf8d726
+generated: "2026-08-30T13:37:38.958336452Z"
