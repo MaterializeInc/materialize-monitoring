@@ -61,7 +61,7 @@ The verified round trip on a fresh cluster:
 
 ```
 loki_ingester_streams_created_total{tenant="loki"} 59
-labels: app, component, container, job, k8s_app, k8s_container, k8s_namespace, k8s_pod, level, namespace, service_name
+labels: app, component, container, job, level, namespace, service_name
 ```
 
 Three warnings are expected here and are not failures: SingleBinary deployment mode, Loki's NetworkPolicy disabled (`loki-test` turns it off), and every gateway metric destination disabled.

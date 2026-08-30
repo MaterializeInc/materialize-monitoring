@@ -20,6 +20,11 @@ This page says what you can safely build on, and what happens when something has
 | **Metric-importance tier names** (`essential`, `recommended`, `extended`, `diagnostic`, `all`) | Stable |
 | **Chart and image names**, OCI paths, and the `<component>/vX.Y.Z` tag format | Stable |
 | The `monitoring.materialize.cloud/*` annotation namespace | Stable |
+| **Loki stream labels** — the set the collection pipeline promotes to labels (`namespace`, `app`, `container`, `level`, …) | Not renamed or removed without the cycle below. Any LogQL you have written selects on these, so a change breaks saved queries, alerts and panels at once. Whether an attribute is a *label* or *structured metadata* is part of the guarantee: promoting or demoting one changes where it belongs in a query. Adding a new attribute as structured metadata is not a break |
+
+**This table is not exhaustive.** It names the surfaces we know people build on, and it grows as we learn about more.
+If you depend on something that is not listed, that is not our licence to change it quietly — [tell us](https://github.com/MaterializeInc/materialize-monitoring/issues) and we will either add a row or explain why we cannot commit to it.
+Either way you will know where you stand, which is the point of the page.
 
 ## The deprecation cycle
 

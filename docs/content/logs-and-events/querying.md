@@ -14,7 +14,7 @@ See the [logging architecture](../architecture/) for how the read path fits toge
 In the bundled stack, Grafana ships with a **Loki datasource** pre-provisioned by the Grafana operator, so logs are queryable from Explore and from dashboard panels without extra setup.
 Queries are written in [LogQL](../../o11y-glossary/#dashboards-and-queries), Loki's query language:
 
-- A **stream selector** picks log streams by label, e.g. `{k8s_namespace="materialize", k8s_container="environmentd"}`.
+- A **stream selector** picks log streams by label, e.g. `{namespace="materialize", container="environmentd"}`.
 - **Line filters** match within the body, e.g. `|= "error"` or `|~ "timeout|refused"`.
 - **Parsers and expressions** extract and reshape fields, e.g. `| json | level="ERROR"`.
 
@@ -32,12 +32,27 @@ Splitting and caching are why a broad query can still return quickly the second 
 
 ## Querying structured metadata
 
-High-cardinality attributes such as `trace_id`, `span_id`, and per-request detail are stored as [structured metadata](../architecture/#storage), not as labels.
+High-cardinality attributes such as `pod`, `node`, `trace_id`, `span_id`, and per-request detail are stored as [structured metadata](../architecture/#storage), not as labels.
 They are still queryable — filter on them after a label selector — but they do not inflate [stream cardinality](../../o11y-glossary/#logs-and-events), so you get targeted lookups without the storage-and-stability cost of making them labels.
+
+**`pod` and `node` are the two to know**, because they are what most people reach for first.
+Both are structured metadata, so they go after a `|` rather than inside the braces:
+
+```logql
+{namespace="materialize-environment", app="environmentd"} | pod=~"mz.*-environmentd-.*"
+{namespace="materialize-environment"} | node="gke-mycluster-default-pool-1a2b3c4d-xyz9"
+```
+
+Both churn, which is exactly why they are not labels.
+A pod name is unbounded and changes on every restart, so indexing it would create a new stream per pod per rollout.
+Node names churn on the same order for a different reason — every scale-up mints one and every scale-down retires it — so a cluster that autoscales would accumulate streams for nodes that no longer exist.
+In both cases the cost lands on every query against that namespace, not only the ones that filter by pod or node.
+
+`pod` is also the one that *changed*: it was a stream label under its `k8s_pod` spelling until that was removed.
 
 ## Keeping queries fast
 
-- **Narrow the stream selector first.** Selecting by `k8s_namespace`, `k8s_app`, or `level` before line filters is the biggest single speedup.
+- **Narrow the stream selector first.** Selecting by `namespace`, `app`, `container` or `level` before line filters is the biggest single speedup — those four are the whole label set, so anything else you filter on is structured metadata and belongs after a `|`.
 - **Bound the time range.** Shorter ranges scan fewer chunks; the frontend also caches by range.
 - **Let the frontend split.** Long-range queries parallelize across queriers automatically when the frontend is in the path.
 - **Scale the read side independently.** Queriers are stateless — add replicas for heavier query load without touching the write path.

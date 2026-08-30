@@ -101,11 +101,39 @@ pub async fn streams_created(ctx: &Ctx) -> Result<()> {
     .await
 }
 
-/// The gateway's relabelling stage ran.
+/// The stream labels the gateway applies. Deliberately three.
 ///
-/// The `k8s_*` label families are applied by the Alloy gateway, not by the
-/// agent, so their presence separates "the gateway forwarded and relabelled" from
-/// "something wrote to Loki".
+/// Every label multiplies stream cardinality, which Loki charges for on both
+/// write and read, so this set is kept to what a reader genuinely selects on.
+const GATEWAY_LABELS: &[&str] = &["namespace", "app", "container"];
+
+/// Attributes that must stay structured metadata rather than becoming labels.
+///
+/// `pod` is the one that matters and the one that was a label until it was
+/// demoted; the `k8s_`-prefixed four are the compatibility aliases removed
+/// alongside it. Three of those merely duplicated the unprefixed labels, and
+/// `k8s_pod` carried the cardinality problem.
+const STRUCTURED_METADATA_ONLY: &[&str] = &[
+    "pod",
+    "k8s_pod",
+    "k8s_namespace",
+    "k8s_app",
+    "k8s_container",
+];
+
+/// The gateway's relabelling stage ran, and it produced the label set we promise.
+///
+/// `namespace`, `app` and `container` are applied by the Alloy gateway, not by
+/// the agent, so their presence separates "the gateway forwarded and relabelled"
+/// from "something wrote to Loki".
+///
+/// The absent half is asserted just as hard. **`pod` is structured metadata, not
+/// a label**, and so are the four `k8s_`-prefixed aliases this pipeline used to
+/// emit. A pod name is unbounded and changes on every restart, so promoting it
+/// to a label means a new stream per pod per rollout — the cardinality mistake
+/// that is cheap to make and expensive to undo, since it is already in the index
+/// by the time anyone notices. Nothing fails loudly when a label reappears, which
+/// is why it is checked here rather than left to review.
 pub async fn gateway_labels(ctx: &Ctx) -> Result<()> {
     let service = ctx
         .cluster
@@ -114,7 +142,7 @@ pub async fn gateway_labels(ctx: &Ctx) -> Result<()> {
     let target = loki_target(ctx, service)?.with_tenant(ctx.features.loki_tenant());
 
     retry_until(
-        "gateway-applied k8s_pod label is present",
+        "the gateway applies namespace/app/container, and nothing else",
         ctx.deadline,
         ctx.interval,
         || async {
@@ -131,11 +159,34 @@ pub async fn gateway_labels(ctx: &Ctx) -> Result<()> {
                 .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>())
                 .unwrap_or_default();
 
-            if labels.contains(&"k8s_pod") {
-                Ok(())
-            } else {
-                bail!("no k8s_pod label; Loki knows only: {}", labels.join(", "))
+            let missing: Vec<&str> = GATEWAY_LABELS
+                .iter()
+                .copied()
+                .filter(|label| !labels.contains(label))
+                .collect();
+            if !missing.is_empty() {
+                bail!(
+                    "the gateway's relabelling did not run: missing {}. Loki knows only: {}",
+                    missing.join(", "),
+                    labels.join(", ")
+                );
             }
+
+            let promoted: Vec<&str> = STRUCTURED_METADATA_ONLY
+                .iter()
+                .copied()
+                .filter(|label| labels.contains(label))
+                .collect();
+            if !promoted.is_empty() {
+                bail!(
+                    "these are structured metadata and must not be stream labels, but Loki \
+                     indexes them: {}. Each one multiplies stream cardinality -- `pod` alone \
+                     means a new stream per pod per rollout",
+                    promoted.join(", ")
+                );
+            }
+
+            Ok(())
         },
     )
     .await
@@ -160,9 +211,9 @@ pub async fn recent_query(ctx: &Ctx) -> Result<()> {
         .await?;
     let target = loki_target(ctx, service)?.with_tenant(ctx.features.loki_tenant());
 
-    // The gateway applies `namespace` alongside the `k8s_*` families, so this
-    // selector also confirms the logs came through the pipeline rather than
-    // from something writing to Loki directly.
+    // `namespace` is gateway-applied, so this selector also confirms the logs
+    // came through the pipeline rather than from something writing to Loki
+    // directly.
     let selector = format!("{{namespace=\"{}\"}}", ctx.cluster.namespace());
     let what = format!(
         "query_range returns a stream written in the last {}s",
