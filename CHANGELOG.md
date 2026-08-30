@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.13.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.5.0 (Unreleased)
 
 _Changes Pending_
@@ -84,9 +88,53 @@ _Changes Pending_
 * Fix snapshots and memcached registry in latest loki
     * [materialize-monitoring#257](https://github.com/MaterializeInc/materialize-monitoring/pull/257)
 
-## Pipelines v0.12.0 (Unreleased)
+## Pipelines v0.12.0
 
-_Changes Pending_
+* DEP-241 Remove deprecated alias `k8s_*` labels from logging pipeline; drop pod to metadata only
+    * [materialize-monitoring#300](https://github.com/MaterializeInc/materialize-monitoring/pull/300)
+    * **Removed:** the `k8s_namespace`, `k8s_app`, and `k8s_container` Loki stream labels, deprecated to consumers in April, 2026. Use `namespace`, `app` and `container` respectively
+    * **Removed:** the `k8s_pod` label has been fully removed with expectation to use the `pod` _structured metadata_. Prefer the `namespace` and `app` labels for label filters. Remember that you can always filter by structured metadata like `{app="my-app"} | pod="my-app-pod-12345"`
+* DEP-210 Upgrade visibility dashboard
+    * [materialize-monitoring#294](https://github.com/MaterializeInc/materialize-monitoring/pull/294)
+    * Adds a new mz-env-upgrade dashboard, enabled by default
+        * Requires materialize v26.41.0
+    * Enable sql scrapers by default
+* DEP-232 Support multiple prometheus RemoteWrite destinations
+    * [materialize-monitoring#272](https://github.com/MaterializeInc/materialize-monitoring/pull/272)
+    * terraform: add new variables for tuning prometheus remote_write destinations (as a map)
+    * **breaking** helm: move prometheusRemoteEntries destinations down one to a keyed map `pipeline.metrics.gateway.destination.prometheusRemoteWrite` -> `pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos`
+* DEP-127 Policy for deprecations and breaking changes
+    * [materialize-monitoring#271](https://github.com/MaterializeInc/materialize-monitoring/pull/271)
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * DEP-240 Ensure kube-state-metrics metrics do not have namespace overwritten
+        * [materialize-monitoring#297](https://github.com/MaterializeInc/materialize-monitoring/pull/297)
+        * regression: kube-state-metrics were namespaced as `export_namespace=$target` with `namespace=monitoring` on all because the scraper overwrote that label with the namespace KSM was running in
+    * DEP-209 Create a dashboard for Materialize logs and events
+        * [materialize-monitoring#296](https://github.com/MaterializeInc/materialize-monitoring/pull/296)
+        * Adds the new mz-mon-env-logs dashboard, installed by default
+    * Release mzmon-lib (shared library) v0.11.0
+        * [materialize-monitoring#290](https://github.com/MaterializeInc/materialize-monitoring/pull/290)
+    * DEP-222 Remove the old python implementation for dashboards fully
+        * [materialize-monitoring#291](https://github.com/MaterializeInc/materialize-monitoring/pull/291)
+    * Release Dashboards v0.12.0
+        * [materialize-monitoring#46](https://github.com/MaterializeInc/materialize-monitoring/pull/46)
+    * Release mzmon-lib (shared library) v0.10.0
+        * [materialize-monitoring#201](https://github.com/MaterializeInc/materialize-monitoring/pull/201)
+    * DEP-222 Port Materialize Environment Overview to rust sdk
+        * [materialize-monitoring#285](https://github.com/MaterializeInc/materialize-monitoring/pull/285)
+        * Dashboards have been rewritten under a different dashboard framework
+            * Dashboard queries have adopted queries from our query registry
+    * DEP-222 Rust implementation of Grafana Dashboard framework
+        * [materialize-monitoring#280](https://github.com/MaterializeInc/materialize-monitoring/pull/280)
+    * DEP-222 Add generated grafana models
+        * [materialize-monitoring#282](https://github.com/MaterializeInc/materialize-monitoring/pull/282)
+    * DEP-238 Refresh vendored grafana foundation sdk schemas; keep updated
+        * [materialize-monitoring#275](https://github.com/MaterializeInc/materialize-monitoring/pull/275)
+    * DEP-237 Support additional release notes in changelogs
+        * [materialize-monitoring#268](https://github.com/MaterializeInc/materialize-monitoring/pull/268)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.18.0
 
