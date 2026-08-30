@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards v0.14.0 (Unreleased)
 
 _Changes Pending_
@@ -111,9 +115,14 @@ _Changes Pending_
 * DEP-204 Expose OTLP and Datadog configs to Terraform
     * [materialize-monitoring#247](https://github.com/MaterializeInc/materialize-monitoring/pull/247)
 
-## Container Images v0.4.0 (Unreleased)
+## Container Images v0.4.0
 
-_Changes Pending_
+* Update dependency grafana/alloy to v1.19.2
+    * [materialize-monitoring#278](https://github.com/MaterializeInc/materialize-monitoring/pull/278)
+    * [`v1.19.2`](https://redirect.github.com/grafana/alloy/releases/tag/v1.19.2)
+    * [`v1.19.0`](https://redirect.github.com/grafana/alloy/releases/tag/v1.19.0)
+* Update debian:13 Docker digest to f324c7f
+    * [materialize-monitoring#287](https://github.com/MaterializeInc/materialize-monitoring/pull/287)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.16.2
 
