@@ -25,12 +25,15 @@
 //!
 //! # Materialize-first, not Materialize-only
 //!
-//! `$materializeNamespacesOnly` gates namespace *discovery*, so the picker opens
-//! on the deployment's own namespaces and one click reaches the monitoring stack,
-//! `kube-system` and the platform underneath. A filter rather than a hard scope,
-//! because the monitoring stack's own logs are what you need when telemetry
-//! itself is failing — and because the narrow value is a naming convention rather
-//! than a derived fact, so being wrong about it has to be recoverable.
+//! The namespace picker discovers every namespace and merely *opens* on the
+//! deployment's own, so the monitoring stack, `kube-system` and the platform
+//! underneath are one selection away. A default rather than a hard scope, because
+//! the monitoring stack's own logs are what you need when telemetry itself is
+//! failing — and because the narrow value is a naming convention rather than a
+//! derived fact, so being wrong about it has to be recoverable.
+//!
+//! `infra-logs` is the mirror image: it opens on everything and subtracts these
+//! same namespaces by default.
 //!
 //! # Tabs
 //!

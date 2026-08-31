@@ -103,19 +103,18 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 
 The table above is the **product** ask: dashboards a Materialize user needs, all of them scoped to an environment and
 all named `env-*`.
-An infrastructure admin running the cluster underneath has a different set, and today it is unserved — `env-logs` is
-the only place any of it surfaces, and only by widening a switch that was never meant to carry a second audience.
+An infrastructure admin running the cluster underneath has a different set.
 
 The family is `infra-*`, scoped to the cluster rather than to an environment.
 `infra-logs` is the first of it and is built; the rest below are still proposals.
-Two consequences to settle before the first one lands:
+Both questions the family raised are settled:
 
-- **`dashboards.selected` defaults to `["env-*"]`**, so nothing `infra-*` ships without widening it.
-  Whether infra dashboards are on by default is a real choice: they are useful to the operator of a self-managed
-  install and noise to someone who only runs Materialize on someone else's platform.
-- **`env-logs` should narrow once `infra-logs` exists.**
-  Its `$materializeNamespacesOnly` switch exists only because one dashboard is currently serving both audiences; the
-  right end state is `env-logs` Materialize-scoped and `infra-*` owning the rest.
+- **`infra-*` ships by default**, alongside `env-*`, in `dashboards.selected`.
+  The alternative — useful to whoever operates a self-managed install, noise to whoever only runs Materialize on
+  someone else's platform — lost to the fact that a self-managed installation has no other operator.
+- **The two audiences are split by default rather than by a switch.**
+  `env-logs` opens on the Materialize namespaces and `infra-logs` subtracts them, so each dashboard answers for one
+  audience while still reaching the other in a click.
 
 None of the below is ticketed yet.
 The "collectable today" column is what a live self-managed install actually exposes, measured rather than assumed —

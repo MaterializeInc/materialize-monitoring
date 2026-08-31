@@ -304,7 +304,6 @@ it is the same kind of content — an operator moving between the two is not tol
 ## `infra-logs` tabs
 
 The first of the `infra-*` family — scoped to the cluster rather than to an environment.
-**Not installed by default**: `dashboards.selected` is `["env-*"]`, so the whole family needs a release to widen it.
 
 | # | Tab title | Module |
 |---|---|---|
