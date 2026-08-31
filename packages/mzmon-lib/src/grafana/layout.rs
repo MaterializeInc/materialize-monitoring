@@ -243,7 +243,65 @@ pub struct Row {
     title: String,
     hide_header: bool,
     collapsed: bool,
+    /// Whether this row renders at all, decided by Grafana at view time.
+    time_range: Option<TimeRangeCondition>,
     grid: AutoGrid,
+}
+
+/// Renders a row only for time ranges on one side of a threshold.
+///
+/// Grafana's condition is "the selected range is at most `value`". The two
+/// variants are that condition and its negation, which is what lets a pair of
+/// rows cover every range between them with no gap and no overlap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeRangeCondition {
+    /// Show when the selected range is at most this long.
+    AtMost(&'static str),
+    /// Show when the selected range is longer than this.
+    LongerThan(&'static str),
+}
+
+impl TimeRangeCondition {
+    fn threshold(self) -> &'static str {
+        match self {
+            TimeRangeCondition::AtMost(value) | TimeRangeCondition::LongerThan(value) => value,
+        }
+    }
+
+    /// Grafana expresses the negation by flipping the group's visibility rather
+    /// than the condition, so both variants emit the same item.
+    fn visibility(self) -> dashboardv2::ConditionalRenderingGroupSpecVisibility {
+        match self {
+            TimeRangeCondition::AtMost(_) => {
+                dashboardv2::ConditionalRenderingGroupSpecVisibility::Show
+            }
+            TimeRangeCondition::LongerThan(_) => {
+                dashboardv2::ConditionalRenderingGroupSpecVisibility::Hide
+            }
+        }
+    }
+
+    fn build(self) -> dashboardv2::ConditionalRenderingGroupKind {
+        dashboardv2::ConditionalRenderingGroupKind {
+            kind: "ConditionalRenderingGroup".to_string(),
+            spec: dashboardv2::ConditionalRenderingGroupSpec {
+                // One item, so the operator is immaterial -- `and` is what
+                // Grafana writes for a single condition.
+                condition: dashboardv2::ConditionalRenderingGroupSpecCondition::And,
+                items: vec![
+                    dashboardv2::ConditionalRenderingGroupSpecItemsItem::TimeRangeSizeKind(
+                        dashboardv2::ConditionalRenderingTimeRangeSizeKind {
+                            kind: "ConditionalRenderingTimeRangeSize".to_string(),
+                            spec: dashboardv2::ConditionalRenderingTimeRangeSizeSpec {
+                                value: self.threshold().to_string(),
+                            },
+                        },
+                    ),
+                ],
+                visibility: self.visibility(),
+            },
+        }
+    }
 }
 
 impl Row {
@@ -253,6 +311,7 @@ impl Row {
             title: title.into(),
             hide_header: false,
             collapsed: false,
+            time_range: None,
             grid: AutoGrid::new(3),
         }
     }
@@ -270,6 +329,28 @@ impl Row {
     /// summary rows whose panels are self-describing.
     pub fn hide_header(mut self) -> Self {
         self.hide_header = true;
+        self
+    }
+
+    /// Render this row only for time ranges at most `value` long.
+    ///
+    /// For a row whose panels are cheap to draw over a day and ruinous over a
+    /// month. Pair it with a [`Row::only_beyond`] row carrying a text panel, so
+    /// the space says why it is empty rather than merely being empty — a hidden
+    /// row is indistinguishable from a broken one otherwise.
+    ///
+    /// `value` is a Grafana duration (`7d`, `24h`).
+    pub fn only_within(mut self, value: &'static str) -> Self {
+        self.time_range = Some(TimeRangeCondition::AtMost(value));
+        self
+    }
+
+    /// Render this row only for time ranges longer than `value`.
+    ///
+    /// The complement of [`Row::only_within`] at the same threshold, so the two
+    /// cover every range with no gap and no overlap.
+    pub fn only_beyond(mut self, value: &'static str) -> Self {
+        self.time_range = Some(TimeRangeCondition::LongerThan(value));
         self
     }
 
@@ -296,7 +377,7 @@ impl Row {
                     self.grid.build(sink)?,
                 ),
                 fill_screen: None,
-                conditional_rendering: None,
+                conditional_rendering: self.time_range.map(TimeRangeCondition::build),
                 repeat: None,
                 variables: Vec::new(),
             },

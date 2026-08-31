@@ -334,6 +334,30 @@ Materialize pattern for `env-logs`, `.+` for `infra-logs` — which is the *only
 The container-log queries are **not** shared: `infra.logs.*` carries the component and container filters, and adding
 those to `materialize.logs.*` would oblige `env-logs` to define pickers it has no use for.
 
+## Time-range guards on expensive rows
+
+**New precedent, first used on the two logs dashboards' Volume rows.** `grafana/volume_guard.rs` owns it.
+
+Counting log *lines* means reading every one of them — Loki indexes labels, not counts — so a `rate()` panel over a
+wide selection decompresses the whole span. Measured on a live cluster, one such panel scans 0.7 GB over six hours,
+1.8 GB over a day, 27 GB over a week, and **95 GB over a month, taking 45 seconds**. The log *feeds* beside them are
+unaffected at any range: they stop at the first page of matches.
+
+So a volume row carries `Row::only_within(volume_guard::THRESHOLD)` (`7d`), and is **always paired** with
+`volume_guard::hidden_row(…)`, which carries the complementary `Row::only_beyond` and a `text` panel explaining the
+absence. `only_within` and `only_beyond` are exact complements at the same threshold, so precisely one of the pair is
+on screen at any range — a gap would leave the reader staring at nothing, an overlap would draw the expensive panels
+*and* a note saying they are hidden.
+
+Two things worth keeping if this pattern spreads:
+
+- **Guard the row, not the panel.** The explanation belongs beside the thing it replaces, and a row is the smallest
+  unit that can carry both.
+- **The note's job is the remedy, not the announcement.** "Hidden" alone leaves the reader stuck; it has to say how to
+  get the panels back (shorten the range, narrow the pickers) and where to go instead. A test asserts that.
+
+`text` was added to `bin/gen-grafana-models.sh` for this — it is the only plugin here that shows no data.
+
 ## Logs dashboard conventions
 
 **Loki end to end, and that is the point.** `env-logs` defines *no* metrics datasource and shares nothing with

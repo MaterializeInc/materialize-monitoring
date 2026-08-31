@@ -67,7 +67,7 @@
             }
           },
           "description": "**Every Kubernetes event in the selected namespaces, newest first.**\n\nThe general-purpose event feed, scoped by the same namespace picker as the logs beside it rather than by a deployment's own namespaces. Turning the Materialize-only switch off reaches `kube-system` and the rest of the cluster, which is where the answer lives when the question is about nodes or storage rather than about Materialize.\n\nDistinct from the rollout feed on the upgrade dashboard: this one carries no generation or reporting-controller filter, because a general browser should not quietly drop events for belonging to the wrong side of a rollout.\n\nThe consuming panel renders `reason`, `msg` and `name` as columns rather than showing the raw line, so this query deliberately does **not** `line_format`: displayed fields supersede the line, and formatting one would be work thrown away. The rollout feeds on the upgrade dashboard do reformat, because they show the line.",
-          "id": 1009,
+          "id": 1010,
           "links": [],
           "title": "All Events",
           "vizConfig": {
@@ -142,7 +142,7 @@
             }
           },
           "description": "**Event rate by namespace — where in the cluster things are happening.**\n\nMost useful with the Materialize-only switch off, which is when this stops being one or two flat lines and starts saying whether the activity is in the deployment, the monitoring stack, or the platform underneath both.",
-          "id": 1007,
+          "id": 1008,
           "links": [],
           "title": "Event Rate by Namespace",
           "vizConfig": {
@@ -209,7 +209,7 @@
             }
           },
           "description": "**How often each kind of event is being reported, by reason — the shape of what the cluster is doing.**\n\n**Nominal:** Quiet, apart from bursts that coincide with a deliberate change.\n\n**Unhealthy:** A reason that fires at a steady rate is a loop rather than a transition.\n\nCounts events as Loki received them. Kubernetes aggregates a repeat into one object with a rising `count` rather than sending it again, so a tight loop reports fewer lines than it has occurrences.",
-          "id": 1006,
+          "id": 1007,
           "links": [],
           "title": "Event Rate by Reason",
           "vizConfig": {
@@ -275,7 +275,7 @@
             }
           },
           "description": "**The log feed for the selected namespaces, apps and levels, newest first.**\n\nThe dashboard's primary panel; everything above it exists to narrow what lands here.\n\nThe free-text search is a case-insensitive line filter applied last, after the stream selector has done its work. An empty search matches every line rather than none, so the panel is useful before anything is typed.",
-          "id": 1005,
+          "id": 1006,
           "links": [],
           "title": "All Logs",
           "vizConfig": {
@@ -520,6 +520,43 @@
           }
         }
       },
+      "volume-hidden-note": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why the volume panels are not drawn over long ranges.",
+          "id": 1004,
+          "links": [],
+          "title": "Volume",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Volume panels are hidden for ranges longer than 7 days.**\n\nCounting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index. On a representative cluster that is around 95 GB for a month against under 2 GB for a day.\n\nShorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "warning-event-feed": {
         "kind": "Panel",
         "spec": {
@@ -551,7 +588,7 @@
             }
           },
           "description": "**Kubernetes events the reporting component flagged as warnings, across the selected namespaces.**\n\n**Nominal:** Nothing, or a burst that stops on its own.\n\n**Unhealthy:** Warnings that keep arriving. The reason names the class: `FailedScheduling` and `NotTriggerScaleUp` mean the cluster has nowhere to put a pod, `BackOff` means it starts and dies, `Unhealthy` means it starts and never becomes ready, `FailedMount` means storage did not attach.\n\n`Warning` is the reporting component's own judgement rather than a threshold of ours — this filters on their opinion.",
-          "id": 1008,
+          "id": 1009,
           "links": [],
           "title": "Warning Events",
           "vizConfig": {
@@ -625,7 +662,7 @@
             }
           },
           "description": "**The warning-and-worse feed, newest first — what the components are actually complaining about.**\n\n**Nominal:** Quiet, or a burst that stops on its own.\n\n**Unhealthy:** A steady stream. Read the app and the message; a repeating identical line is a loop, and a changing one is a workload in trouble.\n\nSame level vocabulary as _Volume -> Warning Rate_ and, like it, deliberately not narrowed by the level picker.",
-          "id": 1004,
+          "id": 1005,
           "links": [],
           "title": "Warnings and Errors",
           "vizConfig": {
@@ -750,6 +787,21 @@
                       "kind": "RowsLayoutRow",
                       "spec": {
                         "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingTimeRangeSize",
+                                "spec": {
+                                  "value": "7d"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
                         "hideHeader": false,
                         "layout": {
                           "kind": "AutoGridLayout",
@@ -796,6 +848,49 @@
                             ],
                             "maxColumnCount": 2,
                             "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Volume"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingTimeRangeSize",
+                                "spec": {
+                                  "value": "7d"
+                                }
+                              }
+                            ],
+                            "visibility": "hide"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "volume-hidden-note"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "short"
                           }
                         },
                         "title": "Volume"

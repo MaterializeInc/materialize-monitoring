@@ -55,8 +55,8 @@ use serde_json::{Map, Value};
 
 use crate::grafana::generated::{
     BARCHART_PLUGIN_ID, GAUGE_PLUGIN_ID, LOGS_PLUGIN_ID, PIECHART_PLUGIN_ID, STAT_PLUGIN_ID,
-    TABLE_PLUGIN_ID, TIMESERIES_PLUGIN_ID, barchart, dashboardv2, gauge, logs, piechart, stat,
-    table, timeseries,
+    TABLE_PLUGIN_ID, TEXT_PLUGIN_ID, TIMESERIES_PLUGIN_ID, barchart, dashboardv2, gauge, logs,
+    piechart, stat, table, text, timeseries,
 };
 use crate::grafana::query::PanelQuery;
 
@@ -559,6 +559,41 @@ impl PanelOptions for Logs {
     }
 }
 
+// --------------------------------------------------------------------- text
+
+/// Markdown panel, for a row that has to explain itself.
+///
+/// The only plugin here that shows no data. It exists for the case a
+/// conditionally-rendered row creates: when a row hides itself, the space it
+/// leaves says nothing, and a reader cannot tell "nothing to show" from "this
+/// dashboard is broken". A text panel in a row with the inverse condition fills
+/// that gap with a sentence.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Text {
+    /// Markdown body.
+    pub content: String,
+}
+
+impl PanelOptions for Text {
+    fn plugin_id(&self) -> &'static str {
+        TEXT_PLUGIN_ID
+    }
+
+    fn options(&self) -> Map<String, Value> {
+        erase(&text::Options {
+            content: self.content.clone(),
+            mode: text::TextMode::Markdown,
+            // Grafana writes this block whatever the mode, and omitting it makes
+            // every load a panel migration.
+            code: Some(text::CodeOptions {
+                language: text::CodeLanguage::Plaintext,
+                show_line_numbers: false,
+                show_mini_map: false,
+            }),
+        })
+    }
+}
+
 // -------------------------------------------------------------------- Panel
 
 /// A panel under construction. Generic over its plugin's options so that
@@ -681,6 +716,15 @@ impl Panel<Gauge> {
 impl Panel<BarChart> {
     pub fn barchart(title: impl Into<String>) -> Self {
         Self::new(title)
+    }
+}
+
+impl Panel<Text> {
+    /// A markdown panel carrying `content`.
+    pub fn text(title: impl Into<String>, content: impl Into<String>) -> Self {
+        let mut panel = Self::new(title);
+        panel.options.content = content.into();
+        panel
     }
 }
 

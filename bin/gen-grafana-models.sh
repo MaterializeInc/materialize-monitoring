@@ -14,7 +14,7 @@
 #
 # PACKAGES is deliberately narrow. Generating all 53 usable documents costs ~92k
 # lines of mostly redundant copies, so this list tracks what the dashboards
-# actually emit, plus the log panel and Loki dataquery we expect to need.
+# actually emit.
 # Add a document here to pull it in; the vendored tree always holds all 55.
 
 PROG=$0
@@ -35,6 +35,9 @@ PACKAGES=(
     dashboardv2
     timeseries stat piechart table gauge barchart
     logs
+    # `text` carries no data. It is how a row explains itself -- notably the
+    # stand-in shown when a conditionally-rendered row is hidden.
+    text
     prometheus loki
 )
 

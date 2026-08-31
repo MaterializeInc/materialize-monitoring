@@ -22,6 +22,7 @@ pub mod infra_logs;
 pub mod queries;
 pub mod render;
 pub mod transform;
+pub mod volume_guard;
 
 use mzmon_lib::grafana::dashboard::Resource;
 use mzmon_lib::query::QueryRegistry;

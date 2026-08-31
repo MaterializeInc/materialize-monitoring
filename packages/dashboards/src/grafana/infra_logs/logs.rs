@@ -25,6 +25,7 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use super::theme;
 use crate::grafana::queries::Queries;
+use crate::grafana::volume_guard;
 
 /// The tab's theme, applied to every shaded panel here.
 const SHADE: &str = theme::LOGS.shade;
@@ -48,16 +49,23 @@ pub(super) fn no_warnings() -> NoValue {
 }
 
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![volume(q), warnings(q), all_logs(q)]
+    vec![
+        volume(q),
+        volume_guard::hidden_row("volume-hidden-note"),
+        warnings(q),
+        all_logs(q),
+    ]
 }
 
 fn volume(q: &Queries) -> Row {
-    Row::new("Volume").grid(
-        AutoGrid::new(2)
-            .panel("log-rate-by-component", rate_by_component(q))
-            .panel("log-rate-by-namespace", rate_by_namespace(q))
-            .panel("warning-rate", warning_rate(q)),
-    )
+    Row::new("Volume")
+        .only_within(volume_guard::THRESHOLD)
+        .grid(
+            AutoGrid::new(2)
+                .panel("log-rate-by-component", rate_by_component(q))
+                .panel("log-rate-by-namespace", rate_by_namespace(q))
+                .panel("warning-rate", warning_rate(q)),
+        )
 }
 
 fn warnings(q: &Queries) -> Row {
@@ -136,7 +144,8 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 5);
+        // Five panels plus the stand-in shown when the volume row hides itself.
+        assert_eq!(assembled.elements.len(), 6);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
     }
 
