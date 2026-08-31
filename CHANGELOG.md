@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.15.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.21.0 (Unreleased)
 
 _Changes Pending_
@@ -20,9 +24,18 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Dashboards v0.14.0 (Unreleased)
+## Dashboards v0.14.0
 
-_Changes Pending_
+* DEP-209 Add Infrastructure Logs & Events Dashboard
+    * [materialize-monitoring#307](https://github.com/MaterializeInc/materialize-monitoring/pull/307)
+    * Adds new infra-logs dashboard that is enabled by default
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate hyper to v1.11.1
+        * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
+        * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
 
 ## Prometheus Scrapers v0.5.0 (Unreleased)
 
