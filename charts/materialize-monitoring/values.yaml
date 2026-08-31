@@ -1480,6 +1480,7 @@ dashboards:
   # -- List of dashboard patterns to render
   selected:
     - env-*
+    - infra-*
 
 config:
   # -- (h4) Configuration for rules

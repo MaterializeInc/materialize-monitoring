@@ -80,6 +80,12 @@ pub mod variables {
     pub const LOG_APP_LIST: &str = "logAppList";
     /// Severity levels a logs dashboard includes.
     pub const LOG_LEVEL_LIST: &str = "logLevelList";
+    /// Sub-components a logs dashboard reads from.
+    pub const LOG_COMPONENT_LIST: &str = "logComponentList";
+    /// Containers a logs dashboard reads from.
+    pub const LOG_CONTAINER_LIST: &str = "logContainerList";
+    /// systemd units a node-journal panel reads from.
+    pub const LOG_UNIT_LIST: &str = "logUnitList";
     /// Collection jobs a logs dashboard reads from.
     ///
     /// Also the matcher that keeps a log stream selector parseable — see
@@ -156,6 +162,9 @@ pub const LOG_VARIABLES: &[&str] = &[
     variables::LOG_APP_LIST,
     variables::LOG_LEVEL_LIST,
     variables::LOG_JOB_LIST,
+    variables::LOG_COMPONENT_LIST,
+    variables::LOG_CONTAINER_LIST,
+    variables::LOG_UNIT_LIST,
 ];
 
 /// The object-name pattern a generation appears in, as a regex with the
@@ -439,6 +448,20 @@ pub fn dashboard_context<'a>(
         // -- the event queries pin `job="loki.source.kubernetes_events"`, which
         // already anchors them, and a second `job` matcher would AND with it.
         (
+            "mzLogComponentFilter",
+            format!(r#"component=~"${}""#, variables::LOG_COMPONENT_LIST),
+        ),
+        (
+            "mzLogContainerFilter",
+            format!(r#"container=~"${}""#, variables::LOG_CONTAINER_LIST),
+        ),
+        // Journal lines carry no namespace, so `unit` is their anchor the way
+        // `job` is for container logs -- hence `.+` for its "All".
+        (
+            "mzLogUnitFilter",
+            format!(r#"unit=~"${}""#, variables::LOG_UNIT_LIST),
+        ),
+        (
             "mzLogJobFilter",
             format!(r#"job=~"${}""#, variables::LOG_JOB_LIST),
         ),
@@ -532,6 +555,9 @@ mod tests {
             "mzLogAppFilter",
             "mzLogLevelFilter",
             "mzLogJobFilter",
+            "mzLogComponentFilter",
+            "mzLogContainerFilter",
+            "mzLogUnitFilter",
             "mzLogSearchFilter",
             "mzEnvironmentFilter",
             "excludeEnvironmentFilter",

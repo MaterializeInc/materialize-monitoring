@@ -1,0 +1,242 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Infrastructure log queries
+
+description: |
+  Logs from the platform a Materialize deployment runs on: the monitoring stack
+  itself, the Kubernetes system components, and the nodes underneath both.
+
+  Separate from `materialize-logs.yaml` rather than a widening of it, for two
+  reasons that are structural rather than stylistic.
+
+  **The selector set differs.** These carry `component` and `container` filters.
+  `component` is what tells one Loki or Thanos process from another — `loki`
+  alone splits into `canary`, `querier`, `ingester`, `query-frontend`,
+  `index-gateway`, `compactor`, `distributor` and `ruler` — and `container` is
+  the only picker that reaches workloads with no `app` at all, which on a
+  representative install is the whole of `kube-system`. Neither dimension means
+  anything to a Materialize environment, and adding them to the shared queries
+  would oblige every dashboard using those to define pickers it has no use for.
+
+  **The node journal is not reachable from a namespace.** Journal lines carry
+  `unit`, `component`, `job`, `level` and `service_name` and **no `namespace`,
+  `app` or `container`**, because they come from the node rather than from a pod.
+  Any selector that requires a namespace excludes them by construction, which is
+  why they have their own queries here and their own tab on the dashboard.
+
+  The Kubernetes-event queries are *not* duplicated: `materialize.events.cluster.*`
+  in `materialize-events.yaml` is already scoped by the same namespace picker and
+  carries no Materialize-specific filter, so an infrastructure dashboard uses it
+  as it stands.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- container logs ---------------------------------------------------------
+  - id: infra.logs.stream
+    stability: experimental
+    description:
+      summary: |
+        The log feed for the selected namespaces, apps, components, containers
+        and levels, newest first.
+      notes: |
+        The tab's primary panel. `component` and `container` are what this adds
+        over the Materialize feed: the first isolates one process of a
+        multi-process workload, the second reaches workloads that publish no
+        `app` label.
+
+        An empty search matches every line rather than none, so the panel is
+        useful before anything is typed.
+    logQL: |
+      {
+        %%{mzLogNamespaceFilter},
+        %%{mzLogAppFilter},
+        %%{mzLogComponentFilter},
+        %%{mzLogContainerFilter},
+        %%{mzLogLevelFilter},
+        %%{mzLogJobFilter}
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.logs.warnings.stream
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines from the platform, newest first.
+      nominal: Quiet, or a burst that stops on its own.
+      unhealthy: |
+        A steady stream. Read which component: the monitoring stack complaining
+        about itself is the case worth acting on first, since everything else you
+        are looking at depends on it.
+      notes: |
+        Deliberately independent of the level picker, like its Materialize
+        counterpart: this panel answers "is anything wrong", and narrowing the
+        selection to `INFO` would silently zero it.
+    logQL: |
+      {
+        %%{mzLogNamespaceFilter},
+        %%{mzLogAppFilter},
+        %%{mzLogComponentFilter},
+        %%{mzLogContainerFilter},
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL",
+        %%{mzLogJobFilter}
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.logs.rate.by_component
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second by application and sub-component — which process of
+        which workload is doing the talking.
+      nominal: |
+        A steady baseline. Loki's own canary dominates on a quiet cluster, which
+        is expected: it exists to write and read a line on a loop.
+      unhealthy: |
+        A sharp step up confined to one component. That is the shape of a single
+        process in a retry loop, and it is invisible on a panel that only splits
+        by application.
+      notes: |
+        Legends read `app / component`. A workload with no sub-components reports
+        an empty one, which is why the component picker's "All" is `.*` rather
+        than `.+` — the stricter form would drop them.
+    logQL: |
+      sum by (app, component) (
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            %%{mzLogComponentFilter},
+            %%{mzLogContainerFilter},
+            %%{mzLogLevelFilter},
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: infra.logs.rate.by_namespace
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second by namespace — where in the cluster the volume is.
+      notes: |
+        The coarsest useful split, and the one that answers "is this the platform
+        or the workload" before any of the finer pickers are touched.
+    logQL: |
+      sum by (namespace) (
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            %%{mzLogComponentFilter},
+            %%{mzLogContainerFilter},
+            %%{mzLogLevelFilter},
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: infra.logs.warnings.rate
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines per minute across the platform, as one series.
+      nominal: Flat, or a spike that returns to baseline.
+      unhealthy: |
+        A level that does not come back down. _Volume -> Log Rate by Component_
+        says which process, and the feed below says what.
+      notes: |
+        Reported per **minute**: warnings are rare enough on a healthy platform
+        that a per-second rate spends its life showing a small fraction.
+
+        Independent of the level picker, for the same reason as the feed.
+    logQL: |
+      sum(
+        rate(
+          {
+            %%{mzLogNamespaceFilter},
+            %%{mzLogAppFilter},
+            %%{mzLogComponentFilter},
+            %%{mzLogContainerFilter},
+            level=~"WARN|WARNING|ERROR|CRITICAL|FATAL",
+            %%{mzLogJobFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      ) * 60
+
+  # --- node journal -----------------------------------------------------------
+  - id: infra.logs.node.stream
+    stability: experimental
+    description:
+      summary: |
+        The node journal, newest first — `kubelet`, `containerd`, the node
+        problem detector, and the rest of what systemd runs on each node.
+      notes: |
+        **Unreachable from any namespace-scoped dashboard.** These lines come
+        from the node, not from a pod, so they carry no `namespace`, `app` or
+        `container` at all — a selector requiring any of those excludes them by
+        construction. That is the gap this tab exists to close.
+
+        `unit` is the anchor here, the way `job` is for container logs: a journal
+        selector has no namespace matcher to lean on, so its "All" is `.+`.
+
+        The node a line came from is structured metadata, not a label. Filter it
+        after a `|`, or add it through the advanced filter.
+    logQL: |
+      {
+        %%{mzLogUnitFilter},
+        %%{mzLogLevelFilter}
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.logs.node.warnings
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines from the node journal.
+      nominal: |
+        Quiet. Most journal lines never carry a level the pipeline recognizes and
+        land as `UNKNOWN`, so what does reach `WARN` or `ERROR` is worth reading.
+      unhealthy: |
+        `kubelet` or `containerd` complaining repeatedly. Those two are the node's
+        control plane for everything Kubernetes runs on it, so a sustained
+        complaint there precedes pods that will not start or will not stop.
+      notes: |
+        Independent of the level picker, like the other warning panels.
+    logQL: |
+      {
+        %%{mzLogUnitFilter},
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.logs.node.rate.by_unit
+    stability: experimental
+    description:
+      summary: |
+        Node journal lines per second by systemd unit.
+      nominal: |
+        A steady murmur, dominated by the cloud provider's guest agent.
+      unhealthy: |
+        A step up in `kubelet` or `containerd`. Both narrate their retries, so a
+        rising rate there is usually a node struggling to reconcile what it has
+        been asked to run.
+      notes: |
+        Split by unit rather than by node: which *thing* is talking is the first
+        question, and the node is one `|` away once you know.
+    logQL: |
+      sum by (unit) (
+        rate(
+          {
+            %%{mzLogUnitFilter},
+            %%{mzLogLevelFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )

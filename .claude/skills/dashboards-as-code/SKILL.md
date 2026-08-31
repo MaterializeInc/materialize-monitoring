@@ -92,6 +92,7 @@ from.
 | `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview |
 | `env-logs` | `grafana/env_logs/` | `mz-mon-env-logs` | Materialize Logs and Events |
 | `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
+| `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -292,6 +293,46 @@ of content.
 
 **Logs** — Volume (Log Rate, Warning Rate, Log Rate by App, Log Rate by Level), Warnings (feed), All Logs (feed).
 **Events** — Activity (rate by reason, rate by namespace), Warnings (feed), All Events (feed).
+
+## `infra-logs` tabs
+
+The first of the `infra-*` family — scoped to the cluster rather than to an environment.
+**Not installed by default**: `dashboards.selected` is `["env-*"]`, so the whole family needs a release to widen it.
+
+| # | Tab title | Module | Shade |
+|---|---|---|---|
+| 1 | Logs | `logs.rs` | `LOGS` `#33BBEE` (cyan) |
+| 2 | Nodes | `nodes.rs` | `NODES` `#009988` (teal) |
+| 3 | Events | `events.rs` | `EVENTS` `#EE3377` (magenta) |
+
+**Logs** — Volume (rate by component, rate by namespace, warning rate), Warnings feed, All Logs feed.
+**Nodes** — Journal Volume (rate by unit), Node Warnings feed, Node Journal feed.
+**Events** — Activity (by reason, by namespace), Warnings feed, All Events feed.
+
+### Why it is a second dashboard rather than a wider `env-logs`
+
+Two things `env-logs` cannot reach however its pickers are set:
+
+- **The node journal.** Journal lines carry `unit`, `component`, `job`, `level` and `service_name` and **no `namespace`,
+  `app` or `container`** — they come from the node, not a pod. Every `env-logs` selector requires a namespace, so those
+  lines are excluded by construction. `unit` is their anchor, with `all_value` `.+`, standing in for the namespace
+  matcher container-log selectors lean on.
+- **Sub-components.** `component` splits `loki` into eight processes (`canary`, `querier`, `ingester`,
+  `query-frontend`, `index-gateway`, `compactor`, `distributor`, `ruler`) and `thanos` into three. A Materialize
+  environment has none, so adding the picker there would be a control that does nothing.
+
+A third, smaller reason: `container` is the only picker that reaches workloads with no `app` label, which on a
+representative install is the whole of `kube-system` (14 containers, `app` empty). It sits in the controls menu.
+
+### What the two dashboards share
+
+The variable **names** and the Kubernetes-**event queries**. `materialize.events.cluster.*` carries no
+Materialize-specific filter and is scoped by the same `$logNamespaceList` both dashboards define, so the events half is
+one set of definitions serving both. `log_namespaces(opens_on)` takes the opening selection as an argument — the
+Materialize pattern for `env-logs`, `.+` for `infra-logs` — which is the *only* intended difference.
+
+The container-log queries are **not** shared: `infra.logs.*` carries the component and container filters, and adding
+those to `materialize.logs.*` would oblige `env-logs` to define pickers it has no use for.
 
 ## Logs dashboard conventions
 

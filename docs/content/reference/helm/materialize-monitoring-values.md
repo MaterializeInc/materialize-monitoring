@@ -2271,7 +2271,8 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "env-*"
+  "env-*",
+  "infra-*"
 ]</pre>
 </td>
       <td class="helm-value-desc">List of dashboard patterns to render

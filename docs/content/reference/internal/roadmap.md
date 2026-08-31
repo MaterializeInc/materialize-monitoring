@@ -106,7 +106,8 @@ all named `env-*`.
 An infrastructure admin running the cluster underneath has a different set, and today it is unserved — `env-logs` is
 the only place any of it surfaces, and only by widening a switch that was never meant to carry a second audience.
 
-The proposal is a sibling family, `infra-*`, scoped to the cluster rather than to an environment.
+The family is `infra-*`, scoped to the cluster rather than to an environment.
+`infra-logs` is the first of it and is built; the rest below are still proposals.
 Two consequences to settle before the first one lands:
 
 - **`dashboards.selected` defaults to `["env-*"]`**, so nothing `infra-*` ships without widening it.
@@ -122,7 +123,8 @@ it is the difference between a dashboard we could build this week and one that n
 
 | Item | Collectable today | Milestone | Status |
 |---|---|---|---|
-| **Nodes** — health, logs, journals, workloads, bin capacity | **Yes.** 282 `node_*` families and 69 `container_*`, plus node journal logs (`kubelet.service`, `gke-node-problem-detector.service`). The 9 `kube_node_*` families are present but mislabelled — see the KSM row below | OO-M3 | ⬜ |
+| **Logs & events** — the platform's own logs, the node journal, cluster-wide events | **Yes, shipped.** `infra-logs` (`mz-mon-infra-logs`) exists with **Logs**, **Nodes** and **Events** tabs. Adds the two axes `env-logs` structurally cannot offer: `component`, which splits `loki` into eight processes and `thanos` into three, and the **node journal**, whose lines carry no namespace and so are excluded from every `env-*` selector by construction. Shares its event queries and variable names with `env-logs`; differs only in where the namespace picker opens. Verified against a live install | OO-M3 | 🔨 |
+| **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes.** 282 `node_*` families, 69 `container_*`, and the 9 `kube_node_*` ones now that the KSM label collision is fixed. What remains is the *metrics* half: this row is no longer about reaching the journal | OO-M3 | ⬜ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
 | **Meta-monitoring** — every component of this stack | **Yes, and then some.** Grafana 523 families, Loki 439, Thanos 220, Alloy 35. **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | ⬜ |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |

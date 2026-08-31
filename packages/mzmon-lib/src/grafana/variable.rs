@@ -73,8 +73,9 @@ const LOKI_PLUGIN: &str = "loki";
 /// repo's own charts, `mz-…` from the shorter-prefixed installs, and
 /// `environment-<uuid>-0` from Materialize Cloud.
 ///
-/// Used as the namespace picker's **opening selection**, not as a filter on what
-/// it offers. The distinction is the whole point: a gate would hide the
+/// Used as a namespace picker's **opening selection**, not as a filter on what it
+/// offers -- on a representative install the difference is 838 lines an hour
+/// against 30,432, most of the remainder being `kube-system`. The distinction is the whole point: a gate would hide the
 /// monitoring stack and `kube-system`, which are what you need when collection
 /// itself is failing, whereas a default merely means you do not start buried in
 /// them. Every namespace stays one click away, and an install matching none of
@@ -518,17 +519,19 @@ impl LogQueryVariable {
 /// this label" mode. That is not just simpler than selecting on something — it is
 /// the one form that cannot trip the empty-matcher rule, since there is no
 /// selector to be empty-compatible.
-pub fn log_namespaces() -> dashboardv2::VariableKind {
+/// `opens_on` is the selection the picker starts with, as a custom value. The
+/// two dashboards that define this variable differ in exactly that: a
+/// Materialize dashboard opens on the deployment's own namespaces, an
+/// infrastructure one on all of them. Same variable, same name, so the queries
+/// behind both are one set of definitions.
+pub fn log_namespaces(opens_on: &'static str) -> dashboardv2::VariableKind {
     LogQueryVariable {
         name: variables::LOG_NAMESPACE_LIST,
         label: "Namespace",
         description: "The namespace(s) to read logs from",
         loki_label: "namespace",
         stream: String::new(),
-        // Opens on the deployment's own namespaces rather than on every namespace
-        // in the cluster -- on a representative install the difference is 838
-        // lines an hour against 30,432, most of the remainder being `kube-system`.
-        current: Some(MATERIALIZE_NAMESPACE_PATTERN),
+        current: Some(opens_on),
         // `.+`, not `.*`: this value becomes the sole matcher of the app, level
         // and job discovery selectors, so an empty-compatible one would stop
         // those loading. Safe because every line carries a namespace — the
@@ -613,6 +616,75 @@ pub fn log_jobs() -> dashboardv2::VariableKind {
         // `.+` and `.*` select identically and only the parseability differs.
         all_value: ".+",
         hide: dashboardv2::VariableHide::InControlsMenu,
+    }
+    .build()
+}
+
+/// Sub-components within an application.
+///
+/// The dimension an infrastructure dashboard is built on and a Materialize one
+/// has no use for: `loki` alone splits into `canary`, `querier`, `ingester`,
+/// `query-frontend`, `index-gateway`, `compactor`, `distributor` and `ruler`, and
+/// `thanos` into `compactor`, `receive` and `storegateway`. Without it, "why is
+/// Loki slow" is a grep.
+pub fn log_components() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_COMPONENT_LIST,
+        label: "Component",
+        description: "The sub-component(s) to read logs from",
+        loki_label: "component",
+        stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        current: None,
+        // `.*`: plenty of workloads have no component at all, and `.+` would drop
+        // them silently.
+        all_value: ".*",
+        hide: dashboardv2::VariableHide::DontHide,
+    }
+    .build()
+}
+
+/// Containers within the selected namespaces.
+///
+/// Carried because `app` is empty for much of the platform — every `kube-system`
+/// workload on a representative install — so it is the only picker that reaches
+/// `cilium-agent`, `kubedns`, `konnectivity-agent` and the rest. In the controls
+/// menu rather than the main row: most readings never need it, but when they do
+/// nothing else will serve.
+pub fn log_containers() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_CONTAINER_LIST,
+        label: "Container",
+        description: "The container(s) to read logs from",
+        loki_label: "container",
+        stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        current: None,
+        all_value: ".*",
+        hide: dashboardv2::VariableHide::InControlsMenu,
+    }
+    .build()
+}
+
+/// systemd units, for the node journal.
+///
+/// A separate axis rather than another filter on the same one. Journal lines
+/// carry `unit`, `component`, `job`, `level` and `service_name` — and **no
+/// `namespace`, `app` or `container`** — because they come from the node rather
+/// than from a pod. That is why they are unreachable from any dashboard whose
+/// selectors require a namespace, and why they get a tab of their own.
+pub fn log_units() -> dashboardv2::VariableKind {
+    LogQueryVariable {
+        name: variables::LOG_UNIT_LIST,
+        label: "Unit",
+        description: "The systemd unit(s) to read node journal logs from",
+        loki_label: "unit",
+        // No selector: `unit` streams carry no namespace, so chaining this off the
+        // namespace picker would discover nothing.
+        stream: String::new(),
+        current: None,
+        // The anchor for every journal selector, the way `job` is for container
+        // logs -- a journal query has no namespace matcher to lean on.
+        all_value: ".+",
+        hide: dashboardv2::VariableHide::DontHide,
     }
     .build()
 }
@@ -803,9 +875,37 @@ pub fn operator_scoped(sql_metric_prefix: &str) -> Vec<dashboardv2::VariableKind
 pub fn logs_scoped() -> Vec<dashboardv2::VariableKind> {
     vec![
         logs_datasource(),
-        log_namespaces(),
+        log_namespaces(MATERIALIZE_NAMESPACE_PATTERN),
         log_apps(),
         log_levels(),
+        log_jobs(),
+        log_search(),
+        logs_adhoc(),
+    ]
+}
+
+/// The variable set for an infrastructure logs dashboard.
+///
+/// [`logs_scoped`] plus the three axes the platform needs and a Materialize
+/// environment does not: `component` to tell one Loki or Thanos process from
+/// another, `container` because `app` is empty across most of `kube-system`, and
+/// `unit` for the node journal, which carries no namespace at all.
+///
+/// The variable *names* are shared with [`logs_scoped`] on purpose. The two
+/// dashboards then differ only in which pickers they offer and where the
+/// namespace one opens, so every query behind them is one set of definitions
+/// rather than two that drift.
+pub fn logs_infra_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        logs_datasource(),
+        // Opens on everything: an infrastructure operator owns the cluster, and
+        // the Materialize namespaces are a small part of what they are watching.
+        log_namespaces(".+"),
+        log_apps(),
+        log_components(),
+        log_levels(),
+        log_units(),
+        log_containers(),
         log_jobs(),
         log_search(),
         logs_adhoc(),
@@ -1133,14 +1233,17 @@ mod tests {
             dashboardv2::VariableKind::QueryVariableKind(v) => v.spec.all_value.clone(),
             other => panic!("unexpected {other:?}"),
         };
-        assert_eq!(anchor(log_namespaces()).as_deref(), Some(".+"));
+        assert_eq!(
+            anchor(log_namespaces(MATERIALIZE_NAMESPACE_PATTERN)).as_deref(),
+            Some(".+")
+        );
         assert_eq!(anchor(log_jobs()).as_deref(), Some(".+"));
         assert!(!matches_empty(".+"));
         assert!(matches_empty(".*"));
 
         // Namespace discovery selects on nothing at all, which is the one shape
         // that cannot be empty-compatible.
-        match log_namespaces() {
+        match log_namespaces(MATERIALIZE_NAMESPACE_PATTERN) {
             dashboardv2::VariableKind::QueryVariableKind(v) => {
                 let stream = v.spec.query.spec.as_ref().expect("spec")["stream"]
                     .as_str()
@@ -1157,7 +1260,7 @@ mod tests {
         // monitoring stack and `kube-system`, which are exactly what you need
         // when collection itself is failing. A *default* only decides where you
         // start; every namespace stays one click away.
-        match log_namespaces() {
+        match log_namespaces(MATERIALIZE_NAMESPACE_PATTERN) {
             dashboardv2::VariableKind::QueryVariableKind(v) => {
                 let selected = match &v.spec.current.value {
                     dashboardv2::VariableOptionValue::Array(values) => values.clone(),
@@ -1219,7 +1322,12 @@ mod tests {
         // discovery has not run or has failed -- and `label=~""` matches only the
         // streams missing that label, so a picker that fails to load takes the
         // panel down with it rather than widening it.
-        for picker in [log_namespaces(), log_apps(), log_levels(), log_jobs()] {
+        for picker in [
+            log_namespaces(MATERIALIZE_NAMESPACE_PATTERN),
+            log_apps(),
+            log_levels(),
+            log_jobs(),
+        ] {
             match picker {
                 dashboardv2::VariableKind::QueryVariableKind(v) => {
                     assert!(
@@ -1258,7 +1366,11 @@ mod tests {
         // Loki answers a variable from a `{label, stream, type}` object rather
         // than from an expression, so a Prometheus-shaped query here would
         // silently resolve to nothing.
-        for variable in [log_namespaces(), log_apps(), log_levels()] {
+        for variable in [
+            log_namespaces(MATERIALIZE_NAMESPACE_PATTERN),
+            log_apps(),
+            log_levels(),
+        ] {
             match variable {
                 dashboardv2::VariableKind::QueryVariableKind(v) => {
                     let spec = v.spec.query.spec.as_ref().expect("spec");
