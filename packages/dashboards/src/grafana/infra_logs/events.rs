@@ -26,8 +26,13 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use crate::grafana::queries::Queries;
 
-/// The three fields worth a column on an event feed.
-const EVENT_FIELDS: [&str; 3] = ["reason", "msg", "name"];
+/// The three fields worth a column on an event feed, in reading order.
+///
+/// `reason` first because it is what you scan. `name` second, *before* the
+/// message: `msg` is free text of no fixed width, so anything to its right is
+/// pushed off the visible line and effectively hidden — which is the wrong fate
+/// for the field that says which object this happened to.
+const EVENT_FIELDS: [&str; 3] = ["reason", "name", "msg"];
 
 /// What a panel shows when nothing matched. Quiet is the healthy reading here,
 /// unlike for logs.

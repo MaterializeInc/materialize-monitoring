@@ -54,7 +54,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\"}\n  |~ \"(?i)$logSearch\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\"}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -128,7 +128,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "expr": "sum by (namespace) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
                         "legendFormat": "{{namespace}}"
                       },
                       "version": "v0"
@@ -195,7 +195,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
                         "legendFormat": "{{reason}}"
                       },
                       "version": "v0"
@@ -534,7 +534,7 @@
           "description": "Why the volume panels are not drawn over long ranges.",
           "id": 1004,
           "links": [],
-          "title": "Volume",
+          "title": "Volume (skipped)",
           "vizConfig": {
             "group": "text",
             "kind": "VizConfig",
@@ -549,7 +549,7 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "**Volume panels are hidden for ranges longer than 7 days.**\n\nCounting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index. On a representative cluster that is around 95 GB for a month against under 2 GB for a day.\n\nShorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.",
+                "content": "**Volume panels are hidden for ranges longer than 7 days.**\n\nCounting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index.\n\nShorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.",
                 "mode": "markdown"
               }
             },
@@ -575,7 +575,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", level=\"WARN\"}\n  |~ \"(?i)$logSearch\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\", level=\"WARN\"}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },

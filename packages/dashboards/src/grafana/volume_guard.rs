@@ -58,8 +58,7 @@ pub const THRESHOLD: &str = "7d";
 /// The note shown in place of the volume panels.
 const NOTE: &str = "**Volume panels are hidden for ranges longer than 7 days.**\n\n\
      Counting log lines means reading every one of them — Loki indexes labels, not counts — so \
-     these panels scan the whole selection rather than an index. On a representative cluster that \
-     is around 95 GB for a month against under 2 GB for a day.\n\n\
+     these panels scan the whole selection rather than an index.\n\n\
      Shorten the time range, or narrow the namespace and app pickers, and they come back. The \
      feeds below are unaffected at any range: they stop at the first page of matches. For counting \
      over longer spans, [Explore](/explore) is the better tool.";
@@ -76,7 +75,7 @@ pub fn hidden_row(element: &str) -> Row {
         .grid(
             AutoGrid::new(1).row_height(RowHeight::Short).panel(
                 element,
-                Panel::text("Volume", NOTE)
+                Panel::text("Volume (skipped)", NOTE)
                     .description("Why the volume panels are not drawn over long ranges.")
                     .build(0),
             ),

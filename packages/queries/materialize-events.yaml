@@ -278,7 +278,7 @@ queries:
         would be work thrown away. The rollout feeds on the upgrade dashboard do
         reformat, because they show the line.
     logQL: |
-      {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
+      {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, %%{mzLogExcludeNamespaceFilter}}
         %%{mzLogSearchFilter}
 
   - id: materialize.events.cluster.warnings
@@ -298,7 +298,7 @@ queries:
         `Warning` is the reporting component's own judgement rather than a
         threshold of ours — this filters on their opinion.
     logQL: |
-      {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, level="WARN"}
+      {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, %%{mzLogExcludeNamespaceFilter}, level="WARN"}
         %%{mzLogSearchFilter}
 
   - id: materialize.events.cluster.rate.by_reason
@@ -318,7 +318,7 @@ queries:
     logQL: |
       sum by (reason) (
         count_over_time(
-          {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
+          {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, %%{mzLogExcludeNamespaceFilter}}
             %%{mzLogSearchFilter}
           %%{interval}
         )
@@ -336,7 +336,7 @@ queries:
     logQL: |
       sum by (namespace) (
         count_over_time(
-          {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}}
+          {job="loki.source.kubernetes_events", %%{mzLogNamespaceFilter}, %%{mzLogExcludeNamespaceFilter}}
             %%{mzLogSearchFilter}
           %%{interval}
         )

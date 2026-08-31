@@ -47,7 +47,7 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
+                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"$excludeMaterialize"}
                         |~ "(?i)$logSearch"
                   version: v0
                 refId: query-0
@@ -77,8 +77,8 @@ spec:
               detailsMode: inline
               displayedFields:
               - reason
-              - msg
               - name
+              - msg
               enableInfiniteScrolling: true
               enableLogDetails: true
               fontSize: small
@@ -115,7 +115,7 @@ spec:
                     expr: |
                       sum by (namespace) (
                         count_over_time(
-                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
+                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"$excludeMaterialize"}
                             |~ "(?i)$logSearch"
                           [$__auto]
                         )
@@ -173,7 +173,7 @@ spec:
                     expr: |
                       sum by (reason) (
                         count_over_time(
-                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
+                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"$excludeMaterialize"}
                             |~ "(?i)$logSearch"
                           [$__auto]
                         )
@@ -235,6 +235,7 @@ spec:
                     expr: |
                       {
                         namespace=~"$logNamespaceList",
+                        namespace!~"$excludeMaterialize",
                         app=~"$logAppList",
                         component=~"$logComponentList",
                         container=~"$logContainerList",
@@ -305,6 +306,7 @@ spec:
                         rate(
                           {
                             namespace=~"$logNamespaceList",
+                            namespace!~"$excludeMaterialize",
                             app=~"$logAppList",
                             component=~"$logComponentList",
                             container=~"$logContainerList",
@@ -375,6 +377,7 @@ spec:
                         rate(
                           {
                             namespace=~"$logNamespaceList",
+                            namespace!~"$excludeMaterialize",
                             app=~"$logAppList",
                             component=~"$logComponentList",
                             container=~"$logContainerList",
@@ -630,7 +633,7 @@ spec:
         description: Why the volume panels are not drawn over long ranges.
         id: 1003
         links: []
-        title: Volume
+        title: Volume (skipped)
         vizConfig:
           group: text
           kind: VizConfig
@@ -646,7 +649,7 @@ spec:
               content: |-
                 **Volume panels are hidden for ranges longer than 7 days.**
 
-                Counting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index. On a representative cluster that is around 95 GB for a month against under 2 GB for a day.
+                Counting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index.
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
@@ -668,7 +671,7 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", level="WARN"}
+                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"$excludeMaterialize", level="WARN"}
                         |~ "(?i)$logSearch"
                   version: v0
                 refId: query-0
@@ -698,8 +701,8 @@ spec:
               detailsMode: inline
               displayedFields:
               - reason
-              - msg
               - name
+              - msg
               enableInfiniteScrolling: true
               enableLogDetails: true
               fontSize: small
@@ -736,6 +739,7 @@ spec:
                     expr: |
                       {
                         namespace=~"$logNamespaceList",
+                        namespace!~"$excludeMaterialize",
                         app=~"$logAppList",
                         component=~"$logComponentList",
                         container=~"$logContainerList",
@@ -808,6 +812,7 @@ spec:
                         rate(
                           {
                             namespace=~"$logNamespaceList",
+                            namespace!~"$excludeMaterialize",
                             app=~"$logAppList",
                             component=~"$logComponentList",
                             container=~"$logContainerList",
@@ -1178,6 +1183,16 @@ spec:
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
+  - kind: SwitchVariable
+    spec:
+      current: .*materialize.*|mz-.*|environment-.*
+      description: Drop the Materialize namespaces, so the platform's own logs and events are not buried under the deployment's.
+      disabledValue: a^
+      enabledValue: .*materialize.*|mz-.*|environment-.*
+      hide: dontHide
+      label: Exclude Materialize
+      name: excludeMaterialize
+      skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .*

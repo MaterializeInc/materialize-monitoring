@@ -47,7 +47,7 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
+                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"a^"}
                         |~ "(?i)$logSearch"
                   version: v0
                 refId: query-0
@@ -115,7 +115,7 @@ spec:
                     expr: |
                       sum by (namespace) (
                         count_over_time(
-                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
+                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"a^"}
                             |~ "(?i)$logSearch"
                           [$__auto]
                         )
@@ -173,7 +173,7 @@ spec:
                     expr: |
                       sum by (reason) (
                         count_over_time(
-                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList"}
+                          {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"a^"}
                             |~ "(?i)$logSearch"
                           [$__auto]
                         )
@@ -505,7 +505,7 @@ spec:
         description: Why the volume panels are not drawn over long ranges.
         id: 1004
         links: []
-        title: Volume
+        title: Volume (skipped)
         vizConfig:
           group: text
           kind: VizConfig
@@ -521,7 +521,7 @@ spec:
               content: |-
                 **Volume panels are hidden for ranges longer than 7 days.**
 
-                Counting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index. On a representative cluster that is around 95 GB for a month against under 2 GB for a day.
+                Counting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index.
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
@@ -543,7 +543,7 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", level="WARN"}
+                      {job="loki.source.kubernetes_events", namespace=~"$logNamespaceList", namespace!~"a^", level="WARN"}
                         |~ "(?i)$logSearch"
                   version: v0
                 refId: query-0

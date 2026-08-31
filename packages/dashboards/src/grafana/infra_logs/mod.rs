@@ -104,7 +104,9 @@ const TARGET_EXPORT: &str = "generic";
 /// metric, let alone a SQL-derived one — but it stays in the signature so every
 /// dashboard is built the same way and the renderer needs no special case.
 pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Result<Resource> {
-    let scope = DashboardScope::for_prefix(sql_metric_prefix);
+    // Subtract Materialize by default: this dashboard opens on every namespace,
+    // and the deployment's own logs would otherwise drown the platform's.
+    let scope = DashboardScope::for_prefix(sql_metric_prefix).exclude_materialize_variable();
     let queries = Queries::new(registry, &scope);
     let layout = Layout::tabs(tabs(&queries));
 
@@ -220,6 +222,51 @@ mod tests {
             !json.contains("materialize"),
             "opens on a Materialize scope: {json}"
         );
+    }
+
+    #[test]
+    fn materialize_is_excluded_by_default() {
+        // The picker opening on everything (above) is only half the scope. The
+        // other half subtracts the deployment, because `environmentd` alone
+        // out-logs every platform component combined and would otherwise be all
+        // a volume panel shows.
+        let resource = built();
+        let switch = resource
+            .spec
+            .variables
+            .iter()
+            .find(|v| variable::name_of(v) == "excludeMaterialize")
+            .expect("an exclusion switch");
+        let json = serde_json::to_string(switch).expect("serialize");
+        // Defaulting to true is the request: `current` has to be the *enabled*
+        // value, not the disabled one.
+        assert!(json.contains(r#""current":".*materialize"#), "{json}");
+        assert!(json.contains(r#""disabledValue":"a^""#), "{json}");
+    }
+
+    #[test]
+    fn the_exclusion_reaches_every_namespace_scoped_query() {
+        // A switch wired into some of the selectors and not others is worse than
+        // no switch: the volume panels would disagree with the streams below
+        // them and neither would look wrong.
+        let resource = built();
+        for (name, element) in &resource.spec.elements {
+            let mzmon_lib::grafana::generated::dashboardv2::Element::PanelKind(panel) = element
+            else {
+                continue;
+            };
+            for query in &panel.spec.data.spec.queries {
+                let expr = serde_json::to_string(&query.spec.query.spec).expect("serialize");
+                if !expr.contains("$logNamespaceList") {
+                    // Node journals carry no namespace, so nothing to subtract.
+                    continue;
+                }
+                assert!(
+                    expr.contains(r#"namespace!~\"$excludeMaterialize"#),
+                    "{name} scopes by namespace but ignores the switch: {expr}"
+                );
+            }
+        }
     }
 
     #[test]

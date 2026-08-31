@@ -49,6 +49,7 @@ queries:
     logQL: |
       {
         %%{mzLogNamespaceFilter},
+        %%{mzLogExcludeNamespaceFilter},
         %%{mzLogAppFilter},
         %%{mzLogComponentFilter},
         %%{mzLogContainerFilter},
@@ -74,6 +75,7 @@ queries:
     logQL: |
       {
         %%{mzLogNamespaceFilter},
+        %%{mzLogExcludeNamespaceFilter},
         %%{mzLogAppFilter},
         %%{mzLogComponentFilter},
         %%{mzLogContainerFilter},
@@ -104,6 +106,7 @@ queries:
         rate(
           {
             %%{mzLogNamespaceFilter},
+            %%{mzLogExcludeNamespaceFilter},
             %%{mzLogAppFilter},
             %%{mzLogComponentFilter},
             %%{mzLogContainerFilter},
@@ -128,6 +131,7 @@ queries:
         rate(
           {
             %%{mzLogNamespaceFilter},
+            %%{mzLogExcludeNamespaceFilter},
             %%{mzLogAppFilter},
             %%{mzLogComponentFilter},
             %%{mzLogContainerFilter},
@@ -158,6 +162,7 @@ queries:
         rate(
           {
             %%{mzLogNamespaceFilter},
+            %%{mzLogExcludeNamespaceFilter},
             %%{mzLogAppFilter},
             %%{mzLogComponentFilter},
             %%{mzLogContainerFilter},

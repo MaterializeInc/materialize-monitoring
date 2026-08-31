@@ -38,8 +38,10 @@ use crate::grafana::queries::Queries;
 /// displayed fields supersede the raw line, so a `line_format` would be work
 /// thrown away.
 ///
-/// `reason` first because it is what you scan; `msg` carries the detail; `name`
-/// says which object it happened to.
+/// `reason` first because it is what you scan. `name` second, *before* the
+/// message: `msg` is free text of no fixed width, so anything to its right is
+/// pushed off the visible line and effectively hidden — which is the wrong fate
+/// for the field that says which object this happened to.
 const EVENT_FIELDS: [&str; 3] = ["reason", "name", "msg"];
 
 /// What a panel shows when nothing matched.

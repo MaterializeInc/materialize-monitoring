@@ -92,6 +92,8 @@ pub mod extra {
     pub const LOGS_ADHOC: &str = "logsAdhoc";
     /// Free-text line filter applied to every logs query.
     pub const LOG_SEARCH: &str = "logSearch";
+    /// Whether an infrastructure view subtracts the Materialize namespaces.
+    pub const EXCLUDE_MATERIALIZE: &str = "excludeMaterialize";
 }
 
 /// An empty current selection.
@@ -689,6 +691,46 @@ pub fn log_units() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Whether the Materialize namespaces are excluded from an infrastructure view.
+///
+/// **On by default**, which is the point: an infrastructure dashboard opens on
+/// every namespace, and the deployment is about half of everything written. On a
+/// reference install the Materialize namespaces are 49.9% of a week's lines, and
+/// `materialize-environment` on its own is the single largest namespace — ahead
+/// of the monitoring stack that ships this dashboard. Left in, it dominates every
+/// volume panel and buries the platform's own signal, which is the one thing this
+/// dashboard is for.
+///
+/// The two values are the same [`MATERIALIZE_NAMESPACE_PATTERN`] the Materialize
+/// dashboard *opens on*, and a pattern that matches nothing. That symmetry is
+/// deliberate: one dashboard selects the deployment, the other subtracts it, and
+/// both agree on what "the deployment" means.
+///
+/// `a^` for the off position rather than an empty string. Empty would work only
+/// because every container line happens to carry a namespace, and `!~""` reads as
+/// "has a namespace" rather than as "exclude nothing"; `a^` is a pattern no value
+/// can match, which is what is actually meant.
+pub fn exclude_materialize() -> dashboardv2::VariableKind {
+    dashboardv2::VariableKind::SwitchVariableKind(dashboardv2::SwitchVariableKind {
+        kind: "SwitchVariable".to_string(),
+        spec: dashboardv2::SwitchVariableSpec {
+            name: extra::EXCLUDE_MATERIALIZE.to_string(),
+            label: Some("Exclude Materialize".to_string()),
+            description: Some(
+                "Drop the Materialize namespaces, so the platform's own logs and events are not \
+                 buried under the deployment's."
+                    .to_string(),
+            ),
+            enabled_value: MATERIALIZE_NAMESPACE_PATTERN.to_string(),
+            disabled_value: "a^".to_string(),
+            current: MATERIALIZE_NAMESPACE_PATTERN.to_string(),
+            hide: dashboardv2::VariableHide::DontHide,
+            skip_url_sync: false,
+            origin: None,
+        },
+    })
+}
+
 /// Free-text line filter applied to every log and event query.
 ///
 /// Empty is the resting state and must stay harmless: the filter renders as
@@ -901,6 +943,8 @@ pub fn logs_infra_scoped() -> Vec<dashboardv2::VariableKind> {
         // Opens on everything: an infrastructure operator owns the cluster, and
         // the Materialize namespaces are a small part of what they are watching.
         log_namespaces(".+"),
+        // Beside the namespace picker, since the two together are the scope.
+        exclude_materialize(),
         log_apps(),
         log_components(),
         log_levels(),

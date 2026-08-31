@@ -244,6 +244,12 @@ Two dashboards are rendered, and `dashboards.selected` decides which of them a r
   The first of the `infra-*` family: the monitoring stack's own logs, the Kubernetes system components, and the node
   journal — which no `env-*` dashboard can show, since journal lines carry no namespace.
   Loki only, like `env-logs`.
+  Its namespace picker opens on everything, but an **Exclude Materialize** switch is on by default, so the deployment's
+  own logs and events are subtracted.
+  That switch is doing real work: on a reference install the Materialize namespaces are about half of a week's log
+  volume, and `materialize-environment` alone out-logs every other namespace, so leaving it in would make the volume
+  panels a picture of Materialize rather than of the platform underneath it.
+  Turn it off to compare the two side by side.
   Widen `dashboards.selected` to `["env-*", "infra-*"]` to install it.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
