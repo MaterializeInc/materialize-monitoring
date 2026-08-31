@@ -9,13 +9,10 @@
 
 //! Tab identities and their theme colours, for the whole dashboard.
 //!
-//! Same scheme as `env_top::theme`: one qualitative colour per tab, assigned in
-//! one place so no two collide and a recolour is a single edit. See that module
-//! for why the palette is deliberately free of red.
-//!
-//! The colours do *not* have to differ from `env-top`'s. A shade says "you are
-//! here" within one dashboard's tab strip, and the two dashboards are never on
-//! screen together, so what has to hold is that no two tabs *here* collide.
+//! Same scheme as the `env-*` dashboards: one qualitative colour per tab,
+//! assigned in one place. Logs and Events keep the shades they carry on
+//! `env-logs`, since they are the same kind of content read by a different
+//! audience; Nodes is the one this dashboard adds.
 
 use mzmon_lib::grafana::palette;
 
@@ -28,26 +25,26 @@ pub struct Theme {
     pub shade: &'static str,
 }
 
-/// What the cluster and the operator reported while the upgrade ran.
+/// What the platform's own workloads said.
+pub const LOGS: Theme = Theme {
+    title: "Logs",
+    shade: palette::THEME[1], // cyan
+};
+
+/// What systemd said, on the nodes underneath them.
+pub const NODES: Theme = Theme {
+    title: "Nodes",
+    shade: palette::THEME[2], // teal
+};
+
+/// What Kubernetes said about any of it.
 pub const EVENTS: Theme = Theme {
     title: "Events",
     shade: palette::THEME[5], // magenta
 };
 
-/// The two sides of a blue/green rollout, and whether the new one has caught up.
-pub const GENERATIONS: Theme = Theme {
-    title: "Generations",
-    shade: palette::THEME[3], // orange
-};
-
-/// The operator's reconciliation loop, as counters and histograms.
-pub const RECONCILIATION: Theme = Theme {
-    title: "Reconciliation",
-    shade: palette::THEME[2], // teal
-};
-
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 3] = [EVENTS, GENERATIONS, RECONCILIATION];
+pub const THEMED: [Theme; 3] = [LOGS, NODES, EVENTS];
 
 #[cfg(test)]
 mod tests {
@@ -72,12 +69,7 @@ mod tests {
     #[test]
     fn every_shade_comes_from_the_qualitative_palette() {
         for theme in THEMED {
-            assert!(
-                palette::THEME.contains(&theme.shade),
-                "{} uses {} which is not a THEME colour",
-                theme.title,
-                theme.shade
-            );
+            assert!(palette::THEME.contains(&theme.shade), "{}", theme.title);
             assert!(
                 !palette::INCANDESCENT.contains(&theme.shade),
                 "{} uses a health colour",

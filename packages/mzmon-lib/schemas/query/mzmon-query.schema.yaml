@@ -124,6 +124,12 @@ $defs:
       # rejects one whose every matcher can match the empty string, and this
       # one's "All" is `.+`.
       - "mzLogJobFilter"
+      # Infrastructure axes: sub-component, container (the only picker that
+      # reaches workloads with no `app`), and systemd unit for the node journal.
+      # Journal lines carry no namespace, so `unit` is their anchor.
+      - "mzLogComponentFilter"
+      - "mzLogContainerFilter"
+      - "mzLogUnitFilter"
       - "mzLogSearchFilter"
       # Environment (org) scope filter fragment, e.g.
       # materialize_cloud_organization_name=~"$environmentIdList".

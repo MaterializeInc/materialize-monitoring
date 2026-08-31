@@ -242,7 +242,14 @@ fn extraction_context<'a>(
         ("mzLogAppFilter", r#"app=~"environmentd""#),
         ("mzLogLevelFilter", r#"level=~"INFO""#),
         ("mzLogJobFilter", r#"job=~".+""#),
+        ("mzLogComponentFilter", r#"component=~"querier""#),
+        ("mzLogContainerFilter", r#"container=~"loki""#),
+        ("mzLogUnitFilter", r#"unit=~"kubelet.service""#),
         ("mzLogSearchFilter", r#"|~ "(?i)""#),
+        // A no-op matcher rather than an empty string: LogQL rejects a trailing
+        // comma in a stream selector, so this fragment always renders. `a^`
+        // matches no namespace, so it excludes nothing.
+        ("mzLogExcludeNamespaceFilter", r#"namespace!~"a^""#),
         ("mzClusterList", ".+"),
         ("mzReplicaList", ".+"),
         // Extraction only reads metric names, so the regex-escaped forms resolve to

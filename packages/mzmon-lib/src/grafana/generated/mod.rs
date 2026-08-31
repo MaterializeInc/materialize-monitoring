@@ -35,6 +35,10 @@ pub mod barchart;
 pub const LOGS_PLUGIN_ID: &str = "logs";
 pub mod logs;
 
+/// Grafana plugin id `text` (panelcfg).
+pub const TEXT_PLUGIN_ID: &str = "text";
+pub mod text;
+
 /// Grafana plugin id `prometheus` (dataquery).
 pub const PROMETHEUS_PLUGIN_ID: &str = "prometheus";
 pub mod prometheus;

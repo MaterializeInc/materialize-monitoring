@@ -28,7 +28,7 @@ The **docsite reference pages** target repo contributors (SRE, Field Engineering
 |---|---|
 | Grafana target versions, Dashboard v1/v2 schema state, SDK choices | [SDKs and Schemas](../../../docs/content/reference/internal/dashboard/sdks.md) |
 | Code structure, UID conventions, push process, `gcx dashboards update` vs ad-hoc v2 API | [Generating and Pushing Dashboards](../../../docs/content/reference/internal/dashboard/generating.md) |
-| Palettes, layouts, panel visualization, panel description voice, PromQL conventions, label families, metric quirks, PromQL recipes, shared-constants table | [Style Guidelines](../../../docs/content/reference/internal/dashboard/style-guidelines.md) |
+| Palettes, layouts, panel visualization, panel description voice, PromQL **and LogQL** conventions, time-range guards, Kubernetes-event shape, label families, metric quirks, recipes, shared-constants table | [Style Guidelines](../../../docs/content/reference/internal/dashboard/style-guidelines.md) |
 | How a panel gets its query and prose from the registry | [SDKs → Panels do not write PromQL](../../../docs/content/reference/internal/dashboard/sdks.md#panels-do-not-write-promql) |
 | The query registry itself: schema, engines, templating, consumers | [Queries](../../../docs/content/reference/internal/queries/overview.md) |
 | What each test suite covers, the frozen baseline, artifact freshness | [Testing](../../../docs/content/reference/internal/dashboard/testing.md) |
@@ -42,6 +42,12 @@ Frequently needed deep links into the Style Guidelines:
 - [Writing panel descriptions](../../../docs/content/reference/internal/dashboard/style-guidelines.md#writing-panel-descriptions)
 - [Filtering by cluster / replica](../../../docs/content/reference/internal/dashboard/style-guidelines.md#filtering-by-cluster--replica)
 - [Materialize metric label families](../../../docs/content/reference/internal/dashboard/style-guidelines.md#materialize-metric-label-families)
+- [Logs dashboard conventions](../../../docs/content/reference/internal/dashboard/style-guidelines.md#logs-dashboard-conventions)
+  — Loki-discovered pickers, `all_value` rules, the non-empty-matcher anchor, and how exclusion switches are wired
+- [Time-range guards on expensive rows](../../../docs/content/reference/internal/dashboard/style-guidelines.md#time-range-guards-on-expensive-rows)
+  — the paired show/hide rows that keep volume panels off a month-wide range
+- [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
+  — labels vs structured metadata, and why an event's namespace is the involved object's
 - [Known metric quirks and gotchas](../../../docs/content/reference/internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
 - [PromQL recipes](../../../docs/content/reference/internal/dashboard/style-guidelines.md#promql-recipes)
 - [Shared constants and helpers](../../../docs/content/reference/internal/dashboard/style-guidelines.md#shared-constants-and-helpers)
@@ -92,6 +98,7 @@ from.
 | `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview |
 | `env-logs` | `grafana/env_logs/` | `mz-mon-env-logs` | Materialize Logs and Events |
 | `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
+| `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -110,16 +117,17 @@ The live UID diverged from the codified one before `mz-mon-env-top` became autho
 
 ## `env-top` tabs
 
-Six tabs, in declared order. Shades come from `env_top/theme.rs`, which is the source of truth for visual identity:
+Six tabs, in declared order. Per-tab shades live in `env_top/theme.rs` — the source of truth, and deliberately the
+only place they are written down:
 
-| # | Tab title | Module | Shade |
-|---|---|---|---|
-| 1 | Summary | `summary.rs` | none of its own — borrows the shade of whichever tab each panel points at |
-| 2 | Kubernetes Workloads | `kubernetes.rs` | `KUBERNETES` `#0077BB` (blue) |
-| 3 | Connections / Activity | `connections.rs` | `CONNECTIONS` `#33BBEE` (cyan) |
-| 4 | Cluster Objects / Replicas | `clusters.rs` | `CLUSTERS` `#009988` (teal) |
-| 5 | Compute Objects | `compute.rs` | `COMPUTE` `#EE7733` (orange) |
-| 6 | Sources and Sinks | `sources_sinks.rs` | `SOURCES_SINKS` `#CCBB44` (yellow) |
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Summary | `summary.rs` |
+| 2 | Kubernetes Workloads | `kubernetes.rs` |
+| 3 | Connections / Activity | `connections.rs` |
+| 4 | Cluster Objects / Replicas | `clusters.rs` |
+| 5 | Compute Objects | `compute.rs` |
+| 6 | Sources and Sinks | `sources_sinks.rs` |
 
 The Summary tab's CPU/memory capacity panels borrow the Kubernetes shade, and its Currently Hydrating panel is the
 same definition the Compute tab uses (`env_top/mod.rs`), with the shade as the only parameter.
@@ -176,13 +184,13 @@ the target audience.
 ## `env-upgrade` tabs
 
 Three tabs, ordered by descending altitude: what happened, which side of the rollout is ready, is the operator itself
-healthy. Shades come from `upgrade/theme.rs`.
+healthy. Shades come from `env_upgrade/theme.rs`.
 
-| # | Tab title | Module | Shade |
-|---|---|---|---|
-| 1 | Events | `events.rs` | `EVENTS` `#EE3377` (magenta) |
-| 2 | Generations | `generations.rs` | `GENERATIONS` `#EE7733` (orange) |
-| 3 | Reconciliation | `reconciliation.rs` | `RECONCILIATION` `#009988` (teal) |
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Events | `events.rs` |
+| 2 | Generations | `generations.rs` |
+| 3 | Reconciliation | `reconciliation.rs` |
 
 **This is the repo's first mixed-datasource dashboard.** Events is Loki, Reconciliation is Thanos, and the two are
 separate tabs partly because they are scoped differently — see the namespace note below.
@@ -282,82 +290,55 @@ emitted by environmentd, so its `pod` label carries the generation and the split
 
 ## `env-logs` tabs
 
-Two tabs. Shades from `env_logs/theme.rs`; Events keeps the magenta it has on `env-upgrade`, since it is the same kind
-of content.
+Two tabs, shaded from `env_logs/theme.rs`. Events deliberately reuses the shade it carries on `env-upgrade`, since
+it is the same kind of content — an operator moving between the two is not told otherwise.
 
-| # | Tab title | Module | Shade |
-|---|---|---|---|
-| 1 | Logs | `logs.rs` | `LOGS` `#33BBEE` (cyan) |
-| 2 | Events | `events.rs` | `EVENTS` `#EE3377` (magenta) |
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Logs | `logs.rs` |
+| 2 | Events | `events.rs` |
 
 **Logs** — Volume (Log Rate, Warning Rate, Log Rate by App, Log Rate by Level), Warnings (feed), All Logs (feed).
 **Events** — Activity (rate by reason, rate by namespace), Warnings (feed), All Events (feed).
 
-## Logs dashboard conventions
+## `infra-logs` tabs
 
-**Loki end to end, and that is the point.** `env-logs` defines *no* metrics datasource and shares nothing with
-`environment_scoped` — its namespace, app and level pickers are Loki-discovered. Reading logs is frequently how you work
-out why the *metrics* pipeline is broken, so a logs dashboard deriving its scope from Prometheus would go blind exactly
-when it is needed. A test asserts no query references `$mzNamespaceList`, `$mzClusterList` or `$environmentNameList`.
+The first of the `infra-*` family — scoped to the cluster rather than to an environment.
 
-**Loki answers a variable differently from Prometheus.** Not `label_values(...)` text but a `{label, stream, type: 1}`
-object — `logql_variable_query` builds it, and `LogQueryVariable` is the Loki-side counterpart to `QueryVariable`. A
-Prometheus-shaped variable query against Loki resolves to nothing, silently. `stream` may reference other variables,
-which is what chains namespace → app/level.
-
-**Materialize-first, not Materialize-only.** `$materializeNamespacesOnly` gates namespace *discovery*
-(`.*materialize.*|mz-.*|environment-.*` on, `.*` off, on by default). Three conventions rather than one, because the
-naming differs by install: this repo's charts (`materialize`, `materialize-environment`), the shorter `mz-` prefix, and
-Cloud's `environment-<uuid>-0`. A filter rather than a hard scope, because the monitoring stack's own logs are what you
-need when telemetry itself is failing, and because the narrow value is a naming convention rather than a derived fact —
-being wrong about it has to be one click to recover from, not a blank dashboard.
-
-**Every log picker states its own `all_value`; none is left to expand into the discovered values.** An expansion is
-*empty* whenever discovery has not run or has failed, and `label=~""` matches only the streams **missing** that label
-rather than all of them — so one picker failing to load takes the panels down with it, and it reads as "selects no log
-lines" rather than as the error it is.
-
-| Picker | `all_value` | Why |
+| # | Tab title | Module |
 |---|---|---|
-| `logNamespaceList` | `.+` | It is the sole matcher of the app / level / job discovery selectors, so it must not be empty-compatible. Safe because every line carries a namespace — the pipeline coerces cluster-scoped events to `kube-system` rather than omitting the label. |
-| `logAppList` | `.*` | `app` is genuinely absent from some streams and `.+` drops them — 2,407 of 30,432 lines in half an hour on a representative install, most of `kube-system`. |
-| `logLevelList` | `.*` | Same inclusive form; costs nothing and does not depend on every line carrying a level. |
-| `logJobList` | `.+` | The second anchor. Free, since `job` is present on every line, so `.+` and `.*` select identically. |
+| 1 | Logs | `logs.rs` |
+| 2 | Nodes | `nodes.rs` |
+| 3 | Events | `events.rs` |
 
-`$materializeNamespacesOnly` has the same constraint and it bites harder: the switch **is** the whole stream selector of
-the namespace discovery query, so its off position is `.+`, not `.*`. With `.*` the variable itself fails to load and
-every picker chained below it empties out.
+**Logs** — Volume (rate by component, rate by namespace, warning rate), Warnings feed, All Logs feed.
+**Nodes** — Journal Volume (rate by unit), Node Warnings feed, Node Journal feed.
+**Events** — Activity (by reason, by namespace), Warnings feed, All Events feed.
 
-Watch the shape of the check — `.*materialize.*` *starts* with `.*` but cannot match empty, because it requires a
-literal. A pattern is empty-compatible only when stripping every `.*` leaves nothing.
+### Why it is a second dashboard rather than a wider `env-logs`
 
-**Every log selector needs a non-empty-compatible matcher.** LogQL rejects one where every matcher can match the empty
-string — *"queries require at least one regexp or equality matcher that does not have an empty-compatible value"* — and
-a dashboard built from `=~` pickers is exactly that shape. `$logJobList` is the anchor: its `all_value` is `.+` rather
-than the discovered values, so it always contributes something non-empty and every panel parses whatever the other
-pickers are set to. It doubles as the most direct way to isolate one workload, since `job` is `<namespace>/<container>`.
-Verified against a live Loki, including the worst case where every other picker expands to nothing.
+Two things `env-logs` cannot reach however its pickers are set:
 
-The *event* queries need no anchor and must not get this one: they pin `job="loki.source.kubernetes_events"`, already a
-non-empty equality matcher, and a second `job` matcher would AND with it and zero the panel the moment a container job
-was picked. Tests hold both halves.
+- **The node journal.** Journal lines carry `unit`, `component`, `job`, `level` and `service_name` and **no `namespace`,
+  `app` or `container`** — they come from the node, not a pod. Every `env-logs` selector requires a namespace, so those
+  lines are excluded by construction. `unit` is their anchor, with `all_value` `.+`, standing in for the namespace
+  matcher container-log selectors lean on.
+- **Sub-components.** `component` splits `loki` into eight processes (`canary`, `querier`, `ingester`,
+  `query-frontend`, `index-gateway`, `compactor`, `distributor`, `ruler`) and `thanos` into three. A Materialize
+  environment has none, so adding the picker there would be a control that does nothing.
 
-**The search box must be harmless when empty.** It renders as `|~ "(?i)$logSearch"`, and an empty pattern matches every
-line rather than none — verified against a live Loki, since the opposite would blank the dashboard until something is
-typed.
+A third, smaller reason: `container` is the only picker that reaches workloads with no `app` label, which on a
+representative install is the whole of `kube-system` (14 containers, `app` empty). It sits in the controls menu.
 
-**Warning panels ignore the level picker**, deliberately. They answer "is anything wrong", and a selection of `INFO`
-silently zeroing them would make them lie. A test holds that.
+### What the two dashboards share
 
-**Stream labels vs structured metadata.** `namespace`, `app`, `level`, `container`, `job`, `k8s_*`, `service_name` and
-`unit` are stream labels and belong in the selector. `pod`, `node`, `organization_name`, `container_id`, `region`,
-`zone`, `detected_level` and friends are structured metadata, filtered after a `|`. `organization_name` is the
-self-managed stand-in for the cloud dashboards' Snowflake org lookup, which does not exist here.
+The variable **names** and the Kubernetes-**event queries**. `materialize.events.cluster.*` carries no
+Materialize-specific filter and is scoped by the same `$logNamespaceList` both dashboards define, so the events half is
+one set of definitions serving both. `log_namespaces(opens_on)` takes the opening selection as an argument — the
+Materialize pattern for `env-logs`, `.+` for `infra-logs` — which is the *only* intended difference.
 
-**Two event scopes, two query families.** `materialize.events.deployment.*` / `.operator.*` are rollout-scoped and
-belong to `env-upgrade`; `materialize.events.cluster.*` is the general browser and belongs to `env-logs`. Separate
-definitions on purpose — the rollout queries carry generation and reporting-controller filters that a general browser
-must not inherit, or it would quietly drop events for belonging to the wrong side of a rollout.
+The container-log queries are **not** shared: `infra.logs.*` carries the component and container filters, and adding
+those to `materialize.logs.*` would oblige `env-logs` to define pickers it has no use for.
 
 ## orchestratord reconciliation metrics
 
@@ -405,42 +386,6 @@ against the pass it belongs to.
 `$operatorNamespace` — an assertion about a rendered selector under the default scope is about a rendering that never
 ships.
 
-## Kubernetes events in Loki
-
-What the `env-upgrade` Events tab is built on, and the parts that are not guessable.
-
-**Where they come from.** `loki.source.kubernetes_events` in `packages/alloy-pipelines/gateway.yaml` reads events off
-the Kubernetes API and forwards them to the main processor, which lifts `reason`, `name`, `kind`, `count`, `node` and
-`reportingcontroller` into **structured metadata** and maps the event `type` onto the `level` stream label
-(`Normal` → `INFO`, `Warning` → `WARN`). Stream labels are therefore `job="loki.source.kubernetes_events"`, `namespace`
-and `level`; everything else a query groups on is structured metadata, which LogQL matches and aggregates the same way.
-
-**An event's namespace is the involved object's, not the reporter's.** This is the one that bites. orchestratord runs
-in the operator namespace and reconciles resources in the environments' namespace, so *every event it publishes is
-filed in the environment namespace*. Scoping the operator's events by `%%{mzOperatorNamespaceFilter}` returns nothing
-— it looks right, renders empty, and gives no hint why. The operator queries scope to both namespaces
-(`%%{mzDeploymentNamespaceFilter}`) and pick orchestratord out by
-`| reportingcontroller="orchestratord.materialize.cloud"`, which is the reporter's identity and the only field that
-actually says where an event came from.
-
-**`line_format` is what makes a feed readable.** A raw event line is logfmt carrying a dozen fields, most of them
-resource versions and forwarding addresses. `| line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"` renders the
-three that matter; expanding a line still shows the rest.
-
-**The operator's event vocabulary** (see `src/orchestratord/src/reconcile.rs` and `controller/materialize.rs` in the
-Materialize repo): `ReconciliationFailed` from the generic reconciliation wrapper, carrying the error's whole cause
-chain; and the lifecycle transitions on the `Materialize` resource — `Applying`, `ReadyToPromote`,
-`WaitingForApproval`, `Promoting`, `Applied`, `RolloutTimeout`, `FailedDeploy`. A `FailedDeploy` reports twice, once
-with the phase and once with the cause; the reasons tell them apart. Repeats aggregate into one event with a rising
-`count` rather than one line each, so a feed under-reports a tight loop — the `count` on the line is how many it
-stands for.
-
-**Two namespace controls, scoped differently.** `$operatorNamespace` is a visible single-select discovered from
-`label_values(orchestratord_is_leader, namespace)` — the operator is a cluster-wide singleton that no environment
-selection narrows. The environment namespace stays the hidden, environment-derived `$mzNamespaceList` that `env-top`
-already uses. `%%{mzDeploymentNamespaceFilter}` is the two as **one** matcher; writing both filters side by side
-repeats the `namespace` label in one selector, which is an AND and matches nothing.
-
 ## Notes on the trickier panels
 
 - **Freshness** reads `mz_dataflow_wallclock_lag_seconds`. Collections with no established frontier report a
@@ -453,120 +398,13 @@ repeats the `namespace` label in one selector, which is an AND and matches nothi
 
 ## Self-managed metric migration (done)
 
-The dashboard was migrated off the cloud-only `v2_mz_*` family and `materialize_cloud_organization_id` onto self-managed
-`mz_*` metrics + `materialize_cloud_organization_name` filtering (see
-[Deployment target](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-target-self-managed-vs-cloud)
-).
-Also fixed: `metrics_datasource()` no longer pins a dev datasource name (`$metricsDatasource` now resolves to the
-instance default), which was silently breaking every query.
-
-These panels have **no self-managed metric** and are intentionally kept with a `NoValue` explaining the gap (they render
-blank/0 until a metric exists, rather than being deleted):
-
-- Compute Objects: **Slowest Hydrating Collections** (per-collection hydration *time* —
-  `v2_mz_compute_hydration_time_seconds` is cloud-only, no self-managed equivalent confirmed with the team for this
-  release; description points at `mz_internal.mz_compute_hydration_times` SQL).
-  (**Currently Hydrating** was since revived via the wallclock-lag sentinel — see below; **Active Indexes** and **Index
-  Types** were wired to `mz_indexes_count`.)
-- Cluster Objects: **Replica Availability Zones** — `materialize_cloud_availability_zone` is cloud-only AND AZ semantics
-  confuse the end-user audience, so it is **intentionally unwired**.
-  Don't re-add without product sign-off.
-
-**Currently Hydrating = wallclock-lag sentinel count (no status metric exists):** there is no source/sink/object
-*status* or hydration-state metric on self-managed.
-But a collection with no established output frontier reports the `mz_dataflow_wallclock_lag_seconds` u64::MAX sentinel
-(`> 1e15`), so `count(... > 1e15)` (with `instance_id!=""`) is a real-time **hydration-queue proxy**: it **spikes
-briefly whenever a replica restarts** (dataflows re-hydrating) and drains back to 0 — that's the signal we wanted, NOT
-"stuck." A count that *stays* elevated is the genuinely-broken case (e.g. `pg_src2`, status `created`, never hydrated
-— it sits persistently at 1).
-This backs the revived **Currently Hydrating** stat (Summary mirror + Compute -> Hydration row); a neutral sparkline,
-deliberately NOT alarm-colored, since brief spikes are normal. Metrics expose only `collection_id`; the description
-hands off to `mz_internal.mz_hydration_statuses WHERE NOT hydrated` / `mz_source_statuses` / the console Objects view
-for names.
-(An earlier separate red "Stuck Objects" stat was removed — same query, but alarm-on-any false-fired on every routine
-restart.)
-
-Complementary failure-mode signals now exist (none is a status metric — that's SQL-only):
-1. **Currently Hydrating** (Summary + Compute -> Hydration) — wallclock-lag sentinel count; brief spike on replica
-   restart = normal (re)hydration, *sustained* non-zero = a collection that never got a frontier
-   (created/failed-to-start, e.g. `pg_src2`).
-2. **Frontier Lag** (Compute -> Freshness) — hydrated but falling behind.
-3. **Source Upstream Errors** (Storage -> Sources) and the **Kafka/Iceberg sink error panels** — two source signals on
-   one panel: **commit-failure rate** (`mz_source_offset_commit_failures` — upstream reachable but *rejects* the commit)
-   AND a **disconnected 0/1 indicator** (`offset_committed > offset_known` — broker/DB unreachable so `offset_known`
-   collapsed; the `BrokerTransportFailure` stall).
-   The latter is essential: **commit-failures does NOT fire for an unreachable broker** (the source never reaches the
-   commit step), which surprised us mid-testing — a fully broker-down Kafka source sat `stalled` with commit-failures
-   flat at 0, and only the offset-disconnect signal (plus frontier lag) caught it.
-4. **Source Ingestion by Replica** (Storage -> Sources, `mz_source_messages_received` per replica) — a *silent*
-   per-replica stall: a restarted replica that can't resume pulling reads 0 while siblings ingest, but the source stays
-   `Running` and aggregates (and commit-failures = 0) hide it.
-   **This was a real gap** — `sum by (source_id)` aggregate panels mask per-replica failures; the per-replica split
-   (like the per-worker dataflow panel) is the only metric-side place it shows.
-   Pairs with climbing Frontier Lag.
-
-The **Storage / "Sources and Sinks" tab** was later rebuilt against live sources/sinks (real RDS/MSK upstreams on cluster `ingest`):
-
-- **Active Sources/Sinks**, **Source Types**, **Sink Types**, and the **Sources** catalog table now use
-  **`mz_storage_objects`** — the progress-free catalog metric (`count(group by (id) (...))`).
-  This fixes the `mz_sources_count` /`mz_sinks_count` progress-subsource double-count (3 PG sources → `type="postgres"`
-  =6).
-- **Sources by Status** → renamed **Sources**: there is no source/sink status metric on self-managed, so it's a catalog
-  table (id/type/connection/envelope/cluster); live status is SQL-only (`mz_internal.mz_source_statuses`).
-- Throughput/lag/Iceberg/Kafka sink panels filter on the long-form `cluster_environmentd_*` ids, **verified** against
-  live `mz_source_bytes_received` / `mz_sink_bytes_committed`.
-  Caveat: the `$mzClusterList` picker lists compute clusters only, so a storage-only ingest cluster isn't selectable —
-  default "All" shows everything.
-
-**Cloud/self-managed convergence (SQL metric prefix):** SQL-derived metrics differ only by prefix between envs (`mz_X`
-self-managed / `v2_mz_X` cloud).
-The prefix is **baked in at render time** via the registry's `%%{mzSqlPrefix}` parameter, fed by `--sql-metric-prefix`
-(default `mz_`).
-This replaced the old `$sqlMetricPrefix` Grafana variable (auto-detected via `…compute_cluster_status`), which GMP
-can't run since it can't do `query_result(...)` detection.
-**Only** prefix SQL-derived metrics (catalog `*_count`, `compute_cluster_status`, `storage_objects`, `object_id`,
-`workload_clusters`, arrangement-introspection, `dataflow_elapsed`, `compute_hydration_time_seconds`); genuine
-instrumentation (`arrangement_maintenance`, `source_*` /`sink_*` throughput, `peek_duration`, `query_total`,
-`wallclock_lag`, …) is bare `mz_` in both envs and must NOT be prefixed (would become a nonexistent `v2_mz_…` in
-cloud).
-Table `excludeByName` must list both resolved names.
-Nothing is captured at import, so one process can emit both variants; no `v2_mz_` artifact ships today.
-See
-[style guide → Converging cloud and self-managed](../../../docs/content/reference/internal/dashboard/style-guidelines.md#converging-cloud-and-self-managed-the-sql-metric-prefix)
-.
-
-**Filter fragments are render-time parameters, not ConstantVariables:** the `$environmentFilter` / `$containerFilter` /
-`$clusterFilter` / `$replicaFilter` hidden ConstantVariables were removed — Grafana's constant-variable interpolation
-mangled their nested `$…List` refs and embedded commas.
-The registry's `%%{mzEnvironmentFilter}` / `%%{cAdvisorFilter}` / `%%{mzClusterList}` / `%%{mzReplicaList}` parameters
-resolve to the matcher text before the query reaches the dashboard; the nested `$…List` references inside them stay real
-Grafana variables and resolve at view time.
-See [style guide → Intermediates](../../../docs/content/reference/internal/dashboard/style-guidelines.md#intermediates)
-.
-
-**Duplicate-job dedup:** this instance runs 4 Prometheus jobs against the same clusterd `:6878` endpoint, so
-`mz_source_*` / `mz_sink_*` / `mz_arrangement_*` / `mz_compute_replica_history_*` each appear under multiple `job`
-values and a plain `sum(rate(...))` reads 4×.
-Fixed by wrapping the inner rate/gauge in `max without (job) (...)` in the registry queries behind the affected sum-rate
-panels (storage source/sink throughput/lag/Iceberg/Kafka, compute arrangement maintenance rate, dataflow elapsed).
-`max by(...)` and `histogram_quantile` panels are already job-invariant.
-**Do not** exclude job names by pattern — several metrics (`mz_compute_cluster_status`, `mz_storage_objects`,
-`mz_dataflow_elapsed_seconds_total`, the `*_count` metrics) live *only* on a "legacy" job here, so an exclusion list
-blanks real panels.
-The real root cause is the overlapping scrape config (helm/Prometheus) — fixing it there makes the `max without (job)`
-wraps no-ops.
-See
-[Known metric quirks](../../../docs/content/reference/internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
-.
-
-**Datasource scrape interval (empty `rate()` panels):** Prometheus here scrapes every 60s, but the Grafana datasource is
-provisioned (via terraform/helm) without `jsonData.timeInterval`, so it defaults to 15s and `$__rate_interval`
-collapses to `~1m` — a single sample, so every `rate()` /`increase()` panel renders blank despite live data.
-Fix is `jsonData.timeInterval: "60s"` on the datasource (matches the real `scrape_interval`); see
-[Rate intervals](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rate-intervals).
-**In flight as of this writing** — the shared terraform/helm datasource block may still be unpatched, so a
-freshly-provisioned stack will show empty rate panels until `timeInterval` is set.
-Quick check on any instance: `count_over_time(<metric>[1m])` returning `1` means the window is too short.
+Migrated off the cloud-only `v2_mz_*` family and `materialize_cloud_organization_id` onto self-managed `mz_*` metrics
+and `materialize_cloud_organization_name`, with SQL-derived metrics converged behind `$sqlMetricPrefix`.
+The roadmap records it as shipped; every rule that came out of it — the wallclock-lag sentinel behind Currently
+Hydrating, duplicate-job dedup on the shared `:6878` endpoint, the datasource `timeInterval` that empties `rate()`
+panels, and the prefix rules themselves — lives in the
+[style guide](../../../docs/content/reference/internal/dashboard/style-guidelines.md), which is where to look rather
+than here.
 
 Local push: `gcx` context **`local-mzmon`** → `http://localhost:13000`.
 Render with `mz-monitoring-build gen-dashboards --format json`, then carry the live `resourceVersion` + folder

@@ -18,9 +18,11 @@
 pub mod env_logs;
 pub mod env_top;
 pub mod env_upgrade;
+pub mod infra_logs;
 pub mod queries;
 pub mod render;
 pub mod transform;
+pub mod volume_guard;
 
 use mzmon_lib::grafana::dashboard::Resource;
 use mzmon_lib::query::QueryRegistry;
@@ -62,6 +64,11 @@ pub const ALL: &[Renderable] = &[
         name: env_logs::NAME_STEM,
         summary: "Logs and Kubernetes events for a Materialize deployment",
         render: env_logs::render,
+    },
+    Renderable {
+        name: infra_logs::NAME_STEM,
+        summary: "Logs and Kubernetes events for the platform underneath Materialize",
+        render: infra_logs::render,
     },
     Renderable {
         name: env_upgrade::NAME_STEM,

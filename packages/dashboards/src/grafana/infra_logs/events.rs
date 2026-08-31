@@ -7,22 +7,18 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! The Events tab: what Kubernetes said about the workloads.
+//! The Events tab: what Kubernetes said about any of it.
 //!
-//! The general-purpose counterpart to the upgrade dashboard's Events tab. That
-//! one is rollout-scoped — it filters by generation and picks the operator out by
-//! reporting controller, because it is answering "is this upgrade going through".
-//! This one deliberately carries none of those filters: a general event browser
-//! should not quietly drop an event for belonging to the wrong side of a rollout.
+//! Shares its queries with `env-logs`' Events tab rather than redefining them.
+//! `materialize.events.cluster.*` carries no Materialize-specific filter — it is
+//! scoped by the same Loki-discovered namespace picker both dashboards define —
+//! so the only thing that differs here is where that picker opens: on every
+//! namespace rather than on the deployment's own.
 //!
-//! Scoped by the same Loki-discovered namespace picker as the Logs tab, so
-//! turning the Materialize-only switch off reaches `kube-system` and the platform
-//! underneath — which is where the answer lives when the question is about nodes
-//! or storage rather than about Materialize.
-//!
-//! No panel here takes the tab's shade, because none of them is a stat — the
-//! timeseries and log panels colour by series, and forcing one hue across them
-//! would make the reasons indistinguishable from each other.
+//! That difference is most of the value. On a Materialize-scoped default the
+//! platform's own events are invisible, and they are the majority: on a
+//! representative install, `FailedScheduling` alone accounts for 4,538 warnings
+//! in a week, against a handful from the operator.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
@@ -30,13 +26,7 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use crate::grafana::queries::Queries;
 
-/// The three fields worth a column on an event feed.
-///
-/// An event carries a dozen more — resource versions, forwarding addresses, the
-/// source component — and none of them is what you are reading for. Rendering
-/// these as columns is also why the event queries do *not* reformat the line:
-/// displayed fields supersede the raw line, so a `line_format` would be work
-/// thrown away.
+/// The three fields worth a column on an event feed, in reading order.
 ///
 /// `reason` first because it is what you scan. `name` second, *before* the
 /// message: `msg` is free text of no fixed width, so anything to its right is
@@ -44,9 +34,8 @@ use crate::grafana::queries::Queries;
 /// for the field that says which object this happened to.
 const EVENT_FIELDS: [&str; 3] = ["reason", "name", "msg"];
 
-/// What a panel shows when nothing matched.
-///
-/// Quiet is the healthy reading for events, unlike for logs.
+/// What a panel shows when nothing matched. Quiet is the healthy reading here,
+/// unlike for logs.
 fn quiet(what: &str) -> NoValue {
     NoValue::Custom(format!("No {what} in this time range"))
 }
@@ -135,11 +124,10 @@ mod tests {
     }
 
     #[test]
-    fn nothing_here_inherits_the_rollout_filters() {
-        // The whole reason these are separate query definitions from the upgrade
-        // dashboard's. A general browser that dropped events for belonging to
-        // another generation, or that only showed the operator's own, would be
-        // quietly lying about what happened.
+    fn it_shares_the_event_queries_rather_than_redefining_them() {
+        // Same definitions as `env-logs`. If these ever diverge it should be
+        // because the scopes genuinely differ, not because two copies drifted --
+        // the only intended difference is where the namespace picker opens.
         let q = &test_log_queries();
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
@@ -153,30 +141,12 @@ mod tests {
                     .as_str()
                     .expect("expr");
                 assert!(
-                    !expr.contains("mzGenerationList"),
-                    "{name} inherits the generation filter: {expr}"
-                );
-                assert!(
-                    !expr.contains("reportingcontroller"),
-                    "{name} is narrowed to one reporter: {expr}"
-                );
-                // And it is scoped by the logs picker, not by the deployment's
-                // own namespaces.
-                assert!(
-                    expr.contains("$logNamespaceList"),
-                    "{name} is not scoped by the logs namespace picker: {expr}"
-                );
-                // Anchored by the event job itself rather than by the logs
-                // dashboard's job picker: that is already a non-empty equality
-                // matcher, and a second `job` matcher would AND with it and zero
-                // the panel the moment a container job was picked.
-                assert!(
                     expr.contains(r#"job="loki.source.kubernetes_events""#),
                     "{name} is not anchored to the events stream: {expr}"
                 );
                 assert!(
-                    !expr.contains("$logJobList"),
-                    "{name} ANDs a second job matcher onto the events stream: {expr}"
+                    expr.contains("$logNamespaceList"),
+                    "{name} is not scoped by the shared namespace picker: {expr}"
                 );
             }
         }

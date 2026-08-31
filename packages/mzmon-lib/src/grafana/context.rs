@@ -80,6 +80,15 @@ pub mod variables {
     pub const LOG_APP_LIST: &str = "logAppList";
     /// Severity levels a logs dashboard includes.
     pub const LOG_LEVEL_LIST: &str = "logLevelList";
+    /// Whether an infrastructure logs dashboard subtracts the Materialize
+    /// namespaces. Optional: only a dashboard that offers the switch defines it.
+    pub const EXCLUDE_MATERIALIZE: &str = "excludeMaterialize";
+    /// Sub-components a logs dashboard reads from.
+    pub const LOG_COMPONENT_LIST: &str = "logComponentList";
+    /// Containers a logs dashboard reads from.
+    pub const LOG_CONTAINER_LIST: &str = "logContainerList";
+    /// systemd units a node-journal panel reads from.
+    pub const LOG_UNIT_LIST: &str = "logUnitList";
     /// Collection jobs a logs dashboard reads from.
     ///
     /// Also the matcher that keeps a log stream selector parseable — see
@@ -156,6 +165,9 @@ pub const LOG_VARIABLES: &[&str] = &[
     variables::LOG_APP_LIST,
     variables::LOG_LEVEL_LIST,
     variables::LOG_JOB_LIST,
+    variables::LOG_COMPONENT_LIST,
+    variables::LOG_CONTAINER_LIST,
+    variables::LOG_UNIT_LIST,
 ];
 
 /// The object-name pattern a generation appears in, as a regex with the
@@ -249,6 +261,14 @@ pub struct DashboardScope {
     /// environments a deployment does not want to see (e.g.
     /// `mz_context_org_type!="e2e_test"`). Empty excludes nothing.
     pub exclude_environments: String,
+    /// Namespace pattern a logs dashboard subtracts.
+    ///
+    /// Unlike [`Self::exclude_environments`] this is never empty, because LogQL —
+    /// unlike PromQL — rejects a trailing comma in a stream selector, so an
+    /// optional fragment cannot simply vanish. The default is a pattern nothing
+    /// matches, which is a no-op matcher rather than an absent one. See
+    /// [`Self::exclude_materialize_variable`].
+    pub exclude_log_namespaces: String,
 }
 
 impl Default for DashboardScope {
@@ -258,6 +278,8 @@ impl Default for DashboardScope {
             operator_namespace: "materialize".to_string(),
             system_namespace: "kube-system".to_string(),
             exclude_environments: String::new(),
+            // A pattern no namespace can match: excludes nothing.
+            exclude_log_namespaces: "a^".to_string(),
         }
     }
 }
@@ -284,6 +306,18 @@ impl DashboardScope {
     /// on any other it renders a selector that matches nothing.
     pub fn operator_variable(mut self) -> Self {
         self.operator_namespace = format!("${}", variables::OPERATOR_NAMESPACE);
+        self
+    }
+
+    /// Point the log-namespace exclusion at the `$excludeMaterialize` switch
+    /// rather than leaving it a no-op.
+    ///
+    /// Only for a dashboard whose variable set includes
+    /// [`variable::exclude_materialize`](crate::grafana::variable::exclude_materialize);
+    /// on any other it renders a selector referencing a variable that does not
+    /// exist, which interpolates to nothing and excludes every line.
+    pub fn exclude_materialize_variable(mut self) -> Self {
+        self.exclude_log_namespaces = format!("${}", variables::EXCLUDE_MATERIALIZE);
         self
     }
 
@@ -438,6 +472,27 @@ pub fn dashboard_context<'a>(
         // selector parses whatever the other pickers are set to. Log queries only
         // -- the event queries pin `job="loki.source.kubernetes_events"`, which
         // already anchors them, and a second `job` matcher would AND with it.
+        // Never empty, unlike `excludeEnvironmentFilter`: LogQL rejects a
+        // trailing comma in a stream selector, so an optional fragment has to
+        // render as a no-op matcher rather than as nothing at all.
+        (
+            "mzLogExcludeNamespaceFilter",
+            format!(r#"namespace!~"{}""#, scope.exclude_log_namespaces),
+        ),
+        (
+            "mzLogComponentFilter",
+            format!(r#"component=~"${}""#, variables::LOG_COMPONENT_LIST),
+        ),
+        (
+            "mzLogContainerFilter",
+            format!(r#"container=~"${}""#, variables::LOG_CONTAINER_LIST),
+        ),
+        // Journal lines carry no namespace, so `unit` is their anchor the way
+        // `job` is for container logs -- hence `.+` for its "All".
+        (
+            "mzLogUnitFilter",
+            format!(r#"unit=~"${}""#, variables::LOG_UNIT_LIST),
+        ),
         (
             "mzLogJobFilter",
             format!(r#"job=~"${}""#, variables::LOG_JOB_LIST),
@@ -532,6 +587,10 @@ mod tests {
             "mzLogAppFilter",
             "mzLogLevelFilter",
             "mzLogJobFilter",
+            "mzLogComponentFilter",
+            "mzLogContainerFilter",
+            "mzLogExcludeNamespaceFilter",
+            "mzLogUnitFilter",
             "mzLogSearchFilter",
             "mzEnvironmentFilter",
             "excludeEnvironmentFilter",
@@ -566,7 +625,8 @@ mod tests {
                         || OPERATOR_VARIABLES.contains(&reference.as_str())
                         || GENERATION_VARIABLES.contains(&reference.as_str())
                         || LOG_VARIABLES.contains(&reference.as_str())
-                        || reference == "logSearch";
+                        || reference == "logSearch"
+                        || reference == variables::EXCLUDE_MATERIALIZE;
                     assert!(
                         known,
                         "{engine} parameter {name} references unknown ${reference}"
