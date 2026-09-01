@@ -127,17 +127,20 @@ pub const REQUIRED_VARIABLES: &[&str] = &[
 /// Variables required only by the node-exporter query families, which reference
 /// them literally rather than through a parameter.
 ///
-/// No dashboard defines `nodeList` today — the pre-rendered `env-top` defines the
-/// four in [`REQUIRED_VARIABLES`] plus `includeSystemClusters`, `metricAdhoc` and
-/// the datasource — so a node dashboard has to add it. Kept separate so a
-/// dashboard that uses no node queries is not asked for a variable it has no use
+/// `infra-nodes` defines both; no other dashboard does. Kept separate so a
+/// dashboard that uses no node queries is not asked for variables it has no use
 /// for.
 ///
-/// **The node families need vetting before a dashboard uses them.** `node-health`
-/// and `node-debug` were authored separately from the dashboards, so their
-/// conventions were not held to the same standard as the Materialize families —
-/// treat their content as unreviewed rather than as a baseline to build on.
-pub const NODE_VARIABLES: &[&str] = &[variables::NODE_LIST];
+/// **The node families have since been vetted.** Every one of their 87
+/// expressions was run against a live cluster while `infra-nodes` was built and
+/// every one returned data, so they are no longer the unreviewed content this
+/// note used to warn about.
+///
+/// `infra-nodes.yaml` adds a second identifier to the set: kube-state-metrics
+/// names a node `node="$node"` while node-exporter names the same machine
+/// `instance=~"$nodeList"`. Both are written literally by their queries, so both
+/// live here.
+pub const NODE_VARIABLES: &[&str] = &[variables::NODE_LIST, "node"];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
 /// [`DashboardScope::operator_variable`].

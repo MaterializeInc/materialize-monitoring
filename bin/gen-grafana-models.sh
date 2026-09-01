@@ -83,9 +83,19 @@ for pkg in "${PACKAGES[@]}"; do
     # The pre-rendered env-top.yaml emits exactly that and Grafana accepts it, so
     # the schema is wrong and the generated model would be stricter than the
     # server. Widening to `any` yields serde_json::Value.
+    #
+    # DynamicConfigValue.value: typed `object`, but a field override's value is
+    # whatever the property takes -- `{"id": "unit", "value": "bytes"}` is a bare
+    # string, `custom.width` a number. Typed as an object the model can only
+    # express the map case, so a scalar has to be wrapped, and Grafana renders the
+    # wrapper as `[object Object]` in the cell. Widening to `any` yields
+    # serde_json::Value and lets the scalar through.
     if [ "$pkg" = "dashboardv2" ] || [ "$pkg" = "dashboardv2beta1" ] || [ "$pkg" = "dashboard" ]; then
         jq '(.definitions.MatcherConfig.properties.options) |= {
                 "description": (.description // "The matcher options. This is specific to the matcher implementation.")
+            }
+            | (.definitions.DynamicConfigValue.properties.value) |= {
+                "description": (.description // "The property value. Shape depends on the property id.")
             }' "$WORK_DIR/$pkg.json" >"$WORK_DIR/$pkg.patched.json"
         mv "$WORK_DIR/$pkg.patched.json" "$WORK_DIR/$pkg.json"
     fi

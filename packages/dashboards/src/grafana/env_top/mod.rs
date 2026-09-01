@@ -30,7 +30,6 @@
 pub mod clusters;
 pub mod compute;
 pub mod connections;
-pub mod field_override;
 pub mod kubernetes;
 pub mod selector;
 pub mod sources_sinks;

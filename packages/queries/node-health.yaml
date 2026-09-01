@@ -181,11 +181,13 @@ queries:
         Approaching 1.0 leaves nowhere to spill; the next allocation pressure
         becomes an OOM kill instead.
       notes: |
-        The `> bool 0` guard makes a swapless node report 0 rather than dividing
-        by zero, so a panel over a mixed fleet stays readable.
+        **A swapless node reports no series at all**, rather than 0. The earlier
+        `> bool 0` guard did not work: on a node with no swap the ratio is `0/0`,
+        which is NaN, and multiplying NaN by the guard's 0 is still NaN — so the
+        panel read `NaN` instead of the intended zero. An `and` filter drops the
+        series instead, which lets a panel say "no swap configured" and means a
+        fleet view shows only the nodes that actually have any.
     promQL: |
-      (max by (instance) (node_memory_SwapTotal_bytes{instance=~"$nodeList"}) > bool 0)
-      *
       (
         (
           max by (instance) (node_memory_SwapTotal_bytes{instance=~"$nodeList"})
@@ -195,6 +197,8 @@ queries:
         /
         max by (instance) (node_memory_SwapTotal_bytes{instance=~"$nodeList"})
       )
+      and
+      (max by (instance) (node_memory_SwapTotal_bytes{instance=~"$nodeList"}) > 0)
     # The `> bool 0` guard is dropped: a swapless node divides by zero and
     # drops out rather than reading 0.
     datadogQuery: |
@@ -381,6 +385,49 @@ queries:
         max:node_network_receive_drop_total{instance:$nodeList} by {instance,device}.as_rate()
       - |
         max:node_network_transmit_drop_total{instance:$nodeList} by {instance,device}.as_rate()
+  - id: node.network.rx.total
+    stability: canonical
+    description:
+      summary: Bytes per second received across every interface on the node.
+      nominal: Whatever the workload calls for, well under the link's capacity.
+      degraded: |
+        Read against `node.debug.network.saturation`, which is the same traffic
+        as a fraction of what the link can carry.
+      notes: |
+        **Summed across interfaces, unlike `node.debug.network.throughput`**,
+        which splits by device. A single-value panel cannot be hovered to find
+        out which interface a line belongs to, so a per-device breakdown reduced
+        to one number is worse than useless there — it silently shows one
+        arbitrary device. Use this for stats and that one for graphs.
+
+        Includes loopback and the container-network interfaces, so on a
+        Kubernetes node this counts pod-to-pod traffic as well as traffic that
+        left the machine.
+    promQL: |
+      sum by (instance) (
+        max by (instance, device) (
+          rate(node_network_receive_bytes_total{instance=~"$nodeList"}%%{interval})
+        )
+      )
+
+  - id: node.network.tx.total
+    stability: canonical
+    description:
+      summary: Bytes per second transmitted across every interface on the node.
+      nominal: Whatever the workload calls for, well under the link's capacity.
+      degraded: |
+        Read against `node.debug.network.saturation`, which is the same traffic
+        as a fraction of what the link can carry.
+      notes: |
+        The transmit half of `node.network.rx.total`; the same summing applies,
+        and for the same reason.
+    promQL: |
+      sum by (instance) (
+        max by (instance, device) (
+          rate(node_network_transmit_bytes_total{instance=~"$nodeList"}%%{interval})
+        )
+      )
+
   - id: node.conntrack.utilization
     stability: canonical
     description:

@@ -549,10 +549,19 @@ The registry has no LogQL queries yet, so the Loki path is covered only by unit 
 
 `packages/mzmon-lib/tests/grafana_golden.rs` parses the pre-rendered `env-top.yaml` into the generated models and
 checks that re-serializing loses nothing.
-That test is what caught the one place the schemas are narrower than Grafana itself:
+That test is what caught the first of two places the schemas are narrower than Grafana itself:
 `MatcherConfig.options` is typed `object`, but Grafana's `byName` matcher takes a bare field-name string, which the
 golden dashboard emits and Grafana accepts.
-The generation script widens it, with the reasoning recorded inline.
+
+`DynamicConfigValue.value` is the second, and it was found the harder way — on screen.
+It is typed `object` too, but a field override's value is whatever its property takes: `unit` a bare string,
+`custom.width` a number.
+Typed as an object the model could only express the map case, so a scalar had to be wrapped as `{"value": "bytes"}` —
+which Grafana renders as `[object Object]` beside every number in the column.
+Nothing caught it, because the wrapper is valid JSON and valid against the schema; only the rendered table shows it.
+
+The generation script widens both, with the reasoning recorded inline, and
+`field_override::a_scalar_property_stays_scalar` now pins the scalar case.
 
 ## Why not the Grafana Foundation SDK
 

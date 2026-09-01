@@ -48,6 +48,10 @@ Frequently needed deep links into the Style Guidelines:
   — the paired show/hide rows that keep volume panels off a month-wide range
 - [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
   — labels vs structured metadata, and why an event's namespace is the involved object's
+- [Deployment generations (blue/green)](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-generations-bluegreen)
+  — how a generation reaches a query at all, and why the event filter needs its `or` arm
+- [orchestratord reconciliation metrics](../../../docs/content/reference/internal/dashboard/style-guidelines.md#orchestratord-reconciliation-metrics)
+  — the outcome vocabulary, and why `abandoned` is not a failure signal
 - [Known metric quirks and gotchas](../../../docs/content/reference/internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
 - [PromQL recipes](../../../docs/content/reference/internal/dashboard/style-guidelines.md#promql-recipes)
 - [Shared constants and helpers](../../../docs/content/reference/internal/dashboard/style-guidelines.md#shared-constants-and-helpers)
@@ -99,6 +103,7 @@ from.
 | `env-logs` | `grafana/env_logs/` | `mz-mon-env-logs` | Materialize Logs and Events |
 | `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
 | `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
+| `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -226,68 +231,6 @@ rather than a stat because the value is a *string* and a stat cannot show two of
 3. Duration — Pass Duration (p50/p90/p99), Step Duration (p99)
 4. Steps — Step Activity, Step Failures and Abandonments
 
-## Deployment generations (blue/green)
-
-What the Generations tab is built on, and the `$mzGenerationList` selector that drives it.
-
-**The generation is not a label on anything.** orchestratord records it as the `materialize.cloud/generation`
-*annotation*, which neither kube-state-metrics nor cAdvisor nor the event pipeline surfaces. Where it does reach a query
-is the object **name**, in two shapes:
-
-| Workload | Name shape |
-|---|---|
-| environmentd | `<prefix>-environmentd-<generation>-<ordinal>` |
-| cluster replica | `<prefix>-cluster-<cluster>-replica-<replica>-gen-<generation>-<ordinal>` |
-
-Three render-context parameters carry that, so the pattern lives in one place and cannot drift:
-
-- `%%{mzGenerationFilter}` — `pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+"`, for metrics.
-- `%%{mzGenerationPattern}` — the same shape as a *capture*, for the `label_replace` that lifts the number into a
-  `generation` label panels can group and legend by. A parameter rather than a template function, because the
-  `label_replace` has to wrap an inner selector while a function wraps the whole template.
-- `%%{mzGenerationEventFilter}` — for events, where the generation is in the object name and the filter is a pipeline
-  stage rather than a stream selector.
-
-**Two ad-hoc filters, not one.** An ad-hoc variable resolves its label keys *from a datasource*, so `metricAdhoc`
-(Prometheus) cannot offer Loki's stream labels — `env-upgrade` defines `logsAdhoc` beside it, and both sit at the tail of
-the controls row as escape hatches rather than steps in the funnel. `logsAdhoc` seeds **no base filter**, unlike the
-metrics one: Grafana ANDs a base filter into the query's own selector, and the obvious seed (the environment namespace)
-would narrow a stream selector that deliberately spans the operator's namespace too, silently dropping every event the
-operator published. Its keys are Loki *stream* labels; structured metadata like `reason` and `kind` is filtered in the
-query instead.
-
-`grafana/transform.rs` was promoted out of `env_top/` when the version table became its second consumer — it builds
-Grafana transformation JSON and knows nothing about Materialize, so copying it would have started two divergent copies
-of the same unschematized blobs.
-
-**The event filter's `or` arm is load-bearing.** Only a handful of the objects a rollout touches carry a generation —
-on a representative deployment, 6 of 70 event names — and every operator lifecycle event is filed against the
-`Materialize` resource, which carries none. So the filter is
-`name=~"<selected>" or name!~"<any generation>"`: keep what belongs to a selected generation, and keep what belongs to
-no generation. A bare `name=~` would drop the entire rollout narrative and keep only the pod noise. RE2 has no negative
-lookahead, which is why this is an `or` rather than one clever pattern.
-
-Only the four deployment-wide event feeds filter by generation. The operator's own queries do not — their events carry
-no generation, so it could only ever be a no-op there.
-
-**`$mzGenerationList` refreshes on time-range change**, alone among the variables here. Which generations exist is a
-property of the *window*: the old side is torn down after promotion, so widening the range to cover a rollout is exactly
-how its other side comes back into view. It has no `all_value` — a literal like `[0-9]+` would be regex-*escaped* by the
-`:regex` format and match nothing.
-
-**Hydration is still the wallclock-lag sentinel**, now split by generation. `mz_dataflow_wallclock_lag_seconds` is
-emitted by environmentd, so its `pod` label carries the generation and the split is free. Two things about the series:
-
-- `instance_id!=""` is load-bearing, keeping it to collections attached to a compute instance.
-- **Score with `> bool`, do not filter with `>`.** A filtering comparison drops the non-matching series, so `count`
-  emits *no sample* once a generation finishes hydrating: the line stops instead of reaching zero, and a stat reducing
-  on the last non-null value goes on showing the last count it saw forever. `sum by (generation) (max by (…) (… > bool
-  1e15))` scores every collection 1 or 0, so the series stays present and lands on zero — the descent the panel exists
-  to show. `env-top`'s unsplit version gets there with `or vector(0)`, which is not an option once the panel groups by
-  generation: that appends a series carrying no labels.
-- A sparse series also invites a specific misreading — "all emitted points are non-zero" looks exactly like a Thanos
-  downsampling artifact and is not one. Values were verified identical across query windows.
-
 ## `env-logs` tabs
 
 Two tabs, shaded from `env_logs/theme.rs`. Events deliberately reuses the shade it carries on `env-upgrade`, since
@@ -340,51 +283,47 @@ Materialize pattern for `env-logs`, `.+` for `infra-logs` — which is the *only
 The container-log queries are **not** shared: `infra.logs.*` carries the component and container filters, and adding
 those to `materialize.logs.*` would oblige `env-logs` to define pickers it has no use for.
 
-## orchestratord reconciliation metrics
+## `infra-nodes` tabs
 
-What the Reconciliation tab is built on. Sources: `src/orchestratord/src/reconcile.rs` and `metrics.rs` in the
-Materialize repo, which carry the authoritative prose in their `help` strings and doc comments.
+One node at a time — the picker is single-select with no "All", because a machine's measurements averaged across a
+fleet make every panel ambiguous. Fleet views are a separate dashboard and a different question (*which* node).
 
-| Metric | Labels | Notes |
+| # | Tab title | Module |
 |---|---|---|
-| `orchestratord_reconciliations_total` | `controller`, `event_type`, `outcome` | One trip through a controller's work |
-| `orchestratord_reconciliation_duration_seconds` | `controller`, `event_type` | Histogram |
-| `orchestratord_reconciliation_steps_total` | `controller`, `step`, `outcome` | The named phases within a pass |
-| `orchestratord_reconciliation_step_duration_seconds` | `controller`, `step` | Histogram, same buckets |
-| `orchestratord_is_leader` | — | Predates the rest |
-| `environmentd_needs_update` | — | Predates the rest |
+| 1 | Summary | `summary.rs` |
+| 2 | CPU | `cpu.rs` |
+| 3 | Memory & Swap | `memory.rs` |
+| 4 | Network | `network.rs` |
+| 5 | Storage | `storage.rs` |
+| 6 | Pods | `pods.rs` |
+| 7 | Logs & Events | `logs.rs` |
 
-**They carry no organization label**, so the environment picker does not narrow them — one operator reconciles every
-environment in the cluster. `%%{mzOperatorNamespaceFilter}` is the only scope that applies, and unlike the *events*
-(which are filed in the involved object's namespace) these metrics really do carry `namespace="<operator namespace>"`.
-The two tabs therefore scope in opposite directions, which is the trap worth remembering.
+Seven tabs against a seven-colour palette — this dashboard uses the whole of it, and an eighth would have to repeat.
 
-**Sum across replicas, always.** Only the leader reconciles; the others export the same families sitting at zero.
-`environmentd_needs_update` is explicitly reset on losing the lease so a former leader does not go on publishing its
-last observation.
+**Summary** — Node Info (identity and capacity as info cells), Utilization (CPU / memory / swap / rx / tx sparklines),
+Allocation (radial gauges for requested CPU, memory and pod slots), Scheduling and Conditions (Ready, cordon state,
+pressure conditions, taints, pods by namespace).
+The audience is an operator who cannot run `kubectl describe node`, deciding whether to escalate — so the panel
+descriptions say which readings are worth handing to an infrastructure team.
 
-**Outcome vocabulary** (`applied`, `waiting`, `skipped`, `failed`, `abandoned`):
+**Pods** — Pod Health (by phase, not-ready table, container restarts), Requests and Limits (**one** table: CPU and
+memory, requests beside limits, one row per pod).
+Requests are what the scheduler set aside; limits are what the kernel enforces, and the comparison that matters is a
+pod's request against its own limit — across four separate tables that means holding pod names in your head.
+A pod that sets no limit leaves those cells empty rather than zero, which is the honest reading.
 
-- `waiting` is **success**, not a warning — a rollout spends most of its passes there while the new generation's pods
-  come up.
-- `abandoned` is **not a failure signal**. A step records it when it did not reach a conclusion, which covers an error
-  propagating out *and* a pass cancelled by a leadership handoff or shutdown; a `Drop` cannot tell them apart. Alert on
-  `orchestratord_reconciliations_total{outcome="failed"}`, which is recorded from the reconciler's actual result and
-  which a cancelled pass never reaches, and read the step counter to *locate* it.
+**Everything on that tab except the restart graph is `instant: true`.** These are current facts; evaluated over a range
+each pod repeats once per scrape and the table becomes unreadable. That is the same trap the `env-upgrade` version
+table documents from the other side, where a plain instant query would have hidden a torn-down generation.
 
-**Duration is not rollout duration.** A pass waiting on pods returns promptly and asks to run again rather than
-blocking, so the histogram measures work done per pass. The rollout's wall-clock length is the span between its first
-and last transition on the Events tab.
+**Logs & Events** leads with events, not the journal: the events are few, dated, and each one a decision, so they are
+usually what the reader came for. The journal is where the explanation is once an event has said where to look.
 
-**The buckets are deliberately coarse** — 10ms, 50ms, 250ms, 1s, 5s, 30s. A percentile is therefore the boundary of the
-bucket the value fell in, not the value; read it as an order of magnitude. Finer buckets would cost several times the
-series for detail no operator question asks for, and steps share the pass's bucket set so a step's latency reads
-against the pass it belongs to.
+### Two names for one machine
 
-**Test tabs in the scope their dashboard builds them in.** `queries::test_operator_queries()` exists because
-`test_queries()` uses `DashboardScope::default()`, where the operator namespace is the pinned literal rather than
-`$operatorNamespace` — an assertion about a rendered selector under the default scope is about a rendering that never
-ships.
+The identifier join this dashboard rests on — and the vetting status of the node query families — is a convention
+rather than state, so it lives in the
+[style guide](../../../docs/content/reference/internal/dashboard/style-guidelines.md#node-identifiers-across-three-families).
 
 ## Notes on the trickier panels
 
