@@ -8,9 +8,22 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## Dashboards v0.15.0 (Unreleased)
+## Dashboards v0.16.0 (Unreleased)
 
 _Changes Pending_
+
+## Dashboards v0.15.0
+
+* DEP-242 Add infra-nodes dashboard
+    * [materialize-monitoring#311](https://github.com/MaterializeInc/materialize-monitoring/pull/311)
+    * Adds an infra-nodes dashboard that is installed by default
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate indexmap to v2.14.1
+        * [materialize-monitoring#309](https://github.com/MaterializeInc/materialize-monitoring/pull/309)
+        * [`v2.14.1`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2141-2026-08-28)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.21.0 (Unreleased)
 
