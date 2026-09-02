@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.22.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards v0.16.0 (Unreleased)
 
 _Changes Pending_
@@ -25,9 +29,27 @@ _Changes Pending_
         * [materialize-monitoring#309](https://github.com/MaterializeInc/materialize-monitoring/pull/309)
         * [`v2.14.1`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2141-2026-08-28)
 
-## materialize-monitoring (Helm chart + Terraform module) v0.21.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.21.0
 
-_Changes Pending_
+* DEP-242 Add infra-nodes dashboard
+    * [materialize-monitoring#311](https://github.com/MaterializeInc/materialize-monitoring/pull/311)
+    * Adds an infra-nodes dashboard that is installed by default
+* DEP-209 Add Infrastructure Logs & Events Dashboard
+    * [materialize-monitoring#307](https://github.com/MaterializeInc/materialize-monitoring/pull/307)
+    * Adds new infra-logs dashboard that is enabled by default
+
+### Dependencies
+
+* Included Dashboards @ v0.15.0..v0.16.0
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate indexmap to v2.14.1
+        * [materialize-monitoring#309](https://github.com/MaterializeInc/materialize-monitoring/pull/309)
+        * [`v2.14.1`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2141-2026-08-28)
+    * Update Rust crate hyper to v1.11.1
+        * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
+        * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
 
 ## Pipelines v0.13.0 (Unreleased)
 
