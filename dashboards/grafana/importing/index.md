@@ -53,7 +53,91 @@ Selecting it will show the current version.
 > [!SUCCESS]
 > Right now, these are the only supported dashboards.
 
-{{< grafana-dashboards pattern="dashboards/grafana/*.json" apiVersion="dashboard.grafana.app/v2" >}}
+
+<table class="grafana-dashboards">
+  <thead>
+    <tr>
+      <th>Dashboard</th>
+      <th>Description</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Materialize Logs and Events
+        <br />(<a href="/materialize-monitoring/dashboards/grafana/env-logs.json?xxhash=943c1b701937d70b" download="mz-mon-env-logs-943c1b701937d70b.json"><code>env-logs.json</code></a>)
+      </td>
+      <td><p>Logs and Kubernetes events for a Materialize deployment.</p>
+<p>What the workloads said, as opposed to what they measured.</p>
+</td>
+      <td>
+            <strong>min-mz-version</strong>: v26.24.0<br />
+            <strong>rec-mz-version</strong>: v26.24.0<br />
+            <strong>sql-metric-prefix</strong>: mz_<br />
+            <strong>target-export</strong>: generic<br />
+      </td>
+    </tr>
+    <tr>
+      <td>Materialize Environment Overview
+        <br />(<a href="/materialize-monitoring/dashboards/grafana/env-top.json?xxhash=6be77f70e14054d1" download="mz-mon-env-top-6be77f70e14054d1.json"><code>env-top.json</code></a>)
+      </td>
+      <td><p>Overview of a Materialize Environment.</p>
+<p>This provides a high-level summary to catch more obvious issues
+that may require further investigation.</p>
+</td>
+      <td>
+            <strong>min-mz-version</strong>: v26.24.0<br />
+            <strong>rec-mz-version</strong>: v26.29.0<br />
+            <strong>sql-metric-prefix</strong>: mz_<br />
+            <strong>target-export</strong>: generic<br />
+      </td>
+    </tr>
+    <tr>
+      <td>Materialize Upgrade
+        <br />(<a href="/materialize-monitoring/dashboards/grafana/env-upgrade.json?xxhash=11e79750fdfde4cc" download="mz-mon-env-upgrade-11e79750fdfde4cc.json"><code>env-upgrade.json</code></a>)
+      </td>
+      <td><p>What happened during a Materialize upgrade.</p>
+<p>The operator&rsquo;s own account of a rollout, alongside
+what the cluster did underneath it.</p>
+</td>
+      <td>
+            <strong>min-mz-version</strong>: v26.41.0<br />
+            <strong>rec-mz-version</strong>: v26.41.0<br />
+            <strong>sql-metric-prefix</strong>: mz_<br />
+            <strong>target-export</strong>: generic<br />
+      </td>
+    </tr>
+    <tr>
+      <td>Infrastructure Logs and Events
+        <br />(<a href="/materialize-monitoring/dashboards/grafana/infra-logs.json?xxhash=d283fbfb8a6e250f" download="mz-mon-infra-logs-d283fbfb8a6e250f.json"><code>infra-logs.json</code></a>)
+      </td>
+      <td><p>Logs and Kubernetes events for the platform a Materialize deployment runs on.</p>
+<p>The monitoring stack, the Kubernetes system components, and the node journal.</p>
+</td>
+      <td>
+            <strong>min-mz-version</strong>: v26.24.0<br />
+            <strong>rec-mz-version</strong>: v26.24.0<br />
+            <strong>sql-metric-prefix</strong>: mz_<br />
+            <strong>target-export</strong>: generic<br />
+      </td>
+    </tr>
+    <tr>
+      <td>Infrastructure Node Detail
+        <br />(<a href="/materialize-monitoring/dashboards/grafana/infra-nodes.json?xxhash=3fb217a8dd0baf5b" download="mz-mon-infra-nodes-3fb217a8dd0baf5b.json"><code>infra-nodes.json</code></a>)
+      </td>
+      <td><p>Everything about one node a Materialize deployment runs on.</p>
+<p>What the machine is, how hard it is working, how much of it is already promised to pods, and what it and Kubernetes have said about it.</p>
+</td>
+      <td>
+            <strong>min-mz-version</strong>: v26.24.0<br />
+            <strong>rec-mz-version</strong>: v26.24.0<br />
+            <strong>sql-metric-prefix</strong>: mz_<br />
+            <strong>target-export</strong>: generic<br />
+      </td>
+    </tr>
+  </tbody>
+</table>
+
 
 > [!INFO]
 > There are minor differences in Google Cloud Platform metrics exposed

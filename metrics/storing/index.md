@@ -381,118 +381,85 @@ kubectl create secret generic thanos-objstore-config \
 Annotate the Thanos ServiceAccount through `thanos.global.serviceAccount.annotations` (shared by receive, store gateway, and compactor), and leave the credential fields out of `objstore.yml` so the SDK uses the ambient identity.
 The Thanos ServiceAccount is `thanos-thanos` (a deterministic `fullnameOverride`), in the release namespace (recommended `monitoring`); the split-namespace profile places it in a dedicated `thanos` namespace instead. Scope the binding to that exact namespace/ServiceAccount.
 
-{{< tabs >}}
-{{% tab "AWS · EKS (IRSA)" %}}
-**IRSA** (IAM Roles for Service Accounts). Chain: the Thanos ServiceAccount is annotated with a role ARN → EKS projects an OIDC token → the SDK calls **STS `AssumeRoleWithWebIdentity`** → temporary credentials → **S3**. Requires the cluster's **OIDC provider** registered in IAM (one-time).
-
-A ready-made starting point lives at `charts/materialize-monitoring/profiles/aws-example.values.yaml`.
-
-*Trust policy* — scope `:sub` to the **Thanos namespace and ServiceAccount**, not another workload's:
-
-```json
-{
-  "Effect": "Allow",
-  "Principal": { "Federated": "arn:aws:iam::<account-id>:oidc-provider/oidc.eks.<region>.amazonaws.com/id/<oidc-id>" },
-  "Action": "sts:AssumeRoleWithWebIdentity",
-  "Condition": { "StringEquals": {
-    "oidc.eks.<region>.amazonaws.com/id/<oidc-id>:aud": "sts.amazonaws.com",
-    "oidc.eks.<region>.amazonaws.com/id/<oidc-id>:sub": "system:serviceaccount:monitoring:thanos-thanos"
-  }}
-}
-```
-
-> [!INFO]
->   The default assumes the release is installed into `monitoring`.
->   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the `:sub` is `system:serviceaccount:thanos:thanos-thanos` instead.
-
-*Permissions policy* — least-privilege to the single bucket. `DeleteObject` is required (the compactor rewrites and deletes blocks during compaction/downsampling):
-
-```json
-{
-  "Statement": [
-    { "Effect": "Allow", "Action": ["s3:ListBucket", "s3:GetBucketLocation"], "Resource": "arn:aws:s3:::<bucket>" },
-    { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": "arn:aws:s3:::<bucket>/*" }
-  ]
-}
-```
-
-*ServiceAccount* — annotate via chart values; the EKS webhook injects `AWS_ROLE_ARN` / `AWS_WEB_IDENTITY_TOKEN_FILE`:
-
-```yaml
-thanos:
-  global:
-    serviceAccount:
-      annotations:
-        eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<thanos-role>
-```
-
-*`objstore.yml`* — no `access_key`/`secret_key`, so the default chain uses the IRSA token:
-
-```yaml
-type: S3
-config:
-  bucket: <bucket>
-  endpoint: s3.<region>.amazonaws.com
-  region: <region>
-```
-{{% /tab %}}
-{{% tab "GCP · GKE (Workload Identity)" %}}
-**GKE Workload Identity.** Chain: the Thanos ServiceAccount is annotated with a Google service account (GSA) → GKE exchanges the pod token for that GSA's credentials → **GCS**. Requires Workload Identity enabled on the cluster and node pool. Below, `<gsa>` is the GSA; `[<namespace>/thanos-thanos]` is the Kubernetes ServiceAccount (KSA).
-
-1. Grant the GSA object access on the bucket (`roles/storage.objectAdmin`).
-2. Bind the GSA's IAM policy so the Thanos KSA may impersonate it — the KSA **must match Thanos's namespace/ServiceAccount**:
-
-   ```bash
-   gcloud iam service-accounts add-iam-policy-binding <gsa>@<project>.iam.gserviceaccount.com \
-     --role="roles/iam.workloadIdentityUser" \
-     --member="serviceAccount:<project>.svc.id.goog[monitoring/thanos-thanos]"
-   ```
-
-   > [!INFO]
-   >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[thanos/thanos-thanos]"` here.
-
-3. Annotate the ServiceAccount:
-
-   ```yaml
-   thanos:
-     global:
-       serviceAccount:
-         annotations:
-           iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
-   ```
-
-*`objstore.yml`* — no `service_account` key, so ambient Workload Identity credentials are used:
-
-```yaml
-type: GCS
-config:
-  bucket: <bucket>
-```
-{{% /tab %}}
-{{% tab "Azure · AKS (Workload ID)" %}}
-**Microsoft Entra Workload ID.** Chain: the Thanos ServiceAccount is annotated with a managed-identity client ID → AKS projects a token → exchanged with Entra for the identity's credentials → **Azure Blob**. Requires the OIDC issuer + workload identity enabled on the cluster.
-
-1. Grant the user-assigned managed identity **`Storage Blob Data Contributor`** on the storage account (or container scope).
-2. Create a **federated identity credential** on that identity — subject **must match Thanos's namespace/ServiceAccount** (`system:serviceaccount:monitoring:thanos-thanos`), audience `api://AzureADTokenExchange`.
-
-   > [!INFO]
-   >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the subject is `system:serviceaccount:thanos:thanos-thanos` instead.
-
-3. Annotate the ServiceAccount and label the pods so the webhook injects the token:
-
-   ```yaml
-   thanos:
-     global:
-       serviceAccount:
-         annotations:
-           azure.workload.identity/client-id: <client-id>
-   ```
-
-*`objstore.yml`* — see the [Thanos Azure config](https://thanos.io/tip/thanos/storage.md/#azure) for the exact keys (`storage_account`, `container`); omit the shared key so the workload identity is used.
-{{% /tab %}}
-{{< /tabs >}}
+<div class="book-tabs" >
+<input type="radio" class="toggle" name="tabs-0" id="tabs-0-0" checked="checked" /><label for="tabs-0-0">AWS · EKS (IRSA)</label><div class="book-tabs-content markdown-inner">
+<p><strong>IRSA</strong> (IAM Roles for Service Accounts). Chain: the Thanos ServiceAccount is annotated with a role ARN → EKS projects an OIDC token → the SDK calls <strong>STS <code>AssumeRoleWithWebIdentity</code></strong> → temporary credentials → <strong>S3</strong>. Requires the cluster&rsquo;s <strong>OIDC provider</strong> registered in IAM (one-time).</p>
+<p>A ready-made starting point lives at <code>charts/materialize-monitoring/profiles/aws-example.values.yaml</code>.</p>
+<p><em>Trust policy</em> — scope <code>:sub</code> to the <strong>Thanos namespace and ServiceAccount</strong>, not another workload&rsquo;s:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Principal&#34;</span>: { <span style="color:#f92672">&#34;Federated&#34;</span>: <span style="color:#e6db74">&#34;arn:aws:iam::&lt;account-id&gt;:oidc-provider/oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;oidc-id&gt;&#34;</span> },
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Action&#34;</span>: <span style="color:#e6db74">&#34;sts:AssumeRoleWithWebIdentity&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Condition&#34;</span>: { <span style="color:#f92672">&#34;StringEquals&#34;</span>: {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;oidc-id&gt;:aud&#34;</span>: <span style="color:#e6db74">&#34;sts.amazonaws.com&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;oidc-id&gt;:sub&#34;</span>: <span style="color:#e6db74">&#34;system:serviceaccount:monitoring:thanos-thanos&#34;</span>
+</span></span><span style="display:flex;"><span>  }}
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><blockquote class='book-hint info'>
+<p>The default assumes the release is installed into <code>monitoring</code>.
+Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the <code>:sub</code> is <code>system:serviceaccount:thanos:thanos-thanos</code> instead.</p></blockquote><p><em>Permissions policy</em> — least-privilege to the single bucket. <code>DeleteObject</code> is required (the compactor rewrites and deletes blocks during compaction/downsampling):</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Statement&#34;</span>: [
+</span></span><span style="display:flex;"><span>    { <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>, <span style="color:#f92672">&#34;Action&#34;</span>: [<span style="color:#e6db74">&#34;s3:ListBucket&#34;</span>, <span style="color:#e6db74">&#34;s3:GetBucketLocation&#34;</span>], <span style="color:#f92672">&#34;Resource&#34;</span>: <span style="color:#e6db74">&#34;arn:aws:s3:::&lt;bucket&gt;&#34;</span> },
+</span></span><span style="display:flex;"><span>    { <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>, <span style="color:#f92672">&#34;Action&#34;</span>: [<span style="color:#e6db74">&#34;s3:GetObject&#34;</span>, <span style="color:#e6db74">&#34;s3:PutObject&#34;</span>, <span style="color:#e6db74">&#34;s3:DeleteObject&#34;</span>], <span style="color:#f92672">&#34;Resource&#34;</span>: <span style="color:#e6db74">&#34;arn:aws:s3:::&lt;bucket&gt;/*&#34;</span> }
+</span></span><span style="display:flex;"><span>  ]
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><p><em>ServiceAccount</em> — annotate via chart values; the EKS webhook injects <code>AWS_ROLE_ARN</code> / <code>AWS_WEB_IDENTITY_TOKEN_FILE</code>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">thanos</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">global</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">serviceAccount</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">annotations</span>:
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">eks.amazonaws.com/role-arn</span>: <span style="color:#ae81ff">arn:aws:iam::&lt;account-id&gt;:role/&lt;thanos-role&gt;</span></span></span></code></pre></div><p><em><code>objstore.yml</code></em> — no <code>access_key</code>/<code>secret_key</code>, so the default chain uses the IRSA token:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">type</span>: <span style="color:#ae81ff">S3</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">config</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">bucket</span>: <span style="color:#ae81ff">&lt;bucket&gt;</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">endpoint</span>: <span style="color:#ae81ff">s3.&lt;region&gt;.amazonaws.com</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">region</span>: <span style="color:#ae81ff">&lt;region&gt;</span></span></span></code></pre></div></div>
+<input type="radio" class="toggle" name="tabs-0" id="tabs-0-1"  /><label for="tabs-0-1">GCP · GKE (Workload Identity)</label><div class="book-tabs-content markdown-inner">
+<p><strong>GKE Workload Identity.</strong> Chain: the Thanos ServiceAccount is annotated with a Google service account (GSA) → GKE exchanges the pod token for that GSA&rsquo;s credentials → <strong>GCS</strong>. Requires Workload Identity enabled on the cluster and node pool. Below, <code>&lt;gsa&gt;</code> is the GSA; <code>[&lt;namespace&gt;/thanos-thanos]</code> is the Kubernetes ServiceAccount (KSA).</p>
+<ol>
+<li>
+<p>Grant the GSA object access on the bucket (<code>roles/storage.objectAdmin</code>).</p>
+</li>
+<li>
+<p>Bind the GSA&rsquo;s IAM policy so the Thanos KSA may impersonate it — the KSA <strong>must match Thanos&rsquo;s namespace/ServiceAccount</strong>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gcloud iam service-accounts add-iam-policy-binding &lt;gsa&gt;@&lt;project&gt;.iam.gserviceaccount.com <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --role<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;roles/iam.workloadIdentityUser&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --member<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;serviceAccount:&lt;project&gt;.svc.id.goog[monitoring/thanos-thanos]&#34;</span></span></span></code></pre></div><blockquote class='book-hint info'>
+<p>The default assumes the release is installed into <code>monitoring</code>.
+Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, use <code>--member=&quot;serviceAccount:&lt;project&gt;.svc.id.goog[thanos/thanos-thanos]&quot;</code> here.</p></blockquote></li>
+<li>
+<p>Annotate the ServiceAccount:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">thanos</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">global</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">serviceAccount</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">annotations</span>:
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">iam.gke.io/gcp-service-account</span>: <span style="color:#ae81ff">&lt;gsa&gt;@&lt;project&gt;.iam.gserviceaccount.com</span></span></span></code></pre></div></li>
+</ol>
+<p><em><code>objstore.yml</code></em> — no <code>service_account</code> key, so ambient Workload Identity credentials are used:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">type</span>: <span style="color:#ae81ff">GCS</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">config</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">bucket</span>: <span style="color:#ae81ff">&lt;bucket&gt;</span></span></span></code></pre></div></div>
+<input type="radio" class="toggle" name="tabs-0" id="tabs-0-2"  /><label for="tabs-0-2">Azure · AKS (Workload ID)</label><div class="book-tabs-content markdown-inner">
+<p><strong>Microsoft Entra Workload ID.</strong> Chain: the Thanos ServiceAccount is annotated with a managed-identity client ID → AKS projects a token → exchanged with Entra for the identity&rsquo;s credentials → <strong>Azure Blob</strong>. Requires the OIDC issuer + workload identity enabled on the cluster.</p>
+<ol>
+<li>
+<p>Grant the user-assigned managed identity <strong><code>Storage Blob Data Contributor</code></strong> on the storage account (or container scope).</p>
+</li>
+<li>
+<p>Create a <strong>federated identity credential</strong> on that identity — subject <strong>must match Thanos&rsquo;s namespace/ServiceAccount</strong> (<code>system:serviceaccount:monitoring:thanos-thanos</code>), audience <code>api://AzureADTokenExchange</code>.</p>
+<blockquote class='book-hint info'>
+<p>The default assumes the release is installed into <code>monitoring</code>.
+Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the subject is <code>system:serviceaccount:thanos:thanos-thanos</code> instead.</p></blockquote></li>
+<li>
+<p>Annotate the ServiceAccount and label the pods so the webhook injects the token:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">thanos</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">global</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">serviceAccount</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">annotations</span>:
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">azure.workload.identity/client-id</span>: <span style="color:#ae81ff">&lt;client-id&gt;</span></span></span></code></pre></div></li>
+</ol>
+<p><em><code>objstore.yml</code></em> — see the <a href="https://thanos.io/tip/thanos/storage.md/#azure" rel="external" class="external-link">Thanos Azure config</a> for the exact keys (<code>storage_account</code>, <code>container</code>); omit the shared key so the workload identity is used.</p>
+</div>
+</div>
 
 > [!INFO]
 >   The token exchange and the object store are both 443 hops to your cloud's identity and storage endpoints. If a Thanos NetworkPolicy is enabled you must allow that egress, or the credential fetch hangs the component at startup.

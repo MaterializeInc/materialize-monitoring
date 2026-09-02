@@ -6,7 +6,7 @@
 # Datadog Translations
 
 Every query in `packages/queries/` carries a `datadogQuery` alongside its `promQL`.
-They render side by side as tabs on [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}); this
+They render side by side as tabs on [Common Queries](/materialize-monitoring/reference/stable-metrics/common-queries/); this
 page is the conventions behind them, for whoever is adding or correcting one.
 
 These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has
@@ -14,7 +14,7 @@ been run against a real Datadog account.
 Treat them as a starting point you copy into a widget or monitor and correct, not as something that works unedited.
 
 The native Datadog dashboard set is [DEP-115](https://linear.app/materializeinc/issue/DEP-115), scheduled for OO-M3 on
-the [roadmap]({{< relref "../roadmap.md" >}}).
+the [roadmap](/materialize-monitoring/reference/internal/roadmap/).
 
 ## What language these are in
 
@@ -40,7 +40,7 @@ Queries that back a **panel** are bare metric queries, with no window and no com
 ## How metrics reach Datadog
 
 The gateway scrapes Prometheus, bridges to OTLP through `otelcol.receiver.prometheus`, and exports through the Datadog exporter.
-See [Storing Metrics]({{< relref "../../../metrics/storing.md" >}}) for the pipeline and `otel-metrics-fanout.values.yaml` for a working example.
+See [Storing Metrics](/materialize-monitoring/metrics/storing/) for the pipeline and `otel-metrics-fanout.values.yaml` for a working example.
 
 The naming consequences the translations assume:
 

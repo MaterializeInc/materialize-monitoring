@@ -6,7 +6,28 @@ date: 2026-08-23
 
 # Stability Guarantees and Deprecation Policy
 
-{{< param-table >}}
+
+<table class="param-table">
+  <tbody>
+        <tr>
+          <th>author</th>
+          <td>Heather Lapointe</td>
+        </tr>
+        <tr>
+          <th>lastmod</th>
+          <td>2026-08-24 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>publishdate</th>
+          <td>2026-08-23 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>status</th>
+          <td>Accepted</td>
+        </tr>
+  </tbody>
+</table>
+
 
 This doc proposes the stability guarantees and deprecation policy owed by [DEP-127](https://linear.app/materializeinc/issue/DEP-127) (OO-M1), listed on the [Roadmap](../../roadmap/#versioning-changelog-and-releases) as the last unbuilt piece of the versioning story.
 It is a prerequisite for [DEP-205](https://linear.app/materializeinc/issue/DEP-205) — stamping 1.0 is the moment the guarantees below stop being aspirational — so this should be agreed before that, not alongside it.

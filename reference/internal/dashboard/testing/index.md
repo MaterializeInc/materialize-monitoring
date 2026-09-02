@@ -10,7 +10,7 @@ Unit tests live in a `#[cfg(test)] mod tests` at the bottom of the module they c
 dashboard live under `packages/dashboards/tests/`.
 
 For broader code-quality tooling see
-[Generating and Pushing Dashboards > Code quality]({{< relref "generating.md#code-quality" >}}).
+[Generating and Pushing Dashboards > Code quality](/materialize-monitoring/reference/internal/dashboard/generating/#code-quality).
 
 ## What each suite is for
 

@@ -6,7 +6,28 @@ date: 2026-08-03
 
 # Terraform Modules for materialize-monitoring
 
-{{< param-table >}}
+
+<table class="param-table">
+  <tbody>
+        <tr>
+          <th>author</th>
+          <td>Heather Lapointe</td>
+        </tr>
+        <tr>
+          <th>lastmod</th>
+          <td>2026-08-03 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>publishdate</th>
+          <td>2026-08-03 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>status</th>
+          <td>Draft</td>
+        </tr>
+  </tbody>
+</table>
+
 
 This doc captures the design for the **Terraform wrapper** on the [Roadmap](../../roadmap/) (M4) and for retiring the hand-rolled observability stack that the [`materialize-terraform-self-managed`](https://github.com/MaterializeInc/materialize-terraform-self-managed) module ships today.
 Terraform is deliberately downstream of Helm: the chart stays the full-fidelity surface, and Terraform pins a chart version and supplies the cloud resources around it.

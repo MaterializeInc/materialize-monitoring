@@ -6,7 +6,28 @@ date: 2026-08-16
 
 # In-cluster TLS and Certificate Authentication
 
-{{< param-table >}}
+
+<table class="param-table">
+  <tbody>
+        <tr>
+          <th>author</th>
+          <td>Heather Lapointe</td>
+        </tr>
+        <tr>
+          <th>lastmod</th>
+          <td>2026-08-16 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>publishdate</th>
+          <td>2026-08-16 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>status</th>
+          <td>Draft</td>
+        </tr>
+  </tbody>
+</table>
+
 
 This doc is the design for **in-cluster mTLS via cert-manager** on the [Roadmap](../../roadmap/#charts--helm) ([DEP-195](https://linear.app/materializeinc/issue/DEP-195), OO-M1).
 It expands the [In-cluster TLS and authentication](../20260803-terraform-modules/#in-cluster-tls-and-authentication) section of the Terraform modules doc into a full proposal and supersedes it; that section stays as the Terraform-side summary and should point here.

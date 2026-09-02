@@ -6,7 +6,28 @@ date: 2026-06-27
 
 # First-Class Production Loki Infrastructure
 
-{{< param-table >}}
+
+<table class="param-table">
+  <tbody>
+        <tr>
+          <th>author</th>
+          <td>Heather Lapointe</td>
+        </tr>
+        <tr>
+          <th>lastmod</th>
+          <td>2026-06-28 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>publishdate</th>
+          <td>2026-06-27 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>status</th>
+          <td>Preview</td>
+        </tr>
+  </tbody>
+</table>
+
 
 This doc captures the design decisions and open questions for shipping a productionalizable Loki inside the `materialize-monitoring` umbrella chart.
 It is the design rationale behind the `loki` subchart wiring in `charts/materialize-monitoring/Chart.yaml`; day-2 operational procedures (backup/restore, upgrades, migration) will live in customer-facing docs and are only sketched here.

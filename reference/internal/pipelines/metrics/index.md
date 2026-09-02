@@ -6,7 +6,7 @@
 # Metrics Pipelines
 
 Metrics are processed primarily in **otelcol**: Prometheus ingest and the final write use the `prometheus.*` family, but everything between is converted to OTLP and shaped by `otelcol.processor.*` components (we found little value in doing the processing with `prometheus.*` blocks).
-They are authored the same way as log pipelines — see [Authoring]({{< relref "authoring.md" >}}) for the pipeline model, the strict-attributes policy, and the `raw:` escape hatch.
+They are authored the same way as log pipelines — see [Authoring](/materialize-monitoring/reference/internal/pipelines/authoring/) for the pipeline model, the strict-attributes policy, and the `raw:` escape hatch.
 
 <!-- The logs-side runtime conventions (label families, retention) live in logging.md; this page is their metrics-side analog plus the component reference. -->
 
@@ -143,6 +143,6 @@ These are reachable today via a `raw:` block and can be graduated to typed schem
 - **operator `selector` `match_expression`** — only `match_labels` is typed; set-based selectors use a nested `raw:` block.
 - **receive_http `tls`** — the server-side TLS block.
 
-> Load-testing note: `alloy validate` does not catch capsule-type mismatches (see [Authoring]({{< relref "authoring.md" >}})).
+> Load-testing note: `alloy validate` does not catch capsule-type mismatches (see [Authoring](/materialize-monitoring/reference/internal/pipelines/authoring/)).
 > Because the destination is Helm-templated and skips the schema entirely, treat `alloy validate` (the pre-validate jobs) as the real check for destination changes, and load-test the first live metrics pipeline with a real `alloy run`.
 

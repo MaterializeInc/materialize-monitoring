@@ -11,11 +11,11 @@ A query is written for PromQL first; the other engines are translations of the s
 
 The audience for this section is **repo contributors** — the people adding a panel, an alert, or a metric to the registry.
 The audience for the *rendered* queries is the operator reading a dashboard, so the descriptions attached to each query
-are end-user voice; see [Dashboard Style Guidelines]({{< relref "../dashboard/style-guidelines.md" >}}) for that.
+are end-user voice; see [Dashboard Style Guidelines](/materialize-monitoring/reference/internal/dashboard/style-guidelines/) for that.
 
 ## In this section
 
-- **[Datadog Translations]({{< relref "datadog.md" >}})** — the PromQL→Datadog mapping, the OTLP naming assumptions it
+- **[Datadog Translations](/materialize-monitoring/reference/internal/queries/datadog/)** — the PromQL→Datadog mapping, the OTLP naming assumptions it
   rests on, and the gaps where Datadog's language cannot express what the PromQL does.
 
 ## Where things live
@@ -52,7 +52,7 @@ A query's expression fields are the per-engine translations.
 | Field | Engine | Notes |
 |---|---|---|
 | `promQL` | Prometheus | The canonical form. Metric extraction and metric tiers parse this and only this. |
-| `datadogQuery` | Datadog | Metric query syntax, not DDSQL. See [Datadog Translations]({{< relref "datadog.md" >}}). |
+| `datadogQuery` | Datadog | Metric query syntax, not DDSQL. See [Datadog Translations](/materialize-monitoring/reference/internal/queries/datadog/). |
 | `honeycombSQL` | Honeycomb | Not yet populated. |
 | `logQL` | Loki | Log queries rather than metric queries. |
 
@@ -76,17 +76,17 @@ Adding or changing a query has effects beyond the query itself:
 
 - **Grafana dashboards** take both their PromQL *and* their panel descriptions from the registry, through
   `mz_dashboards::grafana::queries` — see
-  [Dashboards → SDKs and Schemas]({{< relref "../dashboard/sdks.md" >}}#panels-do-not-write-promql).
+  [Dashboards → SDKs and Schemas](/materialize-monitoring/reference/internal/dashboard/sdks/#panels-do-not-write-promql).
   A panel names a query id and gets the pair; nothing about a query is restated in the dashboard, so a change here
   reaches the rendered dashboards on the next `make dashboards`.
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
-  [Reference Metrics]({{< relref "../../stable-metrics/list-metrics.md" >}}).
+  [Reference Metrics](/materialize-monitoring/reference/stable-metrics/list-metrics/).
 - **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
   This is why a new query can change what a deployment ships to a metered backend.
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
-  renders [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}) from it.
+  renders [Common Queries](/materialize-monitoring/reference/stable-metrics/common-queries/) from it.
   There is no generated intermediate to refresh.
 
 Both generated outputs declare `packages/queries/*.yaml` as a prerequisite, so `make metrics` rebuilds them after a query change.

@@ -7,11 +7,11 @@
 
 What has to exist before `materialize-monitoring` installs, and who provides it.
 
-Almost everything on this page is the `[consumer]` half of the [shared responsibility model]({{< relref "../operating/production-best-practices.md" >}}#shared-responsibility-model): cloud resources, secrets, and cluster facilities the chart consumes **by name** but never creates.
+Almost everything on this page is the `[consumer]` half of the [shared responsibility model](/materialize-monitoring/operating/production-best-practices/#shared-responsibility-model): cloud resources, secrets, and cluster facilities the chart consumes **by name** but never creates.
 That is worth walking before the first install rather than after, because the common failure mode is not a rejected install — it is a chart that renders cleanly and a workload that crash-loops or sits `Pending` minutes later.
 
 > [!TIP]
->  Installing with the [Terraform modules]({{< relref "terraform.md" >}})? They create most of this for you — buckets, identity bindings, the Grafana database, the load balancer.
+>  Installing with the [Terraform modules](/materialize-monitoring/getting-started/terraform/)? They create most of this for you — buckets, identity bindings, the Grafana database, the load balancer.
 >  Skip to [If you install with Terraform](#terraform) for what is left.
 
 ## At a glance
@@ -34,10 +34,10 @@ That is worth walking before the first install rather than after, because the co
 
 The charts declare `kubeVersion: ">=1.27.0-0"`, but that is a floor rather than a support statement: older releases *may* work and are not supported.
 Cloud distributions offering extended support past a release's upstream EOL are supported best-effort and may run into issues.
-See [Compatibility]({{< relref "../reference/compatibility.md" >}}).
+See [Compatibility](/materialize-monitoring/reference/compatibility/).
 
 Capacity matters more than version. The chart defaults target a **medium** install and request roughly **33Gi of memory and 9 CPU** in total, which no small cluster and no standard CI runner will schedule — the pods simply sit `Pending`, which reads like a chart bug rather than a capacity one.
-Pick a [sizing profile]({{< relref "helm.md" >}}#sizing) that matches the cluster you actually have.
+Pick a [sizing profile](/materialize-monitoring/getting-started/helm/#sizing) that matches the cluster you actually have.
 
 ## CRDs {#crds}
 
@@ -62,7 +62,7 @@ To check what a cluster already has:
 kubectl get crds | grep -E 'monitoring\.coreos\.com|grafana\.integreatly\.org'
 ```
 
-[Custom Resource Definitions]({{< relref "../reference/crds.md" >}}) is the full inventory — every kind, what the stack does with each, how to disable the ones you do not need, and the two groups (Google Managed Prometheus, cert-manager) that this chart deliberately does not install.
+[Custom Resource Definitions](/materialize-monitoring/reference/crds/) is the full inventory — every kind, what the stack does with each, how to disable the ones you do not need, and the two groups (Google Managed Prometheus, cert-manager) that this chart deliberately does not install.
 
 ## Object storage {#object-storage}
 
@@ -76,8 +76,8 @@ You need it unless **both** backends are external — pointing logs at an existi
 On a managed Kubernetes service, grant access through **workload identity** rather than static keys.
 The binding is per-cloud, and the trust-policy subjects have to match the chart's rendered ServiceAccount names:
 
-* [Logs & Events → Storing]({{< relref "../logs-and-events/storing.md" >}}#granting-object-storage-access-workload-identity) — IRSA, GKE Workload Identity, and Entra Workload ID
-* [Metrics → Storing]({{< relref "../metrics/storing.md" >}}#authentication) — the same three for Thanos
+* [Logs & Events → Storing](/materialize-monitoring/logs-and-events/storing/#granting-object-storage-access-workload-identity) — IRSA, GKE Workload Identity, and Entra Workload ID
+* [Metrics → Storing](/materialize-monitoring/metrics/storing/#authentication) — the same three for Thanos
 
 Without a cloud identity provider there is no identity to bind, so credentials become **static keys supplied as a Secret**.
 That is the documented escape hatch rather than the recommended path; both backends read them by reference, and the Terraform module exposes them as `object_storage_access_key_id` / `object_storage_secret_access_key`.
@@ -87,7 +87,7 @@ Any S3-compatible endpoint works. This repository's own tier-2 E2E runs against 
 > [!WARNING]
 >  **Naming the backend is the step that most often goes wrong.**
 >  The chart's defaults are S3-shaped, so any other backend has to be named in three load-bearing places, and none of them fails softly: the client is chosen by name and then validated against a config that was never populated, so the component crash-loops.
->  See [Selecting the backend]({{< relref "../logs-and-events/storing.md" >}}#selecting-the-backend).
+>  See [Selecting the backend](/materialize-monitoring/logs-and-events/storing/#selecting-the-backend).
 
 The example profiles do all of it correctly and are the shortest path:
 
@@ -133,7 +133,7 @@ materialize:
   namespaces: [] # empty means every namespace the chart can read
 ```
 
-Version requirements are in [Compatibility]({{< relref "../reference/compatibility.md" >}}). In short: the scrapers need the `environmentd` labels introduced in Materialize **v26.24.0**, and the dashboards want the `mz_object_info` metric introduced in **v26.29.0** — without it they degrade gracefully rather than break.
+Version requirements are in [Compatibility](/materialize-monitoring/reference/compatibility/). In short: the scrapers need the `environmentd` labels introduced in Materialize **v26.24.0**, and the dashboards want the `mz_object_info` metric introduced in **v26.29.0** — without it they degrade gracefully rather than break.
 
 ### The SQL metrics credential {#the-sql-metrics-credential}
 
@@ -152,7 +152,7 @@ The empty `password` is deliberate, and not a placeholder.
 It has to be present only because Alloy's scrape-config generation rejects an absent password reference with `resource name may not be empty`.
 
 Set `materialize.environmentdSQL.secret.create: false` if you provision the Secret yourself.
-See [Scraping]({{< relref "../metrics/scraping.md" >}}#authenticating-the-sql-metrics-endpoint), and [Securing]({{< relref "../operating/securing.md" >}}#materialize-metrics-endpoint) for the access-control consequence.
+See [Scraping](/materialize-monitoring/metrics/scraping/#authenticating-the-sql-metrics-endpoint), and [Securing](/materialize-monitoring/operating/securing/#materialize-metrics-endpoint) for the access-control consequence.
 
 ## Conditional dependencies
 
@@ -181,7 +181,7 @@ Only needed with `certificates.enabled`, which **defaults to `false`** — with 
 
 With it on, the chart renders `Certificate` resources for in-cluster mTLS, and optionally a self-signed root.
 This is gated on a value rather than an API-capability probe, deliberately: enabling it without cert-manager present fails at apply time with a resource name in the error, which is a better outcome than silently rendering nothing.
-See [Securing]({{< relref "../operating/securing.md" >}}#certificates).
+See [Securing](/materialize-monitoring/operating/securing/#certificates).
 
 ### Reaching Grafana {#reaching-grafana}
 
@@ -190,7 +190,7 @@ An Ingress or LoadBalancer Service is a prerequisite for anyone actually using i
 
 `profiles/grafana-ingress.values.yaml` assembles the shape — internal by default, public gated behind an enforced allowlist.
 Pair it with a persistence profile above; the render-time checks will tell you if you exposed Grafana without authentication or without a durable backend.
-See [Securing]({{< relref "../operating/securing.md" >}}) for what each exposure combination is graded as.
+See [Securing](/materialize-monitoring/operating/securing/) for what each exposure combination is graded as.
 
 ## Cluster-shape prerequisites
 
@@ -201,7 +201,7 @@ These are properties of the cluster rather than things you install. Each one pro
 Thanos Receive and Loki's ingesters spread **hard** across zones (`DoNotSchedule`), so that an un-spread pod goes `Pending` and the autoscaler provisions the missing zone.
 
 On a cluster whose nodes carry **no zone label, or only one zone**, those pods stay `Pending` permanently.
-Apply `profiles/no-zone-spread.values.yaml` — see [Production Best Practices]({{< relref "../operating/production-best-practices.md" >}}#thanos-few-zones).
+Apply `profiles/no-zone-spread.values.yaml` — see [Production Best Practices](/materialize-monitoring/operating/production-best-practices/#thanos-few-zones).
 
 ### Kubelet certificates {#kubelet-certificates}
 
@@ -223,20 +223,20 @@ Set `metrics-server.enabled: false` there.
 On GKE, managed collection is on by default from v1.27 and provides the `PodMonitoring` CRDs the GMP scrapers use.
 
 Container metrics do not depend on it. The gateway scrapes each kubelet's `/metrics/cadvisor` endpoint itself, which yields a fuller set than GMP's default collection, so the GCP-optimized dashboards carry the same metric families as the standard ones.
-See [Container metrics from the kubelet]({{< relref "../metrics/scraping.md" >}}#kubelet).
+See [Container metrics from the kubelet](/materialize-monitoring/metrics/scraping/#kubelet).
 
 ## If you install with Terraform {#terraform}
 
-The [Terraform modules]({{< relref "terraform.md" >}}) cover the cloud-resource dependencies above: buckets, the IAM role or service account with its workload-identity binding, the Grafana database, an internal load balancer, and the CRDs chart.
+The [Terraform modules](/materialize-monitoring/getting-started/terraform/) cover the cloud-resource dependencies above: buckets, the IAM role or service account with its workload-identity binding, the Grafana database, an internal load balancer, and the CRDs chart.
 
 What stays yours on that path:
 
 * **DNS, TLS, and an identity provider** for Grafana.
 * **The `materialize-sql-monitor` Secret**, if you want the SQL-derived metrics.
 * **Cluster shape** — zone labels, a StorageClass the nodes can attach, capacity for the sizing tier you pick.
-* **Rolling Alloy after a pipeline or filter change.** The module hashes the composed values to do this for you; on the Helm path it is yours, and it is the one place the chart cannot own its own rollout. See [Production Best Practices]({{< relref "../operating/production-best-practices.md" >}}#collection-alloy).
+* **Rolling Alloy after a pipeline or filter change.** The module hashes the composed values to do this for you; on the Helm path it is yours, and it is the one place the chart cannot own its own rollout. See [Production Best Practices](/materialize-monitoring/operating/production-best-practices/#collection-alloy).
 
 ## Next steps
 
-Once the dependencies are in place: [Installing via Terraform]({{< relref "terraform.md" >}}) or [Installing via Helm]({{< relref "helm.md" >}}).
+Once the dependencies are in place: [Installing via Terraform](/materialize-monitoring/getting-started/terraform/) or [Installing via Helm](/materialize-monitoring/getting-started/helm/).
 

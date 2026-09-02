@@ -58,115 +58,90 @@ On every managed cloud the recommended way to give Loki access to its bucket is 
 The shape is the same across providers: a Loki pod runs as a Kubernetes **ServiceAccount** annotated to reference a cloud identity → the platform projects a signed token into the pod → that token is exchanged for short-lived cloud credentials → Loki uses them against the object store.
 Only the binding mechanism differs. Pick your provider:
 
-{{< tabs >}}
-{{% tab "AWS · EKS (IRSA)" %}}
-**IRSA** (IAM Roles for Service Accounts). Chain: ServiceAccount annotated with a role ARN → EKS projects an OIDC token → the SDK calls **STS `AssumeRoleWithWebIdentity`** → temporary credentials → **S3**. Requires the cluster's **OIDC provider** registered in IAM (one-time).
-
-*Trust policy* — scope `:sub` to the **exact namespace and ServiceAccount Loki runs as**: ServiceAccount `loki` (a deterministic `fullnameOverride`) in the release namespace (recommended `monitoring`). Scope it to Loki's, not another workload's. For several component ServiceAccounts, use `StringLike` with a `*` suffix.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": { "Federated": "arn:aws:iam::<account-id>:oidc-provider/oidc.eks.<region>.amazonaws.com/id/<oidc-id>" },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": { "StringEquals": {
-      "oidc.eks.<region>.amazonaws.com/id/<oidc-id>:aud": "sts.amazonaws.com",
-      "oidc.eks.<region>.amazonaws.com/id/<oidc-id>:sub": "system:serviceaccount:monitoring:loki"
-    }}
-  }]
-}
-```
-
-> [!INFO]
->   The default assumes the release is installed into `monitoring`.
->   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the `:sub` is `system:serviceaccount:loki:loki` instead.
-
-A trust policy scoped to the wrong namespace/ServiceAccount is what produces `STS: AssumeRoleWithWebIdentity … 403 AccessDenied`.
-
-*Permissions policy* — least-privilege to the single bucket + `/loki/*`. `DeleteObject` is required (compactor retention/compaction and the delete-requests store).
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::<bucket>"],
-      "Condition": { "StringLike": { "s3:prefix": ["loki/*"] } } },
-    { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": ["arn:aws:s3:::<bucket>/loki/*"] }
-  ]
-}
-```
-
-*ServiceAccount* — annotate through chart values; the EKS webhook then injects `AWS_ROLE_ARN` / `AWS_WEB_IDENTITY_TOKEN_FILE`.
-
-```yaml
-loki:
-  serviceAccount:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<loki-role>
-```
-{{% /tab %}}
-{{% tab "GCP · GKE (Workload Identity)" %}}
-**GKE Workload Identity.** Chain: the Loki ServiceAccount is annotated with a Google service account (GSA) → GKE exchanges the pod's token for that GSA's credentials → **GCS**. Requires Workload Identity enabled on the cluster and node pool. Below, `<gsa>` is the GSA; `[<namespace>/loki]` is the Kubernetes ServiceAccount (KSA).
-
-1. Grant the GSA object access on the bucket:
-
-   ```bash
-   gcloud storage buckets add-iam-policy-binding gs://<bucket> \
-     --member="serviceAccount:<gsa>@<project>.iam.gserviceaccount.com" \
-     --role="roles/storage.objectAdmin"
-   ```
-
-2. Bind the GSA's IAM policy so the Loki KSA may impersonate it — the KSA **must match Loki's namespace/ServiceAccount**:
-
-   ```bash
-   gcloud iam service-accounts add-iam-policy-binding <gsa>@<project>.iam.gserviceaccount.com \
-     --role="roles/iam.workloadIdentityUser" \
-     --member="serviceAccount:<project>.svc.id.goog[monitoring/loki]"
-   ```
-
-   > [!INFO]
-   >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[loki/loki]"` here.
-
-3. Annotate the ServiceAccount — and set the GCS backend in all four places from [Selecting the backend](#selecting-the-backend), which the annotation alone does not do:
-
-   ```yaml
-   loki:
-     serviceAccount:
-       annotations:
-         iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
-   ```
-{{% /tab %}}
-{{% tab "Azure · AKS (Workload ID)" %}}
-**Microsoft Entra Workload ID.** Chain: ServiceAccount annotated with a managed-identity client ID → AKS projects a token → exchanged with Entra for the identity's credentials → **Azure Blob**. Requires the OIDC issuer + workload identity enabled on the cluster.
-
-1. Grant the user-assigned managed identity **`Storage Blob Data Contributor`** on the storage account (or container scope).
-2. Create a **federated identity credential** on that identity — subject **must match Loki's namespace/ServiceAccount**:
-   - issuer = the AKS cluster's OIDC issuer URL
-   - subject = `system:serviceaccount:monitoring:loki`
-   - audience = `api://AzureADTokenExchange`
-
-   > [!INFO]
-   >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the subject is `system:serviceaccount:loki:loki` instead.
-
-3. Annotate the ServiceAccount, label the pods so the webhook injects the token, and set the Azure backend in all four places from [Selecting the backend](#selecting-the-backend):
-
-   ```yaml
-   loki:
-     serviceAccount:
-       annotations:
-         azure.workload.identity/client-id: <client-id>
-     # The workload-identity webhook only acts on pods carrying this label;
-     # apply it via the chart's pod-label values for the Loki components.
-     podLabels:
-       azure.workload.identity/use: "true"
-   ```
-{{% /tab %}}
-{{< /tabs >}}
+<div class="book-tabs" >
+<input type="radio" class="toggle" name="tabs-0" id="tabs-0-0" checked="checked" /><label for="tabs-0-0">AWS · EKS (IRSA)</label><div class="book-tabs-content markdown-inner">
+<p><strong>IRSA</strong> (IAM Roles for Service Accounts). Chain: ServiceAccount annotated with a role ARN → EKS projects an OIDC token → the SDK calls <strong>STS <code>AssumeRoleWithWebIdentity</code></strong> → temporary credentials → <strong>S3</strong>. Requires the cluster&rsquo;s <strong>OIDC provider</strong> registered in IAM (one-time).</p>
+<p><em>Trust policy</em> — scope <code>:sub</code> to the <strong>exact namespace and ServiceAccount Loki runs as</strong>: ServiceAccount <code>loki</code> (a deterministic <code>fullnameOverride</code>) in the release namespace (recommended <code>monitoring</code>). Scope it to Loki&rsquo;s, not another workload&rsquo;s. For several component ServiceAccounts, use <code>StringLike</code> with a <code>*</code> suffix.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Version&#34;</span>: <span style="color:#e6db74">&#34;2012-10-17&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Statement&#34;</span>: [{
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;Principal&#34;</span>: { <span style="color:#f92672">&#34;Federated&#34;</span>: <span style="color:#e6db74">&#34;arn:aws:iam::&lt;account-id&gt;:oidc-provider/oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;oidc-id&gt;&#34;</span> },
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;Action&#34;</span>: <span style="color:#e6db74">&#34;sts:AssumeRoleWithWebIdentity&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;Condition&#34;</span>: { <span style="color:#f92672">&#34;StringEquals&#34;</span>: {
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;oidc-id&gt;:aud&#34;</span>: <span style="color:#e6db74">&#34;sts.amazonaws.com&#34;</span>,
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;oidc-id&gt;:sub&#34;</span>: <span style="color:#e6db74">&#34;system:serviceaccount:monitoring:loki&#34;</span>
+</span></span><span style="display:flex;"><span>    }}
+</span></span><span style="display:flex;"><span>  }]
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><blockquote class='book-hint info'>
+<p>The default assumes the release is installed into <code>monitoring</code>.
+Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the <code>:sub</code> is <code>system:serviceaccount:loki:loki</code> instead.</p></blockquote><p>A trust policy scoped to the wrong namespace/ServiceAccount is what produces <code>STS: AssumeRoleWithWebIdentity … 403 AccessDenied</code>.</p>
+<p><em>Permissions policy</em> — least-privilege to the single bucket + <code>/loki/*</code>. <code>DeleteObject</code> is required (compactor retention/compaction and the delete-requests store).</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Version&#34;</span>: <span style="color:#e6db74">&#34;2012-10-17&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Statement&#34;</span>: [
+</span></span><span style="display:flex;"><span>    { <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>, <span style="color:#f92672">&#34;Action&#34;</span>: [<span style="color:#e6db74">&#34;s3:ListBucket&#34;</span>], <span style="color:#f92672">&#34;Resource&#34;</span>: [<span style="color:#e6db74">&#34;arn:aws:s3:::&lt;bucket&gt;&#34;</span>],
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;Condition&#34;</span>: { <span style="color:#f92672">&#34;StringLike&#34;</span>: { <span style="color:#f92672">&#34;s3:prefix&#34;</span>: [<span style="color:#e6db74">&#34;loki/*&#34;</span>] } } },
+</span></span><span style="display:flex;"><span>    { <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>, <span style="color:#f92672">&#34;Action&#34;</span>: [<span style="color:#e6db74">&#34;s3:GetObject&#34;</span>, <span style="color:#e6db74">&#34;s3:PutObject&#34;</span>, <span style="color:#e6db74">&#34;s3:DeleteObject&#34;</span>],
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;Resource&#34;</span>: [<span style="color:#e6db74">&#34;arn:aws:s3:::&lt;bucket&gt;/loki/*&#34;</span>] }
+</span></span><span style="display:flex;"><span>  ]
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><p><em>ServiceAccount</em> — annotate through chart values; the EKS webhook then injects <code>AWS_ROLE_ARN</code> / <code>AWS_WEB_IDENTITY_TOKEN_FILE</code>.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">loki</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">serviceAccount</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">annotations</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">eks.amazonaws.com/role-arn</span>: <span style="color:#ae81ff">arn:aws:iam::&lt;account-id&gt;:role/&lt;loki-role&gt;</span></span></span></code></pre></div></div>
+<input type="radio" class="toggle" name="tabs-0" id="tabs-0-1"  /><label for="tabs-0-1">GCP · GKE (Workload Identity)</label><div class="book-tabs-content markdown-inner">
+<p><strong>GKE Workload Identity.</strong> Chain: the Loki ServiceAccount is annotated with a Google service account (GSA) → GKE exchanges the pod&rsquo;s token for that GSA&rsquo;s credentials → <strong>GCS</strong>. Requires Workload Identity enabled on the cluster and node pool. Below, <code>&lt;gsa&gt;</code> is the GSA; <code>[&lt;namespace&gt;/loki]</code> is the Kubernetes ServiceAccount (KSA).</p>
+<ol>
+<li>
+<p>Grant the GSA object access on the bucket:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gcloud storage buckets add-iam-policy-binding gs://&lt;bucket&gt; <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --member<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;serviceAccount:&lt;gsa&gt;@&lt;project&gt;.iam.gserviceaccount.com&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --role<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;roles/storage.objectAdmin&#34;</span></span></span></code></pre></div></li>
+<li>
+<p>Bind the GSA&rsquo;s IAM policy so the Loki KSA may impersonate it — the KSA <strong>must match Loki&rsquo;s namespace/ServiceAccount</strong>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gcloud iam service-accounts add-iam-policy-binding &lt;gsa&gt;@&lt;project&gt;.iam.gserviceaccount.com <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --role<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;roles/iam.workloadIdentityUser&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --member<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;serviceAccount:&lt;project&gt;.svc.id.goog[monitoring/loki]&#34;</span></span></span></code></pre></div><blockquote class='book-hint info'>
+<p>The default assumes the release is installed into <code>monitoring</code>.
+Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, use <code>--member=&quot;serviceAccount:&lt;project&gt;.svc.id.goog[loki/loki]&quot;</code> here.</p></blockquote></li>
+<li>
+<p>Annotate the ServiceAccount — and set the GCS backend in all four places from <a href="#selecting-the-backend">Selecting the backend</a>, which the annotation alone does not do:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">loki</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">serviceAccount</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">annotations</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">iam.gke.io/gcp-service-account</span>: <span style="color:#ae81ff">&lt;gsa&gt;@&lt;project&gt;.iam.gserviceaccount.com</span></span></span></code></pre></div></li>
+</ol>
+</div>
+<input type="radio" class="toggle" name="tabs-0" id="tabs-0-2"  /><label for="tabs-0-2">Azure · AKS (Workload ID)</label><div class="book-tabs-content markdown-inner">
+<p><strong>Microsoft Entra Workload ID.</strong> Chain: ServiceAccount annotated with a managed-identity client ID → AKS projects a token → exchanged with Entra for the identity&rsquo;s credentials → <strong>Azure Blob</strong>. Requires the OIDC issuer + workload identity enabled on the cluster.</p>
+<ol>
+<li>
+<p>Grant the user-assigned managed identity <strong><code>Storage Blob Data Contributor</code></strong> on the storage account (or container scope).</p>
+</li>
+<li>
+<p>Create a <strong>federated identity credential</strong> on that identity — subject <strong>must match Loki&rsquo;s namespace/ServiceAccount</strong>:</p>
+<ul>
+<li>issuer = the AKS cluster&rsquo;s OIDC issuer URL</li>
+<li>subject = <code>system:serviceaccount:monitoring:loki</code></li>
+<li>audience = <code>api://AzureADTokenExchange</code></li>
+</ul>
+<blockquote class='book-hint info'>
+<p>The default assumes the release is installed into <code>monitoring</code>.
+Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the subject is <code>system:serviceaccount:loki:loki</code> instead.</p></blockquote></li>
+<li>
+<p>Annotate the ServiceAccount, label the pods so the webhook injects the token, and set the Azure backend in all four places from <a href="#selecting-the-backend">Selecting the backend</a>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">loki</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">serviceAccount</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">annotations</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">azure.workload.identity/client-id</span>: <span style="color:#ae81ff">&lt;client-id&gt;</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#75715e"># The workload-identity webhook only acts on pods carrying this label;</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#75715e"># apply it via the chart&#39;s pod-label values for the Loki components.</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">podLabels</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">azure.workload.identity/use</span>: <span style="color:#e6db74">&#34;true&#34;</span></span></span></code></pre></div></li>
+</ol>
+</div>
+</div>
 
 > [!INFO]
 >   **The token exchange and the object store are both 443 hops** to your cloud's identity and storage endpoints (AWS: STS + S3; GCP: `sts.googleapis.com`/`oauth2.googleapis.com` + GCS; Azure: `login.microsoftonline.com` + Blob). If you enable the Loki NetworkPolicy you must allow that egress (`networkPolicy.externalStorage`), or the credential fetch fails — a *blocked* egress hangs the compactor at startup (a silent connect timeout), while an *allowed* egress with a bad binding returns a fast auth error. See [Operating > Production Best Practices](../../operating/production-best-practices/#11-security--credentials).

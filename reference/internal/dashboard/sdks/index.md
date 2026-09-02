@@ -240,7 +240,7 @@ reduced metric allowlist that omitted the container limit and spec series:
 
 The gap is closed: `alloy-gateway` scrapes `/metrics/cadvisor` on every kubelet directly rather than consuming GKE's
 subset, and every `container_*` series these queries reference is present — see
-[Scraping]({{< relref "../../../metrics/scraping.md" >}}#kubelet).
+[Scraping](/materialize-monitoring/metrics/scraping/#kubelet).
 So the fallbacks are obsolete, and GCP gets the percent-of-limit gauges like everywhere else.
 
 Once the panels converged, the `gcp-` artifact recorded nothing but its own name in a

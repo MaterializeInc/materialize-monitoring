@@ -105,7 +105,7 @@ Grafana's constant-variable interpolation does not recursively resolve those nes
 embedded commas/quotes when the value is spliced into a label matcher, so the rendered query broke.
 These are **inlined at render time** instead: the query registry's template parameters (`%%{mzEnvironmentFilter}`,
 `%%{cAdvisorFilter}`, …) resolve to the label-matcher text before the query reaches the dashboard — see
-[Render context]({{< relref "sdks.md" >}}#render-context).
+[Render context](/materialize-monitoring/reference/internal/dashboard/sdks/#render-context).
 The nested `$…List` references inside those fragments stay as real Grafana variables and resolve at view time; only the wrapper indirection is gone.
 
 **Filter fragments are render-time parameters, not ConstantVariables:** the `$environmentFilter` / `$containerFilter` /
@@ -241,7 +241,7 @@ looking at" — invest in them.
 
 > [!IMPORTANT]
 > Descriptions are **not written in the dashboard**. They live on the registry query the panel names, and reach the
-> panel through the bridge — see [SDKs and Schemas]({{< relref "sdks.md" >}}#panels-do-not-write-promql).
+> panel through the bridge — see [SDKs and Schemas](/materialize-monitoring/reference/internal/dashboard/sdks/#panels-do-not-write-promql).
 > Everything below is guidance for writing the registry's `description:` block; a test asserts no panel carries prose
 > of its own.
 

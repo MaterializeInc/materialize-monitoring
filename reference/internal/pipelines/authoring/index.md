@@ -5,7 +5,7 @@
 
 # Authoring Pipelines
 
-This page covers the model and conventions for authoring alloy pipelines as YAML under `packages/alloy-pipelines/`. The runtime aspects (label families, retention) live in [Logging]({{< relref "logging.md" >}}) and [Metrics]({{< relref "metrics.md" >}}).
+This page covers the model and conventions for authoring alloy pipelines as YAML under `packages/alloy-pipelines/`. The runtime aspects (label families, retention) live in [Logging](/materialize-monitoring/reference/internal/pipelines/logging/) and [Metrics](/materialize-monitoring/reference/internal/pipelines/metrics/).
 
 ## Pipeline model
 

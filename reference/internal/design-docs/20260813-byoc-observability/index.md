@@ -6,7 +6,28 @@ date: 2026-08-13
 
 # Observability for Bring-Your-Own-Cloud
 
-{{< param-table >}}
+
+<table class="param-table">
+  <tbody>
+        <tr>
+          <th>author</th>
+          <td>Heather Lapointe</td>
+        </tr>
+        <tr>
+          <th>lastmod</th>
+          <td>2026-08-13 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>publishdate</th>
+          <td>2026-08-13 00:00:00 &#43;0000 UTC</td>
+        </tr>
+        <tr>
+          <th>status</th>
+          <td>Draft</td>
+        </tr>
+  </tbody>
+</table>
+
 
 This doc is the **BYOC gateway-to-gateway architecture and proposal** owed by the [Roadmap](../../roadmap/#byoc) ([DEP-219](https://linear.app/materializeinc/issue/DEP-219)), and it covers the two rows next to it: the [dual-destination pipeline pattern](https://linear.app/materializeinc/issue/DEP-124) and [sanitizing telemetry before control-plane egress](https://linear.app/materializeinc/issue/DEP-220).
 

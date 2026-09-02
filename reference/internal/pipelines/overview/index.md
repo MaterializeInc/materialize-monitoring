@@ -11,9 +11,9 @@ The audience for this section is **repo contributors** — SRE, Field Engineerin
 
 ## In this section
 
-- **[Authoring]({{< relref "authoring.md" >}})** — schema model, strict-attributes policy, when to use `raw:` vs. extend the schema, how to add a new typed component or stage.
-- **[Logging]({{< relref "logging.md" >}})** — log pipeline conventions, label families, retention.
-- **[Metrics]({{< relref "metrics.md" >}})** — metrics pipeline conventions.
+- **[Authoring](/materialize-monitoring/reference/internal/pipelines/authoring/)** — schema model, strict-attributes policy, when to use `raw:` vs. extend the schema, how to add a new typed component or stage.
+- **[Logging](/materialize-monitoring/reference/internal/pipelines/logging/)** — log pipeline conventions, label families, retention.
+- **[Metrics](/materialize-monitoring/reference/internal/pipelines/metrics/)** — metrics pipeline conventions.
 
 The `pipelines-as-code` Claude skill at `.claude/skills/pipelines-as-code/SKILL.md` is the live state snapshot — current pipeline inventory, in-flight stubs, schema gaps — and links back into the pages above for stable reference.
 

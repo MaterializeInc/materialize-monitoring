@@ -32,7 +32,7 @@ about Materialize, so a second dashboard uses it directly instead of copying it.
 `grafana/mod.rs` is the registry of what can be rendered; `grafana/render.rs` serializes.
 
 **Panels write no PromQL and no prose.** Both come from the query registry — see
-[SDKs and Schemas]({{< relref "sdks.md" >}}#panels-do-not-write-promql).
+[SDKs and Schemas](/materialize-monitoring/reference/internal/dashboard/sdks/#panels-do-not-write-promql).
 What stays with a panel is presentation: legend, unit, panel type, thresholds, transformations.
 
 Sharing panels, rows, or tabs between dashboards is fine, but **prefer the code to live in the most appropriate
@@ -117,7 +117,7 @@ metric-to-usage index rather than a second one, so its diff is the only place a 
 
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
 `make dashboards` wires the two shipped output trees; see
-[SDKs and Schemas]({{< relref "sdks.md" >}}#rendering) for the determinism guarantees.
+[SDKs and Schemas](/materialize-monitoring/reference/internal/dashboard/sdks/#rendering) for the determinism guarantees.
 
 ## Pushing dashboards to Grafana
 

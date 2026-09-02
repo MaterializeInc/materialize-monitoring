@@ -10,7 +10,7 @@ Kubernetes Custom Resource Definitions (CRDs) extend the Kubernetes API with cus
 Either way the definitions have to exist before the main chart installs, which is why they ship in a chart of their own.
 
 This page is the inventory: what gets installed, what the stack actually does with each kind, and what it deliberately leaves alone.
-For the install procedure in context, see [Dependencies]({{< relref "../getting-started/dependencies.md" >}}) and [Installing via Helm]({{< relref "../getting-started/helm.md" >}}).
+For the install procedure in context, see [Dependencies](/materialize-monitoring/getting-started/dependencies/) and [Installing via Helm](/materialize-monitoring/getting-started/helm/).
 
 ## How they are installed
 
@@ -28,7 +28,7 @@ The bundled Grafana Operator subchart ships its own copy of the Grafana CRDs and
 > [!WARNING]
 >  Every CRD carries `helm.sh/resource-policy: keep`, so uninstalling the CRDs chart leaves the definitions in place.
 >  This is deliberate: deleting a CRD cascades to **every object of that kind in the cluster**, including ones other charts and your own manifests created.
->  Removing them is a separate, explicit step — see [Uninstalling]({{< relref "../operating/uninstalling.md" >}}).
+>  Removing them is a separate, explicit step — see [Uninstalling](/materialize-monitoring/operating/uninstalling/).
 
 ### Turning individual CRDs off
 
@@ -85,14 +85,14 @@ Alloy has no `prometheus.operator.scrapeconfigs` equivalent — it reads Service
 The `ScrapeConfig` this repo ships (`scrapeconfig-cadvisor.yaml`) is therefore an artifact for a **Prometheus** consumer rather than something the chart installs on the default Alloy path.
 
 On the default path the gateway scrapes each kubelet's `/metrics/cadvisor` endpoint directly instead, which is on by default and needs no custom resource.
-See [Scraping]({{< relref "../metrics/scraping.md" >}}#classic) for the downloads.
+See [Scraping](/materialize-monitoring/metrics/scraping/#classic) for the downloads.
 
 ### PrometheusRule
 
 `config.rules.prometheus.enabled` defaults to `true` and is the switch for installing the bundled recording and alerting rules as `PrometheusRule` resources.
 
 The rule content is **not in the chart yet**, so nothing renders one today — the CRD and the value are in place ahead of it.
-Progress is tracked in the [Rules & alerts]({{< relref "internal/roadmap.md" >}}#rules--alerts) workstream.
+Progress is tracked in the [Rules & alerts](/materialize-monitoring/reference/internal/roadmap/#rules--alerts) workstream.
 
 ## Grafana Operator CRDs
 
@@ -119,7 +119,7 @@ Values key: `grafana-operator-crds`.
 Unlike the Prometheus set, the "Available" rows here are all serviceable: the operator this chart runs reconciles every one of them, so they are the supported way to extend Grafana alongside the bundled content.
 
 The operator only acts on resources whose `instanceSelector` matches, so the chart derives that selector from the labels on the `Grafana` resource it creates — the selector and the instance render from one source and cannot drift.
-See [Grafana Operator]({{< relref "../dashboards/grafana/grafana-operator.md" >}}) and [Grafana Architecture]({{< relref "../dashboards/grafana/architecture.md" >}}).
+See [Grafana Operator](/materialize-monitoring/dashboards/grafana/grafana-operator/) and [Grafana Architecture](/materialize-monitoring/dashboards/grafana/architecture/).
 
 ### Dashboards arrive as `GrafanaManifest`, not `GrafanaDashboard`
 
@@ -138,12 +138,12 @@ Two groups the stack can use are **not** part of the CRDs chart, because somethi
 | `monitoring.googleapis.com/v1` | `PodMonitoring`, `ClusterPodMonitoring` | GKE, when [managed collection](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed) is enabled — on by default since GKE v1.27 |
 | `cert-manager.io/v1` | `Certificate`, `Issuer`, `ClusterIssuer` | [cert-manager](https://cert-manager.io/), which you install yourself |
 
-**Google Managed Prometheus.** The repo ships `PodMonitoring` and `ClusterPodMonitoring` artifacts for the GMP path, but no template installs them — they are downloads for a GMP consumer, the same way the classic `ScrapeConfig` is. See [Scraping]({{< relref "../metrics/scraping.md" >}}#gmp).
+**Google Managed Prometheus.** The repo ships `PodMonitoring` and `ClusterPodMonitoring` artifacts for the GMP path, but no template installs them — they are downloads for a GMP consumer, the same way the classic `ScrapeConfig` is. See [Scraping](/materialize-monitoring/metrics/scraping/#gmp).
 
 **cert-manager.** The chart renders `Certificate` resources, and optionally an `Issuer` or `ClusterIssuer`, only when `certificates.enabled` is set — it defaults to `false`, and with it off cert-manager is not a dependency of this chart in any sense.
 The rendering is deliberately *not* gated on an API-capability probe, so `helm template` against no cluster produces exactly what a live install does.
 That means enabling it without cert-manager present fails at apply time rather than silently rendering nothing, which is the intended behaviour.
-See [Securing]({{< relref "../operating/securing.md" >}}#certificates).
+See [Securing](/materialize-monitoring/operating/securing/#certificates).
 
 ## Checking what is installed
 
@@ -160,5 +160,5 @@ kubectl get podmonitors -n monitoring
 ```
 
 An empty result where you expected dashboards usually means the `instanceSelector` did not match, not that the resource failed to apply.
-[o11y Troubleshooting]({{< relref "../operating/o11y-troubleshooting.md" >}}) covers that path.
+[o11y Troubleshooting](/materialize-monitoring/operating/o11y-troubleshooting/) covers that path.
 
