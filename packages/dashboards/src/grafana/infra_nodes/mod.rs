@@ -45,9 +45,19 @@
 //!
 //! Thanos for the measurements, Loki for the Logs & Events tab. Unlike the logs
 //! dashboards this one *does* define a metrics datasource, because most of it is
-//! metrics — which means it degrades differently: if the metrics pipeline breaks,
-//! this dashboard's pickers still resolve but its panels empty, and the last tab
-//! is the one still worth reading.
+//! metrics — and that has a consequence worth stating plainly: **the whole
+//! dashboard depends on Prometheus, including the Loki half.**
+//!
+//! The node picker is discovered from `kube_node_info`, so if the metrics
+//! pipeline is down it resolves to nothing, `$node` is empty, and the journal and
+//! event queries — which filter on `$node` — match no lines either. This is the
+//! opposite of `infra-logs`, which is deliberately Loki-only so it keeps working
+//! when metrics are the thing that broke. Reach for that dashboard in that
+//! situation; this one answers "what is wrong with this machine" only while the
+//! metrics path is healthy enough to name the machine.
+//!
+//! A node name pinned in the URL keeps the Logs & Events tab usable, since the
+//! variable is then supplied rather than discovered.
 
 pub mod cpu;
 pub mod logs;

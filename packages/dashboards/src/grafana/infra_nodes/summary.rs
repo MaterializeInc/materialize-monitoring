@@ -49,28 +49,33 @@ fn node_info(q: &Queries) -> Row {
             .row_height(RowHeight::Short)
             .panel(
                 "summary-kubelet-version",
-                label_cell(q, "Kubelet Version", "kubelet_version", KUBELET_NOTE),
+                label_cell(
+                    q,
+                    "Kubernetes Version",
+                    "infra.nodes.info.kubelet",
+                    "kubelet_version",
+                ),
             )
             .panel(
                 "summary-os-image",
-                label_cell(q, "OS Image", "os_image", OS_NOTE),
+                label_cell(q, "OS Image", "infra.nodes.info.os", "os_image"),
             )
             .panel(
                 "summary-kernel-version",
-                label_cell(q, "Kernel", "kernel_version", KERNEL_NOTE),
+                label_cell(q, "Kernel", "infra.nodes.info.kernel", "kernel_version"),
             )
             .panel(
                 "summary-container-runtime",
                 label_cell(
                     q,
                     "Container Runtime",
+                    "infra.nodes.info.runtime",
                     "container_runtime_version",
-                    RUNTIME_NOTE,
                 ),
             )
             .panel(
                 "summary-internal-ip",
-                label_cell(q, "Internal IP", "internal_ip", IP_NOTE),
+                label_cell(q, "Internal IP", "infra.nodes.info.address", "internal_ip"),
             )
             .panel("summary-cpu-capacity", cpu_capacity(q))
             .panel("summary-memory-capacity", memory_capacity(q))
@@ -128,26 +133,18 @@ fn scheduling(q: &Queries) -> Row {
 
 // --- info cells ------------------------------------------------------------
 
-const KUBELET_NOTE: &str = "A kubelet more than one minor version behind the control plane is a node that missed an upgrade.";
-const OS_NOTE: &str =
-    "Nodes in the same pool should agree. One that does not was replaced separately.";
-const KERNEL_NOTE: &str = "Worth quoting verbatim when reporting a node-level fault.";
-const RUNTIME_NOTE: &str = "What actually starts and stops containers on this machine.";
-const IP_NOTE: &str =
-    "The address the cluster reaches this node on, and how node-exporter names it.";
-
 /// A stat showing one label off `kube_node_info` rather than a number.
 ///
 /// `reduce_fields` picks the label out after `labels_to_fields` promotes it, the
 /// same trick `env-top` uses for the Materialize version — a stat renders the
 /// *value* of a series by default, and every one of these carries the value 1.
-fn label_cell(q: &Queries, title: &str, label: &str, note: &str) -> dashboardv2::PanelKind {
+///
+/// The description comes from the registry query like every other panel's: each
+/// cell has its own `infra.nodes.info.*` definition precisely so the prose has
+/// somewhere to live that is not this module.
+fn label_cell(q: &Queries, title: &str, id: &str, label: &str) -> dashboardv2::PanelKind {
     Panel::stat(title)
-        .query(
-            q.get("infra.nodes.info")
-                .legend(&format!("{{{{{label}}}}}")),
-        )
-        .description(note)
+        .query(q.get(id).legend(&format!("{{{{{label}}}}}")))
         // Not a time series: a sparkline of a constant would be a flat line
         // saying nothing.
         .graph_mode(stat::BigValueGraphMode::None)

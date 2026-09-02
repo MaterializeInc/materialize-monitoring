@@ -2926,16 +2926,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_requests{node="$node", resource="cpu"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+                        )
                       )
                     format: table
                     instant: true
                     legendFormat: CPU Requested
                     qryType: 2
                     query: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_requests{node="$node", resource="cpu"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+                        )
                       )
                   version: v0
                 refId: query-0
@@ -2949,16 +2953,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_limits{node="$node", resource="cpu"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_limits{node="$node", resource="cpu"}
+                        )
                       )
                     format: table
                     instant: true
                     legendFormat: CPU Limit
                     qryType: 2
                     query: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_limits{node="$node", resource="cpu"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_limits{node="$node", resource="cpu"}
+                        )
                       )
                   version: v0
                 refId: query-1
@@ -2972,16 +2980,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_requests{node="$node", resource="memory"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="memory"}
+                        )
                       )
                     format: table
                     instant: true
                     legendFormat: Memory Requested
                     qryType: 2
                     query: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_requests{node="$node", resource="memory"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="memory"}
+                        )
                       )
                   version: v0
                 refId: query-2
@@ -2995,16 +3007,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_limits{node="$node", resource="memory"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_limits{node="$node", resource="memory"}
+                        )
                       )
                     format: table
                     instant: true
                     legendFormat: Memory Limit
                     qryType: 2
                     query: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_resource_limits{node="$node", resource="memory"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_resource_limits{node="$node", resource="memory"}
+                        )
                       )
                   version: v0
                 refId: query-3
@@ -3113,17 +3129,21 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      count by (phase) (
-                        kube_pod_status_phase == 1
-                        and on (namespace, pod) kube_pod_info{node="$node"}
+                      max by (phase) (
+                        count by (phase, instance) (
+                          kube_pod_status_phase == 1
+                          and on (namespace, pod) kube_pod_info{node="$node"}
+                        )
                       )
                     instant: true
                     legendFormat: '{{phase}}'
                     qryType: 1
                     query: |
-                      count by (phase) (
-                        kube_pod_status_phase == 1
-                        and on (namespace, pod) kube_pod_info{node="$node"}
+                      max by (phase) (
+                        count by (phase, instance) (
+                          kube_pod_status_phase == 1
+                          and on (namespace, pod) kube_pod_info{node="$node"}
+                        )
                       )
                   version: v0
                 refId: query-0
@@ -3265,16 +3285,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_status_restarts_total
-                        and on (namespace, pod) kube_pod_info{node="$node"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_status_restarts_total
+                          and on (namespace, pod) kube_pod_info{node="$node"}
+                        )
                       )
                     legendFormat: '{{namespace}}/{{pod}}'
                     qryType: 1
                     query: |
-                      sum by (namespace, pod) (
-                        kube_pod_container_status_restarts_total
-                        and on (namespace, pod) kube_pod_info{node="$node"}
+                      max by (namespace, pod) (
+                        sum by (namespace, pod, instance) (
+                          kube_pod_container_status_restarts_total
+                          and on (namespace, pod) kube_pod_info{node="$node"}
+                        )
                       )
                   version: v0
                 refId: query-0
@@ -3582,15 +3606,12 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, container_runtime_version) (kube_node_info{node="$node"})
+                    instant: true
                     legendFormat: '{{container_runtime_version}}'
                     qryType: 1
                     query: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, container_runtime_version) (kube_node_info{node="$node"})
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -3599,7 +3620,12 @@ spec:
               kind: Transformation
               spec:
                 options: {}
-        description: What actually starts and stops containers on this machine.
+        description: |-
+          **The container runtime that starts and stops containers on this node.**
+
+          **Nominal:** Consistent across the pool.
+
+          The component the node journal's `containerd` messages come from, so its version is the context for anything found on the Logs & Events tab.
         id: 1003
         links: []
         title: Container Runtime
@@ -3647,12 +3673,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (node) (kube_pod_container_resource_requests{node="$node", resource="cpu"})
+                      max by (node) (
+                        sum by (node, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+                        )
+                      )
                       /
                       max by (node) (kube_node_status_allocatable{node="$node", resource="cpu"})
                     qryType: 1
                     query: |
-                      sum by (node) (kube_pod_container_resource_requests{node="$node", resource="cpu"})
+                      max by (node) (
+                        sum by (node, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+                        )
+                      )
                       /
                       max by (node) (kube_node_status_allocatable{node="$node", resource="cpu"})
                   version: v0
@@ -3869,15 +3903,12 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, internal_ip) (kube_node_info{node="$node"})
+                    instant: true
                     legendFormat: '{{internal_ip}}'
                     qryType: 1
                     query: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, internal_ip) (kube_node_info{node="$node"})
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -3886,7 +3917,12 @@ spec:
               kind: Transformation
               spec:
                 options: {}
-        description: The address the cluster reaches this node on, and how node-exporter names it.
+        description: |-
+          **The address the cluster reaches this node on.**
+
+          **Nominal:** Stable for the life of the node.
+
+          Also how node-exporter names this machine: its `instance` label is this address with the exporter's port. That is the join the node picker resolves through, so this cell is the value to check first when the measurement tabs are empty but the Kubernetes ones are not.
         id: 1004
         links: []
         title: Internal IP
@@ -3934,15 +3970,12 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, kernel_version) (kube_node_info{node="$node"})
+                    instant: true
                     legendFormat: '{{kernel_version}}'
                     qryType: 1
                     query: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, kernel_version) (kube_node_info{node="$node"})
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -3951,7 +3984,12 @@ spec:
               kind: Transformation
               spec:
                 options: {}
-        description: Worth quoting verbatim when reporting a node-level fault.
+        description: |-
+          **The node's kernel version.**
+
+          **Nominal:** Whatever the OS image ships.
+
+          Rarely interesting on its own, and the single most useful string to quote verbatim when reporting a node-level fault — memory, I/O and network bugs are usually kernel-version-specific.
         id: 1002
         links: []
         title: Kernel
@@ -3999,15 +4037,12 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, kubelet_version) (kube_node_info{node="$node"})
+                    instant: true
                     legendFormat: '{{kubelet_version}}'
                     qryType: 1
                     query: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, kubelet_version) (kube_node_info{node="$node"})
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4016,10 +4051,15 @@ spec:
               kind: Transformation
               spec:
                 options: {}
-        description: A kubelet more than one minor version behind the control plane is a node that missed an upgrade.
+        description: |-
+          **The kubelet version this node runs, which is the version Kubernetes itself is on here.**
+
+          **Nominal:** Within one minor version of the control plane, and the same across a node pool.
+
+          A kubelet more than one minor behind the control plane is a node that missed an upgrade. It keeps working, so nothing alerts — but it is worth reporting, because the fix is a node-pool operation only an infrastructure team can do.
         id: 1000
         links: []
-        title: Kubelet Version
+        title: Kubernetes Version
         vizConfig:
           group: stat
           kind: VizConfig
@@ -4064,12 +4104,20 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (node) (kube_pod_container_resource_requests{node="$node", resource="memory"})
+                      max by (node) (
+                        sum by (node, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="memory"}
+                        )
+                      )
                       /
                       max by (node) (kube_node_status_allocatable{node="$node", resource="memory"})
                     qryType: 1
                     query: |
-                      sum by (node) (kube_pod_container_resource_requests{node="$node", resource="memory"})
+                      max by (node) (
+                        sum by (node, instance) (
+                          kube_pod_container_resource_requests{node="$node", resource="memory"}
+                        )
+                      )
                       /
                       max by (node) (kube_node_status_allocatable{node="$node", resource="memory"})
                   version: v0
@@ -4664,6 +4712,7 @@ spec:
                     expr: |
                       max by (node, key, value, effect) (kube_node_spec_taint{node="$node"})
                     format: table
+                    instant: true
                     qryType: 2
                     query: |
                       max by (node, key, value, effect) (kube_node_spec_taint{node="$node"})
@@ -4811,15 +4860,12 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, os_image) (kube_node_info{node="$node"})
+                    instant: true
                     legendFormat: '{{os_image}}'
                     qryType: 1
                     query: |
-                      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-                        kube_node_info{node="$node"}
-                      )
+                      max by (node, os_image) (kube_node_info{node="$node"})
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -4828,7 +4874,12 @@ spec:
               kind: Transformation
               spec:
                 options: {}
-        description: Nodes in the same pool should agree. One that does not was replaced separately.
+        description: |-
+          **The node's operating system image.**
+
+          **Nominal:** The same across every node in a pool.
+
+          A node whose image differs from its siblings was replaced separately, usually by an autoscaler pulling a newer one. Harmless until it is not, and the first thing to quote when a fault appears on one node and not the others.
         id: 1001
         links: []
         title: OS Image
@@ -4876,12 +4927,22 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      count by (node) (kube_pod_info{node="$node"})
+                      max by (node) (
+                        count by (node, instance) (
+                          kube_pod_info{node="$node"}
+                          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+                        )
+                      )
                       /
                       max by (node) (kube_node_status_allocatable{node="$node", resource="pods"})
                     qryType: 1
                     query: |
-                      count by (node) (kube_pod_info{node="$node"})
+                      max by (node) (
+                        count by (node, instance) (
+                          kube_pod_info{node="$node"}
+                          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+                        )
+                      )
                       /
                       max by (node) (kube_node_status_allocatable{node="$node", resource="pods"})
                   version: v0
@@ -4895,7 +4956,7 @@ spec:
 
           **Degraded:** At 1.0 the node takes no more pods whatever its CPU and memory say. On clusters with many small pods this is the limit that binds first.
 
-          Counted from `kube_pod_info`, so it includes every pod the node is hosting regardless of phase.
+          Counted from `kube_pod_info` with terminal pods subtracted, so it tracks what the scheduler counts rather than what is merely still listed — see this file's header. A node whose completed Jobs have not been garbage collected would otherwise look fuller than it is.
         id: 1017
         links: []
         title: Pod Slots Used
@@ -5013,11 +5074,21 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      count by (namespace) (kube_pod_info{node="$node"})
+                      max by (namespace) (
+                        count by (namespace, instance) (
+                          kube_pod_info{node="$node"}
+                          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+                        )
+                      )
                     legendFormat: '{{namespace}}'
                     qryType: 1
                     query: |
-                      count by (namespace) (kube_pod_info{node="$node"})
+                      max by (namespace) (
+                        count by (namespace, instance) (
+                          kube_pod_info{node="$node"}
+                          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+                        )
+                      )
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -5026,6 +5097,8 @@ spec:
           **What is actually running on this node, grouped by namespace.**
 
           The answer to "is my Materialize environment even on this machine". Useful in both directions: confirming a replica landed where expected, and finding the unrelated workload that is crowding it out.
+
+          Terminal pods are excluded, so this agrees with the allocation gauges beside it rather than counting completed Jobs as residents.
         id: 1022
         links: []
         title: Pods by Namespace

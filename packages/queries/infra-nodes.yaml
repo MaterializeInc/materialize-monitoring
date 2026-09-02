@@ -28,34 +28,88 @@ description: |
   rather than in the selector. Node events are Kubernetes events whose involved
   object is the node itself, which is `kind="Node"` with the node's name.
 
+  Two conventions apply to every query here that aggregates:
+
+  * **Deduplicate across kube-state-metrics replicas.** `instance` is the scrape
+    target, so a bare `sum` or `count` over an HA deployment adds each object
+    once per replica. Every aggregation keeps `instance` in the inner step and
+    collapses it with an outer `max`, which is the shape
+    `materialize-kubernetes.yaml` established. Queries that only ever `max` are
+    already safe, since `max` across identical replicas is idempotent.
+
+  * **Terminal pods do not count against the node.** A `Succeeded` or `Failed`
+    pod has released its CPU and memory, and the scheduler no longer counts it
+    against the pod limit — kube-state-metrics agrees, and stops reporting
+    `kube_pod_container_resource_*` for it. But `kube_pod_info` keeps reporting
+    it until garbage collection, so anything counting *pods* rather than their
+    resources has to subtract them explicitly or it overstates how full the node
+    is. Completed Jobs are the common case.
+
   `%%{interval}` is the rate window, including its brackets.
 
 metricImportanceHint: essential
 
 queries:
   # --- Identity ------------------------------------------------------------
-  - id: infra.nodes.info
+  - id: infra.nodes.info.kubelet
     stability: canonical
+    instant: true
     description:
       summary: |
-        What this machine is: its Kubernetes version, operating system, kernel,
-        container runtime, and where the cloud provider says it lives.
-      nominal: |
-        The kubelet version within one minor of the control plane's, and the
-        same OS image across nodes of the same pool.
+        The kubelet version this node runs, which is the version Kubernetes itself is on here.
+      nominal: Within one minor version of the control plane, and the same across a node pool.
       notes: |
-        This is the header of `kubectl describe node`, and it is here because it
-        is the first thing an infrastructure team will ask for. A node whose
-        kubelet or OS image differs from its pool's siblings is usually one that
-        missed an upgrade, which is worth reporting even when nothing is failing
-        yet.
-
-        `provider_id` carries the cloud region and zone, which is the fastest way
-        to answer "was this the zone that had the incident".
+        A kubelet more than one minor behind the control plane is a node that missed an upgrade. It keeps working, so nothing alerts — but it is worth reporting, because the fix is a node-pool operation only an infrastructure team can do.
     promQL: |
-      max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (
-        kube_node_info{node="$node"}
-      )
+      max by (node, kubelet_version) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.os
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The node's operating system image.
+      nominal: The same across every node in a pool.
+      notes: |
+        A node whose image differs from its siblings was replaced separately, usually by an autoscaler pulling a newer one. Harmless until it is not, and the first thing to quote when a fault appears on one node and not the others.
+    promQL: |
+      max by (node, os_image) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.kernel
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The node's kernel version.
+      nominal: Whatever the OS image ships.
+      notes: |
+        Rarely interesting on its own, and the single most useful string to quote verbatim when reporting a node-level fault — memory, I/O and network bugs are usually kernel-version-specific.
+    promQL: |
+      max by (node, kernel_version) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.runtime
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The container runtime that starts and stops containers on this node.
+      nominal: Consistent across the pool.
+      notes: |
+        The component the node journal's `containerd` messages come from, so its version is the context for anything found on the Logs & Events tab.
+    promQL: |
+      max by (node, container_runtime_version) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.address
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The address the cluster reaches this node on.
+      nominal: Stable for the life of the node.
+      notes: |
+        Also how node-exporter names this machine: its `instance` label is this address with the exporter's port. That is the join the node picker resolves through, so this cell is the value to check first when the measurement tabs are empty but the Kubernetes ones are not.
+    promQL: |
+      max by (node, internal_ip) (kube_node_info{node="$node"})
 
   - id: infra.nodes.created
     stability: canonical
@@ -143,7 +197,11 @@ queries:
         is the panel that explains it — and the one to show an infrastructure
         team, because the fix is more nodes or smaller requests.
     promQL: |
-      sum by (node) (kube_pod_container_resource_requests{node="$node", resource="cpu"})
+      max by (node) (
+        sum by (node, instance) (
+          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+        )
+      )
       /
       max by (node) (kube_node_status_allocatable{node="$node", resource="cpu"})
 
@@ -163,7 +221,11 @@ queries:
         `infra.nodes.allocation.cpu`: this can be full while the memory graphs
         look calm.
     promQL: |
-      sum by (node) (kube_pod_container_resource_requests{node="$node", resource="memory"})
+      max by (node) (
+        sum by (node, instance) (
+          kube_pod_container_resource_requests{node="$node", resource="memory"}
+        )
+      )
       /
       max by (node) (kube_node_status_allocatable{node="$node", resource="memory"})
 
@@ -176,10 +238,17 @@ queries:
         At 1.0 the node takes no more pods whatever its CPU and memory say. On
         clusters with many small pods this is the limit that binds first.
       notes: |
-        Counted from `kube_pod_info`, so it includes every pod the node is
-        hosting regardless of phase.
+        Counted from `kube_pod_info` with terminal pods subtracted, so it tracks
+        what the scheduler counts rather than what is merely still listed — see
+        this file's header. A node whose completed Jobs have not been garbage
+        collected would otherwise look fuller than it is.
     promQL: |
-      count by (node) (kube_pod_info{node="$node"})
+      max by (node) (
+        count by (node, instance) (
+          kube_pod_info{node="$node"}
+          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+        )
+      )
       /
       max by (node) (kube_node_status_allocatable{node="$node", resource="pods"})
 
@@ -191,8 +260,16 @@ queries:
         The answer to "is my Materialize environment even on this machine".
         Useful in both directions: confirming a replica landed where expected,
         and finding the unrelated workload that is crowding it out.
+
+        Terminal pods are excluded, so this agrees with the allocation gauges
+        beside it rather than counting completed Jobs as residents.
     promQL: |
-      count by (namespace) (kube_pod_info{node="$node"})
+      max by (namespace) (
+        count by (namespace, instance) (
+          kube_pod_info{node="$node"}
+          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+        )
+      )
 
   # --- Schedulability and conditions ---------------------------------------
   - id: infra.nodes.condition.ready
@@ -272,6 +349,7 @@ queries:
         half being `infra.nodes.allocation.*`. A pod lands only if it tolerates
         every taint, so a deliberate pool taint plus a missing toleration looks
         exactly like a capacity problem from the workload's side.
+    instant: true
     promQL: |
       max by (node, key, value, effect) (kube_node_spec_taint{node="$node"})
 
@@ -293,9 +371,11 @@ queries:
         both warrant the node's journal.
     instant: true
     promQL: |
-      count by (phase) (
-        kube_pod_status_phase == 1
-        and on (namespace, pod) kube_pod_info{node="$node"}
+      max by (phase) (
+        count by (phase, instance) (
+          kube_pod_status_phase == 1
+          and on (namespace, pod) kube_pod_info{node="$node"}
+        )
       )
 
   - id: infra.nodes.pods.not_ready
@@ -336,9 +416,11 @@ queries:
         A cumulative counter, deliberately not rated: the absolute number is what
         an operator recognises, and a rate would hide a single restart.
     promQL: |
-      sum by (namespace, pod) (
-        kube_pod_container_status_restarts_total
-        and on (namespace, pod) kube_pod_info{node="$node"}
+      max by (namespace, pod) (
+        sum by (namespace, pod, instance) (
+          kube_pod_container_status_restarts_total
+          and on (namespace, pod) kube_pod_info{node="$node"}
+        )
       )
 
   - id: infra.nodes.pods.budgets
@@ -373,20 +455,28 @@ queries:
         seeing.
     promQL:
       - |
-        sum by (namespace, pod) (
-          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_requests{node="$node", resource="cpu"}
+          )
         )
       - |
-        sum by (namespace, pod) (
-          kube_pod_container_resource_limits{node="$node", resource="cpu"}
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_limits{node="$node", resource="cpu"}
+          )
         )
       - |
-        sum by (namespace, pod) (
-          kube_pod_container_resource_requests{node="$node", resource="memory"}
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_requests{node="$node", resource="memory"}
+          )
         )
       - |
-        sum by (namespace, pod) (
-          kube_pod_container_resource_limits{node="$node", resource="memory"}
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_limits{node="$node", resource="memory"}
+          )
         )
 
   # --- The node's own account of itself ------------------------------------

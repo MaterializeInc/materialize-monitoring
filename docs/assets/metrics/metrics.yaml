@@ -303,7 +303,11 @@
   - node
   name: kube_node_info
   usage:
-  - infra.nodes.info
+  - infra.nodes.info.address
+  - infra.nodes.info.kernel
+  - infra.nodes.info.kubelet
+  - infra.nodes.info.os
+  - infra.nodes.info.runtime
 - importance: essential
   labels:
   - key
@@ -355,8 +359,7 @@
   - resource
   name: kube_pod_container_resource_limits
   usage:
-  - infra.nodes.pods.limits.cpu
-  - infra.nodes.pods.limits.memory
+  - infra.nodes.pods.budgets
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
 - importance: essential
@@ -376,8 +379,7 @@
   - infra.kubernetes.vector_high_cpu_ratio
   - infra.nodes.allocation.cpu
   - infra.nodes.allocation.memory
-  - infra.nodes.pods.requests.cpu
-  - infra.nodes.pods.requests.memory
+  - infra.nodes.pods.budgets
 - importance: essential
   labels:
   - container
@@ -448,7 +450,10 @@
   name: kube_pod_status_phase
   usage:
   - infra.kubernetes.infra_pod_pending
+  - infra.nodes.allocation.pods
+  - infra.nodes.pods.by_namespace
   - infra.nodes.pods.by_phase
+  - infra.nodes.pods.not_ready
   - materialize.environmentd.pod_pending
   - materialize.environmentd.pod_pending_critical
   - materialize.kubernetes.pods.readiness

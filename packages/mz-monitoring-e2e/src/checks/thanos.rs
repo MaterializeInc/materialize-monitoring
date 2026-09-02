@@ -171,7 +171,16 @@ pub async fn samples_scraped(ctx: &Ctx) -> Result<()> {
 }
 
 /// Run an instant query and return its result vector.
-async fn instant_query(ctx: &Ctx, target: &ServiceTarget, query: &str) -> Result<Vec<Value>> {
+/// Run an instant query against a Prometheus-compatible endpoint.
+///
+/// `pub(crate)` so `node` can reuse it rather than start a third copy — there is
+/// already one more in `kube_state`, which is worth collapsing into a shared
+/// helper separately from this change.
+pub(crate) async fn instant_query(
+    ctx: &Ctx,
+    target: &ServiceTarget,
+    query: &str,
+) -> Result<Vec<Value>> {
     let path = format!("api/v1/query?query={}", encode(query));
     let body = ctx.cluster.get_json(target, &path).await?;
     expect_success(&body).with_context(|| format!("querying {query}"))?;
@@ -187,7 +196,7 @@ async fn instant_query(ctx: &Ctx, target: &ServiceTarget, query: &str) -> Result
 ///
 /// Prometheus encodes it as `[<timestamp>, "<value>"]` — a *string*, so that
 /// `NaN` and `Inf` survive JSON. Reading it as a number silently yields nothing.
-fn sample_value(series: &Value) -> Option<f64> {
+pub(crate) fn sample_value(series: &Value) -> Option<f64> {
     series
         .pointer("/value/1")
         .and_then(Value::as_str)

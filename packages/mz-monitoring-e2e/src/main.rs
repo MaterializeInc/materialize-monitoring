@@ -313,6 +313,24 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         checks::kube_state::pods_are_distinguishable,
     ));
 
+    // The node-detail dashboard's join spans both exporters, so it needs both
+    // features present before the assertion means anything.
+    let node_metrics = kube_state && ctx.features.enabled("node-exporter");
+    trials.push(trial(
+        runtime,
+        ctx,
+        "node::identity_joins_across_exporters",
+        node_metrics,
+        checks::node::identity_joins_across_exporters,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "node::capacity_is_reported_per_node",
+        kube_state,
+        checks::node::capacity_is_reported_per_node,
+    ));
+
     trials.push(trial(
         runtime,
         ctx,

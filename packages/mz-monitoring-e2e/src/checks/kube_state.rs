@@ -53,7 +53,12 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_deployment_status_replicas_unavailable",
     "kube_horizontalpodautoscaler_spec_max_replicas",
     "kube_horizontalpodautoscaler_status_current_replicas",
+    "kube_node_created",
+    "kube_node_info",
     "kube_node_spec_taint",
+    "kube_node_spec_unschedulable",
+    "kube_node_status_allocatable",
+    "kube_node_status_capacity",
     "kube_node_status_condition",
     "kube_pod_container_resource_limits",
     "kube_pod_container_resource_requests",
@@ -62,8 +67,10 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_pod_container_status_restarts_total",
     "kube_pod_container_status_waiting",
     "kube_pod_created",
+    "kube_pod_info",
     "kube_pod_start_time",
     "kube_pod_status_phase",
+    "kube_pod_status_ready",
     "kube_statefulset_status_replicas_ready",
 ];
 

@@ -260,8 +260,11 @@ Two dashboards are rendered, and `dashboards.selected` decides which of them a r
   infrastructure team will ask for where they can be read off directly.
   A Pods tab shows what is scheduled on the node and whether it is healthy, with requests beside limits in one
   per-pod table.
-  Needs node-exporter and kube-state-metrics, which the chart deploys; panels whose collector is absent say so rather
-  than rendering empty.
+  Needs node-exporter and kube-state-metrics, which the chart deploys.
+  It also needs the metrics pipeline in order to read *anything*, including its Loki tab: the node picker is
+  discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
+  match nothing.
+  `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
