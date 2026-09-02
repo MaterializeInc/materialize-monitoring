@@ -3219,12 +3219,12 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace, pod) (\n  kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"}\n)\n",
+                        "expr": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"}\n  )\n)\n",
                         "format": "table",
                         "instant": true,
                         "legendFormat": "CPU Requested",
                         "qryType": 2,
-                        "query": "sum by (namespace, pod) (\n  kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"}\n)\n"
+                        "query": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"}\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3242,12 +3242,12 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace, pod) (\n  kube_pod_container_resource_limits{node=\"$node\", resource=\"cpu\"}\n)\n",
+                        "expr": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_limits{node=\"$node\", resource=\"cpu\"}\n  )\n)\n",
                         "format": "table",
                         "instant": true,
                         "legendFormat": "CPU Limit",
                         "qryType": 2,
-                        "query": "sum by (namespace, pod) (\n  kube_pod_container_resource_limits{node=\"$node\", resource=\"cpu\"}\n)\n"
+                        "query": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_limits{node=\"$node\", resource=\"cpu\"}\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3265,12 +3265,12 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace, pod) (\n  kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"}\n)\n",
+                        "expr": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"}\n  )\n)\n",
                         "format": "table",
                         "instant": true,
                         "legendFormat": "Memory Requested",
                         "qryType": 2,
-                        "query": "sum by (namespace, pod) (\n  kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"}\n)\n"
+                        "query": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"}\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3288,12 +3288,12 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace, pod) (\n  kube_pod_container_resource_limits{node=\"$node\", resource=\"memory\"}\n)\n",
+                        "expr": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_limits{node=\"$node\", resource=\"memory\"}\n  )\n)\n",
                         "format": "table",
                         "instant": true,
                         "legendFormat": "Memory Limit",
                         "qryType": 2,
-                        "query": "sum by (namespace, pod) (\n  kube_pod_container_resource_limits{node=\"$node\", resource=\"memory\"}\n)\n"
+                        "query": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_resource_limits{node=\"$node\", resource=\"memory\"}\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3443,11 +3443,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "count by (phase) (\n  kube_pod_status_phase == 1\n  and on (namespace, pod) kube_pod_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (phase) (\n  count by (phase, instance) (\n    kube_pod_status_phase == 1\n    and on (namespace, pod) kube_pod_info{node=\"$node\"}\n  )\n)\n",
                         "instant": true,
                         "legendFormat": "{{phase}}",
                         "qryType": 1,
-                        "query": "count by (phase) (\n  kube_pod_status_phase == 1\n  and on (namespace, pod) kube_pod_info{node=\"$node\"}\n)\n"
+                        "query": "max by (phase) (\n  count by (phase, instance) (\n    kube_pod_status_phase == 1\n    and on (namespace, pod) kube_pod_info{node=\"$node\"}\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3611,10 +3611,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace, pod) (\n  kube_pod_container_status_restarts_total\n  and on (namespace, pod) kube_pod_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_status_restarts_total\n    and on (namespace, pod) kube_pod_info{node=\"$node\"}\n  )\n)\n",
                         "legendFormat": "{{namespace}}/{{pod}}",
                         "qryType": 1,
-                        "query": "sum by (namespace, pod) (\n  kube_pod_container_status_restarts_total\n  and on (namespace, pod) kube_pod_info{node=\"$node\"}\n)\n"
+                        "query": "max by (namespace, pod) (\n  sum by (namespace, pod, instance) (\n    kube_pod_container_status_restarts_total\n    and on (namespace, pod) kube_pod_info{node=\"$node\"}\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3980,10 +3980,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (node, container_runtime_version) (kube_node_info{node=\"$node\"})\n",
+                        "instant": true,
                         "legendFormat": "{{container_runtime_version}}",
                         "qryType": 1,
-                        "query": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n"
+                        "query": "max by (node, container_runtime_version) (kube_node_info{node=\"$node\"})\n"
                       },
                       "version": "v0"
                     },
@@ -4003,7 +4004,7 @@
               ]
             }
           },
-          "description": "What actually starts and stops containers on this machine.",
+          "description": "**The container runtime that starts and stops containers on this node.**\n\n**Nominal:** Consistent across the pool.\n\nThe component the node journal's `containerd` messages come from, so its version is the context for anything found on the Logs & Events tab.",
           "id": 1003,
           "links": [],
           "title": "Container Runtime",
@@ -4062,9 +4063,9 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (node) (kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"})\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"cpu\"})\n",
+                        "expr": "max by (node) (\n  sum by (node, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"}\n  )\n)\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"cpu\"})\n",
                         "qryType": 1,
-                        "query": "sum by (node) (kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"})\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"cpu\"})\n"
+                        "query": "max by (node) (\n  sum by (node, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"cpu\"}\n  )\n)\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"cpu\"})\n"
                       },
                       "version": "v0"
                     },
@@ -4331,10 +4332,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (node, internal_ip) (kube_node_info{node=\"$node\"})\n",
+                        "instant": true,
                         "legendFormat": "{{internal_ip}}",
                         "qryType": 1,
-                        "query": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n"
+                        "query": "max by (node, internal_ip) (kube_node_info{node=\"$node\"})\n"
                       },
                       "version": "v0"
                     },
@@ -4354,7 +4356,7 @@
               ]
             }
           },
-          "description": "The address the cluster reaches this node on, and how node-exporter names it.",
+          "description": "**The address the cluster reaches this node on.**\n\n**Nominal:** Stable for the life of the node.\n\nAlso how node-exporter names this machine: its `instance` label is this address with the exporter's port. That is the join the node picker resolves through, so this cell is the value to check first when the measurement tabs are empty but the Kubernetes ones are not.",
           "id": 1004,
           "links": [],
           "title": "Internal IP",
@@ -4413,10 +4415,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (node, kernel_version) (kube_node_info{node=\"$node\"})\n",
+                        "instant": true,
                         "legendFormat": "{{kernel_version}}",
                         "qryType": 1,
-                        "query": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n"
+                        "query": "max by (node, kernel_version) (kube_node_info{node=\"$node\"})\n"
                       },
                       "version": "v0"
                     },
@@ -4436,7 +4439,7 @@
               ]
             }
           },
-          "description": "Worth quoting verbatim when reporting a node-level fault.",
+          "description": "**The node's kernel version.**\n\n**Nominal:** Whatever the OS image ships.\n\nRarely interesting on its own, and the single most useful string to quote verbatim when reporting a node-level fault — memory, I/O and network bugs are usually kernel-version-specific.",
           "id": 1002,
           "links": [],
           "title": "Kernel",
@@ -4495,10 +4498,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (node, kubelet_version) (kube_node_info{node=\"$node\"})\n",
+                        "instant": true,
                         "legendFormat": "{{kubelet_version}}",
                         "qryType": 1,
-                        "query": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n"
+                        "query": "max by (node, kubelet_version) (kube_node_info{node=\"$node\"})\n"
                       },
                       "version": "v0"
                     },
@@ -4518,10 +4522,10 @@
               ]
             }
           },
-          "description": "A kubelet more than one minor version behind the control plane is a node that missed an upgrade.",
+          "description": "**The kubelet version this node runs, which is the version Kubernetes itself is on here.**\n\n**Nominal:** Within one minor version of the control plane, and the same across a node pool.\n\nA kubelet more than one minor behind the control plane is a node that missed an upgrade. It keeps working, so nothing alerts — but it is worth reporting, because the fix is a node-pool operation only an infrastructure team can do.",
           "id": 1000,
           "links": [],
-          "title": "Kubelet Version",
+          "title": "Kubernetes Version",
           "vizConfig": {
             "group": "stat",
             "kind": "VizConfig",
@@ -4577,9 +4581,9 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (node) (kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"})\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"memory\"})\n",
+                        "expr": "max by (node) (\n  sum by (node, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"}\n  )\n)\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"memory\"})\n",
                         "qryType": 1,
-                        "query": "sum by (node) (kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"})\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"memory\"})\n"
+                        "query": "max by (node) (\n  sum by (node, instance) (\n    kube_pod_container_resource_requests{node=\"$node\", resource=\"memory\"}\n  )\n)\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"memory\"})\n"
                       },
                       "version": "v0"
                     },
@@ -5251,6 +5255,7 @@
                       "spec": {
                         "expr": "max by (node, key, value, effect) (kube_node_spec_taint{node=\"$node\"})\n",
                         "format": "table",
+                        "instant": true,
                         "qryType": 2,
                         "query": "max by (node, key, value, effect) (kube_node_spec_taint{node=\"$node\"})\n"
                       },
@@ -5437,10 +5442,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n",
+                        "expr": "max by (node, os_image) (kube_node_info{node=\"$node\"})\n",
+                        "instant": true,
                         "legendFormat": "{{os_image}}",
                         "qryType": 1,
-                        "query": "max by (node, kubelet_version, os_image, kernel_version, container_runtime_version, internal_ip, provider_id) (\n  kube_node_info{node=\"$node\"}\n)\n"
+                        "query": "max by (node, os_image) (kube_node_info{node=\"$node\"})\n"
                       },
                       "version": "v0"
                     },
@@ -5460,7 +5466,7 @@
               ]
             }
           },
-          "description": "Nodes in the same pool should agree. One that does not was replaced separately.",
+          "description": "**The node's operating system image.**\n\n**Nominal:** The same across every node in a pool.\n\nA node whose image differs from its siblings was replaced separately, usually by an autoscaler pulling a newer one. Harmless until it is not, and the first thing to quote when a fault appears on one node and not the others.",
           "id": 1001,
           "links": [],
           "title": "OS Image",
@@ -5519,9 +5525,9 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "count by (node) (kube_pod_info{node=\"$node\"})\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"pods\"})\n",
+                        "expr": "max by (node) (\n  count by (node, instance) (\n    kube_pod_info{node=\"$node\"}\n    unless on (namespace, pod) (kube_pod_status_phase{phase=~\"Succeeded|Failed\"} == 1)\n  )\n)\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"pods\"})\n",
                         "qryType": 1,
-                        "query": "count by (node) (kube_pod_info{node=\"$node\"})\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"pods\"})\n"
+                        "query": "max by (node) (\n  count by (node, instance) (\n    kube_pod_info{node=\"$node\"}\n    unless on (namespace, pod) (kube_pod_status_phase{phase=~\"Succeeded|Failed\"} == 1)\n  )\n)\n/\nmax by (node) (kube_node_status_allocatable{node=\"$node\", resource=\"pods\"})\n"
                       },
                       "version": "v0"
                     },
@@ -5533,7 +5539,7 @@
               "transformations": []
             }
           },
-          "description": "**Fraction of the node's pod slots in use.**\n\n**Nominal:** Below ~0.8.\n\n**Degraded:** At 1.0 the node takes no more pods whatever its CPU and memory say. On clusters with many small pods this is the limit that binds first.\n\nCounted from `kube_pod_info`, so it includes every pod the node is hosting regardless of phase.",
+          "description": "**Fraction of the node's pod slots in use.**\n\n**Nominal:** Below ~0.8.\n\n**Degraded:** At 1.0 the node takes no more pods whatever its CPU and memory say. On clusters with many small pods this is the limit that binds first.\n\nCounted from `kube_pod_info` with terminal pods subtracted, so it tracks what the scheduler counts rather than what is merely still listed — see this file's header. A node whose completed Jobs have not been garbage collected would otherwise look fuller than it is.",
           "id": 1017,
           "links": [],
           "title": "Pod Slots Used",
@@ -5688,10 +5694,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "count by (namespace) (kube_pod_info{node=\"$node\"})\n",
+                        "expr": "max by (namespace) (\n  count by (namespace, instance) (\n    kube_pod_info{node=\"$node\"}\n    unless on (namespace, pod) (kube_pod_status_phase{phase=~\"Succeeded|Failed\"} == 1)\n  )\n)\n",
                         "legendFormat": "{{namespace}}",
                         "qryType": 1,
-                        "query": "count by (namespace) (kube_pod_info{node=\"$node\"})\n"
+                        "query": "max by (namespace) (\n  count by (namespace, instance) (\n    kube_pod_info{node=\"$node\"}\n    unless on (namespace, pod) (kube_pod_status_phase{phase=~\"Succeeded|Failed\"} == 1)\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -5703,7 +5709,7 @@
               "transformations": []
             }
           },
-          "description": "**What is actually running on this node, grouped by namespace.**\n\nThe answer to \"is my Materialize environment even on this machine\". Useful in both directions: confirming a replica landed where expected, and finding the unrelated workload that is crowding it out.",
+          "description": "**What is actually running on this node, grouped by namespace.**\n\nThe answer to \"is my Materialize environment even on this machine\". Useful in both directions: confirming a replica landed where expected, and finding the unrelated workload that is crowding it out.\n\nTerminal pods are excluded, so this agrees with the allocation gauges beside it rather than counting completed Jobs as residents.",
           "id": 1022,
           "links": [],
           "title": "Pods by Namespace",
