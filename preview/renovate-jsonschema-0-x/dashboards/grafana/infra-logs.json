@@ -8,7 +8,7 @@
       "monitoring.materialize.cloud/sql-metric-prefix": "mz_",
       "monitoring.materialize.cloud/target-export": "generic"
     },
-    "name": "mz-mon-env-logs"
+    "name": "mz-mon-infra-logs"
   },
   "spec": {
     "annotations": [
@@ -33,7 +33,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "Logs and Kubernetes events for a Materialize deployment.\n\nWhat the workloads said, as opposed to what they measured.",
+    "description": "Logs and Kubernetes events for the platform a Materialize deployment runs on.\n\nThe monitoring stack, the Kubernetes system components, and the node journal.",
     "editable": true,
     "elements": {
       "event-feed": {
@@ -54,7 +54,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\"}\n  |~ \"(?i)$logSearch\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"$excludeMaterialize\"}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -67,7 +67,7 @@
             }
           },
           "description": "**Every Kubernetes event in the selected namespaces, newest first.**\n\nThe general-purpose event feed, scoped by the same namespace picker as the logs beside it rather than by a deployment's own namespaces. Turning the Materialize-only switch off reaches `kube-system` and the rest of the cluster, which is where the answer lives when the question is about nodes or storage rather than about Materialize.\n\nDistinct from the rollout feed on the upgrade dashboard: this one carries no generation or reporting-controller filter, because a general browser should not quietly drop events for belonging to the wrong side of a rollout.\n\nThe consuming panel renders `reason`, `msg` and `name` as columns rather than showing the raw line, so this query deliberately does **not** `line_format`: displayed fields supersede the line, and formatting one would be work thrown away. The rollout feeds on the upgrade dashboard do reformat, because they show the line.",
-          "id": 1010,
+          "id": 1012,
           "links": [],
           "title": "All Events",
           "vizConfig": {
@@ -128,7 +128,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "expr": "sum by (namespace) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"$excludeMaterialize\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
                         "legendFormat": "{{namespace}}"
                       },
                       "version": "v0"
@@ -142,7 +142,7 @@
             }
           },
           "description": "**Event rate by namespace — where in the cluster things are happening.**\n\nMost useful with the Materialize-only switch off, which is when this stops being one or two flat lines and starts saying whether the activity is in the deployment, the monitoring stack, or the platform underneath both.",
-          "id": 1008,
+          "id": 1010,
           "links": [],
           "title": "Event Rate by Namespace",
           "vizConfig": {
@@ -195,7 +195,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"$excludeMaterialize\"}\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
                         "legendFormat": "{{reason}}"
                       },
                       "version": "v0"
@@ -209,7 +209,7 @@
             }
           },
           "description": "**How often each kind of event is being reported, by reason — the shape of what the cluster is doing.**\n\n**Nominal:** Quiet, apart from bursts that coincide with a deliberate change.\n\n**Unhealthy:** A reason that fires at a steady rate is a loop rather than a transition.\n\nCounts events as Loki received them. Kubernetes aggregates a repeat into one object with a rising `count` rather than sending it again, so a tight loop reports fewer lines than it has occurrences.",
-          "id": 1007,
+          "id": 1009,
           "links": [],
           "title": "Event Rate by Reason",
           "vizConfig": {
@@ -262,7 +262,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{\n  namespace=~\"$logNamespaceList\",\n  app=~\"$logAppList\",\n  level=~\"$logLevelList\",\n  job=~\"$logJobList\"\n}\n  |~ \"(?i)$logSearch\"\n"
+                        "expr": "{\n  namespace=~\"$logNamespaceList\",\n  namespace!~\"$excludeMaterialize\",\n  app=~\"$logAppList\",\n  component=~\"$logComponentList\",\n  container=~\"$logContainerList\",\n  level=~\"$logLevelList\",\n  job=~\"$logJobList\"\n}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -274,8 +274,8 @@
               "transformations": []
             }
           },
-          "description": "**The log feed for the selected namespaces, apps and levels, newest first.**\n\nThe dashboard's primary panel; everything above it exists to narrow what lands here.\n\nThe free-text search is a case-insensitive line filter applied last, after the stream selector has done its work. An empty search matches every line rather than none, so the panel is useful before anything is typed.",
-          "id": 1006,
+          "description": "**The log feed for the selected namespaces, apps, components, containers and levels, newest first.**\n\nThe tab's primary panel. `component` and `container` are what this adds over the Materialize feed: the first isolates one process of a multi-process workload, the second reaches workloads that publish no `app` label.\n\nAn empty search matches every line rather than none, so the panel is useful before anything is typed.",
+          "id": 1005,
           "links": [],
           "title": "All Logs",
           "vizConfig": {
@@ -314,7 +314,7 @@
           }
         }
       },
-      "log-rate-by-app": {
+      "log-rate-by-component": {
         "kind": "Panel",
         "spec": {
           "data": {
@@ -332,8 +332,8 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (app) (\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      app=~\"$logAppList\",\n      level=~\"$logLevelList\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
-                        "legendFormat": "{{app}}"
+                        "expr": "sum by (app, component) (\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      namespace!~\"$excludeMaterialize\",\n      app=~\"$logAppList\",\n      component=~\"$logComponentList\",\n      container=~\"$logContainerList\",\n      level=~\"$logLevelList\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "legendFormat": "{{app}} / {{component}}"
                       },
                       "version": "v0"
                     },
@@ -345,156 +345,16 @@
               "transformations": []
             }
           },
-          "description": "**Log lines per second by application — which component is doing the talking.**\n\n**Nominal:** A steady baseline per app, rising with load. `environmentd` dominates on any busy deployment and that is expected.\n\n**Unhealthy:** A sharp step up, usually one app entering a retry loop and narrating it. Pair it with _Volume -> Log Rate by Level_: a rise concentrated in warnings is a different story from a rise in ordinary chatter.\n\nA drop to zero for an app that should be running is the other reading, and it means either the workload stopped or collection did.\n\nRate rather than count, so the panel reads the same at any time range.",
-          "id": 1002,
-          "links": [],
-          "title": "Log Rate by App",
-          "vizConfig": {
-            "group": "timeseries",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "min": 0,
-                  "noValue": "No logs match the current filters",
-                  "unit": "suffix:logs/s"
-                },
-                "overrides": []
-              },
-              "options": {
-                "legend": {
-                  "calcs": [
-                    "max",
-                    "mean",
-                    "lastNotNull"
-                  ],
-                  "displayMode": "table",
-                  "placement": "bottom",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "mode": "single",
-                  "sort": "asc"
-                }
-              }
-            },
-            "version": ""
-          }
-        }
-      },
-      "log-rate-by-level": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${logsDatasource}"
-                      },
-                      "group": "loki",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "expr": "sum by (level) (\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      app=~\"$logAppList\",\n      level=~\"$logLevelList\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
-                        "legendFormat": "{{level}}"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "query-0"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "**Log lines per second by severity — the shape of how much of the volume is something going wrong.**\n\n**Nominal:** Overwhelmingly `INFO`, with warnings a thin band above it.\n\n**Degraded:** A rising `WARN` band. Worth reading, not necessarily worth acting on.\n\n**Unhealthy:** `ERROR` present at a sustained rate, or a warning band that overtakes the informational one.\n\n`UNKNOWN` is not a severity. It is what the pipeline records when it could not find a level in the line — some components do not emit one in a form the parser recognizes — so a large `UNKNOWN` band says something about the log format rather than about health.",
-          "id": 1003,
-          "links": [],
-          "title": "Log Rate by Level",
-          "vizConfig": {
-            "group": "timeseries",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "min": 0,
-                  "noValue": "No logs match the current filters",
-                  "unit": "suffix:logs/s"
-                },
-                "overrides": []
-              },
-              "options": {
-                "legend": {
-                  "calcs": [
-                    "max",
-                    "mean",
-                    "lastNotNull"
-                  ],
-                  "displayMode": "table",
-                  "placement": "bottom",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "mode": "single",
-                  "sort": "asc"
-                }
-              }
-            },
-            "version": ""
-          }
-        }
-      },
-      "log-rate-total": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${logsDatasource}"
-                      },
-                      "group": "loki",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "expr": "sum(\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      app=~\"$logAppList\",\n      level=~\"$logLevelList\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
-                        "legendFormat": "lines/s"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "query-0"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "**Total log lines per second reaching Loki for the current selection, averaged over each interval.**\n\n**Nominal:** A steady rate that tracks load.\n\n**Unhealthy:** Flat at zero while workloads are running: collection has stopped rather than the deployment going quiet. Check the agent and gateway — their own logs are in this same feed under the `monitoring` namespace, which is why the namespace picker can reach outside Materialize.\n\nAlso the volume signal for storage: a sustained step up here is what precedes a retention or cost surprise.",
+          "description": "**Log lines per second by application and sub-component — which process of which workload is doing the talking.**\n\n**Nominal:** A steady baseline. Loki's own canary dominates on a quiet cluster, which is expected: it exists to write and read a line on a loop.\n\n**Unhealthy:** A sharp step up confined to one component. That is the shape of a single process in a retry loop, and it is invisible on a panel that only splits by application.\n\nLegends read `app / component`. A workload with no sub-components reports an empty one, which is why the component picker's \"All\" is `.*` rather than `.+` — the stricter form would drop them.",
           "id": 1000,
           "links": [],
-          "title": "Average Log Rate",
+          "title": "Log Rate by Component",
           "vizConfig": {
-            "group": "stat",
+            "group": "timeseries",
             "kind": "VizConfig",
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "color": {
-                    "fixedColor": "#33BBEE",
-                    "mode": "shades"
-                  },
                   "min": 0,
                   "noValue": "No logs match the current filters",
                   "unit": "suffix:logs/s"
@@ -502,18 +362,296 @@
                 "overrides": []
               },
               "options": {
-                "colorMode": "none",
-                "graphMode": "area",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                  "calcs": [],
-                  "values": false
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
                 },
-                "showPercentChange": false,
-                "textMode": "value",
-                "wideLayout": true
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "log-rate-by-namespace": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (namespace) (\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      namespace!~\"$excludeMaterialize\",\n      app=~\"$logAppList\",\n      component=~\"$logComponentList\",\n      container=~\"$logContainerList\",\n      level=~\"$logLevelList\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "legendFormat": "{{namespace}}"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Log lines per second by namespace — where in the cluster the volume is.**\n\nThe coarsest useful split, and the one that answers \"is this the platform or the workload\" before any of the finer pickers are touched.",
+          "id": 1001,
+          "links": [],
+          "title": "Log Rate by Namespace",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No logs match the current filters",
+                  "unit": "suffix:logs/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "node-log-feed": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{\n  unit=~\"$logUnitList\",\n  level=~\"$logLevelList\"\n}\n  |~ \"(?i)$logSearch\"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The node journal, newest first — `kubelet`, `containerd`, the node problem detector, and the rest of what systemd runs on each node.**\n\n**Unreachable from any namespace-scoped dashboard.** These lines come from the node, not from a pod, so they carry no `namespace`, `app` or `container` at all — a selector requiring any of those excludes them by construction. That is the gap this tab exists to close.\n\n`unit` is the anchor here, the way `job` is for container logs: a journal selector has no namespace matcher to lean on, so its \"All\" is `.+`.\n\nThe node a line came from is structured metadata, not a label. Filter it after a `|`, or add it through the advanced filter.",
+          "id": 1008,
+          "links": [],
+          "title": "Node Journal",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No node journal logs — is journal collection enabled?"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "node-rate-by-unit": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (unit) (\n  rate(\n    {\n      unit=~\"$logUnitList\",\n      level=~\"$logLevelList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "legendFormat": "{{unit}}"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Node journal lines per second by systemd unit.**\n\n**Nominal:** A steady murmur, dominated by the cloud provider's guest agent.\n\n**Unhealthy:** A step up in `kubelet` or `containerd`. Both narrate their retries, so a rising rate there is usually a node struggling to reconcile what it has been asked to run.\n\nSplit by unit rather than by node: which *thing* is talking is the first question, and the node is one `|` away once you know.",
+          "id": 1006,
+          "links": [],
+          "title": "Journal Rate by Unit",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No node journal logs — is journal collection enabled?",
+                  "unit": "suffix:logs/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "node-warning-feed": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{\n  unit=~\"$logUnitList\",\n  level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\"\n}\n  |~ \"(?i)$logSearch\"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Warning-and-worse lines from the node journal.**\n\n**Nominal:** Quiet. Most journal lines never carry a level the pipeline recognizes and land as `UNKNOWN`, so what does reach `WARN` or `ERROR` is worth reading.\n\n**Unhealthy:** `kubelet` or `containerd` complaining repeatedly. Those two are the node's control plane for everything Kubernetes runs on it, so a sustained complaint there precedes pods that will not start or will not stop.\n\nIndependent of the level picker, like the other warning panels.",
+          "id": 1007,
+          "links": [],
+          "title": "Node Warnings and Errors",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No warnings in this time range"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
               }
             },
             "version": ""
@@ -532,7 +670,7 @@
             }
           },
           "description": "Why the volume panels are not drawn over long ranges.",
-          "id": 1004,
+          "id": 1003,
           "links": [],
           "title": "Volume (skipped)",
           "vizConfig": {
@@ -575,7 +713,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"a^\", level=\"WARN\"}\n  |~ \"(?i)$logSearch\"\n"
+                        "expr": "{job=\"loki.source.kubernetes_events\", namespace=~\"$logNamespaceList\", namespace!~\"$excludeMaterialize\", level=\"WARN\"}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -588,7 +726,7 @@
             }
           },
           "description": "**Kubernetes events the reporting component flagged as warnings, across the selected namespaces.**\n\n**Nominal:** Nothing, or a burst that stops on its own.\n\n**Unhealthy:** Warnings that keep arriving. The reason names the class: `FailedScheduling` and `NotTriggerScaleUp` mean the cluster has nowhere to put a pod, `BackOff` means it starts and dies, `Unhealthy` means it starts and never becomes ready, `FailedMount` means storage did not attach.\n\n`Warning` is the reporting component's own judgement rather than a threshold of ours — this filters on their opinion.",
-          "id": 1009,
+          "id": 1011,
           "links": [],
           "title": "Warning Events",
           "vizConfig": {
@@ -649,7 +787,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{\n  namespace=~\"$logNamespaceList\",\n  app=~\"$logAppList\",\n  level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\",\n  job=~\"$logJobList\"\n}\n  |~ \"(?i)$logSearch\"\n"
+                        "expr": "{\n  namespace=~\"$logNamespaceList\",\n  namespace!~\"$excludeMaterialize\",\n  app=~\"$logAppList\",\n  component=~\"$logComponentList\",\n  container=~\"$logContainerList\",\n  level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\",\n  job=~\"$logJobList\"\n}\n  |~ \"(?i)$logSearch\"\n"
                       },
                       "version": "v0"
                     },
@@ -661,8 +799,8 @@
               "transformations": []
             }
           },
-          "description": "**The warning-and-worse feed, newest first — what the components are actually complaining about.**\n\n**Nominal:** Quiet, or a burst that stops on its own.\n\n**Unhealthy:** A steady stream. Read the app and the message; a repeating identical line is a loop, and a changing one is a workload in trouble.\n\nSame level vocabulary as _Volume -> Warning Rate_ and, like it, deliberately not narrowed by the level picker.",
-          "id": 1005,
+          "description": "**Warning-and-worse lines from the platform, newest first.**\n\n**Nominal:** Quiet, or a burst that stops on its own.\n\n**Unhealthy:** A steady stream. Read which component: the monitoring stack complaining about itself is the case worth acting on first, since everything else you are looking at depends on it.\n\nDeliberately independent of the level picker, like its Materialize counterpart: this panel answers \"is anything wrong\", and narrowing the selection to `INFO` would silently zero it.",
+          "id": 1004,
           "links": [],
           "title": "Warnings and Errors",
           "vizConfig": {
@@ -719,7 +857,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      app=~\"$logAppList\",\n      level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n) * 60\n",
+                        "expr": "sum(\n  rate(\n    {\n      namespace=~\"$logNamespaceList\",\n      namespace!~\"$excludeMaterialize\",\n      app=~\"$logAppList\",\n      component=~\"$logComponentList\",\n      container=~\"$logContainerList\",\n      level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\",\n      job=~\"$logJobList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n) * 60\n",
                         "legendFormat": "warnings/min"
                       },
                       "version": "v0"
@@ -732,8 +870,8 @@
               "transformations": []
             }
           },
-          "description": "**Warning-and-worse log lines per minute, as one series — the at-a-glance answer to whether anything is complaining.**\n\n**Nominal:** Flat, or a spike that returns to baseline.\n\n**Unhealthy:** A level that does not come back down. _Volume -> Log Rate by App_ says which component, and the feed below says what.\n\nMatches on the normalized `level` label rather than on the text of the line, so it does not depend on how a component spells \"error\".\n\nDeliberately independent of the level picker above it: this panel answers \"is anything wrong\" and would be meaningless if narrowing the selection to `INFO` silently zeroed it.\n\nReported per **minute** rather than per second. Warnings are rare enough on a healthy deployment that a per-second rate spends its life displaying a small fraction, and \"0.03\" reads as noise where \"2 per minute\" reads as two warnings.",
-          "id": 1001,
+          "description": "**Warning-and-worse lines per minute across the platform, as one series.**\n\n**Nominal:** Flat, or a spike that returns to baseline.\n\n**Unhealthy:** A level that does not come back down. _Volume -> Log Rate by Component_ says which process, and the feed below says what.\n\nReported per **minute**: warnings are rare enough on a healthy platform that a per-second rate spends its life showing a small fraction.\n\nIndependent of the level picker, for the same reason as the feed.",
+          "id": 1002,
           "links": [],
           "title": "Average Warning Rate",
           "vizConfig": {
@@ -814,7 +952,16 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "log-rate-total"
+                                    "name": "log-rate-by-component"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "log-rate-by-namespace"
                                   }
                                 }
                               },
@@ -824,24 +971,6 @@
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "warning-rate"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "log-rate-by-app"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "log-rate-by-level"
                                   }
                                 }
                               }
@@ -981,6 +1110,103 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
+                                    "name": "node-rate-by-unit"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Journal Volume"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "node-warning-feed"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Node Warnings"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "node-log-feed"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "All Node Logs"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Nodes"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
                                     "name": "event-rate-by-reason"
                                   }
                                 }
@@ -1071,7 +1297,7 @@
     "liveNow": false,
     "preload": false,
     "tags": [
-      "materialize",
+      "infrastructure",
       "monitoring",
       "logs"
     ],
@@ -1095,7 +1321,7 @@
       "timezone": "browser",
       "to": "now"
     },
-    "title": "Materialize Logs and Events",
+    "title": "Infrastructure Logs and Events",
     "variables": [
       {
         "kind": "DatasourceVariable",
@@ -1126,10 +1352,10 @@
           "current": {
             "selected": true,
             "text": [
-              ".*materialize.*|mz-.*|environment-.*"
+              ".+"
             ],
             "value": [
-              ".*materialize.*|mz-.*|environment-.*"
+              ".+"
             ]
           },
           "definition": "label_values(namespace)",
@@ -1159,6 +1385,19 @@
           "regexApplyTo": "value",
           "skipUrlSync": false,
           "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "SwitchVariable",
+        "spec": {
+          "current": ".*materialize.*|mz-.*|environment-.*",
+          "description": "Drop the Materialize namespaces, so the platform's own logs and events are not buried under the deployment's.",
+          "disabledValue": "a^",
+          "enabledValue": ".*materialize.*|mz-.*|environment-.*",
+          "hide": "dontHide",
+          "label": "Exclude Materialize",
+          "name": "excludeMaterialize",
+          "skipUrlSync": false
         }
       },
       {
@@ -1208,6 +1447,44 @@
             "text": "",
             "value": ""
           },
+          "definition": "label_values(component)",
+          "description": "The sub-component(s) to read logs from",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "Component",
+          "multi": true,
+          "name": "logComponentList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${logsDatasource}"
+            },
+            "group": "loki",
+            "kind": "DataQuery",
+            "spec": {
+              "label": "component",
+              "refId": "LokiVariableQueryEditor-VariableQuery",
+              "stream": "{namespace=~\"$logNamespaceList\"}",
+              "type": 1
+            },
+            "version": "v0"
+          },
+          "refresh": "onTimeRangeChanged",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".*",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
           "definition": "label_values(level)",
           "description": "The severity level(s) to include",
           "hide": "dontHide",
@@ -1224,6 +1501,82 @@
             "kind": "DataQuery",
             "spec": {
               "label": "level",
+              "refId": "LokiVariableQueryEditor-VariableQuery",
+              "stream": "{namespace=~\"$logNamespaceList\"}",
+              "type": 1
+            },
+            "version": "v0"
+          },
+          "refresh": "onTimeRangeChanged",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".+",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(unit)",
+          "description": "The systemd unit(s) to read node journal logs from",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "Unit",
+          "multi": true,
+          "name": "logUnitList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${logsDatasource}"
+            },
+            "group": "loki",
+            "kind": "DataQuery",
+            "spec": {
+              "label": "unit",
+              "refId": "LokiVariableQueryEditor-VariableQuery",
+              "stream": "",
+              "type": 1
+            },
+            "version": "v0"
+          },
+          "refresh": "onTimeRangeChanged",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".*",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(container)",
+          "description": "The container(s) to read logs from",
+          "hide": "inControlsMenu",
+          "includeAll": true,
+          "label": "Container",
+          "multi": true,
+          "name": "logContainerList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${logsDatasource}"
+            },
+            "group": "loki",
+            "kind": "DataQuery",
+            "spec": {
+              "label": "container",
               "refId": "LokiVariableQueryEditor-VariableQuery",
               "stream": "{namespace=~\"$logNamespaceList\"}",
               "type": 1
