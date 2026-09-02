@@ -250,6 +250,21 @@ Two dashboards are rendered, and `dashboards.selected` decides which of them a r
   volume, and `materialize-environment` alone out-logs every other namespace, so leaving it in would make the volume
   panels a picture of Materialize rather than of the platform underneath it.
   Turn it off to compare the two side by side.
+- **Infrastructure Node Detail** (`infra-nodes` → `mz-mon-infra-nodes`), also matched by the default `infra-*` pattern.
+  Everything about one node: what it is, how hard it is working, how much of it the scheduler has already promised, and
+  what it and Kubernetes have said about it.
+  The node picker is single-select on purpose — a machine's measurements averaged across a fleet make every panel
+  ambiguous, and a node at 100% beside four idle ones reads as 20%.
+  Mixed datasource: Thanos for the measurements, Loki for the last tab.
+  Its Summary tab is aimed at an operator who cannot run `kubectl describe node`, so it puts the facts an
+  infrastructure team will ask for where they can be read off directly.
+  A Pods tab shows what is scheduled on the node and whether it is healthy, with requests beside limits in one
+  per-pod table.
+  Needs node-exporter and kube-state-metrics, which the chart deploys.
+  It also needs the metrics pipeline in order to read *anything*, including its Loki tab: the node picker is
+  discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
+  match nothing.
+  `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.

@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: bundled dashboards
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+templates:
+  - templates/dashboards/grafana-operator/dashboards.yaml
+tests:
+  # `dashboards.selected` is a list of *patterns* globbed against the
+  # pre-rendered tree, so a new dashboard ships the moment its artifact lands
+  # under a matching stem. That is convenient and completely silent, which is
+  # why it is worth asserting: nothing else would notice a stem that stopped
+  # matching, or an artifact that stopped being written.
+  - it: should ship every dashboard the default patterns select
+    asserts:
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-env-top-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-env-logs-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-env-upgrade-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-infra-logs-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-infra-nodes-dashboard
+
+  # Both families are selected by default. Narrowing to one is the supported way
+  # to hold the other back, so the pattern list has to actually narrow.
+  - it: should install only what the patterns match
+    set:
+      dashboards.selected:
+        - env-top
+    asserts:
+      - hasDocuments:
+          count: 1
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-env-top-dashboard
+
+  - it: should template nothing when dashboards are disabled
+    set:
+      dashboards.config.grafana.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

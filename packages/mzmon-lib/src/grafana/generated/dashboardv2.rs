@@ -3325,8 +3325,7 @@ pub struct DatasourceVariableSpec {
 #[doc = "      \"type\": \"string\""]
 #[doc = "    },"]
 #[doc = "    \"value\": {"]
-#[doc = "      \"type\": \"object\","]
-#[doc = "      \"additionalProperties\": {}"]
+#[doc = "      \"description\": \"The property value. Shape depends on the property id.\""]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -3337,8 +3336,9 @@ pub struct DatasourceVariableSpec {
 #[serde(deny_unknown_fields)]
 pub struct DynamicConfigValue {
     pub id: ::std::string::String,
-    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
-    pub value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    #[doc = "The property value. Shape depends on the property id."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub value: ::std::option::Option<::serde_json::Value>,
 }
 #[doc = "Supported dashboard elements\n|* more element types in the future"]
 #[doc = r""]

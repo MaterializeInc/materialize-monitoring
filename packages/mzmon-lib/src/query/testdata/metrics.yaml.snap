@@ -216,6 +216,14 @@
 - importance: essential
   labels:
   - instance
+  name: node_network_receive_bytes_total
+  usage:
+  - node.debug.network.saturation
+  - node.debug.network.throughput
+  - node.network.rx.total
+- importance: essential
+  labels:
+  - instance
   name: node_network_receive_drop_total
   usage:
   - node.network.drops
@@ -225,6 +233,14 @@
   name: node_network_receive_errs_total
   usage:
   - node.network.errors
+- importance: essential
+  labels:
+  - instance
+  name: node_network_transmit_bytes_total
+  usage:
+  - node.debug.network.saturation
+  - node.debug.network.throughput
+  - node.network.tx.total
 - importance: essential
   labels:
   - instance
@@ -708,23 +724,9 @@
 - importance: recommended
   labels:
   - instance
-  name: node_network_receive_bytes_total
-  usage:
-  - node.debug.network.saturation
-  - node.debug.network.throughput
-- importance: recommended
-  labels:
-  - instance
   name: node_network_speed_bytes
   usage:
   - node.debug.network.saturation
-- importance: recommended
-  labels:
-  - instance
-  name: node_network_transmit_bytes_total
-  usage:
-  - node.debug.network.saturation
-  - node.debug.network.throughput
 - importance: recommended
   labels:
   - instance

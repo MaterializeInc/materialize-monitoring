@@ -18,7 +18,9 @@
 pub mod env_logs;
 pub mod env_top;
 pub mod env_upgrade;
+pub mod field_override;
 pub mod infra_logs;
+pub mod infra_nodes;
 pub mod queries;
 pub mod render;
 pub mod transform;
@@ -69,6 +71,11 @@ pub const ALL: &[Renderable] = &[
         name: infra_logs::NAME_STEM,
         summary: "Logs and Kubernetes events for the platform underneath Materialize",
         render: infra_logs::render,
+    },
+    Renderable {
+        name: infra_nodes::NAME_STEM,
+        summary: "Everything about one node a Materialize deployment runs on",
+        render: infra_nodes::render,
     },
     Renderable {
         name: env_upgrade::NAME_STEM,

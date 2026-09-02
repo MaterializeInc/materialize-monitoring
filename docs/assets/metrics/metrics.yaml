@@ -36,6 +36,7 @@
   - infra.kubernetes.pods_high_cpu_ratio
   - infra.kubernetes.vector_high_cpu_ratio
   - materialize.environmentd.high_cpu
+  - materialize.generations.cpu
   - materialize.kubernetes.cpu.usage.absolute
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
@@ -79,6 +80,8 @@
   - infra.kubernetes.memory_high
   - materialize.environmentd.high_memory
   - materialize.environmentd.memory_elevated
+  - materialize.generations.memory
+  - materialize.generations.pods
   - materialize.kubernetes.memory.usage.absolute
   - materialize.kubernetes.memory.usage.percent
   - materialize.kubernetes.pods.memory_usage
@@ -291,30 +294,79 @@
   - infra.kubernetes.hpa_replicas_high
 - importance: essential
   labels:
+  - node
+  name: kube_node_created
+  usage:
+  - infra.nodes.created
+- importance: essential
+  labels:
+  - node
+  name: kube_node_info
+  usage:
+  - infra.nodes.info.address
+  - infra.nodes.info.kernel
+  - infra.nodes.info.kubelet
+  - infra.nodes.info.os
+  - infra.nodes.info.runtime
+- importance: essential
+  labels:
   - key
+  - node
   name: kube_node_spec_taint
   usage:
   - infra.kubernetes.node_unreachable
+  - infra.nodes.taints
+- importance: essential
+  labels:
+  - node
+  name: kube_node_spec_unschedulable
+  usage:
+  - infra.nodes.unschedulable
+- importance: essential
+  labels:
+  - node
+  - resource
+  name: kube_node_status_allocatable
+  usage:
+  - infra.nodes.allocation.cpu
+  - infra.nodes.allocation.memory
+  - infra.nodes.allocation.pods
+- importance: essential
+  labels:
+  - node
+  - resource
+  name: kube_node_status_capacity
+  usage:
+  - infra.nodes.capacity.cpu
+  - infra.nodes.capacity.ephemeral_storage
+  - infra.nodes.capacity.memory
+  - infra.nodes.capacity.pods
 - importance: essential
   labels:
   - condition
+  - node
   - status
   name: kube_node_status_condition
   usage:
   - infra.kubernetes.node_disk_pressure
+  - infra.nodes.condition.ready
+  - infra.nodes.conditions
 - importance: essential
   labels:
   - namespace
+  - node
   - pod
   - resource
   name: kube_pod_container_resource_limits
   usage:
+  - infra.nodes.pods.budgets
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
 - importance: essential
   labels:
   - container
   - namespace
+  - node
   - pod
   - resource
   - unit
@@ -325,6 +377,9 @@
   - infra.kubernetes.daemonset_saturating_mem
   - infra.kubernetes.pods_high_cpu_ratio
   - infra.kubernetes.vector_high_cpu_ratio
+  - infra.nodes.allocation.cpu
+  - infra.nodes.allocation.memory
+  - infra.nodes.pods.budgets
 - importance: essential
   labels:
   - container
@@ -356,6 +411,7 @@
   - infra.kubernetes.oomkill_nonessential_systems
   - infra.kubernetes.pod_restart_rate_high
   - infra.kubernetes.pod_restart_rate_high_nonessential
+  - infra.nodes.pods.restarts
   - materialize.clusterd.error_kill
   - materialize.clusterd.new_restarts_during_release
   - materialize.clusterd.swap_cluster_oom
@@ -369,6 +425,16 @@
   name: kube_pod_created
   usage:
   - materialize.clusterd.new_restarts_during_release
+- importance: essential
+  labels:
+  - node
+  name: kube_pod_info
+  usage:
+  - infra.nodes.allocation.pods
+  - infra.nodes.pods.by_namespace
+  - infra.nodes.pods.by_phase
+  - infra.nodes.pods.not_ready
+  - infra.nodes.pods.restarts
 - importance: essential
   labels: []
   name: kube_pod_start_time
@@ -384,9 +450,19 @@
   name: kube_pod_status_phase
   usage:
   - infra.kubernetes.infra_pod_pending
+  - infra.nodes.allocation.pods
+  - infra.nodes.pods.by_namespace
+  - infra.nodes.pods.by_phase
+  - infra.nodes.pods.not_ready
   - materialize.environmentd.pod_pending
   - materialize.environmentd.pod_pending_critical
   - materialize.kubernetes.pods.readiness
+- importance: essential
+  labels:
+  - condition
+  name: kube_pod_status_ready
+  usage:
+  - infra.nodes.pods.not_ready
 - importance: essential
   labels:
   - namespace
@@ -701,6 +777,7 @@
   - infra.egress_gateway.traffic_missing_metrics
   - node.debug.network.saturation
   - node.debug.network.throughput
+  - node.network.rx.total
 - importance: essential
   labels:
   - instance
@@ -722,6 +799,7 @@
   - infra.egress_gateway.no_traffic
   - node.debug.network.saturation
   - node.debug.network.throughput
+  - node.network.tx.total
 - importance: essential
   labels:
   - instance
@@ -825,6 +903,12 @@
   - materialize.environmentd.query_views_warning
 - importance: recommended
   labels:
+  - namespace
+  name: environmentd_needs_update
+  usage:
+  - materialize.operator.environments.needing_update
+- importance: recommended
+  labels:
   - materialize_cloud_organization_name
   name: mz_active_sessions
   usage:
@@ -861,15 +945,24 @@
   - compute_replica_id
   - compute_replica_name
   - materialize_cloud_organization_name
+  - pod
   name: mz_compute_cluster_status
   usage:
   - materialize.clusters.count
   - materialize.clusters.info
   - materialize.clusters.replicas.count
   - materialize.clusters.replicas.sizes
+  - materialize.generations.version
   - materialize.health.clusters.status.percentage
   - materialize.health.environment.availability.percentage
   - materialize.info.version
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - pod
+  name: mz_compute_commands_total
+  usage:
+  - materialize.generations.active
 - importance: recommended
   labels:
   - instance_id
@@ -917,6 +1010,7 @@
   labels:
   - instance_id
   - materialize_cloud_organization_name
+  - pod
   - quantile
   - replica_id
   name: mz_dataflow_wallclock_lag_seconds
@@ -924,6 +1018,9 @@
   - materialize.compute.freshness.lag_by_cluster
   - materialize.compute.freshness.top_collections
   - materialize.compute.hydration.currently_hydrating
+  - materialize.generations.collections
+  - materialize.generations.hydrating
+  - materialize.generations.lag.max
   - materialize.info.max_lag
 - importance: recommended
   labels:
@@ -1449,3 +1546,39 @@
   name: node_vmstat_pgsteal_kswapd
   usage:
   - node.debug.memory.reclaim
+- importance: recommended
+  labels:
+  - namespace
+  name: orchestratord_is_leader
+  usage:
+  - materialize.operator.reconciling.replicas
+- importance: recommended
+  labels:
+  - namespace
+  name: orchestratord_reconciliation_duration_seconds_bucket
+  usage:
+  - materialize.operator.reconciliation.duration
+- importance: recommended
+  labels:
+  - namespace
+  name: orchestratord_reconciliation_step_duration_seconds_bucket
+  usage:
+  - materialize.operator.reconciliation.step.duration.p99
+- importance: recommended
+  labels:
+  - namespace
+  - outcome
+  name: orchestratord_reconciliation_steps_total
+  usage:
+  - materialize.operator.reconciliation.steps.incomplete
+  - materialize.operator.reconciliation.steps.rate
+- importance: recommended
+  labels:
+  - namespace
+  - outcome
+  name: orchestratord_reconciliations_total
+  usage:
+  - materialize.operator.reconciliation.failures.by_controller
+  - materialize.operator.reconciliation.failures.total
+  - materialize.operator.reconciliation.outcomes
+  - materialize.operator.reconciliation.rate

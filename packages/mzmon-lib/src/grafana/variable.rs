@@ -94,6 +94,8 @@ pub mod extra {
     pub const LOG_SEARCH: &str = "logSearch";
     /// Whether an infrastructure view subtracts the Materialize namespaces.
     pub const EXCLUDE_MATERIALIZE: &str = "excludeMaterialize";
+    /// The node a node-detail dashboard is scoped to, by Kubernetes node name.
+    pub const NODE: &str = "node";
 }
 
 /// An empty current selection.
@@ -691,6 +693,66 @@ pub fn log_units() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// The node a node-detail dashboard is about, as Kubernetes names it.
+///
+/// Discovered from `kube_node_info` rather than from node-exporter, because
+/// kube-state-metrics is the family that knows the node by *name*. Single-select
+/// and no "All": this dashboard answers questions about one machine, and every
+/// panel on it would be ambiguous averaged across several.
+pub fn node() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::NODE,
+        label: "Node",
+        description: "The node this dashboard describes",
+        expr: "label_values(kube_node_info, node)".to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// The selected node's node-exporter address, derived from [`node`].
+///
+/// **Hidden, and chained rather than chosen.** The two families that describe a
+/// node do not agree on how to name one: kube-state-metrics labels it `node`
+/// with the Kubernetes name, while node-exporter labels it `instance` with
+/// `<ip>:9100` and carries the name only as `nodename` on `node_uname_info`.
+/// That metric is therefore the join, and this variable is that join expressed
+/// as a lookup — the operator picks a name, and this resolves the address.
+///
+/// The name is `nodeList` because the node-exporter query families write
+/// `instance=~"$nodeList"` literally, 220 times across `node-health.yaml` and
+/// `node-debug.yaml` — a convention inherited from the Node Exporter Full
+/// dashboard. Keeping the name lets every one of those queries back this
+/// dashboard unchanged, at the cost of a name that says "list" while holding one
+/// address. A fleet view is exactly where the plural earns itself.
+pub fn node_instance() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::NODE_LIST,
+        label: "Node Instance",
+        description: "node-exporter address of the selected node (derived)",
+        expr: format!(
+            "label_values(node_uname_info{{nodename=\"${}\"}}, instance)",
+            extra::NODE
+        ),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        // Hidden: it is a lookup, not a control. Showing it would offer the
+        // operator a second node picker that must agree with the first.
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Whether the Materialize namespaces are excluded from an infrastructure view.
 ///
 /// **On by default**, which is the point: an infrastructure dashboard opens on
@@ -937,6 +999,30 @@ pub fn logs_scoped() -> Vec<dashboardv2::VariableKind> {
 /// dashboards then differ only in which pickers they offer and where the
 /// namespace one opens, so every query behind them is one set of definitions
 /// rather than two that drift.
+/// Controls for a single-node detail dashboard.
+///
+/// Mixed-datasource, like `env-upgrade`: the machine's measurements come from
+/// Thanos and its own account of itself comes from Loki, so both datasource
+/// variables are defined.
+///
+/// [`node`] is the only control that scopes the dashboard; [`node_instance`]
+/// follows it invisibly. The log pickers narrow the journal feed *within* the
+/// selected node and are the same ones `infra-logs` uses, so an operator moving
+/// between the two dashboards meets the same controls.
+pub fn node_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        logs_datasource(),
+        node(),
+        node_instance(),
+        log_units(),
+        log_levels(),
+        log_search(),
+        metric_adhoc(),
+        logs_adhoc(),
+    ]
+}
+
 pub fn logs_infra_scoped() -> Vec<dashboardv2::VariableKind> {
     vec![
         logs_datasource(),

@@ -63,11 +63,9 @@ pub const NAME: &str = "mz-mon-infra-logs";
 
 /// Artifact filename stem, which is *not* the resource name.
 ///
-/// **`infra-` rather than `env-`, and that decides whether it ships.**
-/// `dashboards.selected` defaults to `["env-*"]`, so nothing in this family is
-/// installed until a release widens that. Deliberate: these dashboards are for
-/// whoever operates the cluster, which is not always whoever runs Materialize on
-/// it.
+/// **`infra-` rather than `env-`**, which is the family for whoever operates the
+/// cluster rather than whoever runs Materialize on it. `dashboards.selected`
+/// ships both patterns, so this installs by default alongside the `env-*` set.
 pub const NAME_STEM: &str = "infra-logs";
 
 /// Dashboard title.

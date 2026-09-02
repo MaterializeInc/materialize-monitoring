@@ -1,0 +1,591 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Node detail queries (kube-state-metrics + Loki), for a single selected node.
+
+description: |
+  What `kubectl describe node` would tell you, for whoever cannot run it.
+
+  These answer the questions an operator asks *about one machine*: what is it,
+  how big is it, how much of it is already promised, is Kubernetes willing to
+  put work on it, and what has it been saying. The measurements of what the
+  machine is actually *doing* live in `node-health.yaml` and `node-debug.yaml`,
+  which read node-exporter; this file is the Kubernetes side, plus the node's
+  own journal and the events filed against it.
+
+  Two identifier conventions meet here, and the difference is the thing to know:
+
+  * **kube-state-metrics names a node `node="<kubernetes name>"`.** Every query
+    in this file scopes with `node="$node"` written literally, the same way the
+    node-exporter families write `instance=~"$nodeList"` literally. A dashboard
+    using either must define the variable; no render parameter supplies it.
+
+  * **node-exporter names the same machine `instance="<ip>:9100"`.** The join is
+    `node_uname_info`, whose `nodename` is the Kubernetes name — which is what
+    the `$nodeList` variable resolves through. Nothing in this file needs the
+    join, because nothing in this file reads node-exporter.
+
+  Loki knows the node a third way: `node` is **structured metadata** on journal
+  lines, not a stream label, so it is filtered in the pipeline (`| node=...`)
+  rather than in the selector. Node events are Kubernetes events whose involved
+  object is the node itself, which is `kind="Node"` with the node's name.
+
+  Two conventions apply to every query here that aggregates:
+
+  * **Deduplicate across kube-state-metrics replicas.** `instance` is the scrape
+    target, so a bare `sum` or `count` over an HA deployment adds each object
+    once per replica. Every aggregation keeps `instance` in the inner step and
+    collapses it with an outer `max`, which is the shape
+    `materialize-kubernetes.yaml` established. Queries that only ever `max` are
+    already safe, since `max` across identical replicas is idempotent.
+
+  * **Terminal pods do not count against the node.** A `Succeeded` or `Failed`
+    pod has released its CPU and memory, and the scheduler no longer counts it
+    against the pod limit — kube-state-metrics agrees, and stops reporting
+    `kube_pod_container_resource_*` for it. But `kube_pod_info` keeps reporting
+    it until garbage collection, so anything counting *pods* rather than their
+    resources has to subtract them explicitly or it overstates how full the node
+    is. Completed Jobs are the common case.
+
+  `%%{interval}` is the rate window, including its brackets.
+
+metricImportanceHint: essential
+
+queries:
+  # --- Identity ------------------------------------------------------------
+  - id: infra.nodes.info.kubelet
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The kubelet version this node runs, which is the version Kubernetes itself is on here.
+      nominal: Within one minor version of the control plane, and the same across a node pool.
+      notes: |
+        A kubelet more than one minor behind the control plane is a node that missed an upgrade. It keeps working, so nothing alerts — but it is worth reporting, because the fix is a node-pool operation only an infrastructure team can do.
+    promQL: |
+      max by (node, kubelet_version) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.os
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The node's operating system image.
+      nominal: The same across every node in a pool.
+      notes: |
+        A node whose image differs from its siblings was replaced separately, usually by an autoscaler pulling a newer one. Harmless until it is not, and the first thing to quote when a fault appears on one node and not the others.
+    promQL: |
+      max by (node, os_image) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.kernel
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The node's kernel version.
+      nominal: Whatever the OS image ships.
+      notes: |
+        Rarely interesting on its own, and the single most useful string to quote verbatim when reporting a node-level fault — memory, I/O and network bugs are usually kernel-version-specific.
+    promQL: |
+      max by (node, kernel_version) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.runtime
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The container runtime that starts and stops containers on this node.
+      nominal: Consistent across the pool.
+      notes: |
+        The component the node journal's `containerd` messages come from, so its version is the context for anything found on the Logs & Events tab.
+    promQL: |
+      max by (node, container_runtime_version) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.info.address
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        The address the cluster reaches this node on.
+      nominal: Stable for the life of the node.
+      notes: |
+        Also how node-exporter names this machine: its `instance` label is this address with the exporter's port. That is the join the node picker resolves through, so this cell is the value to check first when the measurement tabs are empty but the Kubernetes ones are not.
+    promQL: |
+      max by (node, internal_ip) (kube_node_info{node="$node"})
+
+  - id: infra.nodes.created
+    stability: canonical
+    description:
+      summary: Wall-clock time the node joined the cluster.
+      nominal: Old enough that the workload on it has settled.
+      degraded: |
+        A node much younger than its siblings was replaced recently — by an
+        autoscaler, a node-pool upgrade, or a failure. If pods are unhappy and
+        the node is minutes old, the replacement is the more likely story.
+      notes: |
+        Distinct from the machine's own uptime (`node.uptime`, from
+        node-exporter): this is when Kubernetes first saw it. The two disagree
+        when a node is rebooted without being removed from the cluster.
+
+        **Scaled to milliseconds.** kube-state-metrics reports a Unix timestamp
+        in *seconds*, and every Grafana date unit reads milliseconds — handed the
+        raw value, a panel renders a date in January 1970 rather than an obviously
+        wrong number, which is the kind of wrong that gets believed.
+    promQL: |
+      max by (node) (kube_node_created{node="$node"}) * 1000
+
+  # --- Capacity ------------------------------------------------------------
+  - id: infra.nodes.capacity.cpu
+    stability: canonical
+    description:
+      summary: Cores the node reports to Kubernetes.
+      notes: |
+        Capacity, not allocatable: this is the whole machine, before the kubelet
+        reserves its share. `infra.nodes.allocation.cpu` measures against the
+        allocatable figure, which is the one that decides scheduling.
+    promQL: |
+      max by (node) (kube_node_status_capacity{node="$node", resource="cpu"})
+
+  - id: infra.nodes.capacity.memory
+    stability: canonical
+    description:
+      summary: Bytes of RAM the node reports to Kubernetes.
+      notes: |
+        The whole machine. What is schedulable is smaller — see
+        `infra.nodes.allocation.memory`.
+    promQL: |
+      max by (node) (kube_node_status_capacity{node="$node", resource="memory"})
+
+  - id: infra.nodes.capacity.pods
+    stability: canonical
+    description:
+      summary: The most pods Kubernetes will place on this node.
+      notes: |
+        A hard ceiling set by the kubelet, unrelated to how much CPU or memory is
+        left. A node can be half idle and still refuse work because it is at its
+        pod limit — which is why this sits beside the CPU and memory gauges
+        rather than below them.
+    promQL: |
+      max by (node) (kube_node_status_capacity{node="$node", resource="pods"})
+
+  - id: infra.nodes.capacity.ephemeral_storage
+    stability: canonical
+    description:
+      summary: Bytes of node-local disk available to pods for scratch space.
+      notes: |
+        What container writable layers, `emptyDir` volumes and logs draw on.
+        Exhausting it triggers `DiskPressure` and eviction — the node stays Ready
+        while evicting, so this is worth reading beside `infra.nodes.conditions`.
+    promQL: |
+      max by (node) (kube_node_status_capacity{node="$node", resource="ephemeral_storage"})
+
+  # --- Allocation ----------------------------------------------------------
+  - id: infra.nodes.allocation.cpu
+    stability: canonical
+    description:
+      summary: |
+        Fraction of the node's schedulable CPU already promised to pods through
+        their requests.
+      nominal: Below ~0.8, leaving room for the scheduler to place more work.
+      degraded: |
+        Approaching 1.0 means the node is full *to the scheduler* regardless of
+        how idle it looks. New pods will not land here, and a replica that needs
+        to be rescheduled may find nowhere to go.
+      notes: |
+        **Requests, not usage.** This is the number Kubernetes schedules on, and
+        it routinely disagrees with the CPU graphs: a node can sit at 10% actual
+        utilization and still be unschedulable because its requests are spoken
+        for. When "there is plenty of CPU free" and pods are Pending anyway, this
+        is the panel that explains it — and the one to show an infrastructure
+        team, because the fix is more nodes or smaller requests.
+    promQL: |
+      max by (node) (
+        sum by (node, instance) (
+          kube_pod_container_resource_requests{node="$node", resource="cpu"}
+        )
+      )
+      /
+      max by (node) (kube_node_status_allocatable{node="$node", resource="cpu"})
+
+  - id: infra.nodes.allocation.memory
+    stability: canonical
+    description:
+      summary: |
+        Fraction of the node's schedulable memory already promised to pods
+        through their requests.
+      nominal: Below ~0.8.
+      degraded: |
+        Near 1.0 the node accepts no further work. Memory is the request that
+        usually runs out first on a Materialize node, because a replica asks for
+        what its dataflows need resident.
+      notes: |
+        Requests rather than usage, with the same caveat as
+        `infra.nodes.allocation.cpu`: this can be full while the memory graphs
+        look calm.
+    promQL: |
+      max by (node) (
+        sum by (node, instance) (
+          kube_pod_container_resource_requests{node="$node", resource="memory"}
+        )
+      )
+      /
+      max by (node) (kube_node_status_allocatable{node="$node", resource="memory"})
+
+  - id: infra.nodes.allocation.pods
+    stability: canonical
+    description:
+      summary: Fraction of the node's pod slots in use.
+      nominal: Below ~0.8.
+      degraded: |
+        At 1.0 the node takes no more pods whatever its CPU and memory say. On
+        clusters with many small pods this is the limit that binds first.
+      notes: |
+        Counted from `kube_pod_info` with terminal pods subtracted, so it tracks
+        what the scheduler counts rather than what is merely still listed — see
+        this file's header. A node whose completed Jobs have not been garbage
+        collected would otherwise look fuller than it is.
+    promQL: |
+      max by (node) (
+        count by (node, instance) (
+          kube_pod_info{node="$node"}
+          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+        )
+      )
+      /
+      max by (node) (kube_node_status_allocatable{node="$node", resource="pods"})
+
+  - id: infra.nodes.pods.by_namespace
+    stability: canonical
+    description:
+      summary: What is actually running on this node, grouped by namespace.
+      notes: |
+        The answer to "is my Materialize environment even on this machine".
+        Useful in both directions: confirming a replica landed where expected,
+        and finding the unrelated workload that is crowding it out.
+
+        Terminal pods are excluded, so this agrees with the allocation gauges
+        beside it rather than counting completed Jobs as residents.
+    promQL: |
+      max by (namespace) (
+        count by (namespace, instance) (
+          kube_pod_info{node="$node"}
+          unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
+        )
+      )
+
+  # --- Schedulability and conditions ---------------------------------------
+  - id: infra.nodes.condition.ready
+    stability: canonical
+    description:
+      summary: Whether Kubernetes considers the node healthy enough to run work.
+      nominal: 1 — the node is Ready.
+      degraded: |
+        0 means the control plane has stopped hearing from the kubelet or the
+        kubelet is reporting itself unhealthy. Pods on it will be evicted after
+        the toleration window. **This is an escalation, not a tuning exercise.**
+      notes: |
+        Ready is the single most load-bearing bit on this dashboard. It is also
+        the one that lags: a node can be failing for minutes before Ready flips,
+        which is why the pressure conditions sit beside it.
+    promQL: |
+      max by (node) (kube_node_status_condition{node="$node", condition="Ready", status="true"})
+
+  - id: infra.nodes.conditions
+    stability: canonical
+    description:
+      summary: |
+        The node's pressure and availability conditions — memory, disk, PIDs and
+        network — each 1 when the condition is active.
+      nominal: All zero.
+      degraded: |
+        Any of these at 1 means the kubelet has started defending itself.
+        `MemoryPressure` and `DiskPressure` cause eviction, `PIDPressure` blocks
+        new processes, `NetworkUnavailable` means the node has no working pod
+        network. All four are infrastructure problems rather than Materialize
+        ones — report the node name and the condition.
+      notes: |
+        These turn on *before* Ready turns off, which is what makes them worth
+        watching: they are the early warning that the node is in trouble.
+
+        Only the four conditions every cluster reports are selected. A node may
+        publish many more — cloud vendors add their own — and the extras are
+        deliberately not shown, since their vocabulary differs by provider.
+    promQL: |
+      max by (node, condition) (
+        kube_node_status_condition{
+          node="$node",
+          condition=~"MemoryPressure|DiskPressure|PIDPressure|NetworkUnavailable",
+          status="true"
+        }
+      )
+
+  - id: infra.nodes.unschedulable
+    stability: canonical
+    description:
+      summary: Whether the node has been cordoned against new work.
+      nominal: 0 — the node accepts scheduling.
+      degraded: |
+        1 means somebody (or something) ran the equivalent of `kubectl cordon`.
+        Existing pods keep running; nothing new lands. During a node-pool upgrade
+        this is normal and temporary. Outside one, it usually means an operator
+        is working on the machine — worth asking before assuming a fault.
+      notes: |
+        A cordoned node is the quiet explanation for a replica that will not come
+        back after a restart: there is nowhere to put it, and nothing is broken.
+    promQL: |
+      max by (node) (kube_node_spec_unschedulable{node="$node"})
+
+  - id: infra.nodes.taints
+    stability: canonical
+    description:
+      summary: The taints on this node, which restrict what may be scheduled.
+      nominal: |
+        Whatever the node pool's design calls for — a dedicated Materialize pool
+        is normally tainted so unrelated workloads stay off it.
+      degraded: |
+        A taint with effect `NoExecute` that appeared recently will have evicted
+        pods. Kubernetes adds these itself when a node goes unreachable or under
+        pressure.
+      notes: |
+        Taints are the other half of "why is nothing scheduling here", the first
+        half being `infra.nodes.allocation.*`. A pod lands only if it tolerates
+        every taint, so a deliberate pool taint plus a missing toleration looks
+        exactly like a capacity problem from the workload's side.
+    instant: true
+    promQL: |
+      max by (node, key, value, effect) (kube_node_spec_taint{node="$node"})
+
+  # --- What is scheduled here ----------------------------------------------
+  #
+  # `kube_pod_container_resource_requests` and `_limits` carry `node` directly.
+  # The pod *status* families do not, so they are joined to the node through
+  # `kube_pod_info` with `and on (namespace, pod)` — an intersection rather than
+  # a multiplication, so the value stays the status metric's own.
+  - id: infra.nodes.pods.by_phase
+    stability: canonical
+    description:
+      summary: Pods on this node, counted by lifecycle phase.
+      nominal: Everything Running, or Succeeded for completed jobs.
+      degraded: |
+        `Pending` pods on a *specific* node are unusual — a pending pod normally
+        has no node yet — and mean the kubelet accepted the pod but cannot start
+        it, which points at image pulls or volume mounts. `Failed` and `Unknown`
+        both warrant the node's journal.
+    instant: true
+    promQL: |
+      max by (phase) (
+        count by (phase, instance) (
+          kube_pod_status_phase == 1
+          and on (namespace, pod) kube_pod_info{node="$node"}
+        )
+      )
+
+  - id: infra.nodes.pods.not_ready
+    stability: canonical
+    description:
+      summary: Pods on this node that are not reporting Ready.
+      nominal: Empty.
+      degraded: |
+        A pod that is Running but not Ready is failing its readiness probe — it
+        is up and refusing traffic. Several at once on one node, when the same
+        workload is healthy elsewhere, is the signature of a node problem rather
+        than an application one, and is worth escalating with the node name.
+      notes: |
+        **Completed Jobs are excluded.** A `Succeeded` pod is never Ready, because
+        it has finished and exited — so without the `unless` every completed Job
+        on the node sits here permanently, and a panel whose whole purpose is to
+        be empty when things are well is never empty. `Failed` pods are kept: not
+        ready is the correct reading there.
+    instant: true
+    promQL: |
+      max by (namespace, pod) (
+        kube_pod_status_ready{condition="true"}
+        and on (namespace, pod) kube_pod_info{node="$node"}
+      ) == 0
+      unless on (namespace, pod) (kube_pod_status_phase{phase="Succeeded"} == 1)
+
+  - id: infra.nodes.pods.restarts
+    stability: canonical
+    description:
+      summary: Container restarts for pods on this node.
+      nominal: Flat. A restart count that never moves is the healthy reading.
+      degraded: |
+        A climbing count is a crash loop. Restarts concentrated on one node while
+        the same workload is stable elsewhere point at the machine — memory
+        pressure and OOM kills are the usual cause, so read this beside the
+        Memory tab.
+      notes: |
+        A cumulative counter, deliberately not rated: the absolute number is what
+        an operator recognises, and a rate would hide a single restart.
+    promQL: |
+      max by (namespace, pod) (
+        sum by (namespace, pod, instance) (
+          kube_pod_container_status_restarts_total
+          and on (namespace, pod) kube_pod_info{node="$node"}
+        )
+      )
+
+  - id: infra.nodes.pods.budgets
+    stability: canonical
+    instant: true
+    description:
+      summary: |
+        What each pod on this node reserved and what it is capped at — CPU and
+        memory, requests beside limits.
+      nominal: |
+        Requests that reflect what the workload actually uses, and limits set
+        wherever an overrun would hurt the neighbours.
+      degraded: |
+        A pod whose request is far below its real usage is one the scheduler
+        under-counted, which is how a node ends up oversubscribed while its
+        gauges look calm. A pod with no memory limit can take the node down with
+        it; a pod that crosses one is OOM-killed without warning.
+      notes: |
+        **Four expressions in one query so they land in one table**, joined on
+        `namespace` and `pod`. Split across four panels an operator has to read
+        four sorted lists and hold the pod names in their head to compare a
+        request against its own limit — which is the only comparison that
+        matters.
+
+        **Instant.** These are current facts, not a series: evaluated over a range
+        each pod would repeat once per scrape and the table would be unreadable.
+        This is the same mistake the version table on `env-upgrade` guards
+        against, from the other direction.
+
+        Limits are absent for any pod that sets none, so those cells are empty
+        rather than zero — which is the honest reading, and the difference worth
+        seeing.
+    promQL:
+      - |
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_requests{node="$node", resource="cpu"}
+          )
+        )
+      - |
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_limits{node="$node", resource="cpu"}
+          )
+        )
+      - |
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_requests{node="$node", resource="memory"}
+          )
+        )
+      - |
+        max by (namespace, pod) (
+          sum by (namespace, pod, instance) (
+            kube_pod_container_resource_limits{node="$node", resource="memory"}
+          )
+        )
+
+  # --- The node's own account of itself ------------------------------------
+  - id: infra.nodes.journal.rate.by_unit
+    stability: experimental
+    description:
+      summary: Journal lines per second from this node, split by systemd unit.
+      nominal: |
+        A steady low baseline, dominated by `kubelet` and the container runtime.
+      degraded: |
+        A step change in one unit is the node telling you something changed.
+        `kubelet` and `containerd` climbing together usually means it is fighting
+        to start or stop containers.
+      notes: |
+        Scoped to one node by a pipeline filter rather than a stream selector,
+        because `node` is structured metadata on journal lines — see this file's
+        header.
+    logQL: |
+      sum by (unit) (
+        rate(
+          {%%{mzLogUnitFilter}}
+            | node=`$node`
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: infra.nodes.journal.warnings
+    stability: experimental
+    description:
+      summary: Warning-and-worse journal lines from this node.
+      nominal: Empty, or the occasional benign kernel notice.
+      degraded: |
+        Repeated warnings from `kubelet` about image pulls, volume mounts or
+        sandbox creation are the node's own explanation for pods that will not
+        start. Kernel messages about memory or I/O belong to the infrastructure
+        team.
+      notes: |
+        Deliberately independent of the level picker: this panel answers "is this
+        machine complaining", and narrowing the selection elsewhere must not
+        silently empty it.
+    logQL: |
+      {
+        %%{mzLogUnitFilter},
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+      }
+        | node=`$node`
+        %%{mzLogSearchFilter}
+
+  - id: infra.nodes.journal.stream
+    stability: experimental
+    description:
+      summary: The systemd journal from this node, newest first.
+      nominal: |
+        Routine chatter from `kubelet`, the container runtime and the provider's
+        guest agent.
+      notes: |
+        The whole feed, unfiltered by level, for when the warnings panel above
+        has told you roughly where to look and you need the surrounding lines.
+    logQL: |
+      {
+        %%{mzLogUnitFilter},
+        %%{mzLogLevelFilter}
+      }
+        | node=`$node`
+        %%{mzLogSearchFilter}
+
+  - id: infra.nodes.events.rate.by_reason
+    stability: canonical
+    description:
+      summary: Kubernetes events filed against this node, by reason.
+      nominal: |
+        Quiet. A healthy node produces events when it joins and then rarely
+        again.
+      degraded: |
+        `NodeNotReady`, `NodeHasMemoryPressure`, `NodeHasDiskPressure` and
+        `Rebooted` are the ones that matter. Their appearance is the timestamp to
+        give an infrastructure team.
+      notes: |
+        `kind="Node"` selects events whose involved object *is* the machine,
+        rather than events about pods that happen to run on it. Kubernetes
+        aggregates repeats into one event with a rising count, so a burst
+        under-reports.
+    logQL: |
+      sum by (reason) (
+        rate(
+          {job="loki.source.kubernetes_events"}
+            | kind=`Node`
+            | name=`$node`
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: infra.nodes.events.stream
+    stability: canonical
+    description:
+      summary: Kubernetes events filed against this node, newest first.
+      nominal: Quiet.
+      degraded: |
+        Lifecycle events — registration, reboot, readiness changes, eviction —
+        arrive here first. This is the `Events:` section of
+        `kubectl describe node`.
+      notes: |
+        Events expire from Kubernetes after about an hour but persist in Loki for
+        the retention period, so this reaches back further than `kubectl` would.
+        The same retention means events may name a node that no longer exists.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | kind=`Node`
+        | name=`$node`
+        %%{mzLogSearchFilter}

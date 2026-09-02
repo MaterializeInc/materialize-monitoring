@@ -73,6 +73,27 @@ pub struct PanelQuery {
 }
 
 impl PanelQuery {
+    /// Ask the datasource for a *table* frame rather than a time series.
+    ///
+    /// Prometheus returns one frame per series by default, which a Table panel
+    /// renders as one column of values however many queries feed it. In table
+    /// format it returns label columns beside a `Value` column instead, and
+    /// several such frames merge into one row per label set with a column per
+    /// query — which is the only way to put a pod's request beside its own limit.
+    ///
+    /// `qryType` is the compat spelling the dashboard schema carries alongside
+    /// `format`; both are written, since Grafana reads whichever its version
+    /// knows.
+    pub fn table_format(mut self) -> Self {
+        for query in &mut self.query_group.spec.queries {
+            if let Some(spec) = query.spec.query.spec.as_mut() {
+                spec.insert("format".to_string(), serde_json::json!("table"));
+                spec.insert("qryType".to_string(), serde_json::json!(2));
+            }
+        }
+        self
+    }
+
     /// Label every series with one legend template.
     ///
     /// A legend is presentation, not query semantics, so the registry has no field

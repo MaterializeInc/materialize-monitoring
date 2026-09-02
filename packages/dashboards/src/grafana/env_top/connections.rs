@@ -20,7 +20,8 @@ use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
-use super::{field_override, theme};
+use super::theme;
+use crate::grafana::field_override;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 

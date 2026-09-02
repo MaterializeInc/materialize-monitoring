@@ -7,6 +7,13 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
+//! Per-field overrides, shared between dashboards.
+//!
+//! Promoted out of `env_top/` when `infra-nodes` became its second consumer, for
+//! the same reason `transform.rs` was: it knows nothing about Materialize, and a
+//! copy would have started two divergent versions of the same unschematized
+//! blobs.
+//!
 //! Per-field config overrides.
 //!
 //! A panel's `fieldConfig.defaults` applies to every field; an override applies to
@@ -42,16 +49,12 @@ impl Builder {
     pub fn property(mut self, id: &str, value: serde_json::Value) -> Self {
         self.properties.push(dashboardv2::DynamicConfigValue {
             id: id.to_string(),
-            value: match value {
-                serde_json::Value::Object(map) => map,
-                // A scalar property still has to arrive as the schema's map type;
-                // wrapping it keeps the generated type honest.
-                other => {
-                    let mut map = serde_json::Map::new();
-                    map.insert("value".to_string(), other);
-                    map
-                }
-            },
+            // Straight through, whatever shape it is: `unit` takes a bare
+            // string, `thresholds` an object, `custom.width` a number. The
+            // vendored schema types this `object`, which forced a wrapper here
+            // until `gen-grafana-models.sh` started widening it to `any` --
+            // Grafana rendered that wrapper as `[object Object]` in the cell.
+            value: Some(value),
         });
         self
     }
@@ -94,6 +97,25 @@ mod tests {
         let built = by_name("Errors").build();
         assert_eq!(built.matcher.id, "byName");
         assert_eq!(built.matcher.options, Some(serde_json::json!("Errors")));
+    }
+
+    #[test]
+    fn a_scalar_property_stays_scalar() {
+        // The schema types `value` as an object, so this used to be wrapped as
+        // `{"value": "bytes"}` to satisfy the generated model -- and Grafana
+        // printed the wrapper as `[object Object]` beside every number in the
+        // column. `gen-grafana-models.sh` now widens the field to `any`, so the
+        // string has to arrive as a string.
+        let built = by_name("Memory Requested")
+            .property("unit", serde_json::json!("bytes"))
+            .build();
+        assert_eq!(built.properties.len(), 1);
+        assert_eq!(built.properties[0].id, "unit");
+        assert_eq!(
+            built.properties[0].value,
+            Some(serde_json::json!("bytes")),
+            "a scalar override value must not be wrapped in an object"
+        );
     }
 
     #[test]

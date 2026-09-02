@@ -826,6 +826,224 @@ selection narrows. The environment namespace stays the hidden, environment-deriv
 already uses. `%%{mzDeploymentNamespaceFilter}` is the two as **one** matcher; writing both filters side by side
 repeats the `namespace` label in one selector, which is an AND and matches nothing.
 
+## A table of current facts is an instant query
+
+A table describing what *is* — pods on a node, their requests and limits, a
+version per generation — evaluated over a range repeats every row once per scrape
+step, and reads as a table with hundreds of near-identical rows rather than as a
+list of facts.
+Set `instant: true` on the registry query.
+
+The opposite mistake exists too, and `env-upgrade`'s version table documents it: a
+plain instant query evaluates at *now*, where a torn-down deployment generation no
+longer exists, so a finished rollout looks like it never happened.
+Where the answer must span the picker's window rather than the present moment, the
+query keeps a range but collapses it — `max_over_time(...[$__range])` — and the
+panel title says so.
+
+Ask which of the two a table is before choosing: *what is true now* takes
+`instant`, *what was true anywhere in this window* takes the collapse.
+
+## Several queries in one table need `table_format`
+
+A Table panel fed by more than one query renders **one column of values**, not one
+per query, as long as the datasource returns time-series frames — Prometheus's
+default.
+The rows stack instead of joining, and no transformation fixes it, because the
+frames never carried the label columns to join on.
+
+**A dropdown at the foot of a table is the tell.** Prometheus returns one frame
+per series, and a Table panel handed several frames renders a frame *picker*
+rather than a table. It is easy to miss, because the first frame renders
+correctly — the panel looks right and is showing you one series of many.
+This bites single-query panels too, whenever the query returns a series per pod,
+per taint, per anything.
+
+Two ways out, and either is fine: ask for table format, or consolidate with a
+transformation — `merge` joins frames on their shared fields, and `reduce` in
+`seriesToRows` mode collapses each to a row. `infra-nodes` asserts that every one
+of its tables does one of them.
+
+`PanelQuery::table_format` asks for a table frame instead: label columns beside a
+`Value` column, which `merge` then joins into one row per label set with a column
+per query.
+That is what lets a pod's request sit beside its own limit on `infra-nodes`.
+
+Grafana names those value columns after the query's refId — `Value #query-0`
+upward, assigned positionally — so an organize transform is what gives them
+readable headers.
+Mixed units in one table cannot be a panel default; give each column its own
+`unit` override.
+
+### `noValue` fills empty *cells*, not just empty panels
+
+Grafana applies `noValue` per field, so on a table whose columns are legitimately
+sparse it lands in every gap rather than standing in for a panel with no data.
+On `infra-nodes` that put "kube-state-metrics is required" into the majority of
+the limit cells — a collection-failure message for pods that simply set no limit,
+and long enough to overflow the column.
+
+Leave it unset on any table that joins several queries.
+Blank is the honest rendering of "this row has none", and a genuinely empty panel
+still falls back to Grafana's own "No data".
+Single-query tables are unaffected: their columns come from one result, so a row
+exists in full or not at all, and `noValue` only fires when the whole panel is
+empty — which is exactly what it is for.
+
+## Shade single-series panels, never graphs with several lines
+
+`Panel::shade` sets Grafana's `shades` colour mode, which derives every series in
+the panel from one hue.
+On a stat, a gauge, or a graph drawing one line that is a deliberate identity — it
+is how a Summary cell borrows the colour of the tab it points at, and how an info
+row reads as one block.
+On a graph drawing five CPU modes, one line per core, or one per device, it is
+actively harmful: the lines come out as near-identical tints of the tab colour and
+cannot be told apart, which is the whole job of a multi-series graph.
+
+Leave those unshaded and let Grafana's classic palette assign contrasting colours.
+`infra-nodes` asserts this in `multi_series_panels_are_not_shaded`, scoped to
+timeseries panels: a stat whose query carries a templated legend still reduces to
+one number and has no lines to confuse.
+
+## Pin the ceiling on a bounded fraction whose nominal is zero
+
+A panel measuring something that should sit at zero — link saturation, PSI
+pressure, disk utilization — autoscales to its own noise when left alone, so a
+perfectly healthy node renders a dramatic-looking graph whose axis tops out at
+0.05%.
+The reader cannot tell that from a real problem without reading the axis every
+time.
+
+Give any bounded fraction an explicit `.min(0.0)` **and** `.max(1.0)` so the
+panel is drawn against the range that matters and a flat-healthy line stays flat.
+Unbounded rates (errors and drops per second) keep autoscaling, since there is no
+honest ceiling to pin them to and a spike is the thing worth seeing.
+
+## Node identifiers across three families
+
+The dashboard's one real trick. kube-state-metrics calls a node `node="<name>"`; node-exporter calls the same machine
+`instance="<ip>:9100"` and carries the name only as `nodename` on `node_uname_info`.
+`$node` is the visible picker over the Kubernetes name; `$nodeList` is **hidden** and resolves it to the address
+through that metric.
+Keeping the inherited `nodeList` name is what lets all 220 `instance=~"$nodeList"` occurrences in `node-health.yaml`
+and `node-debug.yaml` back this dashboard unchanged — at the cost of a name that says "list" while holding one address.
+Loki knows the node a third way again, as **structured metadata** on journal lines, so the journal filters in the
+pipeline (`| node=...`) rather than in the selector; node *events* match on the involved object's name with
+`kind="Node"`.
+
+**The node families are vetted.** `node-health` and `node-debug` were authored before any dashboard used them and were
+long flagged as unreviewed. All 87 of their expressions were run against a live cluster while this was built and all 87
+returned data, as did all 103 rendered Prometheus queries and all 5 Loki ones.
+
+## Deployment generations (blue/green)
+
+What the Generations tab is built on, and the `$mzGenerationList` selector that drives it.
+
+**The generation is not a label on anything.** orchestratord records it as the `materialize.cloud/generation`
+*annotation*, which neither kube-state-metrics nor cAdvisor nor the event pipeline surfaces. Where it does reach a query
+is the object **name**, in two shapes:
+
+| Workload | Name shape |
+|---|---|
+| environmentd | `<prefix>-environmentd-<generation>-<ordinal>` |
+| cluster replica | `<prefix>-cluster-<cluster>-replica-<replica>-gen-<generation>-<ordinal>` |
+
+Three render-context parameters carry that, so the pattern lives in one place and cannot drift:
+
+- `%%{mzGenerationFilter}` — `pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+"`, for metrics.
+- `%%{mzGenerationPattern}` — the same shape as a *capture*, for the `label_replace` that lifts the number into a
+  `generation` label panels can group and legend by. A parameter rather than a template function, because the
+  `label_replace` has to wrap an inner selector while a function wraps the whole template.
+- `%%{mzGenerationEventFilter}` — for events, where the generation is in the object name and the filter is a pipeline
+  stage rather than a stream selector.
+
+**Two ad-hoc filters, not one.** An ad-hoc variable resolves its label keys *from a datasource*, so `metricAdhoc`
+(Prometheus) cannot offer Loki's stream labels — `env-upgrade` defines `logsAdhoc` beside it, and both sit at the tail of
+the controls row as escape hatches rather than steps in the funnel. `logsAdhoc` seeds **no base filter**, unlike the
+metrics one: Grafana ANDs a base filter into the query's own selector, and the obvious seed (the environment namespace)
+would narrow a stream selector that deliberately spans the operator's namespace too, silently dropping every event the
+operator published. Its keys are Loki *stream* labels; structured metadata like `reason` and `kind` is filtered in the
+query instead.
+
+`grafana/transform.rs` was promoted out of `env_top/` when the version table became its second consumer — it builds
+Grafana transformation JSON and knows nothing about Materialize, so copying it would have started two divergent copies
+of the same unschematized blobs.
+
+**The event filter's `or` arm is load-bearing.** Only a handful of the objects a rollout touches carry a generation —
+on a representative deployment, 6 of 70 event names — and every operator lifecycle event is filed against the
+`Materialize` resource, which carries none. So the filter is
+`name=~"<selected>" or name!~"<any generation>"`: keep what belongs to a selected generation, and keep what belongs to
+no generation. A bare `name=~` would drop the entire rollout narrative and keep only the pod noise. RE2 has no negative
+lookahead, which is why this is an `or` rather than one clever pattern.
+
+Only the four deployment-wide event feeds filter by generation. The operator's own queries do not — their events carry
+no generation, so it could only ever be a no-op there.
+
+**`$mzGenerationList` refreshes on time-range change**, alone among the variables here. Which generations exist is a
+property of the *window*: the old side is torn down after promotion, so widening the range to cover a rollout is exactly
+how its other side comes back into view. It has no `all_value` — a literal like `[0-9]+` would be regex-*escaped* by the
+`:regex` format and match nothing.
+
+**Hydration is still the wallclock-lag sentinel**, now split by generation. `mz_dataflow_wallclock_lag_seconds` is
+emitted by environmentd, so its `pod` label carries the generation and the split is free. Two things about the series:
+
+- `instance_id!=""` is load-bearing, keeping it to collections attached to a compute instance.
+- **Score with `> bool`, do not filter with `>`.** A filtering comparison drops the non-matching series, so `count`
+  emits *no sample* once a generation finishes hydrating: the line stops instead of reaching zero, and a stat reducing
+  on the last non-null value goes on showing the last count it saw forever. `sum by (generation) (max by (…) (… > bool
+  1e15))` scores every collection 1 or 0, so the series stays present and lands on zero — the descent the panel exists
+  to show. `env-top`'s unsplit version gets there with `or vector(0)`, which is not an option once the panel groups by
+  generation: that appends a series carrying no labels.
+- A sparse series also invites a specific misreading — "all emitted points are non-zero" looks exactly like a Thanos
+  downsampling artifact and is not one. Values were verified identical across query windows.
+
+## orchestratord reconciliation metrics
+
+What the Reconciliation tab is built on. Sources: `src/orchestratord/src/reconcile.rs` and `metrics.rs` in the
+Materialize repo, which carry the authoritative prose in their `help` strings and doc comments.
+
+| Metric | Labels | Notes |
+|---|---|---|
+| `orchestratord_reconciliations_total` | `controller`, `event_type`, `outcome` | One trip through a controller's work |
+| `orchestratord_reconciliation_duration_seconds` | `controller`, `event_type` | Histogram |
+| `orchestratord_reconciliation_steps_total` | `controller`, `step`, `outcome` | The named phases within a pass |
+| `orchestratord_reconciliation_step_duration_seconds` | `controller`, `step` | Histogram, same buckets |
+| `orchestratord_is_leader` | — | Predates the rest |
+| `environmentd_needs_update` | — | Predates the rest |
+
+**They carry no organization label**, so the environment picker does not narrow them — one operator reconciles every
+environment in the cluster. `%%{mzOperatorNamespaceFilter}` is the only scope that applies, and unlike the *events*
+(which are filed in the involved object's namespace) these metrics really do carry `namespace="<operator namespace>"`.
+The two tabs therefore scope in opposite directions, which is the trap worth remembering.
+
+**Sum across replicas, always.** Only the leader reconciles; the others export the same families sitting at zero.
+`environmentd_needs_update` is explicitly reset on losing the lease so a former leader does not go on publishing its
+last observation.
+
+**Outcome vocabulary** (`applied`, `waiting`, `skipped`, `failed`, `abandoned`):
+
+- `waiting` is **success**, not a warning — a rollout spends most of its passes there while the new generation's pods
+  come up.
+- `abandoned` is **not a failure signal**. A step records it when it did not reach a conclusion, which covers an error
+  propagating out *and* a pass cancelled by a leadership handoff or shutdown; a `Drop` cannot tell them apart. Alert on
+  `orchestratord_reconciliations_total{outcome="failed"}`, which is recorded from the reconciler's actual result and
+  which a cancelled pass never reaches, and read the step counter to *locate* it.
+
+**Duration is not rollout duration.** A pass waiting on pods returns promptly and asks to run again rather than
+blocking, so the histogram measures work done per pass. The rollout's wall-clock length is the span between its first
+and last transition on the Events tab.
+
+**The buckets are deliberately coarse** — 10ms, 50ms, 250ms, 1s, 5s, 30s. A percentile is therefore the boundary of the
+bucket the value fell in, not the value; read it as an order of magnitude. Finer buckets would cost several times the
+series for detail no operator question asks for, and steps share the pass's bucket set so a step's latency reads
+against the pass it belongs to.
+
+**Test tabs in the scope their dashboard builds them in.** `queries::test_operator_queries()` exists because
+`test_queries()` uses `DashboardScope::default()`, where the operator namespace is the pinned literal rather than
+`$operatorNamespace` — an assertion about a rendered selector under the default scope is about a rendering that never
+ships.
+
 ## PromQL recipes
 
 Reference for patterns we've established that aren't obvious in the language docs.
