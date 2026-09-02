@@ -1,2 +1,4 @@
 github.com/alex-shpak/hugo-book v0.0.0-20260510213357-4018d4b51d10 h1:QaefQ029ZuooQDaObwapWGHMYRhzs4NImkGZP+NSOKE=
 github.com/alex-shpak/hugo-book v0.0.0-20260510213357-4018d4b51d10/go.mod h1:3N2fYXAJzb31L13moUOXmPo2DC58VvQYJkGr9VniXfQ=
+github.com/gethugothemes/hugo-modules/llms-txt v0.0.0-20260701054856-10b1d2cdc11a h1:i0Vn9qzsJIHkbEn5SvI1FdvOb2nM4W5HYaHcC7n5QCc=
+github.com/gethugothemes/hugo-modules/llms-txt v0.0.0-20260701054856-10b1d2cdc11a/go.mod h1:NbshvI0tQlvBA7ZZrP8kik0M6g3b0Gr0ftEP3NV+9os=
