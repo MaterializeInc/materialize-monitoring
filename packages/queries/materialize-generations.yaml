@@ -163,8 +163,8 @@ queries:
       notes: |
         **A proxy, not a hydration state.** Self-managed Materialize exposes no
         hydration-state metric, so this counts collections parked at the
-        wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no
-        established output frontier. Retire it once a real hydration metric
+        wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection that has
+        not produced any results yet. Retire it once a real hydration metric
         exists. It is the same signal the environment overview
         reports as "Currently Hydrating", split by generation instead of summed
         across both sides of a rollout.
@@ -238,20 +238,20 @@ queries:
     stability: experimental
     description:
       summary: |
-        The worst frontier lag in each generation — how far behind wallclock its
+        The worst lag in each generation — how far behind real time its
         most-lagged collection is.
       nominal: |
         Seconds, and comparable between generations. A new generation that has
         hydrated should track the old one closely.
       unhealthy: |
         A new generation whose lag stays far above the serving one's. It has
-        hydrated — it has a frontier — but it is not keeping up, so promoting it
+        hydrated — it is producing results — but it is not keeping up, so promoting it
         would move traffic onto staler data.
       notes: |
         Hydrating collections are excluded (`< 1e9`), since their sentinel would
         swamp every real reading. That makes this and
         _Hydration -> Hydrating Collections by Generation_ complementary: this
-        one covers the collections that *have* a frontier, and that one counts
+        one covers the collections that are *producing results*, and that one counts
         the collections that do not.
 
         The metric is a summary carrying only `quantile` `0` and `1`, so
@@ -268,6 +268,91 @@ queries:
           },
           "generation", "$1", "pod", "%%{mzGenerationPattern}"
         ) < 1e9
+      )
+
+  - id: materialize.generations.lag.total
+    stability: experimental
+    description:
+      summary: |
+        Every hydrated collection's lag in each generation, added together — how
+        far behind the generation is in total.
+      nominal: |
+        A new generation's total falling toward the serving generation's as it
+        catches up.
+      unhealthy: |
+        A new generation whose total stops falling well above the old one's. It
+        is producing results but is not closing the gap, so promoting it would move
+        traffic onto staler data.
+      notes: |
+        **The panel that actually shows a rollout finishing.** The worst-case lag
+        beside it is dominated by whichever single collection is furthest behind,
+        so it stays high and jumpy while the generation is in fact catching up.
+        The total falls steadily as collection after collection converges, which
+        is the shape an operator is waiting to see before promoting.
+
+        Complementary to _Hydration_ in the same way as the rest of this file:
+        collections not yet producing results are excluded here (`< 1e9`) and counted
+        there, so a rollout reads as one curve descending on that tab while this
+        one descends here.
+
+        Deduplicated across replicas by the inner `max`, like
+        _Collections by Generation_ — a collection on two replicas would
+        otherwise be added twice, and two replicas is the normal shape mid-
+        rollout.
+    promQL: |
+      sum by (generation) (
+        max by (generation, instance_id, collection_id) (
+          label_replace(
+            mz_dataflow_wallclock_lag_seconds{
+              %%{mzEnvironmentFilter},
+              %%{mzGenerationFilter},
+              instance_id=~"%%{mzClusterList}",
+              instance_id!="",
+              quantile="1"
+            },
+            "generation", "$1", "pod", "%%{mzGenerationPattern}"
+          ) < 1e9
+        )
+      )
+
+  - id: materialize.generations.lag.total_by_cluster
+    stability: experimental
+    description:
+      summary: |
+        Total lag split by generation *and* cluster — which cluster in which
+        generation is carrying the lag.
+      nominal: |
+        Every series low, or a new generation's series descending toward its
+        counterpart in the old one.
+      unhealthy: |
+        One cluster's series flat and high while its siblings descend. That is a
+        cluster-shaped problem — under-provisioned, or holding one expensive
+        dataflow — rather than a rollout-shaped one, and it names the cluster to
+        look at.
+      notes: |
+        The breakdown behind `materialize.generations.lag.total`. The aggregate
+        answers "is this generation catching up"; this answers "where is what is
+        left", which is the next question whenever the answer to the first is
+        "not yet".
+
+        Reading it during a rollout means comparing a cluster against *itself*
+        across generations rather than against the other clusters: absolute
+        totals depend on how many collections a cluster carries, so the pairing
+        that matters is `gen N / u1` beside `gen N+1 / u1`.
+    promQL: |
+      sum by (generation, instance_id) (
+        max by (generation, instance_id, collection_id) (
+          label_replace(
+            mz_dataflow_wallclock_lag_seconds{
+              %%{mzEnvironmentFilter},
+              %%{mzGenerationFilter},
+              instance_id=~"%%{mzClusterList}",
+              instance_id!="",
+              quantile="1"
+            },
+            "generation", "$1", "pod", "%%{mzGenerationPattern}"
+          ) < 1e9
+        )
       )
 
   - id: materialize.generations.cpu

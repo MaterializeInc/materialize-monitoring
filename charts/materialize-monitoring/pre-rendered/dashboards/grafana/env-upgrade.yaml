@@ -315,7 +315,7 @@ spec:
           **Unhealthy:** A new generation pinned at its limit long after hydration should have finished, or an old one still drawing after promotion, which means it was never torn down.
 
           Covers environmentd and the cluster replicas of each generation together. This is the panel that says whether the cluster can actually afford to run two generations at once — the answer is roughly double, for as long as the rollout lasts.
-        id: 1018
+        id: 1020
         links: []
         title: CPU by Generation
         vizConfig:
@@ -381,7 +381,7 @@ spec:
           Deliberately not alarm-coloured. A non-zero reading is what an upgrade in progress looks like, and colouring it red would fire on every routine one. What matters is the *direction*, which is why this is a sparkline rather than a bare number.
 
           Only the leader observes this, and it resets to zero when a replica loses the lease, so summing across replicas does not double-count an environment across a leadership handoff.
-        id: 1021
+        id: 1023
         links: []
         title: Environments Needing Update
         vizConfig:
@@ -522,7 +522,7 @@ spec:
           **Unhealthy:** A count that keeps climbing. Something the operator needs is not there and retrying will not make it appear. Each failure is also published as a Kubernetes event carrying the error's cause chain — see _Events -> Operator Health_.
 
           A count over the selected range rather than a rate, so the number answers "how many" directly. The rate over time is the `failed` series on _Reconciliation Passes -> Pass Outcomes_.
-        id: 1023
+        id: 1025
         links: []
         title: Failed Passes (Select Time Range)
         vizConfig:
@@ -611,7 +611,7 @@ spec:
           **Unhealthy:** `materialize` failing is the environment itself not reaching the state it was asked for. `balancer` or `console` failing leaves the environment running but unreachable or unmanageable, which is a different urgency.
 
           `event_type` is which entry point ran: `apply` is the ordinary path, and `cleanup` runs while a resource is being deleted. A `cleanup` failure is what leaves a resource stuck with its finalizer still attached.
-        id: 1025
+        id: 1027
         links: []
         title: Failed Passes by Controller
         vizConfig:
@@ -698,7 +698,7 @@ spec:
 
           **Unhealthy:** A count that stops falling while still above zero. Something cannot finish hydrating, and the rollout will not complete on its own. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
 
-          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no established output frontier. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
+          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection that has not produced any results yet. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
 
           **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every collection 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
 
@@ -791,7 +791,7 @@ spec:
 
           **Unhealthy:** A count that stops falling while still above zero. Something cannot finish hydrating, and the rollout will not complete on its own. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
 
-          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no established output frontier. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
+          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection that has not produced any results yet. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
 
           **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every collection 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
 
@@ -876,18 +876,196 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The worst frontier lag in each generation — how far behind wallclock its most-lagged collection is.**
+          **The worst lag in each generation — how far behind real time its most-lagged collection is.**
 
           **Nominal:** Seconds, and comparable between generations. A new generation that has hydrated should track the old one closely.
 
-          **Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it has a frontier — but it is not keeping up, so promoting it would move traffic onto staler data.
+          **Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it is producing results — but it is not keeping up, so promoting it would move traffic onto staler data.
 
-          Hydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that *have* a frontier, and that one counts the collections that do not.
+          Hydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that are *producing results*, and that one counts the collections that do not.
 
           The metric is a summary carrying only `quantile` `0` and `1`, so `quantile="1"` is the worst case rather than a percentile.
         id: 1017
         links: []
-        title: Frontier Lag by Generation
+        title: Worst-Case Lag by Generation
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No generations match the current filters
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    lag-total-by-cluster:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (generation, instance_id) (
+                        max by (generation, instance_id, collection_id) (
+                          label_replace(
+                            mz_dataflow_wallclock_lag_seconds{
+                              materialize_cloud_organization_name=~"$environmentNameList",
+                              pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+",
+                              instance_id=~"$mzClusterList",
+                              instance_id!="",
+                              quantile="1"
+                            },
+                            "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
+                          ) < 1e9
+                        )
+                      )
+                    legendFormat: gen {{generation}} / {{instance_id}}
+                    qryType: 1
+                    query: |
+                      sum by (generation, instance_id) (
+                        max by (generation, instance_id, collection_id) (
+                          label_replace(
+                            mz_dataflow_wallclock_lag_seconds{
+                              materialize_cloud_organization_name=~"$environmentNameList",
+                              pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+",
+                              instance_id=~"$mzClusterList",
+                              instance_id!="",
+                              quantile="1"
+                            },
+                            "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
+                          ) < 1e9
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Total lag split by generation *and* cluster — which cluster in which generation is carrying the lag.**
+
+          **Nominal:** Every series low, or a new generation's series descending toward its counterpart in the old one.
+
+          **Unhealthy:** One cluster's series flat and high while its siblings descend. That is a cluster-shaped problem — under-provisioned, or holding one expensive dataflow — rather than a rollout-shaped one, and it names the cluster to look at.
+
+          The breakdown behind `materialize.generations.lag.total`. The aggregate answers "is this generation catching up"; this answers "where is what is left", which is the next question whenever the answer to the first is "not yet".
+
+          Reading it during a rollout means comparing a cluster against *itself* across generations rather than against the other clusters: absolute totals depend on how many collections a cluster carries, so the pairing that matters is `gen N / u1` beside `gen N+1 / u1`.
+        id: 1019
+        links: []
+        title: Total Lag by Generation and Cluster
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No generations match the current filters
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    lag-total-by-generation:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (generation) (
+                        max by (generation, instance_id, collection_id) (
+                          label_replace(
+                            mz_dataflow_wallclock_lag_seconds{
+                              materialize_cloud_organization_name=~"$environmentNameList",
+                              pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+",
+                              instance_id=~"$mzClusterList",
+                              instance_id!="",
+                              quantile="1"
+                            },
+                            "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
+                          ) < 1e9
+                        )
+                      )
+                    legendFormat: gen {{generation}}
+                    qryType: 1
+                    query: |
+                      sum by (generation) (
+                        max by (generation, instance_id, collection_id) (
+                          label_replace(
+                            mz_dataflow_wallclock_lag_seconds{
+                              materialize_cloud_organization_name=~"$environmentNameList",
+                              pod=~".*-(environmentd|gen)-(${mzGenerationList:regex})-[0-9]+",
+                              instance_id=~"$mzClusterList",
+                              instance_id!="",
+                              quantile="1"
+                            },
+                            "generation", "$1", "pod", ".*-(?:environmentd|gen)-([0-9]+)-[0-9]+"
+                          ) < 1e9
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Every hydrated collection's lag in each generation, added together — how far behind the generation is in total.**
+
+          **Nominal:** A new generation's total falling toward the serving generation's as it catches up.
+
+          **Unhealthy:** A new generation whose total stops falling well above the old one's. It is producing results but is not closing the gap, so promoting it would move traffic onto staler data.
+
+          **The panel that actually shows a rollout finishing.** The worst-case lag beside it is dominated by whichever single collection is furthest behind, so it stays high and jumpy while the generation is in fact catching up. The total falls steadily as collection after collection converges, which is the shape an operator is waiting to see before promoting.
+
+          Complementary to _Hydration_ in the same way as the rest of this file: collections not yet producing results are excluded here (`< 1e9`) and counted there, so a rollout reads as one curve descending on that tab while this one descends here.
+
+          Deduplicated across replicas by the inner `max`, like _Collections by Generation_ — a collection on two replicas would otherwise be added twice, and two replicas is the normal shape mid- rollout.
+        id: 1018
+        links: []
+        title: Total Lag by Generation
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1155,18 +1333,18 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The worst frontier lag in each generation — how far behind wallclock its most-lagged collection is.**
+          **The worst lag in each generation — how far behind real time its most-lagged collection is.**
 
           **Nominal:** Seconds, and comparable between generations. A new generation that has hydrated should track the old one closely.
 
-          **Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it has a frontier — but it is not keeping up, so promoting it would move traffic onto staler data.
+          **Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it is producing results — but it is not keeping up, so promoting it would move traffic onto staler data.
 
-          Hydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that *have* a frontier, and that one counts the collections that do not.
+          Hydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that are *producing results*, and that one counts the collections that do not.
 
           The metric is a summary carrying only `quantile` `0` and `1`, so `quantile="1"` is the worst case rather than a percentile.
         id: 1012
         links: []
-        title: Max Frontier Lag
+        title: Worst-Case Lag
         vizConfig:
           group: stat
           kind: VizConfig
@@ -1241,7 +1419,7 @@ spec:
           **Unhealthy:** A new generation that keeps climbing past the old one's footprint, or one whose pods are being OOM-killed — _Events -> Kubernetes Activity_ shows the restarts if so.
 
           Working set rather than the container limit, so this is what the generation is really holding. Rehydration is the memory-hungriest part of a rollout, because both generations hold their arrangements at once.
-        id: 1019
+        id: 1021
         links: []
         title: Memory by Generation
         vizConfig:
@@ -1381,7 +1559,7 @@ spec:
           The histogram's buckets are deliberately coarse — 10ms, 50ms, 250ms, 1s, 5s, 30s — so a percentile here is the boundary of the bucket the value fell in rather than the value itself. Read it as an order of magnitude. That is the trade the operator made on purpose: finer buckets would cost several times the series for detail no operator question asks for.
 
           Covers the reconciler only, not the finalizer bookkeeping the controller does around it.
-        id: 1026
+        id: 1028
         links: []
         title: Pass Duration
         vizConfig:
@@ -1457,7 +1635,7 @@ spec:
           `abandoned` is rare at the pass level and is not a failure signal — it covers a pass cancelled by a leadership handoff or a shutdown as well as one that errored out.
 
           `apply` and `cleanup` passes are summed together here. Cleanup runs when a resource is being deleted, so it is rare, and splitting it out would double every series to distinguish a case that is usually absent.
-        id: 1024
+        id: 1026
         links: []
         title: Pass Outcomes
         vizConfig:
@@ -1802,7 +1980,7 @@ spec:
           **Unhealthy:** Flat at zero while work is outstanding. Check _Operator Status -> Reconciling Replicas_ first: an operator that lost the lease stops reconciling and this is what that looks like.
 
           Not a load signal. A high rate is normal during a rollout and says nothing about cost; it is the *absence* of passes that is diagnostic.
-        id: 1022
+        id: 1024
         links: []
         title: Reconciliation Rate
         vizConfig:
@@ -1869,7 +2047,7 @@ spec:
           **Unhealthy:** Zero means no replica can take the lease and the operator is reconciling nothing — every other panel here goes quiet and nothing on the cluster changes, however healthy the pods look. The usual cause is the service account lacking permission on leases. More than one should not be possible; treat it as a stale reading rather than a real split.
 
           Summed across replicas on purpose. A non-leader exports the metric at zero rather than not at all, so this is a count of leaders and not a count of pods.
-        id: 1020
+        id: 1022
         links: []
         title: Reconciling Replicas
         vizConfig:
@@ -1946,7 +2124,7 @@ spec:
           **Nominal:** The steps of whichever controllers have work. `promote` and `teardown_generation` appear only around a deployment; the rest tick over with the loop.
 
           A step is the only level at which "there was nothing to do" is distinguishable from "the desired state was reached" — the reconciler interface reports both as success. That distinction is the `outcome` label, which this panel sums over; see _Steps -> Step Failures and Abandonments_ for the half that matters.
-        id: 1028
+        id: 1030
         links: []
         title: Step Activity
         vizConfig:
@@ -2020,7 +2198,7 @@ spec:
           **Unhealthy:** A step that leaves its usual band. Because each step is a group of Kubernetes API calls, a step that slows down names the resource kind whose writes are being held up.
 
           Same coarse buckets as the whole-pass histogram, and the same reading: an order of magnitude rather than a measurement. Steps and passes share one bucket set precisely so a step's latency reads against the pass it belongs to.
-        id: 1027
+        id: 1029
         links: []
         title: Step Duration (p99)
         vizConfig:
@@ -2096,7 +2274,7 @@ spec:
           **`abandoned` is not by itself a failure.** A step records it when it did not reach a conclusion, which covers an error propagating out of it *and* a pass cancelled by a leadership handoff or a shutdown — a `Drop` cannot tell those apart. So a burst of `abandoned` around an operator restart is expected. Alert on _Operator Status -> Failed Passes (Select Time Range)_, which is recorded from the reconciler's actual result and which a cancelled pass never reaches, and read this to locate the step.
 
           An `abandoned` step alongside a `failed` pass is the useful pairing: the pass says it errored, and the step says where it was when it did.
-        id: 1029
+        id: 1031
         links: []
         title: Step Failures and Abandonments
         vizConfig:
@@ -2586,7 +2764,17 @@ spec:
                           element:
                             kind: ElementReference
                             name: lag-by-generation
-                      maxColumnCount: 1
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lag-total-by-generation
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lag-total-by-cluster
+                      maxColumnCount: 2
                       rowHeightMode: standard
                   title: Freshness
               - kind: RowsLayoutRow

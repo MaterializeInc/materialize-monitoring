@@ -488,7 +488,7 @@ spec:
           **Degraded:** Sustained near the worker count means the replica is bottlenecked on maintenance, usually a high upstream change rate or many heavy indexes. The catalog cluster's baseline runs higher than typical user clusters.
 
           Uses the long-form cluster_environmentd_* id labels. Reads high under the same multi-job scrape pitfall as the dataflow elapsed rate.
-        id: 1047
+        id: 1048
         links: []
         title: Arrangement Maintenance Rate
         vizConfig:
@@ -602,7 +602,7 @@ spec:
           **The same maintenance CPU, split per worker — each worker tops out at 1.0.**
 
           **Degraded:** Watch for skew: one worker sitting near 1.0 while its siblings idle near 0 means the cluster is bottlenecked on a single worker (a hot key or hot arrangement) — the most common reason an 8-worker cluster performs like a 1-worker one. `EXPLAIN PHYSICAL PLAN` on the heavy object is the usual next step.
-        id: 1048
+        id: 1049
         links: []
         title: Arrangement Maintenance Rate (per worker)
         vizConfig:
@@ -729,7 +729,7 @@ spec:
                   - desc: true
                     field: Last *
         description: '**Row counts of arrangements for Materialize''s internal system collections (collection id starts with `s`). These back the catalog and internal probes, not user data, so they shouldn''t grow with your workload — unexpected growth here can point at a Materialize bug.**'
-        id: 1049
+        id: 1050
         links: []
         title: System Collections — Record Counts
         vizConfig:
@@ -813,7 +813,7 @@ spec:
           **Row counts of transient (collection id `t*`) and uncategorized (`none`) arrangements — short-lived intermediates from query optimization and dataflow execution. Normally small and ephemeral.**
 
           **Unhealthy:** Sustained non-trivial entries here can mean a stuck or leaked dataflow holding intermediate state it should have released.
-        id: 1051
+        id: 1052
         links: []
         title: Transient / Uncategorized — Record Counts
         vizConfig:
@@ -942,7 +942,7 @@ spec:
                   - desc: true
                     field: Last *
         description: '**Row counts of arrangements for your compute objects (collection id starts with `u`) — the row count of every user index and materialized view, and the primary driver of cluster memory. Growth on a collection tracks the size of its underlying data.**'
-        id: 1050
+        id: 1051
         links: []
         title: User Collections — Record Counts
         vizConfig:
@@ -1594,7 +1594,7 @@ spec:
           **Nominal:** Stable for a steady workload.
 
           **Degraded:** A sharp drop with no matching DDL usually means a replica restarted; a sharp rise usually means bulk object creation.
-        id: 1044
+        id: 1045
         links: []
         title: Dataflow Count
         vizConfig:
@@ -1701,7 +1701,7 @@ spec:
           **The dataflow count broken out per worker. Workers in a replica run in lockstep and should see exactly the same dataflows, so their series should overlap perfectly.**
 
           **Unhealthy:** Visible divergence between worker series within one (cluster, replica) is a bug-class signal — the workers disagree on what they're running — and worth filing.
-        id: 1045
+        id: 1046
         links: []
         title: Dataflow Count (per worker)
         vizConfig:
@@ -1820,7 +1820,7 @@ spec:
           **Degraded:** Sustained near the size cap means the cluster is CPU-bound and a candidate for upsizing. The catalog cluster (s2) is typically the busiest in any environment.
 
           Reads high if the same clusterd endpoint is scraped by more than one Prometheus job (a known multi-job scrape-config pitfall); fix the scrape config, or collapse duplicate `job` series, at the deployment.
-        id: 1046
+        id: 1047
         links: []
         title: Dataflow Elapsed Rate
         vizConfig:
@@ -1933,7 +1933,7 @@ spec:
 
           **Degraded:** A sustained climb means a collection can't keep pace with its input — an under-provisioned cluster or an expensive dataflow. A sharp spike that decays on its own is normal re-hydration after a restart or DDL, not a problem.
 
-          The catalog cluster (s2) sits a couple seconds back as its baseline. Collections with no established frontier report a sentinel and are excluded here. For which collection is responsible, see materialize.compute.freshness.top_collections.
+          The catalog cluster (s2) sits a couple seconds back as its baseline. Collections that have not produced results yet report a sentinel and are excluded here. For which collection is responsible, see materialize.compute.freshness.top_collections.
         id: 1039
         links: []
         title: Freshness Lag by Cluster
@@ -1947,6 +1947,130 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                min: 0
+                noValue: No matches for the current filters
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    freshness-lag-total-by-cluster:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |-
+                      (
+                      (
+                      sum by (instance_id) (
+                        max by (instance_id, collection_id) (
+                          mz_dataflow_wallclock_lag_seconds{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList", instance_id!="", quantile="1"} < 1e9
+                        )
+                      )
+
+                      )
+                      * on (instance_id) group_left(cluster_name)
+                      max by (instance_id, cluster_name) (
+                      label_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~"$environmentNameList"}, "instance_id", "$1", "cluster_id", "(.*)"), "cluster_name", "$1", "name", "(.*)")
+                      )
+                      )
+                      or
+                      label_replace(
+                      (
+                      sum by (instance_id) (
+                        max by (instance_id, collection_id) (
+                          mz_dataflow_wallclock_lag_seconds{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList", instance_id!="", quantile="1"} < 1e9
+                        )
+                      )
+
+                      )
+                      unless on (instance_id) (
+                      group by (instance_id) (
+                      label_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~"$environmentNameList"}, "instance_id", "$1", "cluster_id", "(.*)"), "cluster_name", "$1", "name", "(.*)")
+                      )
+                      ),
+                      "cluster_name", "$1", "instance_id", "(.*)"
+                      )
+                    legendFormat: '{{cluster_name}}'
+                    qryType: 1
+                    query: |-
+                      (
+                      (
+                      sum by (instance_id) (
+                        max by (instance_id, collection_id) (
+                          mz_dataflow_wallclock_lag_seconds{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList", instance_id!="", quantile="1"} < 1e9
+                        )
+                      )
+
+                      )
+                      * on (instance_id) group_left(cluster_name)
+                      max by (instance_id, cluster_name) (
+                      label_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~"$environmentNameList"}, "instance_id", "$1", "cluster_id", "(.*)"), "cluster_name", "$1", "name", "(.*)")
+                      )
+                      )
+                      or
+                      label_replace(
+                      (
+                      sum by (instance_id) (
+                        max by (instance_id, collection_id) (
+                          mz_dataflow_wallclock_lag_seconds{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList", instance_id!="", quantile="1"} < 1e9
+                        )
+                      )
+
+                      )
+                      unless on (instance_id) (
+                      group by (instance_id) (
+                      label_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~"$environmentNameList"}, "instance_id", "$1", "cluster_id", "(.*)"), "cluster_name", "$1", "name", "(.*)")
+                      )
+                      ),
+                      "cluster_name", "$1", "instance_id", "(.*)"
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The lag of every collection on each cluster, added together — one number for how far behind the cluster is in total.**
+
+          **Nominal:** Low and flat. The absolute value is not comparable between clusters, since a cluster with more collections has more to add up; the *shape* is what this panel is for.
+
+          **Degraded:** A climb that does not come back down. A rise that decays steadily is a cluster catching up after a restart, a rollout, or DDL, and the decay is the thing worth watching.
+
+          **Read this beside the worst-case panel rather than instead of it.** The max says whether anything is behind; this says how much is behind in total, and the two answer different questions. When a hundred collections rehydrate and fifty of them catch up, the max barely moves — it is still reporting whichever one is furthest behind — while this halves. That descent is the clearest picture of hydration progress the metrics can give, and it is invisible in the max.
+
+          **Deduplicated across replicas.** A collection served by several replicas reports once per replica, so the inner `max` picks the worst reading per collection before the outer `sum` adds collections together. Without it a two-replica cluster would report double, which is exactly the shape a blue/green rollout has.
+
+          Collections that have not produced results yet report the `u64::MAX` sentinel and are excluded (`< 1e9`) — including them would swamp the total by nineteen orders of magnitude. They are counted by the hydration panels instead, so the two are complementary: this totals the collections that are *producing results*, those count the ones that are not. Datadog cannot express that value filter, so its query includes not-yet-hydrated collections and can overstate the total badly.
+        id: 1040
+        links: []
+        title: Total Lag by Cluster
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
                 min: 0
                 noValue: No matches for the current filters
                 unit: s
@@ -2152,10 +2276,10 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The 15 collections whose output frontier is furthest behind real time — the per-collection breakdown behind the per-cluster freshness lag, labeled by object name.**
+          **The 15 collections whose results are furthest behind real time — the per-collection breakdown behind the per-cluster freshness lag, labeled by object name.**
 
           Idle or still-hydrating collections report a sentinel and are filtered out; check hydration state directly in SQL if a collection you expect is missing. Catalog (s2) collections commonly appear with a small, expected baseline lag.
-        id: 1040
+        id: 1041
         links: []
         title: Most-Lagged Collections
         vizConfig:
@@ -2281,7 +2405,7 @@ spec:
           **Nominal:** 0 — nothing is waiting to hydrate.
 
           **Unhealthy:** Sustained non-zero means the replica is undersized for its workload, or one slow-hydrating collection is holding up the line behind it.
-        id: 1042
+        id: 1043
         links: []
         title: Hydration Queue Size
         vizConfig:
@@ -2482,7 +2606,7 @@ spec:
           **The 15 collections that took longest to finish hydrating. Hydration time scales with the size of the state being rebuilt, so large materialized views and indexes naturally top the list.**
 
           The per-collection hydration-time metric is cloud-only, so this is blank on self-managed. Get it from SQL instead: `SELECT object_id, time_ns/1e9 AS seconds FROM mz_internal.mz_compute_hydration_times ORDER BY time_ns DESC`. The live metric-side proxy for what's behind is materialize.compute.freshness.top_collections.
-        id: 1043
+        id: 1044
         links: []
         title: Slowest Hydrating Collections
         vizConfig:
@@ -2590,14 +2714,14 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it has no output frontier.**
+          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**
 
           **Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.
 
           **Unhealthy:** A count that stays elevated means something can't finish hydrating — a source whose CREATE never completed, or a wedged dataflow. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
 
           Stopgap, not a real signal: self-managed has no hydration-state metric, so this counts collections parked at the wallclock-lag u64::MAX sentinel (> 1e15) as a proxy. Deprecate this query once an actual hydration-state metric exists.
-        id: 1041
+        id: 1042
         links: []
         title: Currently Hydrating
         vizConfig:
@@ -4769,7 +4893,7 @@ spec:
           **Degraded:** Sustained p99 in the tens of seconds points at a slow Iceberg catalog (REST catalog under load, Glue API throttling); sink lag will be growing at the same time.
 
           Scoped to the selected clusters/replicas.
-        id: 1063
+        id: 1064
         links: []
         title: Iceberg Commit Latency (p50 / p90 / p99)
         vizConfig:
@@ -4934,7 +5058,7 @@ spec:
           **Unhealthy:** Non-zero in either dimension is worth investigating; climbing failures drag sink lag up with them.
 
           Scoped to the selected clusters/replicas.
-        id: 1064
+        id: 1065
         links: []
         title: Iceberg Commit Failures & Conflicts
         vizConfig:
@@ -5170,7 +5294,7 @@ spec:
           **Per-sink rate of files and snapshots written to Iceberg. Each commit produces one snapshot with data files (new rows) and delete files (tombstones for upserts). The data:delete ratio reflects your workload — pure-insert sinks produce ~0 deletes; upsert-heavy ones roughly 1:1.**
 
           Sustained delete-file rate with no data files means the sink is mostly deleting (data evaporating upstream). Scoped to the selected clusters/replicas.
-        id: 1065
+        id: 1066
         links: []
         title: Iceberg File & Snapshot Rate
         vizConfig:
@@ -5332,7 +5456,7 @@ spec:
           **Unhealthy:** A sustained non-zero disconnect rate signals unhealthy connectivity (network flakiness, broker restarting, auth tokens expiring); pairs with TX errors when the issue is broker-side rather than purely network.
 
           Scoped to the selected clusters/replicas.
-        id: 1068
+        id: 1069
         links: []
         title: Kafka Connect / Disconnect Rate
         vizConfig:
@@ -5433,7 +5557,7 @@ spec:
           **Unhealthy:** Sustained high values mean Materialize is producing faster than the broker accepts (often paired with TX errors); if the buffer hits its bound the sink stalls and lag climbs.
 
           Scoped to the selected clusters/replicas.
-        id: 1067
+        id: 1068
         links: []
         title: Kafka Output Buffer (messages)
         vizConfig:
@@ -5534,7 +5658,7 @@ spec:
           **Unhealthy:** Non-zero is a problem: broker outages, ACL changes, topic deletion/recreation, or partition rebalancing. Sustained errors grow sink lag and can fill the output buffer.
 
           Scoped to the selected clusters/replicas.
-        id: 1066
+        id: 1067
         links: []
         title: Kafka TX Error Rate
         vizConfig:
@@ -5666,7 +5790,7 @@ spec:
           **Unhealthy:** Sustained growth means the sink can't keep up — usually downstream back-pressure (broker overloaded, Iceberg catalog slow) or repeated commit failures (see the Iceberg/Kafka sink error panels).
 
           Clamped at 0 (brief negatives come from scrape skew between the staged and committed counters). Scoped to the selected clusters/replicas.
-        id: 1062
+        id: 1063
         links: []
         title: Sink Lag (staged minus committed)
         vizConfig:
@@ -5773,7 +5897,7 @@ spec:
           **Outbound throughput per sink — bytes/second successfully committed to the downstream system (Kafka broker, Iceberg catalog, …).**
 
           Idle sinks are filtered out. Scoped to the selected clusters/replicas.
-        id: 1061
+        id: 1062
         links: []
         title: Sink Throughput (committed)
         vizConfig:
@@ -5840,7 +5964,7 @@ spec:
           **Sinks by (type, envelope) — e.g. `kafka / upsert`, `kafka / debezium`, `iceberg / upsert`. The envelope is how Materialize encodes changes: `upsert` writes the latest value per key, `debezium` writes change events with old+new values.**
 
           Environment-scoped.
-        id: 1060
+        id: 1061
         links: []
         title: Sink Types
         vizConfig:
@@ -5958,7 +6082,7 @@ spec:
           **Inbound throughput per primary source — bytes/second pulled from upstream. Subsources (e.g. per-table Postgres replication) roll up to their primary, so each line is one logical source.**
 
           Idle sources are filtered out. Scoped to the selected clusters/replicas.
-        id: 1057
+        id: 1058
         links: []
         title: Source Bytes Received (rate)
         vizConfig:
@@ -6042,10 +6166,10 @@ spec:
         description: |-
           **Per-source upstream health, with two complementary signals — both nominal at 0, so an empty panel is healthy and any series means a source needs attention.**
 
-          **Unhealthy:** Commit failures fire when the upstream is reachable but rejects the offset/replication-slot commit (auth/ACL, broker rejecting). The disconnected indicator flips to 1 when the source has lost sight of its upstream (`offset_known` fell below `offset_committed`) — the broker/DB-unreachable case (BrokerTransportFailure, severed security group, DNS) that commit-failures can't catch, because the source never reaches the commit step. When disconnected is 1, throughput flat-lines and frontier lag climbs. Read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.
+          **Unhealthy:** Commit failures fire when the upstream is reachable but rejects the offset/replication-slot commit (auth/ACL, broker rejecting). The disconnected indicator flips to 1 when the source has lost sight of its upstream (`offset_known` fell below `offset_committed`) — the broker/DB-unreachable case (BrokerTransportFailure, severed security group, DNS) that commit-failures can't catch, because the source never reaches the commit step. When disconnected is 1, throughput flat-lines and lag climbs. Read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.
 
           Data-decode errors are separate (`mz_source_error_inserts`). Scoped to the selected clusters/replicas.
-        id: 1059
+        id: 1060
         links: []
         title: Source Upstream Errors
         vizConfig:
@@ -6167,10 +6291,10 @@ spec:
         description: |-
           **Messages ingested per second, split per source AND replica. Replicas read their upstream independently and should track together.**
 
-          **Unhealthy:** A replica flat at 0 while its siblings keep ingesting has lost its upstream connection (e.g. restarted and couldn't resume pulling from Kafka). The source still shows `Running` overall and the aggregate throughput hides it, so this per-replica split is where it surfaces — frontier lag will be climbing too; restarting that replica usually clears the stale connection.
+          **Unhealthy:** A replica flat at 0 while its siblings keep ingesting has lost its upstream connection (e.g. restarted and couldn't resume pulling from Kafka). The source still shows `Running` overall and the aggregate throughput hides it, so this per-replica split is where it surfaces — lag will be climbing too; restarting that replica usually clears the stale connection.
 
           Scoped to the selected clusters/replicas.
-        id: 1058
+        id: 1059
         links: []
         title: Source Ingestion by Replica
         vizConfig:
@@ -6321,7 +6445,7 @@ spec:
           **A catalog of sources — one row per source (by name) with its connector type, envelope, and the cluster it ingests on. The metric-side "what sources do I have" reference.**
 
           Self-managed exposes no source *status* metric, so running/stalled isn't here — check `SELECT name, type, status FROM mz_internal.mz_source_statuses`, and use source throughput to confirm a source is actively ingesting. `_progress` subsources are excluded, so the row count matches the source count. Environment-scoped.
-        id: 1056
+        id: 1057
         links: []
         title: Sources
         vizConfig:
@@ -6385,7 +6509,7 @@ spec:
           **Sources by connector type (kafka / postgres / mysql / …) — what flavors of upstream feed make up the ingest workload. Most environments concentrate on one or two.**
 
           Environment-scoped.
-        id: 1055
+        id: 1056
         links: []
         title: Source Types
         vizConfig:
@@ -6453,7 +6577,7 @@ spec:
           **Active sinks in the catalog — each emits the results of a materialized view or query to an external system (Kafka, Iceberg, …). Counts distinct sink objects (excluding `_progress` subsources), matching `mz_sinks`.**
 
           Environment-scoped.
-        id: 1053
+        id: 1054
         links: []
         title: Active Sinks
         vizConfig:
@@ -6513,7 +6637,7 @@ spec:
           **Active sources in the catalog — each is a continuous ingestion connection from an external system (Kafka, Postgres, MySQL, S3, …), so this is roughly how many upstream feeds the environment maintains. Counts distinct source objects (the hidden per-source `_progress` subsources are excluded), matching `mz_sources`.**
 
           Environment-scoped — the cluster/replica selectors don't narrow it.
-        id: 1052
+        id: 1053
         links: []
         title: Active Sources
         vizConfig:
@@ -6573,7 +6697,7 @@ spec:
           **User-created tables in the catalog. Tables are write-once-read-many; `INSERT`s feed dataflows downstream. Mostly a catalog-shape signal — for actual ingest activity look at source throughput.**
 
           Environment-scoped.
-        id: 1054
+        id: 1055
         links: []
         title: Active Tables
         vizConfig:
@@ -6702,7 +6826,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it has no output frontier.**
+          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**
 
           **Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.
 
@@ -6777,7 +6901,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The worst frontier lag seen anywhere in the environment over the selected window — how far the most-behind collection's output trailed real time. A top-level freshness pointer.**
+          **The worst lag seen anywhere in the environment over the selected window — how far the most-behind collection's output trailed real time. A top-level freshness pointer.**
 
           **Degraded:** Climbing toward an hour means some collection is falling behind; drill into per-cluster and per-collection freshness to find which, and into hydration / source health for why.
 
@@ -7313,6 +7437,11 @@ spec:
                           element:
                             kind: ElementReference
                             name: freshness-lag-by-cluster
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: freshness-lag-total-by-cluster
                       - kind: AutoGridLayoutItem
                         spec:
                           element:

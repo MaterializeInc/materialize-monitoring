@@ -1016,11 +1016,14 @@
   name: mz_dataflow_wallclock_lag_seconds
   usage:
   - materialize.compute.freshness.lag_by_cluster
+  - materialize.compute.freshness.lag_total_by_cluster
   - materialize.compute.freshness.top_collections
   - materialize.compute.hydration.currently_hydrating
   - materialize.generations.collections
   - materialize.generations.hydrating
   - materialize.generations.lag.max
+  - materialize.generations.lag.total
+  - materialize.generations.lag.total_by_cluster
   - materialize.info.max_lag
 - importance: recommended
   labels:

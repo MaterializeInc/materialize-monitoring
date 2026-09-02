@@ -376,6 +376,7 @@
   name: mz_dataflow_wallclock_lag_seconds
   usage:
   - materialize.compute.freshness.lag_by_cluster
+  - materialize.compute.freshness.lag_total_by_cluster
   - materialize.compute.freshness.top_collections
   - materialize.compute.hydration.currently_hydrating
   - materialize.info.max_lag
