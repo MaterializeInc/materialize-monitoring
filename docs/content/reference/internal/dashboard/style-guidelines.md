@@ -826,6 +826,23 @@ selection narrows. The environment namespace stays the hidden, environment-deriv
 already uses. `%%{mzDeploymentNamespaceFilter}` is the two as **one** matcher; writing both filters side by side
 repeats the `namespace` label in one selector, which is an AND and matches nothing.
 
+## Internal vocabulary does not belong in panel titles or descriptions
+
+The dashboards are read by database-literate operators, not by people who work on
+Materialize. A term that is precise internally and opaque to them costs the reader
+the panel.
+
+**"Frontier" is the standing example.** It named two panels and appeared fifteen
+times in registry prose; it is now "lag", "results", or "producing results"
+depending on what the sentence was actually saying — *"collections with no
+established frontier"* became *"collections that have not produced results yet"*,
+which says the same thing to someone who has never read a dataflow paper.
+
+The boundary is what renders. Registry `description:` blocks become panel
+descriptions, so they follow this rule; Rust doc comments, YAML comments, and
+everything under `reference/internal/` are read by contributors, where the precise
+internal term is the right one and stays.
+
 ## Draw the total beside the worst case, not instead of it
 
 A max over a family of collections reports whichever one is furthest behind, so

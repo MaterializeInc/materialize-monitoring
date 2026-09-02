@@ -212,10 +212,10 @@ Each rate panel sits beside the feed it summarizes, in the same row: the chart s
 
 **Generations** — the two sides of a blue/green rollout, split apart:
 
-1. Rollout Status (**header hidden**) — Active Generations, Currently Hydrating, Max Frontier Lag, Pods
+1. Rollout Status (**header hidden**) — Active Generations, Currently Hydrating, Worst-Case Lag, Pods
 2. Versions — Version by Generation (table)
 3. Hydration — Hydrating Collections by Generation, Collections by Generation
-4. Freshness — Frontier Lag by Generation, Total Lag by Generation, Total Lag by Generation and Cluster
+4. Freshness — Worst-Case Lag by Generation, Total Lag by Generation, Total Lag by Generation and Cluster
 5. Footprint — CPU by Generation, Memory by Generation
 
 **Version by Generation** is the row that says what the rollout is *for*. It reads the `mz_version` label off

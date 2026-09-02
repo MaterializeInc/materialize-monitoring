@@ -150,7 +150,7 @@ queries:
     stability: best-effort
     description:
       summary: |
-        The worst frontier lag seen anywhere in the environment over the
+        The worst lag seen anywhere in the environment over the
         selected window — how far the most-behind collection's output trailed
         real time. A top-level freshness pointer.
       degraded: |

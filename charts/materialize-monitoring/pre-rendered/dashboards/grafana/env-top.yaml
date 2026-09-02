@@ -1933,7 +1933,7 @@ spec:
 
           **Degraded:** A sustained climb means a collection can't keep pace with its input — an under-provisioned cluster or an expensive dataflow. A sharp spike that decays on its own is normal re-hydration after a restart or DDL, not a problem.
 
-          The catalog cluster (s2) sits a couple seconds back as its baseline. Collections with no established frontier report a sentinel and are excluded here. For which collection is responsible, see materialize.compute.freshness.top_collections.
+          The catalog cluster (s2) sits a couple seconds back as its baseline. Collections that have not produced results yet report a sentinel and are excluded here. For which collection is responsible, see materialize.compute.freshness.top_collections.
         id: 1039
         links: []
         title: Freshness Lag by Cluster
@@ -2061,7 +2061,7 @@ spec:
 
           **Deduplicated across replicas.** A collection served by several replicas reports once per replica, so the inner `max` picks the worst reading per collection before the outer `sum` adds collections together. Without it a two-replica cluster would report double, which is exactly the shape a blue/green rollout has.
 
-          Collections with no established frontier report the `u64::MAX` sentinel and are excluded (`< 1e9`) — including them would swamp the total by nineteen orders of magnitude. They are counted by the hydration panels instead, so the two are complementary: this totals the collections that *have* a frontier, those count the ones that do not.
+          Collections that have not produced results yet report the `u64::MAX` sentinel and are excluded (`< 1e9`) — including them would swamp the total by nineteen orders of magnitude. They are counted by the hydration panels instead, so the two are complementary: this totals the collections that are *producing results*, those count the ones that are not.
         id: 1040
         links: []
         title: Total Lag by Cluster
@@ -2276,7 +2276,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The 15 collections whose output frontier is furthest behind real time — the per-collection breakdown behind the per-cluster freshness lag, labeled by object name.**
+          **The 15 collections whose results are furthest behind real time — the per-collection breakdown behind the per-cluster freshness lag, labeled by object name.**
 
           Idle or still-hydrating collections report a sentinel and are filtered out; check hydration state directly in SQL if a collection you expect is missing. Catalog (s2) collections commonly appear with a small, expected baseline lag.
         id: 1041
@@ -2714,7 +2714,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it has no output frontier.**
+          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**
 
           **Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.
 
@@ -6166,7 +6166,7 @@ spec:
         description: |-
           **Per-source upstream health, with two complementary signals — both nominal at 0, so an empty panel is healthy and any series means a source needs attention.**
 
-          **Unhealthy:** Commit failures fire when the upstream is reachable but rejects the offset/replication-slot commit (auth/ACL, broker rejecting). The disconnected indicator flips to 1 when the source has lost sight of its upstream (`offset_known` fell below `offset_committed`) — the broker/DB-unreachable case (BrokerTransportFailure, severed security group, DNS) that commit-failures can't catch, because the source never reaches the commit step. When disconnected is 1, throughput flat-lines and frontier lag climbs. Read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.
+          **Unhealthy:** Commit failures fire when the upstream is reachable but rejects the offset/replication-slot commit (auth/ACL, broker rejecting). The disconnected indicator flips to 1 when the source has lost sight of its upstream (`offset_known` fell below `offset_committed`) — the broker/DB-unreachable case (BrokerTransportFailure, severed security group, DNS) that commit-failures can't catch, because the source never reaches the commit step. When disconnected is 1, throughput flat-lines and lag climbs. Read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.
 
           Data-decode errors are separate (`mz_source_error_inserts`). Scoped to the selected clusters/replicas.
         id: 1060
@@ -6291,7 +6291,7 @@ spec:
         description: |-
           **Messages ingested per second, split per source AND replica. Replicas read their upstream independently and should track together.**
 
-          **Unhealthy:** A replica flat at 0 while its siblings keep ingesting has lost its upstream connection (e.g. restarted and couldn't resume pulling from Kafka). The source still shows `Running` overall and the aggregate throughput hides it, so this per-replica split is where it surfaces — frontier lag will be climbing too; restarting that replica usually clears the stale connection.
+          **Unhealthy:** A replica flat at 0 while its siblings keep ingesting has lost its upstream connection (e.g. restarted and couldn't resume pulling from Kafka). The source still shows `Running` overall and the aggregate throughput hides it, so this per-replica split is where it surfaces — lag will be climbing too; restarting that replica usually clears the stale connection.
 
           Scoped to the selected clusters/replicas.
         id: 1059
@@ -6826,7 +6826,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it has no output frontier.**
+          **Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**
 
           **Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.
 
@@ -6901,7 +6901,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The worst frontier lag seen anywhere in the environment over the selected window — how far the most-behind collection's output trailed real time. A top-level freshness pointer.**
+          **The worst lag seen anywhere in the environment over the selected window — how far the most-behind collection's output trailed real time. A top-level freshness pointer.**
 
           **Degraded:** Climbing toward an hour means some collection is falling behind; drill into per-cluster and per-collection freshness to find which, and into hydration / source health for why.
 

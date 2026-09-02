@@ -91,7 +91,7 @@ queries:
         Collections still rebuilding their in-memory state — a live
         hydration-queue proxy. After a restart, replica creation, or some DDL, a
         dataflow has to rebuild from persisted storage before it can serve, and
-        until it does it has no output frontier.
+        until it does it produces no results.
       nominal: |
         0, with brief spikes right after a replica restart that drain back to 0
         as dataflows catch up. Those spikes are healthy re-hydration, not a
@@ -191,7 +191,7 @@ queries:
         problem.
       notes: |
         The catalog cluster (s2) sits a couple seconds back as its baseline.
-        Collections with no established frontier report a sentinel and are
+        Collections that have not produced results yet report a sentinel and are
         excluded here. For which collection is responsible, see
         materialize.compute.freshness.top_collections.
     promQL:
@@ -235,11 +235,11 @@ queries:
         two-replica cluster would report double, which is exactly the shape a
         blue/green rollout has.
 
-        Collections with no established frontier report the `u64::MAX` sentinel
+        Collections that have not produced results yet report the `u64::MAX` sentinel
         and are excluded (`< 1e9`) — including them would swamp the total by
         nineteen orders of magnitude. They are counted by the hydration panels
         instead, so the two are complementary: this totals the collections that
-        *have* a frontier, those count the ones that do not.
+        are *producing results*, those count the ones that are not.
     promQL:
       template: |
         sum by (instance_id) (
@@ -259,7 +259,7 @@ queries:
     stability: best-effort
     description:
       summary: |
-        The 15 collections whose output frontier is furthest behind real time —
+        The 15 collections whose results are furthest behind real time —
         the per-collection breakdown behind the per-cluster freshness lag,
         labeled by object name.
       notes: |

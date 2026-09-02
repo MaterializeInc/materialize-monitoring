@@ -160,7 +160,7 @@ fn hydrating_now(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn max_lag_now(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::stat("Max Frontier Lag")
+    Panel::stat("Worst-Case Lag")
         .query(
             q.get("materialize.generations.lag.max")
                 .legend("gen {{generation}}"),
@@ -287,7 +287,7 @@ fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn lag_by_generation(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Frontier Lag by Generation")
+    Panel::timeseries("Worst-Case Lag by Generation")
         .query(
             q.get("materialize.generations.lag.max")
                 .legend("gen {{generation}}"),
