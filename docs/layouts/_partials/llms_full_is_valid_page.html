@@ -1,0 +1,5 @@
+{{- /*
+  llms-full.txt uses a separately-named partial with identical semantics.
+  See `llms_is_valid_page.html` for why this override exists.
+*/ -}}
+{{- return (partial "llms_is_valid_page.html" .) -}}

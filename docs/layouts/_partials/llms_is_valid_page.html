@@ -1,0 +1,48 @@
+{{- /*
+  Overrides the `llms_is_valid_page.html` that the llms-txt module defines
+  inline in `layouts/index.llms`. A project `_partials/` file wins over the
+  module's `{{ define }}`, so this is the one hook for filtering llms.txt
+  without forking the module's 140-line template.
+
+  Keeps the module's include/exclude glob handling verbatim, and adds a check
+  that drops contentless pages. Section indexes in this repo carry frontmatter
+  only (see CLAUDE.md), so without this they show up in llms.txt and
+  llms-full.txt as a bare title with an empty body.
+
+  Called as: dict "url" RELPERMALINK "includeList" SLICE "excludeList" SLICE
+*/ -}}
+
+{{- $url := .url -}}
+{{- $includeList := .includeList -}}
+{{- $excludeList := .excludeList -}}
+
+{{- $isIncluded := false -}}
+{{- if eq (len $includeList) 0 }}{{ $isIncluded = true }}{{ else -}}
+{{- range $includeList -}}
+  {{- if strings.HasSuffix . "/**" }}{{ if strings.HasPrefix $url (strings.TrimSuffix "/**" .) }}{{ $isIncluded = true }}{{ end -}}
+  {{- else if strings.HasSuffix . "/*" }}{{ $dir := strings.TrimSuffix "*" . }}{{ if and (strings.HasPrefix $url $dir) (ne $url $dir) (not (strings.Contains (strings.TrimSuffix "/" (strings.TrimPrefix $dir $url)) "/")) }}{{ $isIncluded = true }}{{ end -}}
+  {{- else }}{{ if eq $url . }}{{ $isIncluded = true }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- $isExcluded := false -}}
+{{- range $excludeList -}}
+  {{- if strings.HasSuffix . "/**" }}{{ if strings.HasPrefix $url (strings.TrimSuffix "/**" .) }}{{ $isExcluded = true }}{{ end -}}
+  {{- else if strings.HasSuffix . "/*" }}{{ $dir := strings.TrimSuffix "*" . }}{{ if and (strings.HasPrefix $url $dir) (ne $url $dir) (not (strings.Contains (strings.TrimSuffix "/" (strings.TrimPrefix $dir $url)) "/")) }}{{ $isExcluded = true }}{{ end -}}
+  {{- else }}{{ if eq $url . }}{{ $isExcluded = true }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* Resolve the page. The callers hand us a RelPermalink, which carries the
+       baseURL subpath, so strip that before asking site.GetPage. */ -}}
+{{- $basePath := (urls.Parse site.BaseURL).Path -}}
+{{- $ref := path.Join "/" (strings.TrimPrefix $basePath $url) -}}
+{{- $hasContent := false -}}
+{{- with site.GetPage $ref -}}
+  {{- if or (ne (strings.TrimSpace .RawContent) "") (ne (.Params.description | default "") "") -}}
+    {{- $hasContent = true -}}
+  {{- end -}}
+{{- end -}}
+
+{{- return (and $isIncluded (not $isExcluded) $hasContent) -}}
