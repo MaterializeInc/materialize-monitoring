@@ -104,8 +104,18 @@ fn hydration(q: &Queries) -> Row {
     )
 }
 
+/// Worst case, total, and the total split by cluster.
+///
+/// Three panels because a rollout asks three questions in order: is anything
+/// behind, is the generation as a whole catching up, and — when it is not —
+/// which cluster is holding it back.
 fn freshness(q: &Queries) -> Row {
-    Row::new("Freshness").grid(AutoGrid::new(1).panel("lag-by-generation", lag_by_generation(q)))
+    Row::new("Freshness").grid(
+        AutoGrid::new(2)
+            .panel("lag-by-generation", lag_by_generation(q))
+            .panel("lag-total-by-generation", lag_total_by_generation(q))
+            .panel("lag-total-by-cluster", lag_total_by_cluster(q)),
+    )
 }
 
 fn footprint(q: &Queries) -> Row {
@@ -241,6 +251,41 @@ fn collections_by_generation(q: &Queries) -> dashboardv2::PanelKind {
 
 // ---------------------------------------------------------------- freshness
 
+/// The panel that shows a rollout finishing.
+///
+/// The worst-case beside it is pinned to whichever single collection is furthest
+/// behind, so it stays high and jumpy while the generation is in fact converging.
+/// The total falls with every collection that catches up, which is the shape an
+/// operator waits for before promoting.
+fn lag_total_by_generation(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("Total Lag by Generation")
+        .query(
+            q.get("materialize.generations.lag.total")
+                .legend("gen {{generation}}"),
+        )
+        .unit("s")
+        .min(0.0)
+        .no_value(no_generations())
+        .build(0)
+}
+
+/// Where the remaining lag is, once the aggregate says "not yet".
+///
+/// Compare a cluster against *itself* across generations rather than against its
+/// siblings — absolute totals scale with how many collections a cluster carries,
+/// so the pairing that reads is `gen N / u1` beside `gen N+1 / u1`.
+fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("Total Lag by Generation and Cluster")
+        .query(
+            q.get("materialize.generations.lag.total_by_cluster")
+                .legend("gen {{generation}} / {{instance_id}}"),
+        )
+        .unit("s")
+        .min(0.0)
+        .no_value(no_generations())
+        .build(0)
+}
+
 fn lag_by_generation(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Frontier Lag by Generation")
         .query(
@@ -290,7 +335,7 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 10);
+        assert_eq!(assembled.elements.len(), 12);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
     }
 

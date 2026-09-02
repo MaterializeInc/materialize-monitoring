@@ -53,6 +53,28 @@ const ALLOWED: &[(&str, &str)] = &[
     ),
 ];
 
+/// Panels that exist here and not in the baseline.
+///
+/// **The baseline proves the port lost nothing; it is not a freeze on the
+/// dashboard.** Every panel the Python drew is still asserted, field by field —
+/// that is what the rest of this file does. A panel added afterwards has no
+/// baseline to match, so it is named here with the reason, and the checks below
+/// skip it rather than reporting it as a divergence.
+///
+/// Keep this short. A long list means the baseline has stopped describing the
+/// dashboard, and the comparison stops being worth running.
+const ADDED_PANELS: &[(&str, &str)] = &[(
+    "freshness-lag-total-by-cluster",
+    "total lag beside the worst case: the max is pinned to whichever collection \
+     is furthest behind and barely moves while the rest converge, so it cannot \
+     show rehydration finishing",
+)];
+
+/// Whether a panel postdates the baseline.
+fn is_added(name: &str) -> bool {
+    ADDED_PANELS.iter().any(|(panel, _)| panel == &name)
+}
+
 /// Panel descriptions that deliberately differ from the baseline.
 ///
 /// Two of these fix broken cross-references: the baseline points readers at tabs
@@ -124,7 +146,9 @@ fn the_ported_panels_carry_the_baseline_titles() {
             continue;
         };
         let Some((_, want)) = baseline.get(name) else {
-            mismatches.push(format!("{name}: not present in the baseline"));
+            if !is_added(name) {
+                mismatches.push(format!("{name}: not present in the baseline"));
+            }
             continue;
         };
         let want_title = want["spec"]["title"].as_str().unwrap_or_default();
@@ -426,6 +450,12 @@ fn the_tab_and_row_skeleton_matches_the_baseline() {
 }
 
 /// Flatten a layout to one comparable line per tab and row.
+/// The tab/row frame, with panels added since the baseline discounted.
+///
+/// Counting them would report every row that gained one as a divergence, which
+/// is the thing [`ADDED_PANELS`] exists to say is intentional. Discounting them
+/// keeps the check meaningful for everything else — a row losing a baseline
+/// panel, or changing its column cap, still fails.
 fn skeleton(layout: &serde_json::Value) -> Vec<String> {
     let mut out = Vec::new();
     for tab in layout["spec"]["tabs"].as_array().into_iter().flatten() {
@@ -437,11 +467,20 @@ fn skeleton(layout: &serde_json::Value) -> Vec<String> {
             .flatten()
         {
             let grid = &row["spec"]["layout"]["spec"];
+            let items = grid["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+            let added = items
+                .iter()
+                .filter(|item| {
+                    item["spec"]["element"]["name"]
+                        .as_str()
+                        .is_some_and(is_added)
+                })
+                .count();
             out.push(format!(
                 "  row {:?} cols={} panels={}",
                 row["spec"]["title"].as_str().unwrap_or("<untitled>"),
                 grid["maxColumnCount"],
-                grid["items"].as_array().map(|i| i.len()).unwrap_or(0),
+                items.len() - added,
             ));
         }
     }
@@ -629,11 +668,17 @@ fn report_porting_coverage() {
         "porting coverage changed; update PORTED if this was intentional"
     );
 
-    // Nothing we ported should be absent from the baseline: a panel we invented
-    // would mean the port drifted rather than progressed.
+    eprintln!("\n=== panels added since the baseline ===");
+    for (what, why) in ADDED_PANELS {
+        eprintln!("  {what}: {why}");
+    }
+
+    // Nothing we ported should be absent from the baseline unless it is a
+    // deliberate addition: an unlisted panel would mean the port drifted rather
+    // than progressed, which is a different thing from the dashboard growing.
     let unknown: Vec<&&String> = ported
         .iter()
-        .filter(|n| !baseline.contains_key(**n))
+        .filter(|n| !baseline.contains_key(**n) && !is_added(n))
         .collect();
     assert!(
         unknown.is_empty(),

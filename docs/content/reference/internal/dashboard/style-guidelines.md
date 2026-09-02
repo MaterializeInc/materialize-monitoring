@@ -826,6 +826,22 @@ selection narrows. The environment namespace stays the hidden, environment-deriv
 already uses. `%%{mzDeploymentNamespaceFilter}` is the two as **one** matcher; writing both filters side by side
 repeats the `namespace` label in one selector, which is an AND and matches nothing.
 
+## Draw the total beside the worst case, not instead of it
+
+A max over a family of collections reports whichever one is furthest behind, so
+it is the right panel for "is anything wrong" and the wrong one for "are we
+getting better": it stays high and jumpy while everything behind it converges.
+The sum falls with every member that catches up.
+
+Both are drawn on the freshness rows for that reason, and the same argument
+applies to any metric where a population recovers together — rehydration after a
+restart, a rollout, or DDL.
+
+Two things a sum needs that a max does not: **dedupe first**, since a collection
+served by several replicas reports once per replica and `max` is idempotent
+across them where `sum` multiplies (`sum by (…) (max by (…, collection_id) (…))`);
+and **no log axis**, which would flatten the very decay the panel exists to show.
+
 ## A table of current facts is an instant query
 
 A table describing what *is* — pods on a node, their requests and limits, a

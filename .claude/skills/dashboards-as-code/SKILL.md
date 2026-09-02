@@ -170,7 +170,7 @@ Generated from the rendered artifact; regenerate rather than hand-editing when t
 **Compute Objects**
 
 1. Compute Objects Summary (**header hidden**) — Active Materialized Views, Active Indexes, Active Views, Active Subscribes, Index Relationship Types
-2. Freshness — Freshness Lag by Cluster, Most-Lagged Collections
+2. Freshness — Freshness Lag by Cluster, Total Lag by Cluster, Most-Lagged Collections
 3. Hydration — Currently Hydrating, Hydration Queue Size, Slowest Hydrating Collections
 4. Dataflows — Dataflow Count, Dataflow Count (per worker), Dataflow Elapsed Rate
 5. Arrangements — Arrangement Maintenance Rate, Arrangement Maintenance Rate (per worker), System / User / Transient Collections — Record Counts
@@ -215,7 +215,7 @@ Each rate panel sits beside the feed it summarizes, in the same row: the chart s
 1. Rollout Status (**header hidden**) — Active Generations, Currently Hydrating, Max Frontier Lag, Pods
 2. Versions — Version by Generation (table)
 3. Hydration — Hydrating Collections by Generation, Collections by Generation
-4. Freshness — Frontier Lag by Generation
+4. Freshness — Frontier Lag by Generation, Total Lag by Generation, Total Lag by Generation and Cluster
 5. Footprint — CPU by Generation, Memory by Generation
 
 **Version by Generation** is the row that says what the rollout is *for*. It reads the `mz_version` label off
@@ -330,6 +330,11 @@ rather than state, so it lives in the
 - **Freshness** reads `mz_dataflow_wallclock_lag_seconds`. Collections with no established frontier report a
   `u64::MAX` (`~1.8e19`) sentinel, filtered with `< 1e9`; the metric is a summary carrying `quantile` `0`/`1` only, so
   take `1` for worst-case. Those excluded collections are what Currently Hydrating counts.
+  **Max and total answer different questions and both are drawn.** The max is pinned to whichever single collection is
+  furthest behind, so it barely moves while the rest of a rehydrating cluster converges; the sum falls with every
+  collection that catches up, which is the descent an operator watches before promoting a generation.
+  Any *sum* of this metric has to dedupe replicas first — `sum by (…) (max by (…, collection_id) (…))` — because a
+  collection served by two replicas reports twice, and two replicas is the normal shape mid-rollout.
 - **Source Ingestion by Replica** is a divergence detector: replicas read upstream independently, so one flat at 0
   while its siblings ingest has lost its connection — the aggregate throughput panel hides that.
 - **Source Upstream Errors** pairs a commit-failure rate with an `offset_committed > offset_known` disconnect

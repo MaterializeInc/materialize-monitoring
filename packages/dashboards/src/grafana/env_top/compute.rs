@@ -65,6 +65,7 @@ fn freshness(q: &Queries) -> Row {
         AutoGrid::new(3)
             .column_width(ColumnWidth::Wide)
             .panel("freshness-lag-by-cluster", lag_by_cluster(q))
+            .panel("freshness-lag-total-by-cluster", lag_total_by_cluster(q))
             .panel("freshness-top-collections", top_lagged_collections(q)),
     )
 }
@@ -166,6 +167,28 @@ fn index_types(q: &Queries) -> dashboardv2::PanelKind {
         )
         .no_value(NoValue::FilterMismatch)
         .shade(SHADE)
+        .build(0)
+}
+
+/// Total lag, beside the worst case rather than instead of it.
+///
+/// The two are asking different questions and the difference matters most while
+/// a cluster is catching up: the max is pinned to whichever single collection is
+/// furthest behind and barely moves as the others converge, while the total falls
+/// with every one that does. That descent is the readable picture of rehydration.
+///
+/// **No log scale here, unlike its neighbour.** A log axis is right for a
+/// worst-case that ranges over orders of magnitude; it would flatten the very
+/// decay this panel exists to show.
+fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("Total Lag by Cluster")
+        .query(
+            q.get("materialize.compute.freshness.lag_total_by_cluster")
+                .legend("{{cluster_name}}"),
+        )
+        .unit("s")
+        .min(0.0)
+        .no_value(NoValue::FilterMismatch)
         .build(0)
 }
 
@@ -403,12 +426,12 @@ mod tests {
     }
 
     #[test]
-    fn the_tab_has_five_rows_and_eighteen_panels() {
+    fn the_tab_has_five_rows_and_nineteen_panels() {
         let q = &crate::grafana::queries::test_queries();
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 18);
+        assert_eq!(assembled.elements.len(), 19);
     }
 
     #[test]

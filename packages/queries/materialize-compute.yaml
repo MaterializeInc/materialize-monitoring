@@ -206,6 +206,55 @@ queries:
     # so not-yet-hydrated collections are included here.
     datadogQuery: |
       max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, quantile:1} by {instance_id}
+  - id: materialize.compute.freshness.lag_total_by_cluster
+    stability: best-effort
+    description:
+      summary: |
+        The lag of every collection on each cluster, added together — one number
+        for how far behind the cluster is in total.
+      nominal: |
+        Low and flat. The absolute value is not comparable between clusters, since
+        a cluster with more collections has more to add up; the *shape* is what
+        this panel is for.
+      degraded: |
+        A climb that does not come back down. A rise that decays steadily is a
+        cluster catching up after a restart, a rollout, or DDL, and the decay is
+        the thing worth watching.
+      notes: |
+        **Read this beside the worst-case panel rather than instead of it.** The
+        max says whether anything is behind; this says how much is behind in
+        total, and the two answer different questions. When a hundred collections
+        rehydrate and fifty of them catch up, the max barely moves — it is still
+        reporting whichever one is furthest behind — while this halves. That
+        descent is the clearest picture of hydration progress the metrics can
+        give, and it is invisible in the max.
+
+        **Deduplicated across replicas.** A collection served by several replicas
+        reports once per replica, so the inner `max` picks the worst reading per
+        collection before the outer `sum` adds collections together. Without it a
+        two-replica cluster would report double, which is exactly the shape a
+        blue/green rollout has.
+
+        Collections with no established frontier report the `u64::MAX` sentinel
+        and are excluded (`< 1e9`) — including them would swamp the total by
+        nineteen orders of magnitude. They are counted by the hydration panels
+        instead, so the two are complementary: this totals the collections that
+        *have* a frontier, those count the ones that do not.
+    promQL:
+      template: |
+        sum by (instance_id) (
+          max by (instance_id, collection_id) (
+            mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id=~"%%{mzClusterList}", instance_id!="", quantile="1"} < 1e9
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["instance_id"]
+    # The `< 1e9` sentinel exclusion is a value filter Datadog cannot express, so
+    # not-yet-hydrated collections are included there — which for a *sum* is far
+    # more distorting than for the max beside it.
+    datadogQuery: |
+      sum:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, quantile:1} by {instance_id}
   - id: materialize.compute.freshness.top_collections
     stability: best-effort
     description:
