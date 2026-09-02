@@ -105,6 +105,16 @@ jobs:
         working-directory: docs
         run: hugo --gc --minify --baseURL "${{ steps.paths.outputs.base-url }}"
 
+      # Pages is served from the gh-pages *branch*, so GitHub runs its own
+      # Jekyll build over whatever lands there. Since the llms-txt module makes
+      # Hugo emit an `index.md` beside every page, Jekyll picks those up as
+      # source and runs them through Liquid — which chokes on Hugo shortcodes
+      # (`{{< relref >}}`) and on bare `{%` inside PromQL snippets. The
+      # `.nojekyll` in docs/static/ (copied to public/, deployed to the branch
+      # root by the main build) turns that pass off. Keep it there; without it
+      # the whole site stops deploying. Note only the *root* copy counts, so a
+      # PR preview alone cannot restore it.
+      #
       # Selective deploy:
       #  * main → target-folder '.' (the root of gh-pages). clean: true wipes
       #    stale files at the root, but clean-exclude keeps `preview/` intact.
