@@ -240,6 +240,8 @@ queries:
         nineteen orders of magnitude. They are counted by the hydration panels
         instead, so the two are complementary: this totals the collections that
         are *producing results*, those count the ones that are not.
+        Datadog cannot express that value filter, so its query includes
+        not-yet-hydrated collections and can overstate the total badly.
     promQL:
       template: |
         sum by (instance_id) (

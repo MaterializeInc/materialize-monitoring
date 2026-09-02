@@ -163,8 +163,8 @@ queries:
       notes: |
         **A proxy, not a hydration state.** Self-managed Materialize exposes no
         hydration-state metric, so this counts collections parked at the
-        wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection with no
-        produced any results yet. Retire it once a real hydration metric
+        wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection that has
+        not produced any results yet. Retire it once a real hydration metric
         exists. It is the same signal the environment overview
         reports as "Currently Hydrating", split by generation instead of summed
         across both sides of a rollout.
