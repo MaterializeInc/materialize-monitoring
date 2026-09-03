@@ -17,6 +17,7 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`chart-development`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/chart-development/SKILL.md) | changing anything under `charts/*` — templates, `values.yaml`, subchart wrapping, profiles, helm-unittest |
 | [`platform-development`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/platform-development/SKILL.md) | changing `terraform/`, `test/e2e/`, or the CI gating them — and chart changes with consequences for either |
 | [`deployment-operations`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/deployment-operations/SKILL.md) | standing up the stack against a real or local cluster, or diagnosing an unhealthy one |
+| [`troubleshooting-materialize`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/troubleshooting-materialize/SKILL.md) | diagnosing Materialize itself *through* this stack — the mirror of `deployment-operations`, which covers the stack |
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
 | [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
@@ -63,7 +64,7 @@ A skill routes; it does not duplicate.
 Substantive content belongs in these docs — operators hit the same problems contributors do, and a troubleshooting entry
 only readable inside a skill file helps nobody with a broken cluster.
 
-The two newest follow that split deliberately:
+Three follow that split deliberately:
 
 - **`deployment-operations`** is mostly pointers into [o11y Troubleshooting](../../../operating/o11y-troubleshooting/),
   [Uninstalling](../../../operating/uninstalling/), and
@@ -73,5 +74,14 @@ The two newest follow that split deliberately:
 - **`platform-development`** keeps the reasoning that has no natural operator-facing home: why the module fans values
   out at all (Helm cannot template subchart values from a parent), why `terraform validate` proves almost nothing, and
   the handful of HCL and `yamlencode` /`yamldecode` behaviours that produce valid-but-wrong config.
+
+- **`troubleshooting-materialize`** is the worked example of the rule.
+  It was first written as 215 lines carrying the whole reading guide — lag sentinels, quantile summaries,
+  max-versus-total, replica double-counting, empty-versus-missing — and that content moved to
+  [Troubleshooting Materialize](../../../operating/troubleshooting-materialize/), where an operator with a lagging
+  environment can find it without opening a skill file.
+  The skill kept what is genuinely skill-shaped and is now a third of the size: which of the three troubleshooting
+  surfaces you are actually on, not asking for cluster admin, and the habits — the query registry is the reading guide,
+  silence is not health because no alert rules ship, confirm a label before building on it.
 
 When a skill starts accumulating prose, that is the signal to move it into a doc and leave a link.
