@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.13.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.22.0 (Unreleased)
 
 _Changes Pending_
@@ -76,9 +80,35 @@ _Changes Pending_
 
 _Changes Pending_
 
-## mzmon-lib (shared library) v0.12.0 (Unreleased)
+## mzmon-lib (shared library) v0.12.0
 
-_Changes Pending_
+* Show total lag in env-top / env-upgrade
+    * [materialize-monitoring#312](https://github.com/MaterializeInc/materialize-monitoring/pull/312)
+    * Add new queries around max lag (materialize.compute.freshness.lag_total_by_cluster, materialize.generations.lag.total)
+    * Show max lag as new panels (including per-cluster breakdown) in env-top and env-upgrade dashboards
+* DEP-242 Add infra-nodes dashboard
+    * [materialize-monitoring#311](https://github.com/MaterializeInc/materialize-monitoring/pull/311)
+    * Adds an infra-nodes dashboard that is installed by default
+* Update Rust crate indexmap to v2.14.1
+    * [materialize-monitoring#309](https://github.com/MaterializeInc/materialize-monitoring/pull/309)
+    * [`v2.14.1`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2141-2026-08-28)
+* DEP-209 Add Infrastructure Logs & Events Dashboard
+    * [materialize-monitoring#307](https://github.com/MaterializeInc/materialize-monitoring/pull/307)
+    * Adds new infra-logs dashboard that is enabled by default
+* Update Rust crate hyper to v1.11.1
+    * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
+    * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
+* DEP-240 Ensure kube-state-metrics metrics do not have namespace overwritten
+    * [materialize-monitoring#297](https://github.com/MaterializeInc/materialize-monitoring/pull/297)
+    * regression: kube-state-metrics were namespaced as `export_namespace=$target` with `namespace=monitoring` on all because the scraper overwrote that label with the namespace KSM was running in
+* DEP-209 Create a dashboard for Materialize logs and events
+    * [materialize-monitoring#296](https://github.com/MaterializeInc/materialize-monitoring/pull/296)
+    * Adds the new mz-mon-env-logs dashboard, installed by default
+* DEP-210 Upgrade visibility dashboard
+    * [materialize-monitoring#294](https://github.com/MaterializeInc/materialize-monitoring/pull/294)
+    * Adds a new mz-env-upgrade dashboard, enabled by default
+        * Requires materialize v26.41.0
+    * Enable sql scrapers by default
 
 ## Dashboards v0.13.0
 
