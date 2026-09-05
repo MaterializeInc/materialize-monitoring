@@ -8,13 +8,24 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.17.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.22.0 (Unreleased)
 
 _Changes Pending_
 
-## Dashboards v0.16.0 (Unreleased)
+## Dashboards v0.16.0
 
-_Changes Pending_
+* Show total lag in env-top / env-upgrade
+    * [materialize-monitoring#312](https://github.com/MaterializeInc/materialize-monitoring/pull/312)
+    * Add new queries around max lag (materialize.compute.freshness.lag_total_by_cluster, materialize.generations.lag.total)
+    * Show max lag as new panels (including per-cluster breakdown) in env-top and env-upgrade dashboards
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
 ## Dashboards v0.15.0
 
