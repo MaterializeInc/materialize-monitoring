@@ -163,7 +163,7 @@ flowchart TB
   opdep -->|"reads"| gman
   opdep -->|"reads"| gfld
   opdep -->|"reads"| gds
-  gman -.->|"grafana.app/folder<br/>annotation names the UID"| gfld
+  gman -.->|"grafana.app/folder<br/>name resolved to its UID"| gfld
   gman -.->|"instanceSelector"| gcr
   gfld -.->|"instanceSelector"| gcr
   gds -.->|"instanceSelector"| gcr
@@ -237,9 +237,10 @@ instead of being reinterpreted by the operator.
 Treat operator-managed dashboards as read-only: copy to a new dashboard rather than editing in place.
 
 Folder placement is part of the dashboard body rather than of the manifest around it.
-Each render carries a `grafana.app/folder` annotation naming a folder UID, and the chart creates those folders as
-`GrafanaFolder` resources from `dashboards.config.grafana.folders` — the two meet on the UID string alone, so see
-[Folders](../grafana-operator/#folders) before renaming one.
+Each render carries a `grafana.app/folder` annotation naming a folder, and the chart rewrites that name to the UID of
+the `GrafanaFolder` it creates from `dashboards.config.grafana.folders` — the same rewrite `apiVersion` gets, and for
+the same reason: neither is knowable when the dashboard is rendered.
+See [Folders](../grafana-operator/#folders).
 
 Five dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
 

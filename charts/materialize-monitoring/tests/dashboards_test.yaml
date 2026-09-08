@@ -65,13 +65,11 @@ tests:
       - hasDocuments:
           count: 0
 
-  # The other half of the folder contract. The annotation is baked into the
-  # pre-rendered artifact by `mzmon_lib::grafana::folder::Folder`, and the UID it
-  # names is created by `folders.yaml` from a values key — two files with no
-  # compile-time link between them. Asserting the annotation here and the UID in
-  # `folders_test.yaml` is what makes a one-sided rename fail rather than quietly
-  # dropping every dashboard at the root of the Grafana.
-  - it: should file each dashboard in a folder the chart creates
+  # The render names its folder (`materialize`); the chart rewrites that to the
+  # UID it creates, the same way it rewrites `apiVersion`. Assert the rewrite
+  # happened at all — a passthrough would leave the bare name here, which Grafana
+  # would read as a UID and fail to resolve.
+  - it: should resolve each dashboard's folder to a UID the chart creates
     asserts:
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
@@ -85,3 +83,55 @@ tests:
         documentSelector:
           path: metadata.name
           value: mzmon-infra-nodes-dashboard
+
+  # The whole point of resolving in the chart rather than at render time: the UID
+  # moves with the release, and the dashboards follow it without being re-rendered.
+  - it: should follow the folder UID when the release name moves
+    set:
+      fullnameOverride: custom
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: custom-materialize
+        documentSelector:
+          path: metadata.name
+          value: custom-env-top-dashboard
+
+  - it: should follow an adopted folder UID
+    set:
+      dashboards.config.grafana.folders.materialize.existingUid: adopted-uid
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: adopted-uid
+        documentSelector:
+          path: metadata.name
+          value: mzmon-env-top-dashboard
+
+  # A render naming a folder the chart does not have would otherwise ship a name
+  # where Grafana expects a UID. Dropping it is the honest version of what
+  # Grafana does with it anyway.
+  - it: should drop the annotation when the folder is not configured
+    set:
+      # Null removes the key on merge; a replacement map would be merged *into*
+      # the defaults and leave the entry in place.
+      dashboards.config.grafana.folders.materialize: null
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+        documentSelector:
+          path: metadata.name
+          value: mzmon-env-top-dashboard
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-infra
+        documentSelector:
+          path: metadata.name
+          value: mzmon-infra-nodes-dashboard
+      # The other annotations are untouched by the rewrite.
+      - equal:
+          path: spec.template.metadata.annotations["monitoring.materialize.cloud/min-mz-version"]
+          value: v26.24.0
+        documentSelector:
+          path: metadata.name
+          value: mzmon-env-top-dashboard

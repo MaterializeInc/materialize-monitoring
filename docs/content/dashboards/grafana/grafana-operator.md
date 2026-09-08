@@ -174,16 +174,33 @@ kubectl get grafanafolder -n monitoring
 ```
 
 Placement travels **with** the dashboard, not with the manifest: each render carries a `grafana.app/folder` annotation
-holding the UID of the folder it belongs in, and the resources above are what make that UID exist.
-The two are joined by the string alone.
+naming the folder it belongs in.
+Grafana reads that annotation as a folder **UID**, and a UID depends on the release, so it is not something the render
+can know.
+What the render writes is the folder's *name* — `materialize`, `infra`, `meta-o11y` — and the chart rewrites it to the
+real UID on the way to the operator, exactly as it rewrites `apiVersion`:
 
-> [!WARNING]
->   **The folder UIDs are derived from the release name.**
->   They are `<fullname>-<key>` — `mzmon-materialize`, `mzmon-infra`, `mzmon-meta-o11y` — while the annotation baked
->   into each dashboard is fixed at render time.
->   Setting `fullnameOverride`, or renaming a key under `folders`, moves the folders out from under every dashboard,
->   and Grafana quietly files them at the root instead.
->   To point the chart at folders that already exist, set `existingUid` on the entry rather than renaming it.
+```yaml
+# in the pre-rendered dashboard              # in the GrafanaManifest the operator applies
+grafana.app/folder: materialize      →       grafana.app/folder: mzmon-materialize
+```
+
+So the UID is free to move — under a different release name, or onto a folder you already own via `existingUid` — and
+the dashboards follow it without being re-rendered.
+
+What is not free to move is the **name**.
+It is the one string the render and the chart must agree on, and renaming a key under `folders` drops the annotation
+from every dashboard that names it, leaving them at the root.
+Adopt an existing folder with `existingUid` rather than renaming the key:
+
+```yaml
+dashboards:
+  config:
+    grafana:
+      folders:
+        materialize:
+          existingUid: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
+```
 
 To nest the whole set under a folder you already have, give each top-level entry a parent:
 
@@ -198,7 +215,9 @@ dashboards:
 ```
 
 Folders are an operator-mode feature — the standalone Grafana chart has no resource to create them with.
-Set `create: false` on an entry to leave it out, though a dashboard annotated for a folder that does not exist lands at the root.
+`create: false` keeps an entry as a resolution target without creating the folder, which is the shape to use when
+something outside this chart owns it; removing the entry outright (`materialize: null`) is what drops those dashboards
+to the root.
 
 ### Dashboard schema version
 

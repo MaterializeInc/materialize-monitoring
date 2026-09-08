@@ -10,12 +10,12 @@ release:
 templates:
   - templates/dashboards/grafana-operator/folders.yaml
 tests:
-  # The UIDs are the half of the contract the dashboards cannot see: each one is
-  # baked into a `grafana.app/folder` annotation at render time, by
-  # `mzmon_lib::grafana::folder::Folder`. Nothing but this test notices if the two
-  # stop agreeing, and the failure is silent in the cluster — dashboards land at
-  # the root rather than erroring.
-  - it: should create the folders the rendered dashboards name
+  # The keys are the contract with the renders: `mzmon_lib::grafana::folder::Folder`
+  # spells `materialize`, `infra` and `meta-o11y`, and `dashboards.yaml` resolves
+  # a render's name through the same helper that names the folders here. A key
+  # renamed on one side only leaves those dashboards at the root, which is silent
+  # in the cluster — this is where it is not silent.
+  - it: should create a folder for every name a dashboard can carry
     asserts:
       - equal:
           path: spec.uid
@@ -90,6 +90,35 @@ tests:
     asserts:
       - hasDocuments:
           count: 2
+
+  # Removing a folder outright is a null, not an empty map — the same override
+  # `dashboards_test.yaml` uses to prove the dashboards then land at the root.
+  - it: should drop an entry removed from the map
+    set:
+      dashboards.config.grafana.folders.materialize: null
+    asserts:
+      - hasDocuments:
+          count: 2
+      - notFailedTemplate: {}
+
+  # The UID is derived from the release so two releases cannot collide on one
+  # cluster-wide UID. `dashboards_test.yaml` asserts the dashboards follow it.
+  - it: should derive the UID from the release name
+    set:
+      fullnameOverride: custom
+    asserts:
+      - equal:
+          path: spec.uid
+          value: custom-infra
+        documentSelector:
+          path: metadata.name
+          value: custom-infra
+      - equal:
+          path: spec.parentFolderRef
+          value: custom-infra
+        documentSelector:
+          path: metadata.name
+          value: custom-meta-o11y
 
   # Folders are a Grafana Operator resource; the standalone Grafana chart has
   # nothing to apply them with.

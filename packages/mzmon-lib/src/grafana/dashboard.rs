@@ -240,9 +240,8 @@ impl Dashboard {
 
     /// File the dashboard under a Grafana folder.
     ///
-    /// Defaults to [`Folder::Infra`], so a dashboard that says nothing is filed
-    /// as infrastructure rather than left at the root — see [`Folder`] for what
-    /// the folder UIDs are coupled to.
+    /// Defaults to [`Folder::Root`]. The value rendered is a folder *name* that
+    /// the chart resolves to a UID — see [`Folder`].
     pub fn folder(mut self, folder: Folder) -> Self {
         self.folder = folder;
         self

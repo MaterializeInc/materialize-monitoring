@@ -2271,23 +2271,26 @@ Grafana folders the dashboards are filed into.
 folder **UID**: `<fullname>-<key>`, which is `mzmon-<key>` at the chart's
 default `fullnameOverride`.
 
-**The keys are half of a contract.** A dashboard carries its placement as
-a `grafana.app/folder` annotation holding the folder UID, baked in when the
-dashboard is rendered — see `Folder` in `packages/mzmon-lib/src/grafana/folder.rs`,
-which spells `mzmon-infra`, `mzmon-materialize` and `mzmon-meta-o11y`.
-Nothing checks the two agree, so renaming a key here, or setting
-`fullnameOverride`, leaves every dashboard pointing at a folder that does
-not exist and Grafana files them at the root instead. Adopt a folder with
-`existingUid` rather than renaming, and if you must move them, re-render
-the dashboards.
+**The keys are the contract with the dashboards.** A dashboard carries its
+placement as a `grafana.app/folder` annotation naming a folder — the names
+are `Folder` in `packages/mzmon-lib/src/grafana/folder.rs`, which spells
+`infra`, `materialize` and `meta-o11y` — and the chart rewrites that name
+to the UID below on the way to the operator, the same way it rewrites
+`apiVersion`. So the UID is free to move with the release or with
+`existingUid`, and the dashboards follow it without being re-rendered.
+
+What does *not* move freely is a key: rename one and the dashboards that
+name it have their annotation dropped and land at the root instead. Adopt
+a folder with `existingUid` rather than renaming, or re-render the
+dashboards against the new name.
 
 Only rendered when `mode` is `operator`; the standalone Grafana chart has
 no folder resource to create.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `create` | `true` | Render a `GrafanaFolder` for this entry. `false` leaves the entry as a reference target only. |
-| `title` | — | Display name in Grafana. Unlike the UID, this is free to change. |
+| `create` | `true` | Render a `GrafanaFolder` for this entry. `false` still resolves dashboards to its UID, for a folder created out of band. |
+| `title` | — | Display name in Grafana. Unlike the key, this is free to change. |
 | `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
 | `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
 | `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |

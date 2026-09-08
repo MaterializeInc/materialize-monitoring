@@ -11,38 +11,41 @@
 //!
 //! Placement travels with the dashboard rather than beside it: the folder is
 //! encoded as a [`FOLDER_ANNOTATION`] annotation on the dashboard resource, which
-//! is the Grafana app-platform convention, so the Grafana Operator applies the
-//! resource as-is and needs no per-dashboard wiring in the chart.
+//! is the Grafana app-platform convention, so the operator applies the resource
+//! as-is and needs no per-dashboard wiring in the chart.
 //!
-//! The annotation holds a folder **UID**, not a title, and the folder has to
-//! already exist — a dashboard naming a UID nothing created lands in the root
-//! folder. The chart creates them: `dashboards.config.grafana.folders` renders one
-//! `GrafanaFolder` per entry with `uid: <fullname>-<key>`, and the chart pins
-//! `fullnameOverride: "mzmon"`, which is what makes the UIDs below the ones that
-//! exist on a default install.
+//! Grafana reads that annotation as a folder **UID**, and a UID is not something
+//! this crate can know — it depends on the release the dashboard is installed
+//! into. So what is rendered here is a **name, not a UID**: the chart's
+//! `dashboards.config.grafana.folders` is keyed by exactly these strings, and
+//! `templates/dashboards/grafana-operator/dashboards.yaml` rewrites the
+//! annotation to the real UID on the way past, the same way it rewrites
+//! `apiVersion`. A dashboard whose name matches no key has the annotation removed
+//! rather than rewritten, and lands at the root.
 //!
-//! **That coupling is by name only.** These strings and the chart's folder keys
-//! are two halves of the same contract with nothing asserting they agree, so an
-//! install that overrides `fullnameOverride` moves the folders out from under
-//! every dashboard here.
+//! Adding a variant here therefore means adding the matching key to the chart's
+//! `folders` map. `charts/materialize-monitoring/tests/folders_test.yaml` is what
+//! notices if the two disagree.
 
 use serde::{Deserialize, Serialize};
 
-/// The annotation the Grafana app platform reads a dashboard's folder UID from.
+/// The annotation the Grafana app platform reads a dashboard's folder from.
 pub const FOLDER_ANNOTATION: &str = "grafana.app/folder";
 
 /// The folder a dashboard is filed under.
 ///
-/// Each variant's [`Display`] output is the folder UID written to
-/// [`FOLDER_ANNOTATION`] — see the module docs for what has to exist on the other
-/// end of that string.
+/// Each variant's [`Display`] output is the folder *name* written to
+/// [`FOLDER_ANNOTATION`], which the chart resolves to a UID — see the module docs.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub enum Folder {
-    /// Grafana's root folder. Emits no annotation at all, which is the placement
-    /// every dashboard had before folders existed.
+    /// Grafana's root folder. Emits no annotation at all.
+    ///
+    /// The default, so a dashboard that says nothing about placement keeps the
+    /// one it had before folders existed. Filing a dashboard is a decision, and
+    /// an unmade decision should not put it somewhere arbitrary.
+    #[default]
     Root,
     /// The platform a Materialize deployment runs on.
-    #[default]
     Infra,
     /// The monitoring stack watching itself.
     MetaO11y,
@@ -57,9 +60,9 @@ impl std::fmt::Display for Folder {
         // for it.
         f.write_str(match self {
             Folder::Root => "root",
-            Folder::Infra => "mzmon-infra",
-            Folder::MetaO11y => "mzmon-meta-o11y",
-            Folder::Materialize => "mzmon-materialize",
+            Folder::Infra => "infra",
+            Folder::MetaO11y => "meta-o11y",
+            Folder::Materialize => "materialize",
         })
     }
 }

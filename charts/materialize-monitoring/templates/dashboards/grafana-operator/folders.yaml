@@ -4,12 +4,16 @@ Grafana Folders (operator format)
 The folders the bundled dashboards are filed into, one `GrafanaFolder` per entry
 in `dashboards.config.grafana.folders`.
 
-Dashboards do not reference these resources: each one carries its placement as a
-`grafana.app/folder` annotation holding a folder UID, baked in at render time by
-`mzmon_lib::grafana::folder::Folder`. This template is what makes the UID on the
-other end of that annotation exist. The two are coupled by name only — see the
-`folders` block in `values.yaml` for what that costs and how to move a folder
-without orphaning the dashboards.
+Dashboards do not reference these resources directly: each render names its
+folder by *name* in a `grafana.app/folder` annotation, and `dashboards.yaml`
+resolves that name to the UID created here. Both sides go through
+`mzmon.grafana.folderUid`, so the folder a dashboard is pointed at is the folder
+this template creates by construction.
+
+The keys of `folders` are the contract with the renders — they are what
+`mzmon_lib::grafana::folder::Folder` spells. A key with no matching variant
+creates a folder nothing files into, which is fine; a variant with no matching
+key leaves those dashboards at the root.
 */}}
 {{- if ( and
   $.Values.dashboards.config.grafana.enabled
@@ -25,8 +29,9 @@ without orphaning the dashboards.
     ) }}
   {{- range $folderKey, $folder := $.Values.dashboards.config.grafana.folders }}
     {{- /*
-    The resource name doubles as the default UID below, and as the target of
-    another entry's `parent.folderRef`.
+    The resource name, which is also what another entry's `parent.folderRef`
+    points at. Deliberately *not* the UID: an adopted folder keeps this name
+    while taking its UID from `existingUid`.
     */}}
     {{- $fullname := printf "%s-%s" ( include "mzmon.fullname" $ ) $folderKey }}
     {{- if $folder.create }}
@@ -49,16 +54,10 @@ spec:
     {{- toYaml $selector | nindent 4 }}
   title: {{ $folder.title | quote }}
       {{- /*
-      An explicit `existingUid` adopts a folder that is already in Grafana; the
-      operator takes over its title rather than creating a second folder. Absent
-      one, the UID is derived from the key, which is what the dashboards'
-      annotations are rendered against.
+      Through the shared helper, so that the UID a dashboard is pointed at and
+      the UID created here are one expression rather than two that agree today.
       */}}
-      {{- if $folder.existingUid }}
-  uid: {{ $folder.existingUid | quote }}
-      {{- else }}
-  uid: {{ $fullname | quote }}
-      {{- end }}
+  uid: {{ include "mzmon.grafana.folderUid" ( dict "root" $ "key" $folderKey ) | quote }}
       {{- /*
       Two ways to nest, because the parent may not be ours to name: `folderUID`
       points at any folder in Grafana, while `folderRef` names another entry in
