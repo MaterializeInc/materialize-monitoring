@@ -1,0 +1,100 @@
+{{/*
+  download-dashboards: renders the download table for a single dashboard.
+
+  Looks one dashboard up by its name stem in every export format the docsite
+  knows about, and renders a row per format: where to download it and the
+  metadata annotations that render carries. A format with no render for this
+  dashboard still gets a row, so the table states what does not exist yet as
+  well as what does.
+
+  Params:
+    name  Dashboard name stem, e.g. "env-top". Required.
+
+  Usage:
+    {{< download-dashboards name="env-top" >}}
+*/}}
+{{- $name := .Get "name" -}}
+{{- if not $name -}}
+  {{- errorf "download-dashboards: the name parameter is required (%s)" .Position -}}
+{{- end -}}
+
+{{- /*
+  Every export format, in the order the table lists them. The pattern is the
+  asset path, with the name stem substituted in.
+
+  apiVersion, where set, is checked against the file: a render left behind by an
+  older schema is treated as absent rather than offered as this format. Only the
+  Grafana v2 renders carry an apiVersion today; the formats below it are still
+  unpublished, and guessing at the shape of a file that does not exist would
+  hide the first one that lands.
+*/ -}}
+{{- $formats := slice
+  (dict "label" "Grafana 12 and 13" "schema" "dashboard schema v2"
+        "pattern" "dashboards/grafana/%s.json"
+        "apiVersion" "dashboard.grafana.app/v2")
+  (dict "label" "Grafana 10 and 11" "schema" "dashboard schema v1"
+        "pattern" "dashboards/grafana-v1/%s.json")
+  (dict "label" "Datadog" "schema" "dashboard JSON"
+        "pattern" "dashboards/datadog/%s.json")
+-}}
+
+{{- /*
+  Friendly labels for the annotation keys the dashboards carry. An unrecognized
+  key falls back to its own suffix, so a new annotation appears in the table
+  without a change here.
+*/ -}}
+{{- $annotationLabels := dict
+  "min-mz-version" "Minimum Materialize"
+  "rec-mz-version" "Recommended Materialize"
+  "sql-metric-prefix" "SQL metric prefix"
+  "target-export" "Export target"
+-}}
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range $formats }}
+      {{- $path := printf .pattern $name }}
+      {{- $file := resources.Get $path }}
+      {{- $data := dict }}
+      {{- with $file }}
+        {{- $data = .Content | transform.Unmarshal }}
+      {{- end }}
+      {{- if and $file .apiVersion (ne (index $data "apiVersion") .apiVersion) }}
+        {{- $file = false }}
+      {{- end }}
+    <tr>
+      <td>{{ .label }}<br /><small>{{ .schema }}</small></td>
+      {{- if $file }}
+        {{- $metadata := index $data "metadata" | default dict }}
+        {{- $uid := index $metadata "name" | default $name }}
+        {{- $annotations := index $metadata "annotations" | default dict }}
+        {{- /* The hash busts the cache; the download name is what gets saved. */ -}}
+        {{- $href := printf "%s?xxhash=%s" $file.RelPermalink (hash.XxHash $file.Content) | relURL }}
+      <td>
+        <a href="{{ $href }}" download="{{ $uid }}.json"><code>{{ path.Base $path }}</code></a>
+        <br /><small>UID <code>{{ $uid }}</code></small>
+      </td>
+      <td>
+        {{- if $annotations }}
+          {{- range $key, $value := $annotations }}
+            {{- $short := index (strings.Split $key "/" | last 1) 0 }}
+          <strong>{{ index $annotationLabels $short | default $short }}</strong>: <code>{{ $value }}</code><br />
+          {{- end }}
+        {{- else }}
+          <em>No annotations</em>
+        {{- end }}
+      </td>
+      {{- else }}
+      <td colspan="2"><em>Not published yet</em></td>
+      {{- end }}
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
