@@ -9,6 +9,12 @@ Indexed by **what you actually see** — an error string, a pod that will not st
 
 Each entry names the cause and links to the page that explains it properly. Nothing here is unique to one install path; where a path already handles something for you, that is called out.
 
+This page is about **the monitoring stack**.
+If Materialize itself is the unhealthy thing and you are here to find out why, see
+[Troubleshooting Materialize](../troubleshooting-materialize/) instead.
+The tell is what you are asserting about: "Grafana shows nothing" is this page, "Grafana shows a cluster pinned at its
+memory limit" is that one.
+
 ## Start here: a timeout is not a duration problem
 
 > [!WARNING]
@@ -277,3 +283,5 @@ Note that a replace does **not** reset PVCs, per the storage-class warning above
 - [Production Best Practices](../production-best-practices/) — the deployment checklist, tagged by owner
 - [Uninstalling](../uninstalling/) and [Upgrading](../upgrading/) — the two asymmetric lifecycle operations
 - [Meta Observability](../meta-observability/) — monitoring the monitoring stack
+- [Troubleshooting Materialize](../troubleshooting-materialize/) — the mirror of this page, for when the database
+  rather than the stack is what is wrong
