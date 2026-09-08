@@ -62,7 +62,7 @@ pub mod theme;
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};
 use mzmon_lib::grafana::layout::{Layout, Tab};
-use mzmon_lib::grafana::{dashboard, variable};
+use mzmon_lib::grafana::{dashboard, folder::Folder, tags, variable};
 use mzmon_lib::query::QueryRegistry;
 
 use crate::grafana::queries::Queries;
@@ -141,7 +141,8 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "What happened during a Materialize upgrade.\n\nThe operator's own account of a \
              rollout, alongside\nwhat the cluster did underneath it.",
         )
-        .tags(["materialize", "monitoring", "upgrade"])
+        .tags([tags::MATERIALIZE, tags::MZMON, tags::content::UPGRADE])
+        .folder(Folder::Materialize)
         .cursor_sync(CursorSync::Crosshair)
         .variables(variable::operator_scoped(sql_metric_prefix))
         .metadata_annotation(

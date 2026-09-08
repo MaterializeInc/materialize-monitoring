@@ -158,6 +158,48 @@ dashboards:
         allowCrossNamespaceImport: true
 ```
 
+### Folders
+
+The dashboards are filed into folders rather than dropped at the root of the Grafana.
+The chart creates three, as `GrafanaFolder` resources, from `dashboards.config.grafana.folders`:
+
+| Folder | Holds |
+|---|---|
+| **Materialize** | The `env-*` dashboards — Materialize itself. |
+| **Infrastructure** | The `infra-*` dashboards — the platform underneath it. |
+| **Meta Observability** | Nested under Infrastructure. For the monitoring stack watching itself. |
+
+```bash
+kubectl get grafanafolder -n monitoring
+```
+
+Placement travels **with** the dashboard, not with the manifest: each render carries a `grafana.app/folder` annotation
+holding the UID of the folder it belongs in, and the resources above are what make that UID exist.
+The two are joined by the string alone.
+
+> [!WARNING]
+>   **The folder UIDs are derived from the release name.**
+>   They are `<fullname>-<key>` — `mzmon-materialize`, `mzmon-infra`, `mzmon-meta-o11y` — while the annotation baked
+>   into each dashboard is fixed at render time.
+>   Setting `fullnameOverride`, or renaming a key under `folders`, moves the folders out from under every dashboard,
+>   and Grafana quietly files them at the root instead.
+>   To point the chart at folders that already exist, set `existingUid` on the entry rather than renaming it.
+
+To nest the whole set under a folder you already have, give each top-level entry a parent:
+
+```yaml
+dashboards:
+  config:
+    grafana:
+      folders:
+        materialize:
+          parent:
+            folderUID: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
+```
+
+Folders are an operator-mode feature — the standalone Grafana chart has no resource to create them with.
+Set `create: false` on an entry to leave it out, though a dashboard annotated for a folder that does not exist lands at the root.
+
 ### Dashboard schema version
 
 `dashboards.config.grafana.manifest.apiTarget` selects the dashboard API the manifests declare.

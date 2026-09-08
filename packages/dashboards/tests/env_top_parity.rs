@@ -51,6 +51,11 @@ const ALLOWED: &[(&str, &str)] = &[
         "environmentIdList -> environmentNameList",
         "the old name was wrong: it holds organization names",
     ),
+    (
+        "tags: monitoring -> mzmon",
+        "`monitoring` did not distinguish this repo's dashboards from anything \
+         else in a shared Grafana; see `mzmon_lib::grafana::tags`",
+    ),
 ];
 
 /// Panels that exist here and not in the baseline.
@@ -767,13 +772,17 @@ fn the_shell_matches_the_baseline_where_we_did_not_deviate() {
     assert_eq!(ours.editable, want["editable"].as_bool().unwrap_or(true));
     assert_eq!(ours.preload, want["preload"].as_bool().unwrap_or(false));
 
+    // Tags diverge by exactly one entry, which is asserted on both sides rather
+    // than skipped: the baseline's second tag was renamed, and nothing else about
+    // the set moved.
     let want_tags: Vec<&str> = want["tags"]
         .as_array()
         .expect("tags")
         .iter()
         .map(|t| t.as_str().expect("tag"))
         .collect();
-    assert_eq!(ours.tags, want_tags);
+    assert_eq!(want_tags, ["materialize", "monitoring"]);
+    assert_eq!(ours.tags, ["materialize", mzmon_lib::grafana::tags::MZMON]);
 
     let want_time = &want["timeSettings"];
     assert_eq!(

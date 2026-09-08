@@ -2259,7 +2259,44 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
 </td>
     </tr>
-    <tr>
+  </tbody>
+</table>
+
+##### Grafana folders.
+
+Grafana folders the dashboards are filed into.
+
+**A map, not a list.** Each key names one folder and becomes both the
+`GrafanaFolder` resource name and, unless `existingUid` overrides it, the
+folder **UID**: `<fullname>-<key>`, which is `mzmon-<key>` at the chart's
+default `fullnameOverride`.
+
+**The keys are half of a contract.** A dashboard carries its placement as
+a `grafana.app/folder` annotation holding the folder UID, baked in when the
+dashboard is rendered — see `Folder` in `packages/mzmon-lib/src/grafana/folder.rs`,
+which spells `mzmon-infra`, `mzmon-materialize` and `mzmon-meta-o11y`.
+Nothing checks the two agree, so renaming a key here, or setting
+`fullnameOverride`, leaves every dashboard pointing at a folder that does
+not exist and Grafana files them at the root instead. Adopt a folder with
+`existingUid` rather than renaming, and if you must move them, re-render
+the dashboards.
+
+Only rendered when `mode` is `operator`; the standalone Grafana chart has
+no folder resource to create.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `create` | `true` | Render a `GrafanaFolder` for this entry. `false` leaves the entry as a reference target only. |
+| `title` | — | Display name in Grafana. Unlike the UID, this is free to change. |
+| `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
+| `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
+| `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>

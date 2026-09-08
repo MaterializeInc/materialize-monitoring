@@ -48,7 +48,7 @@ pub mod theme;
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};
 use mzmon_lib::grafana::layout::{Layout, Tab};
-use mzmon_lib::grafana::{dashboard, variable};
+use mzmon_lib::grafana::{dashboard, folder::Folder, tags, variable};
 use mzmon_lib::query::QueryRegistry;
 
 use crate::grafana::queries::Queries;
@@ -108,7 +108,8 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "Logs and Kubernetes events for a Materialize deployment.\n\nWhat the workloads said, \
              as opposed to what they measured.",
         )
-        .tags(["materialize", "monitoring", "logs"])
+        .tags([tags::MATERIALIZE, tags::MZMON, tags::content::LOGS])
+        .folder(Folder::Materialize)
         .cursor_sync(CursorSync::Crosshair)
         .variables(variable::logs_scoped())
         .metadata_annotation(

@@ -71,7 +71,7 @@ pub mod theme;
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};
 use mzmon_lib::grafana::layout::{Layout, Tab};
-use mzmon_lib::grafana::{dashboard, variable};
+use mzmon_lib::grafana::{dashboard, folder::Folder, tags, variable};
 use mzmon_lib::query::QueryRegistry;
 
 use crate::grafana::queries::Queries;
@@ -140,7 +140,8 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
              What the machine is, how hard it is working, how much of it is already \
              promised to pods, and what it and Kubernetes have said about it.",
         )
-        .tags(["infrastructure", "monitoring", "nodes"])
+        .tags([tags::INFRA, tags::MZMON, tags::content::NODES])
+        .folder(Folder::Infra)
         .cursor_sync(CursorSync::Crosshair)
         .variables(variable::node_scoped())
         .metadata_annotation(

@@ -1,0 +1,78 @@
+{{/*
+Grafana Folders (operator format)
+
+The folders the bundled dashboards are filed into, one `GrafanaFolder` per entry
+in `dashboards.config.grafana.folders`.
+
+Dashboards do not reference these resources: each one carries its placement as a
+`grafana.app/folder` annotation holding a folder UID, baked in at render time by
+`mzmon_lib::grafana::folder::Folder`. This template is what makes the UID on the
+other end of that annotation exist. The two are coupled by name only — see the
+`folders` block in `values.yaml` for what that costs and how to move a folder
+without orphaning the dashboards.
+*/}}
+{{- if ( and
+  $.Values.dashboards.config.grafana.enabled
+  ( eq $.Values.dashboards.config.grafana.mode "operator" )
+) }}
+  {{- /*
+  Defaults to the labels on the `Grafana` resource this chart creates, so the
+  selector and the instance are rendered from one source and cannot drift.
+  */}}
+  {{- $selector := $.Values.dashboards.config.grafana.manifest.instanceSelector
+    | default ( dict
+      "matchLabels" ( include "mzmon.grafana.instanceLabels" $ | fromYaml )
+    ) }}
+  {{- range $folderKey, $folder := $.Values.dashboards.config.grafana.folders }}
+    {{- /*
+    The resource name doubles as the default UID below, and as the target of
+    another entry's `parent.folderRef`.
+    */}}
+    {{- $fullname := printf "%s-%s" ( include "mzmon.fullname" $ ) $folderKey }}
+    {{- if $folder.create }}
+---
+kind: GrafanaFolder
+apiVersion: grafana.integreatly.org/v1beta1
+metadata:
+  name: {{ $fullname | quote }}
+  namespace: {{ include "mzmon.namespace" $ | quote }}
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+spec:
+  resyncPeriod: {{ $.Values.dashboards.config.grafana.manifest.resyncPeriod }}
+      {{- if ( include "mzmon.grafana.crossNamespace" $ ) }}
+  allowCrossNamespaceImport: true
+      {{- end }}
+  instanceSelector:
+    {{- toYaml $selector | nindent 4 }}
+  title: {{ $folder.title | quote }}
+      {{- /*
+      An explicit `existingUid` adopts a folder that is already in Grafana; the
+      operator takes over its title rather than creating a second folder. Absent
+      one, the UID is derived from the key, which is what the dashboards'
+      annotations are rendered against.
+      */}}
+      {{- if $folder.existingUid }}
+  uid: {{ $folder.existingUid | quote }}
+      {{- else }}
+  uid: {{ $fullname | quote }}
+      {{- end }}
+      {{- /*
+      Two ways to nest, because the parent may not be ours to name: `folderUID`
+      points at any folder in Grafana, while `folderRef` names another entry in
+      this map by resource — which only resolves if that entry is created too.
+      */}}
+      {{- if $folder.parent }}
+        {{- if $folder.parent.folderUID }}
+  parentFolderUID: {{ $folder.parent.folderUID | quote }}
+        {{- else if $folder.parent.folderRef }}
+  parentFolderRef: {{ printf "%s-%s" ( include "mzmon.fullname" $ ) $folder.parent.folderRef | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- /* </if $folder.create> */}}
+  {{- end }}
+  {{- /* </range> */}}
+{{- end }}

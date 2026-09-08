@@ -22,7 +22,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let resource = Dashboard::new("mz-mon-env-top", "Materialize Environment Overview")
 //!     .description("Overview of a Materialize Environment.")
-//!     .tags(["materialize", "monitoring"])
+//!     .tags(["materialize", "mzmon"])
 //!     .variables(variable::environment_scoped("mz_"))
 //!     .layout(Layout::rows([
 //!         Row::new("Health").grid(AutoGrid::new(3).panel("up", Panel::stat("Up").build(0))),
@@ -46,6 +46,7 @@
 //!   almost certainly not what anyone wanted on a dashboard of 28 timeseries
 //!   panels — see [`CursorSync`].
 
+use crate::grafana::folder::{FOLDER_ANNOTATION, Folder};
 use crate::grafana::generated::dashboardv2;
 use crate::grafana::layout::{self, Assembled, Layout};
 use crate::grafana::variable;
@@ -193,6 +194,7 @@ pub struct Dashboard {
     name: String,
     title: String,
     description: Option<String>,
+    folder: Folder,
     tags: Vec<String>,
     cursor_sync: CursorSync,
     editable: bool,
@@ -218,6 +220,7 @@ impl Dashboard {
             name: name.into(),
             title: title.into(),
             description: None,
+            folder: Folder::default(),
             tags: Vec::new(),
             cursor_sync: CursorSync::default(),
             editable: true,
@@ -232,6 +235,16 @@ impl Dashboard {
 
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
+        self
+    }
+
+    /// File the dashboard under a Grafana folder.
+    ///
+    /// Defaults to [`Folder::Infra`], so a dashboard that says nothing is filed
+    /// as infrastructure rather than left at the root — see [`Folder`] for what
+    /// the folder UIDs are coupled to.
+    pub fn folder(mut self, folder: Folder) -> Self {
+        self.folder = folder;
         self
     }
 
@@ -330,7 +343,13 @@ impl Dashboard {
     /// Build the full Kubernetes-style resource the chart deploys.
     pub fn build(self) -> Result<Resource> {
         let name = self.name.clone();
-        let metadata_annotations = self.metadata_annotations.clone();
+        let mut metadata_annotations = self.metadata_annotations.clone();
+        // Root is the absence of the annotation, not a value for it: Grafana files
+        // a dashboard carrying no folder annotation at the root already, and
+        // writing one would only give the operator a UID to fail to resolve.
+        if self.folder != Folder::Root {
+            metadata_annotations.push((FOLDER_ANNOTATION.to_string(), self.folder.to_string()));
+        }
         let spec = self.build_spec()?;
         Ok(Resource {
             api_version: API_VERSION.to_string(),

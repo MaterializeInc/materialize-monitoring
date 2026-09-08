@@ -64,3 +64,24 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # The other half of the folder contract. The annotation is baked into the
+  # pre-rendered artifact by `mzmon_lib::grafana::folder::Folder`, and the UID it
+  # names is created by `folders.yaml` from a values key — two files with no
+  # compile-time link between them. Asserting the annotation here and the UID in
+  # `folders_test.yaml` is what makes a one-sided rename fail rather than quietly
+  # dropping every dashboard at the root of the Grafana.
+  - it: should file each dashboard in a folder the chart creates
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-materialize
+        documentSelector:
+          path: metadata.name
+          value: mzmon-env-top-dashboard
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-infra
+        documentSelector:
+          path: metadata.name
+          value: mzmon-infra-nodes-dashboard

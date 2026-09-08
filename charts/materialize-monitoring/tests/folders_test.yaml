@@ -1,0 +1,108 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: dashboard folders
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+templates:
+  - templates/dashboards/grafana-operator/folders.yaml
+tests:
+  # The UIDs are the half of the contract the dashboards cannot see: each one is
+  # baked into a `grafana.app/folder` annotation at render time, by
+  # `mzmon_lib::grafana::folder::Folder`. Nothing but this test notices if the two
+  # stop agreeing, and the failure is silent in the cluster — dashboards land at
+  # the root rather than erroring.
+  - it: should create the folders the rendered dashboards name
+    asserts:
+      - equal:
+          path: spec.uid
+          value: mzmon-materialize
+        documentSelector:
+          path: metadata.name
+          value: mzmon-materialize
+      - equal:
+          path: spec.uid
+          value: mzmon-infra
+        documentSelector:
+          path: metadata.name
+          value: mzmon-infra
+      - equal:
+          path: spec.uid
+          value: mzmon-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-meta-o11y
+
+  # Nesting by `folderRef` names another entry's *resource*, not its UID, so the
+  # reference has to be rendered through the same fullname the parent's
+  # `metadata.name` is.
+  - it: should nest meta observability under infrastructure
+    asserts:
+      - equal:
+          path: spec.parentFolderRef
+          value: mzmon-infra
+        documentSelector:
+          path: metadata.name
+          value: mzmon-meta-o11y
+      - notExists:
+          path: spec.parentFolderRef
+        documentSelector:
+          path: metadata.name
+          value: mzmon-infra
+
+  # `existingUid` is the supported way to point an entry at a folder someone else
+  # owns; it replaces the derived UID and leaves everything else in place.
+  - it: should adopt an existing folder when given a UID
+    set:
+      dashboards.config.grafana.folders.materialize.existingUid: adopted-uid
+    asserts:
+      - equal:
+          path: spec.uid
+          value: adopted-uid
+        documentSelector:
+          path: metadata.name
+          value: mzmon-materialize
+
+  # A parent that is not ours to name is addressed by UID directly, which wins
+  # over a ref when both are set.
+  - it: should nest under an unmanaged parent by UID
+    set:
+      dashboards.config.grafana.folders.meta-o11y.parent.folderUID: someone-elses-folder
+    asserts:
+      - equal:
+          path: spec.parentFolderUID
+          value: someone-elses-folder
+        documentSelector:
+          path: metadata.name
+          value: mzmon-meta-o11y
+      - notExists:
+          path: spec.parentFolderRef
+        documentSelector:
+          path: metadata.name
+          value: mzmon-meta-o11y
+
+  - it: should skip an entry that is not created
+    set:
+      dashboards.config.grafana.folders.meta-o11y.create: false
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  # Folders are a Grafana Operator resource; the standalone Grafana chart has
+  # nothing to apply them with.
+  - it: should template nothing outside operator mode
+    set:
+      dashboards.config.grafana.mode: standalone
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should template nothing when dashboards are disabled
+    set:
+      dashboards.config.grafana.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

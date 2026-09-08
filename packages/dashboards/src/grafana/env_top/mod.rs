@@ -38,8 +38,9 @@ pub mod theme;
 
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};
+use mzmon_lib::grafana::folder::Folder;
 use mzmon_lib::grafana::layout::{Layout, Tab};
-use mzmon_lib::grafana::{dashboard, variable};
+use mzmon_lib::grafana::{dashboard, tags, variable};
 use mzmon_lib::query::QueryRegistry;
 
 use crate::grafana::queries::Queries;
@@ -136,7 +137,8 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "Overview of a Materialize Environment.\n\nThis provides a high-level summary to \
              catch more obvious issues\nthat may require further investigation.",
         )
-        .tags(["materialize", "monitoring"])
+        .tags([tags::MATERIALIZE, tags::MZMON])
+        .folder(Folder::Materialize)
         // The baseline left this Off. On a dashboard built for correlating across
         // panels, a shared crosshair is the whole point.
         .cursor_sync(CursorSync::Crosshair)
