@@ -50,10 +50,10 @@ use crate::query::registry::QueryRegistry;
 /// The real registry files under `packages/queries/`, embedded. Keep in sync
 /// with that directory.
 ///
-/// The node-exporter registries are the corpus's only `canonical` queries —
-/// their definitions come from the upstream Node Exporter Full dashboard rather
-/// than being invented here, so the metric selection and arithmetic are already
-/// settled. The schema's "canonical requires test coverage" clause is
+/// The node-exporter registries carry most of the corpus's `canonical` queries
+/// (73 of 76; `materialize-kubernetes` holds the other 3) — their definitions
+/// come from the upstream Node Exporter Full dashboard rather than being
+/// invented here, so the metric selection and arithmetic are already settled. The schema's "canonical requires test coverage" clause is
 /// aspirational for now; real query-level assertions land with the E2E suite
 /// (DEP-185). Registering them here gets them schema validation, registry
 /// loading, and doc-context rendering in the meantime.

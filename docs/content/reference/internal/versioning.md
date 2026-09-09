@@ -92,26 +92,46 @@ See [Releasing](../releasing/) for the full state machine and the workflows that
 
 ## Stability guarantees {#stability-guarantees}
 
-The published version of this is [Stability and Deprecations](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
-This section is the policy of record.
+The published version of this is [Stability Guarantees and Deprecation Policy](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
+This section is the policy of record, and is kept in step with the published page.
+
+The design doc predates both and argued for a stricter pre-1.0 position than the one below.
+It is a dated artifact and is not being retro-edited; where the two differ, this section governs.
 
 **Surfaces are graded by how much control we have over them.**
 
 | Class | What it covers | Obligation |
 |---|---|---|
-| **Committed** | Alert names and their `severity`/`component` values; recording-rule names; Terraform inputs and outputs; dashboard identities; metric-tier names; artifact and OCI names; the `monitoring.materialize.cloud/*` namespace | Full cycle below |
-| **Coordinated** | `mz_*` metric names and labels — the Materialize product defines them | Disclose always; dual-publish for 30 days wherever our layer can. No cooldown obligation on us, since we do not control upstream timing |
-| **No promise** | Query IDs and chart value paths (consumers are our own dashboards and our own Terraform); dashboard internals; subchart values; Kubernetes, Grafana, and Prometheus API shapes | Changelog note when it changes |
+| **Committed** | Alert names and their `severity`/`component` values; recording-rule names; Terraform inputs and outputs; dashboard identities; metric-tier names; the **content** of queries declared `stability: canonical` — what the expression computes, not the id it is filed under; artifact and OCI **names** — the chart name and the container image repository, but not the tag; the `monitoring.materialize.cloud/*` namespace | Full cycle below |
+| **Coordinated** | `mz_*` metric names and labels — the Materialize product defines them | Documenting a change is RECOMMENDED. No dual-publish and no cooldown obligation, since we control neither the names nor the upstream timing |
+| **No promise** | Query **ids** at every level, including `canonical` (their consumers are dashboards in this repo); the content of `experimental` and `best-effort` queries; chart value paths (consumers are our own Terraform); container image **tags**; dashboard internals and variables; subchart values; Kubernetes, Grafana, and Prometheus API shapes | Changelog note when it changes |
+
+**`canonical` is how a query's content opts into the committed surface.**
+The registry's `stability` ladder runs `unused` → `playground` → `experimental` → `best-effort` → `canonical`, and promoting a query to `canonical` commits what it computes.
+The **id is not the promise**: ids are internal handles whose consumers are dashboards in this repo, and one may be renamed freely.
+What a customer builds on is the expression and its meaning — the units, the aggregation, the label set it returns — because that is what they copied into a panel of their own.
+Re-filing that expression under a new id changes nothing for them; quietly changing what it computes changes everything.
+
+That keeps the obligation deliberate rather than ambient: 76 of the 374 declarations are `canonical` today, and the other 298 carry no commitment about their content.
+`best-effort` still owes a deprecation before removal, but that is internal discipline about our own dashboards, not a commitment to a customer.
 
 **The cycle, for the committed surface:**
 
 1. **Announce** — `stability: deprecated` where the field exists, plus a release-note bullet starting `**Deprecated:**` that names the replacement.
 2. **Overlap** — old and new both *work* for at least **30 days**, measured from that release's tag date.
-3. **Remove** — a later minor (pre-1.0) or major (post-1.0), with a `**Removed:**` bullet.
+3. **Remove** — a later major, with a `**Removed:**` bullet.
    `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
+**The cycle binds from 1.0.**
+Before then, minors carry breaking and non-breaking changes alike, and the obligation is best-effort: announce what we can, and say so in the changelog.
+The steps above describe what we are working toward, not a promise a pre-1.0 release keeps.
+
 Additions are free, in any release.
-A **behavior change is a break**: an alert that keeps its name but fires under materially different conditions goes through the cycle, because routing and runbooks key on the name.
+
+**A behavior change is not, on its own, a break.**
+The cycle is keyed to identifiers, not to conduct.
+Committing to every observable behavior of this stack would be unbounded, and an obligation nobody can enumerate is one nobody can keep.
+The bounded exception is the content of `canonical` queries above, which is committed precisely because it is enumerated.
 
 **Ceremony is graded by failure mode, not by surface size.**
 A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
@@ -166,7 +186,7 @@ Alerts are unshipped, so this is free to fix now and a cycle per alert later.
 Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
 No module variable does this yet, so it is a pattern to establish rather than one to copy.
 
-**Pre-1.0.** Breaking changes may ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205); the cycle still applies.
+**Pre-1.0.** Breaking changes ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205), and the cycle is best-effort rather than binding.
 Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
 
 ## Design principles
