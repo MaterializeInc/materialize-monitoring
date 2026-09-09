@@ -34,7 +34,7 @@ key leaves those dashboards at the root.
     while taking its UID from `existingUid`.
     */}}
     {{- $fullname := printf "%s-%s" ( include "mzmon.fullname" $ ) $folderKey }}
-    {{- if $folder.create }}
+    {{- if and (kindIs "map" $folder) (dig "create" true $folder) }}
 ---
 kind: GrafanaFolder
 apiVersion: grafana.integreatly.org/v1beta1
