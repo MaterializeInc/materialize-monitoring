@@ -2266,7 +2266,47 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
 </td>
     </tr>
-    <tr>
+  </tbody>
+</table>
+
+##### Grafana folders.
+
+Grafana folders the dashboards are filed into.
+
+**A map, not a list.** Each key names one folder and becomes both the
+`GrafanaFolder` resource name and, unless `existingUid` overrides it, the
+folder **UID**: `<fullname>-<key>`, which is `mzmon-<key>` at the chart's
+default `fullnameOverride`.
+
+**The keys are the contract with the dashboards.** A dashboard carries its
+placement as a `grafana.app/folder` annotation naming a folder — the names
+are `Folder` in `packages/mzmon-lib/src/grafana/folder.rs`, which spells
+`infra`, `materialize` and `meta-o11y` — and the chart rewrites that name
+to the UID below on the way to the operator, the same way it rewrites
+`apiVersion`. So the UID is free to move with the release or with
+`existingUid`, and the dashboards follow it without being re-rendered.
+
+What does *not* move freely is a key: rename one and the dashboards that
+name it have their annotation dropped and land at the root instead. Adopt
+a folder with `existingUid` rather than renaming, or re-render the
+dashboards against the new name.
+
+Only rendered when `mode` is `operator`; the standalone Grafana chart has
+no folder resource to create.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `create` | `true` | Render a `GrafanaFolder` for this entry. `false` still resolves dashboards to its UID, for a folder created out of band. |
+| `title` | — | Display name in Grafana. Unlike the key, this is free to change. |
+| `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
+| `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
+| `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>

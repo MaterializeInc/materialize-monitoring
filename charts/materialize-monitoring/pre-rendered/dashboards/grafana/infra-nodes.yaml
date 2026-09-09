@@ -2,6 +2,7 @@ apiVersion: dashboard.grafana.app/v2
 kind: Dashboard
 metadata:
   annotations:
+    grafana.app/folder: infra
     monitoring.materialize.cloud/min-mz-version: v26.24.0
     monitoring.materialize.cloud/rec-mz-version: v26.24.0
     monitoring.materialize.cloud/sql-metric-prefix: mz_
@@ -6709,7 +6710,7 @@ spec:
   preload: false
   tags:
   - infrastructure
-  - monitoring
+  - mzmon
   - nodes
   timeSettings:
     autoRefresh: ''

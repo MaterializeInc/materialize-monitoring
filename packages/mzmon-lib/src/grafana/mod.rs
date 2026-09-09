@@ -19,10 +19,12 @@
 //!   failures report only "data did not match any variant".
 pub mod context;
 pub mod dashboard;
+pub mod folder;
 pub mod generated;
 pub mod layout;
 pub mod palette;
 pub mod panel;
 pub mod query;
+pub mod tags;
 pub mod threshold;
 pub mod variable;

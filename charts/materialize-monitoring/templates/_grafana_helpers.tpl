@@ -263,6 +263,33 @@ Usage:
 {{- end }}
 
 {{- /*
+UID of one dashboard folder.
+
+The single place a folder key becomes a UID, so `folders.yaml` (which creates
+the folder) and `dashboards.yaml` (which points dashboards at it) cannot
+disagree about what it is called.
+
+Derived from the release, because a UID is cluster-wide in Grafana and two
+releases must not collide on one. `existingUid` opts out of that and adopts a
+folder someone else already owns.
+
+Returns empty for a key with no entry in `folders` — the caller decides whether
+that is a dashboard to leave at the root or a folder not to create.
+
+Usage:
+  {{ include "mzmon.grafana.folderUid" ( dict "root" $ "key" "materialize" ) }}
+*/}}
+{{- define "mzmon.grafana.folderUid" }}
+  {{- $root := .root }}
+  {{- $folder := index $root.Values.dashboards.config.grafana.folders .key | default dict }}
+  {{- if $folder.existingUid }}
+    {{- $folder.existingUid }}
+  {{- else if $folder }}
+    {{- printf "%s-%s" ( include "mzmon.fullname" $root ) .key }}
+  {{- end }}
+{{- end }}
+
+{{- /*
 Whether a bundled datasource should be provisioned.
 
 Honors an explicit `connections.datasources.<name>.enabled`, and otherwise

@@ -17,6 +17,27 @@ Grafana Dashboards (operator format)
     {{- $fullname := printf "%s-%s-dashboard" ( include "mzmon.fullname" $ ) $dashboardName }}
     {{- $dashboardYaml := $.Files.Get ( printf "pre-rendered/dashboards/grafana/%s.yaml" $dashboardName ) | fromYaml }}
     {{- $dashboardYaml = set $dashboardYaml "apiVersion" $.Values.dashboards.config.grafana.manifest.apiTarget }}
+    {{- /*
+    The render names its folder by *name* — `materialize`, `infra` — because a
+    folder UID depends on the release and so is not knowable when the dashboard
+    is rendered. Resolve it here, the same way `apiVersion` is resolved above.
+
+    A name with no entry under `folders` has its annotation dropped rather than
+    passed through: Grafana would read the name as a UID, find nothing, and file
+    the dashboard at the root anyway. Removing it says that outright, and leaves
+    a dashboard whose folder was deliberately deleted looking deliberate.
+    */}}
+    {{- $metadata := get $dashboardYaml "metadata" | default dict }}
+    {{- $annotations := get $metadata "annotations" | default dict }}
+    {{- with get $annotations "grafana.app/folder" }}
+      {{- $uid := include "mzmon.grafana.folderUid" ( dict "root" $ "key" . ) }}
+      {{- if $uid }}
+        {{- $annotations = set $annotations "grafana.app/folder" $uid }}
+      {{- else }}
+        {{- $annotations = unset $annotations "grafana.app/folder" }}
+      {{- end }}
+      {{- $dashboardYaml = set $dashboardYaml "metadata" ( set $metadata "annotations" $annotations ) }}
+    {{- end }}
 ---
 kind: GrafanaManifest
 apiVersion: grafana.integreatly.org/v1beta1

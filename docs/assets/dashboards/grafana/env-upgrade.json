@@ -3,6 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "annotations": {
+      "grafana.app/folder": "materialize",
       "monitoring.materialize.cloud/min-mz-version": "v26.41.0",
       "monitoring.materialize.cloud/rec-mz-version": "v26.41.0",
       "monitoring.materialize.cloud/sql-metric-prefix": "mz_",
@@ -3015,7 +3016,7 @@
     "preload": false,
     "tags": [
       "materialize",
-      "monitoring",
+      "mzmon",
       "upgrade"
     ],
     "timeSettings": {
