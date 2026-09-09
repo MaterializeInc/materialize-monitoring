@@ -183,12 +183,16 @@ $defs:
       which eventually graduate to Canonical definitions.
       Queries marked as Unused, Deprecated, Unsupported are generally warned upon usage.
 
-      This field governs *internal* expectations — documentation, test coverage, and
+      This field governs internal expectations — documentation, test coverage, and
       whether a query's metrics are load-bearing enough to ask the Materialize side
-      for a deprecation window on. Query IDs themselves are not a customer-facing
-      surface: their consumers are dashboards in this repo. What customers may build
-      on, and the notice owed before it changes, is the committed surface in
-      reference/internal/versioning.md ("Stability guarantees").
+      for a deprecation window on. It also carries one external commitment: marking a
+      query `canonical` commits its *content* — what the expression computes, its
+      units, aggregation, and returned label set — to the deprecation cycle.
+
+      Query IDs are not a customer-facing surface at any level, `canonical` included:
+      their consumers are dashboards in this repo, and an id may be renamed freely.
+      The promise is on what the query computes, not on where it is filed. The full
+      committed surface is in reference/internal/versioning.md ("Stability guarantees").
 
       Playground and Experimental queries may be used in upcoming dashboards and
       may graduate in the future.

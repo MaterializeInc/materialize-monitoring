@@ -22,6 +22,9 @@ Break Markdown lines on sentence ends — write one sentence per line.
 You may soft wrap at 80-120 characters if you like, but lines should not exceed 150 characters.
 Sentence-per-line keeps diffs small and avoids rewrapping churn when a sentence changes.
 
+How prose should *read* — the house voice, the RFC 2119 keywords used on normative pages, and the `params.author` / `params.agent` provenance fields — lives in the [`docs-writing`](.claude/skills/docs-writing/SKILL.md) skill.
+Read it before writing or editing prose anywhere in this repository, including skills and READMEs.
+
 ## Docsite section indexes
 
 `_index.md` files under `docs/content/` carry frontmatter only — never prose.

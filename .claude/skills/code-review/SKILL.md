@@ -30,6 +30,7 @@ The reviewer's checklist is **The committed-surface check** in `docs/content/ref
 | `packages/queries/**` | `- alert: <name>` | customers route, silence, and page on it |
 | `packages/queries/**` | `severity:` / `component:` on an existing alert | label values customers route on |
 | `packages/queries/**` | `record: <name>` | a metric name that lands in customer PromQL |
+| `packages/queries/**` | the expression of a query at `stability: canonical` | its content is committed — units, aggregation, returned labels. The query's **id** is not |
 | `terraform/modules/*/variables.tf`, `outputs.tf` | `variable "<name>"`, `output "<name>"` | the widest customer exit — consumed by downstream roots |
 | `charts/*/pre-rendered/dashboards/**` | `name:` under `metadata:` | dashboard identity, used in links and embeds |
 | `charts/*/pre-rendered/metrics/metric-tiers.yaml` | a tier key | tier names are referenced in values |
@@ -38,9 +39,13 @@ The reviewer's checklist is **The committed-surface check** in `docs/content/ref
 That is the case to catch.
 It reads as an edit rather than a removal, which is exactly why it slips through.
 
-**A behavior change is also a break.**
-An alert that keeps its name but whose expression, `for:` duration, or thresholds change such that it fires under materially different conditions has broken the customer's routing and runbooks just as surely as a rename.
-Tightening a threshold is fine; changing what the alert *means* is not.
+**A behavior change is not a break, but say so in review.**
+The cycle is keyed to identifiers, not to conduct — committing to every observable behavior would be an obligation nobody can enumerate, so an alert that keeps its name while its expression, `for:` duration, or thresholds change owes no deprecation cycle.
+It is still worth a comment: a customer's routing and runbooks are keyed on the name, so a changed meaning behind an unchanged name is the kind of thing a release note should carry even though policy does not compel one.
+Raise it as a release-note question, not as a policy breach.
+
+The bounded exception is the **content of a `canonical` query**, which is committed — see [Stability guarantees](../../../docs/content/reference/internal/versioning.md#stability-guarantees).
+Its id is not: re-filing the same expression under a new id owes nothing.
 
 ## What is not a breakage
 
