@@ -154,14 +154,18 @@ flowchart TB
     subgraph provided["templates/ — provided by this chart"]
       gcr["Grafana CR: mzmon-grafana<br/>spec.external.url + credentials"]
       gman["GrafanaManifest: mzmon-env-top-dashboard<br/>resyncPeriod 5m"]
+      gfld["GrafanaFolder: mzmon-materialize · mzmon-infra · mzmon-meta-o11y"]
       gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki query frontend"]
     end
   end
 
   opdep -->|"reads"| gcr
   opdep -->|"reads"| gman
+  opdep -->|"reads"| gfld
   opdep -->|"reads"| gds
+  gman -.->|"grafana.app/folder<br/>name resolved to its UID"| gfld
   gman -.->|"instanceSelector"| gcr
+  gfld -.->|"instanceSelector"| gcr
   gds -.->|"instanceSelector"| gcr
   opdep ==>|"Grafana HTTP API<br/>at spec.external.url"| gsvc
   gcr -.->|"credentials"| gsec
@@ -232,7 +236,13 @@ instead of being reinterpreted by the operator.
 `resyncPeriod` is how often the operator re-pushes the dashboard, which is also how quickly a hand-edit in the Grafana UI gets reverted.
 Treat operator-managed dashboards as read-only: copy to a new dashboard rather than editing in place.
 
-Two dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
+Folder placement is part of the dashboard body rather than of the manifest around it.
+Each render carries a `grafana.app/folder` annotation naming a folder, and the chart rewrites that name to the UID of
+the `GrafanaFolder` it creates from `dashboards.config.grafana.folders` — the same rewrite `apiVersion` gets, and for
+the same reason: neither is knowable when the dashboard is rendered.
+See [Folders](../grafana-operator/#folders).
+
+Five dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.

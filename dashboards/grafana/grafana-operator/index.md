@@ -158,12 +158,73 @@ dashboards:
         allowCrossNamespaceImport: true
 ```
 
+### Folders
+
+The dashboards are filed into folders rather than dropped at the root of the Grafana.
+The chart creates three, as `GrafanaFolder` resources, from `dashboards.config.grafana.folders`:
+
+| Folder | Holds |
+|---|---|
+| **Materialize** | The `env-*` dashboards — Materialize itself. |
+| **Infrastructure** | The `infra-*` dashboards — the platform underneath it. |
+| **Meta Observability** | Nested under Infrastructure. For the monitoring stack watching itself. |
+
+```bash
+kubectl get grafanafolder -n monitoring
+```
+
+Placement travels **with** the dashboard, not with the manifest: each render carries a `grafana.app/folder` annotation
+naming the folder it belongs in.
+Grafana reads that annotation as a folder **UID**, and a UID depends on the release, so it is not something the render
+can know.
+What the render writes is the folder's *name* — `materialize`, `infra`, `meta-o11y` — and the chart rewrites it to the
+real UID on the way to the operator, exactly as it rewrites `apiVersion`:
+
+```yaml
+# in the pre-rendered dashboard              # in the GrafanaManifest the operator applies
+grafana.app/folder: materialize      →       grafana.app/folder: mzmon-materialize
+```
+
+So the UID is free to move — under a different release name, or onto a folder you already own via `existingUid` — and
+the dashboards follow it without being re-rendered.
+
+What is not free to move is the **name**.
+It is the one string the render and the chart must agree on, and renaming a key under `folders` drops the annotation
+from every dashboard that names it, leaving them at the root.
+Adopt an existing folder with `existingUid` rather than renaming the key:
+
+```yaml
+dashboards:
+  config:
+    grafana:
+      folders:
+        materialize:
+          existingUid: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
+```
+
+To nest the whole set under a folder you already have, give each top-level entry a parent:
+
+```yaml
+dashboards:
+  config:
+    grafana:
+      folders:
+        materialize:
+          parent:
+            folderUID: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
+```
+
+Folders are an operator-mode feature — the standalone Grafana chart has no resource to create them with.
+`create: false` keeps an entry as a resolution target without creating the folder, which is the shape to use when
+something outside this chart owns it; removing the entry outright (`materialize: null`) is what drops those dashboards
+to the root.
+
 ### Dashboard schema version
 
 `dashboards.config.grafana.manifest.apiTarget` selects the dashboard API the manifests declare.
 It defaults to `dashboard.grafana.app/v2`, which needs **Grafana 12 or later**.
 Against an older Grafana, the operator pushes an object the server does not understand and the dashboard never appears.
-Use the [downloadable v1 JSON](../importing/#grafana-10-and-11-dashboard-schema-v1) for Grafana 10 and 11 instead.
+No schema v1 render is published yet for Grafana 10 and 11 — see [Available Dashboards](../../all/#formats).
 
 ### Drift
 
