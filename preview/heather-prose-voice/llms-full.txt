@@ -17781,10 +17781,8 @@ This list describes some of the interfaces (non-comprehensive) a consumer may bu
 
 ## Deprecations
 
-`materialize-monitoring` MUST adequately provide notice for any such deprecations
-that will make room for breakages in behavior.
-Each Release in [Changelog](../changelog/) may carry a `**Deprecated**:` notation
-indicating the slated removal of a public interface.
+`materialize-monitoring` MUST provide notice for deprecations of a public interface.
+This notice MUST appear in the release notes in [Changelog](../changelog/) using a `**Deprecated**:` notation.
 
 Our policy is as follows (post 1.0):
 1. Deprecated interfaces MUST be clearly documented in the release notes using a `**Deprecated**:` notation.
