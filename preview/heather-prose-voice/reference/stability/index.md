@@ -49,7 +49,7 @@ This list describes some of the interfaces (non-comprehensive) a consumer may bu
     * `best-effort` queries SHOULD provide release notes but are more free to change
 * Dashboard identities (Grafana UIDs, which show up in URLs)
 * Annotation namespace (`monitoring.materialize.cloud/*`)
-* Artifact and OCI names (Chart name, container image repo, etc.)
+* Artifact and OCI names (chart name and container image repository; not tags)
 * Documented Loki stream labels
 * Documented Alert names
 * Documented Recording Rules
