@@ -7965,7 +7965,7 @@ on how they would be used.
 ## Metric Tiers
 
 Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
-For that, see [Stability and Deprecations](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
+For that, see [Stability Guarantees and Deprecation Policy](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
 
 
 Metrics are grouped by "metricImportance" levels (mzmon-specific).
@@ -16222,6 +16222,7 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`troubleshooting-materialize`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/troubleshooting-materialize/SKILL.md) | diagnosing Materialize itself *through* this stack — the mirror of `deployment-operations`, which covers the stack |
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
+| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the house voice, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
 | [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
 
 ## Skills in code review
@@ -17726,68 +17727,103 @@ Reads work with a Viewer-scoped token, but PUT requires Edit on the destination 
 
 
 --------------------------------------------------------------------------------
-title: "Stability and Deprecations"
+title: "Stability Guarantees and Deprecation Policy"
 url: https://materializeinc.github.io/materialize-monitoring/reference/stability/index.md
 --------------------------------------------------------------------------------
 
-# Stability and Deprecations
+# Stability Guarantees and Deprecation Policy
 
-This page says what you can safely build on, and what happens when something has to change.
+This page describes what functionality provided by `materialize-monitoring`
+a user can reasonably rely on.
 
-`materialize-monitoring` is **pre-1.0**. Versions are per-artifact (see [Compatibility](../compatibility/) for how they line up with Materialize and the Terraform modules), and until 1.0 a breaking change may ship in a minor release. What the version number does *not* change is the notice you get: the deprecation cycle below applies now.
+<!-- more -->
+{{< rfc-2119 >}}
 
-## What we guarantee
+## Semantic Artifact Versioning
 
-| You can build on | Guarantee |
-|---|---|
-| **Alert names**, and their `severity` and `component` label values | Not renamed or removed without the cycle below |
-| **Recording-rule metric names** | Not renamed or removed without the cycle below. The expression behind a recording rule may change; the name it publishes will not |
-| **Terraform module inputs and outputs** | Not renamed or removed without the cycle below |
-| **Dashboard identities** (a dashboard's `name`, e.g. `mz-mon-env-top`) | Stable, so links and embeds keep working. What is *inside* a dashboard — which panels, which layout — is not |
-| **Metric-importance tier names** (`essential`, `recommended`, `extended`, `diagnostic`, `all`) | Stable |
-| **Chart and image names**, OCI paths, and the `<component>/vX.Y.Z` tag format | Stable |
-| The `monitoring.materialize.cloud/*` annotation namespace | Stable |
-| **Loki stream labels** — the set the collection pipeline promotes to labels (`namespace`, `app`, `container`, `level`, …) | Not renamed or removed without the cycle below. Any LogQL you have written selects on these, so a change breaks saved queries, alerts and panels at once. Whether an attribute is a *label* or *structured metadata* is part of the guarantee: promoting or demoting one changes where it belongs in a query. Adding a new attribute as structured metadata is not a break |
+This repository is broken up into multiple different release artifacts all
+with their own discrete [SemVer](https://semver.org/) versions.
+Generally:
+* Breaking changes are tracked by major version bumps
+* New functionality / non-breaking changes are tracked by minor version bumps
+* Backwards-compatible bug fixes / inconsequential changes are tracked by patch version bumps
 
-**This table is not exhaustive.** It names the surfaces we know people build on, and it grows as we learn about more.
-If you depend on something that is not listed, that is not our licence to change it quietly — [tell us](https://github.com/MaterializeInc/materialize-monitoring/issues) and we will either add a row or explain why we cannot commit to it.
-Either way you will know where you stand, which is the point of the page.
+<!-- TODO: create a reference/components.md page to link to -->
+Most consumers will be concerned specifically with the `materialize-monitoring` Helm chart and Terraform modules.
 
-## The deprecation cycle
+> [!WARNING]
+> Before the Helm/TF 1.0 release, minor versions carry both breaking and non-breaking features.
+> `materialize-monitoring` SHOULD try to adhere to notices of breaking changes and
+> deprecations, but can only provide best-effort guarantees before 1.0.
 
-1. **Announced.** The release's entry in the [Changelog](../changelog/) carries a `**Deprecated:**` note that names the replacement.
-2. **Both work for at least 30 days.** The old name keeps functioning, not merely existing.
-3. **Removed** in a later release, with a `**Removed:**` note.
+## Public Interfaces
 
-A **behavior change counts as a break.** If an alert keeps its name but starts firing under materially different conditions, that goes through the cycle too — your routing and runbooks are keyed on the name, so a silent change of meaning is the same problem as a rename. Tightening a threshold is not a break; changing what the alert *means* is.
+Public interfaces are the pieces of functionality that a direct consumer would use
+to perform a task, without a layer of further indirection.
+Traditionally, these are things like APIs, but in the context of observability
+there's a lot of other ways that a consumer would interact with the monitoring
+systems.
 
-Additions are not breaking changes and can arrive in any release.
+This list describes some of the interfaces (non-comprehensive) a consumer may build upon reliably:
+* Documented Terraform module inputs and outputs
+* Documented `canonical` Prometheus queries (actual PromQL expressions)
+    * `best-effort` queries SHOULD provide release notes but are more free to change
+* Dashboard identities (Grafana UIDs, which show up in URLs)
+* Annotation namespace (`monitoring.materialize.cloud/*`)
+* Artifact and OCI names (chart name and container image repository; not tags)
+* Documented Loki stream labels
+* Documented Alert names
+* Documented Recording Rules
 
-## What we do not guarantee
+> [!NOTE]
+> Any undocumented breakage of above MUST be considered a bug and can be filed to
+> our [issue tracker](https://github.com/MaterializeInc/materialize-monitoring/issues).
 
-**Materialize's own metric names and labels.** `mz_*` metrics come from Materialize itself, which has its [own weekly release cadence](https://materialize.com/docs/releases/). We do not control those names, so we cannot freeze them. What we do instead:
+## Deprecations
 
-- Where our layer can publish both the old and new name at once, we do, for the same 30 days.
-- Where it cannot, the change is called out in the [Changelog](../changelog/) and in [Compatibility](../compatibility/).
-- Dashboards and alerts declare the Materialize version they need, so an artifact never silently depends on a metric your deployment does not have.
+`materialize-monitoring` MUST provide notice for deprecations of a public interface.
+This notice MUST appear in the release notes in [Changelog](../changelog/) using a `**Deprecated**:` notation.
 
-In practice a metric change is the mildest kind of break: a panel goes empty, which is visible and fixable on your own schedule. Nothing pages, and nothing is lost.
+Our policy is as follows (post 1.0):
+1. Deprecated interfaces MUST be clearly documented in the release notes using a `**Deprecated**:` notation.
+2. At least one major version and at least 30 days MUST pass before a deprecated interface is removed.
+3. A removed interface MUST use the `**Removed**:` notation in our release notes after being successfully deprecated.
 
-**Helm chart value paths.** Most installations reach the chart through the [Terraform module](../terraform/), which pins a chart version — so a value rename is absorbed by upgrading the module, and pinning the module defers it entirely. If you run `helm install` directly, tell us: the list of direct installers is short enough that we will contact you before renaming a value you use, which is a better guarantee than a policy.
+> [!WARNING]
+> Interfaces which are known to not have any consumers MAY be treated as unstable
+> retroactively and removed without a full deprecation cycle.
 
-**Subchart values** (`loki.*`, `thanos.*`, `grafana.*`, `alertmanager.*`) belong to those upstream charts and can change when we bump them.
+## Unstable Interfaces
 
-**Dashboard internals and query definitions.** If you fork one of our dashboards, you own the fork. Panels, layout, and the PromQL inside them change freely.
+Some interfaces may be annotated with Unstable, Experimental, or Internal.
+These interfaces are not subject to the same stricter guarantees about stability.
 
-## Where changes are announced
+These interfaces MAY have accompanying documentation.
 
-- **[Changelog](../changelog/)** — every release, per artifact. `**Deprecated:**` and `**Removed:**` notes appear here first.
-- **[Compatibility](../compatibility/)** — version pairings with Materialize, the Terraform modules, Kubernetes, and Grafana, and where upstream changes we absorbed are recorded.
-- **[Terraform module upgrade notes](https://github.com/MaterializeInc/materialize-terraform-self-managed#upgrade-notes)** — if you deploy through the modules, this is the page to read before bumping `ref`.
+The following interfaces (non-exhaustively) may be considered unstable:
+* Helm values
+* Container Image tags
+* Extended and Diagnostic Metric tiers
+* Upstream Metric names and labels
+    * Particularly `mz_*` metrics from Materialize have their own release cadence
+    * Changes to these are RECOMMENDED to be documented
+* Undocumented Alerts
+* Undocumented Recording Rules
+* Dashboard variables
+* Loki structured metadata
+    * Changes that affect labels MUST be considered a breaking change
+* Styles/theming/positioning of panels within dashboards
 
-## If something breaks anyway
+## Intermediate Artifacts
 
-We are pre-1.0 with a small installed base, so if you hit a break that did not go through the cycle above, it is likelier to be our mistake than your misreading. [Open an issue](https://github.com/MaterializeInc/materialize-monitoring/issues) — that is a bug in this policy, and we would rather hear it than not.
+Some components in `materialize-monitoring` are subsumed into other components.
+Breaking changes in those artifacts are not necessarily breaking changes
+in the component that contains them.
+For example, a breaking change within the query registry may not be represented
+as a fully breaking change to the downstream helm charts as the dashboards fully
+abstract such changes.
+This example would still have an entry within the changelog, however, as
+dependent components are shown within a release.
 
 
 --------------------------------------------------------------------------------
@@ -17801,7 +17837,7 @@ This shows the compatibility of materialize-monitoring with various
 technologies.
 
 It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
-For what we guarantee about our own names, and the notice you get before one changes, see [Stability and Deprecations](../stability/).
+For what we guarantee about our own names, and the notice you get before one changes, see [Stability Guarantees and Deprecation Policy](../stability/).
 
 ## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
@@ -18545,7 +18581,7 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   Per-cloud wrappers downstream pin the module by Git ref, so a single number identifies both surfaces and there is no window where the pair is mismatched.
   The trade is that a Terraform-only change publishes a chart release, and a breaking module change bumps the chart's major — both handled in the changelog rather than by splitting the stream.
 - **Deprecation policy.** ✅ ([DEP-127](https://linear.app/materializeinc/issue/DEP-127), OO-M1)
-  Written up in [Stability Guarantees and Deprecation Policy](../design-docs/20260823-deprecation-policy/), landed as [Stability guarantees](../versioning/#stability-guarantees) (policy of record), [Stability and Deprecations](../../stability/) (customer-facing), and [the committed-surface check](../releasing/#the-committed-surface-check).
+  Written up in [Stability Guarantees and Deprecation Policy](../design-docs/20260823-deprecation-policy/), landed as [Stability guarantees](../versioning/#stability-guarantees) (policy of record), [Stability Guarantees and Deprecation Policy](../../stability/) (customer-facing), and [the committed-surface check](../releasing/#the-committed-surface-check).
   Surfaces are graded by how much control we have and by how a break presents — alerts fail silently and get the most care, metrics fail visibly and get the least — with a 30-day cooldown enforced by the generated artifacts we already commit rather than by anything new.
   Query IDs and chart value paths fall outside the customer-facing surface, since their consumers are our own dashboards and our own Terraform module.
   Still open: the **alert and recording-rule naming decision**, which is free only until the alerting path ships, and the upstream window for the load-bearing metric list.
@@ -18913,26 +18949,46 @@ See [Releasing](../releasing/) for the full state machine and the workflows that
 
 ## Stability guarantees {#stability-guarantees}
 
-The published version of this is [Stability and Deprecations](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
-This section is the policy of record.
+The published version of this is [Stability Guarantees and Deprecation Policy](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
+This section is the policy of record, and is kept in step with the published page.
+
+The design doc predates both and argued for a stricter pre-1.0 position than the one below.
+It is a dated artifact and is not being retro-edited; where the two differ, this section governs.
 
 **Surfaces are graded by how much control we have over them.**
 
 | Class | What it covers | Obligation |
 |---|---|---|
-| **Committed** | Alert names and their `severity`/`component` values; recording-rule names; Terraform inputs and outputs; dashboard identities; metric-tier names; artifact and OCI names; the `monitoring.materialize.cloud/*` namespace | Full cycle below |
-| **Coordinated** | `mz_*` metric names and labels — the Materialize product defines them | Disclose always; dual-publish for 30 days wherever our layer can. No cooldown obligation on us, since we do not control upstream timing |
-| **No promise** | Query IDs and chart value paths (consumers are our own dashboards and our own Terraform); dashboard internals; subchart values; Kubernetes, Grafana, and Prometheus API shapes | Changelog note when it changes |
+| **Committed** | Alert names and their `severity`/`component` values; recording-rule names; Terraform inputs and outputs; dashboard identities; metric-tier names; the **content** of queries declared `stability: canonical` — what the expression computes, not the id it is filed under; artifact and OCI **names** — the chart name and the container image repository, but not the tag; the `monitoring.materialize.cloud/*` namespace | Full cycle below |
+| **Coordinated** | `mz_*` metric names and labels — the Materialize product defines them | Documenting a change is RECOMMENDED. No dual-publish and no cooldown obligation, since we control neither the names nor the upstream timing |
+| **No promise** | Query **ids** at every level, including `canonical` (their consumers are dashboards in this repo); the content of `experimental` and `best-effort` queries; chart value paths (consumers are our own Terraform); container image **tags**; dashboard internals and variables; subchart values; Kubernetes, Grafana, and Prometheus API shapes | Changelog note when it changes |
+
+**`canonical` is how a query's content opts into the committed surface.**
+The registry's `stability` ladder runs `unused` → `playground` → `experimental` → `best-effort` → `canonical`, and promoting a query to `canonical` commits what it computes.
+The **id is not the promise**: ids are internal handles whose consumers are dashboards in this repo, and one may be renamed freely.
+What a customer builds on is the expression and its meaning — the units, the aggregation, the label set it returns — because that is what they copied into a panel of their own.
+Re-filing that expression under a new id changes nothing for them; quietly changing what it computes changes everything.
+
+That keeps the obligation deliberate rather than ambient: 76 of the 374 declarations are `canonical` today, and the other 298 carry no commitment about their content.
+`best-effort` still owes a deprecation before removal, but that is internal discipline about our own dashboards, not a commitment to a customer.
 
 **The cycle, for the committed surface:**
 
 1. **Announce** — `stability: deprecated` where the field exists, plus a release-note bullet starting `**Deprecated:**` that names the replacement.
 2. **Overlap** — old and new both *work* for at least **30 days**, measured from that release's tag date.
-3. **Remove** — a later minor (pre-1.0) or major (post-1.0), with a `**Removed:**` bullet.
+3. **Remove** — a later major, with a `**Removed:**` bullet.
    `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
+**The cycle binds from 1.0.**
+Before then, minors carry breaking and non-breaking changes alike, and the obligation is best-effort: announce what we can, and say so in the changelog.
+The steps above describe what we are working toward, not a promise a pre-1.0 release keeps.
+
 Additions are free, in any release.
-A **behavior change is a break**: an alert that keeps its name but fires under materially different conditions goes through the cycle, because routing and runbooks key on the name.
+
+**A behavior change is not, on its own, a break.**
+The cycle is keyed to identifiers, not to conduct.
+Committing to every observable behavior of this stack would be unbounded, and an obligation nobody can enumerate is one nobody can keep.
+The bounded exception is the content of `canonical` queries above, which is committed precisely because it is enumerated.
 
 **Ceremony is graded by failure mode, not by surface size.**
 A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
@@ -18987,7 +19043,7 @@ Alerts are unshipped, so this is free to fix now and a cycle per alert later.
 Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
 No module variable does this yet, so it is a pattern to establish rather than one to copy.
 
-**Pre-1.0.** Breaking changes may ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205); the cycle still applies.
+**Pre-1.0.** Breaking changes ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205), and the cycle is best-effort rather than binding.
 Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
 
 ## Design principles
