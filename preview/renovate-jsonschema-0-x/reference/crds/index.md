@@ -106,7 +106,7 @@ Values key: `grafana-operator-crds`.
 | `GrafanaDatasource` | **Created.** The Thanos and Loki datasources |
 | `GrafanaManifest` | **Created.** How the bundled dashboards are delivered — [see below](#dashboards-arrive-as-grafanamanifest-not-grafanadashboard) |
 | `GrafanaDashboard` | Available for dashboards you manage yourself |
-| `GrafanaFolder` | Available — folders that dashboards and rules are filed under |
+| `GrafanaFolder` | **Created.** The folders the bundled dashboards are filed under — see [Folders](/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/grafana-operator/#folders) |
 | `GrafanaAlertRuleGroup` | Available — alert rules grouped for evaluation |
 | `GrafanaContactPoint` | Available — alerting notification targets |
 | `GrafanaNotificationPolicy` | Available — the alerting notification tree |

@@ -34,7 +34,7 @@ See [Authenticating the SQL metrics endpoint](../../scraping/#authenticating-the
 
 Scraping with your own Prometheus and *using* this stack are independent choices.
 
-- **Keep the data in your Prometheus.** Point Grafana at it as a datasource and import the [dashboards](../../../dashboards/grafana/importing/). Nothing else here is required.
+- **Keep the data in your Prometheus.** Point Grafana at it as a datasource and import the [dashboards](../../../dashboards/all/). Nothing else here is required.
 - **Ship it here as well.** Add a [remote-write](../prometheus-remote-write/) block pointing at the gateway. Your Prometheus keeps its local copy and this stack gets one too.
 
 ## See also

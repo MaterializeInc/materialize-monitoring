@@ -39,7 +39,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 |---|---|
 | **Metrics** | [Collecting]({{< relref "metrics/collecting/overview.md" >}}) — the four ways metrics get in — plus [scraping]({{< relref "metrics/scraping.md" >}}), [storing]({{< relref "metrics/storing.md" >}}) in Thanos, and [querying]({{< relref "metrics/querying.md" >}}) them back out |
 | **Logs & Events** | The [Alloy agent/gateway split]({{< relref "logs-and-events/architecture.md" >}}), [collecting]({{< relref "logs-and-events/collecting.md" >}}), [storing]({{< relref "logs-and-events/storing.md" >}}) in Loki, [querying]({{< relref "logs-and-events/querying.md" >}}), and [rules]({{< relref "logs-and-events/rules.md" >}}) |
-| **Dashboards** | [Importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
+| **Dashboards** | [Available dashboards]({{< relref "dashboards/all.md" >}}) and [importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
 
 Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
 They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) tracks the work behind them.
@@ -2714,7 +2714,7 @@ See [Authenticating the SQL metrics endpoint](../../scraping/#authenticating-the
 
 Scraping with your own Prometheus and *using* this stack are independent choices.
 
-- **Keep the data in your Prometheus.** Point Grafana at it as a datasource and import the [dashboards](../../../dashboards/grafana/importing/). Nothing else here is required.
+- **Keep the data in your Prometheus.** Point Grafana at it as a datasource and import the [dashboards](../../../dashboards/all/). Nothing else here is required.
 - **Ship it here as well.** Add a [remote-write](../prometheus-remote-write/) block pointing at the gateway. Your Prometheus keeps its local copy and this stack gets one too.
 
 ## See also
@@ -3643,18 +3643,104 @@ The result: log-derived metrics live in the same place — and are queried the s
 
 
 --------------------------------------------------------------------------------
+title: "Available Dashboards"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/all/index.md
+--------------------------------------------------------------------------------
+
+# Available Dashboards
+
+Five dashboards ship today: three scoped to a Materialize environment (`env-*`), and two to the platform underneath it (`infra-*`).
+Each one below has its own download links and its own compatibility annotations.
+
+If you are installing the `materialize-monitoring` chart, you do not need to download anything — `dashboards.selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
+Download them when you are putting them into a Grafana you run yourself; [Importing Dashboards]({{< relref "grafana/importing.md" >}}) covers the ways to do that.
+
+## Formats
+
+Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
+Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/stable-metrics/common-queries.md" >}}) is the query material to build one yourself.
+
+### Checking your Grafana version
+
+Navigate to the Grafana instance and click on the "Help" menu (represented by a question mark icon) in the left sidebar.
+Selecting it will show the current version.
+
+## Materialize environment (`env-*`)
+
+### Materialize Environment Overview (`env-top`)
+
+The high-level summary, and the one to open first.
+Its six tabs — Summary, Kubernetes Workloads, Connections / Activity, Cluster Objects / Replicas, Compute Objects, and Sources and Sinks — are there to catch the more obvious problems and point at what needs a closer look, rather than to answer any one of them in depth.
+It reads metrics only, and scopes to one environment at a time, with further pickers for namespace, cluster, and replica.
+
+{{< download-dashboards name="env-top" >}}
+
+### Materialize Logs and Events (`env-logs`)
+
+What the Materialize workloads said, as opposed to what they measured, across two tabs: Logs and Events.
+This one is Loki-only — it defines no metrics datasource, and its namespace, app, and level pickers are discovered from Loki — so it keeps working when the metrics pipeline is the thing being investigated.
+The namespace picker discovers every namespace and merely *defaults* to the Materialize ones, so the monitoring stack and `kube-system` are one selection away.
+
+{{< download-dashboards name="env-logs" >}}
+
+### Materialize Upgrade (`env-upgrade`)
+
+What happened during an upgrade, from the operator's own account of the rollout alongside what the cluster did underneath it.
+The Events tab carries Kubernetes events from the operator and environment namespaces, Generations splits a blue/green rollout into its two sides so the question a rollout actually poses — has the new generation caught up yet — can be asked at all, and Reconciliation is the operator's control loop as metrics.
+It needs both a metrics and a logs datasource.
+
+> [!INFO]
+> The operator signals this dashboard reads require Materialize **`v26.41.0`**.
+> On an older release it degrades unevenly rather than going dark, and [compatibility]({{< relref "../reference/compatibility.md" >}}#materialize-product) has the per-tab detail.
+
+{{< download-dashboards name="env-upgrade" >}}
+
+## Infrastructure (`infra-*`)
+
+### Infrastructure Node Detail (`infra-nodes`)
+
+Everything about one node, one node at a time: Summary, CPU, Memory & Swap, Network, Storage, Pods, and Logs & Events.
+The Summary tab is deliberately `kubectl describe node` for someone who cannot run it — identity and capacity, utilization sparklines, how much of the node the scheduler has already promised, and the conditions, cordon state, and taints that explain a node accepting no work.
+It needs both a metrics and a logs datasource, the latter for the node journal.
+
+{{< download-dashboards name="infra-nodes" >}}
+
+### Infrastructure Logs and Events (`infra-logs`)
+
+The same question as `env-logs`, asked of the platform a Materialize deployment runs on rather than of Materialize: the monitoring stack, the Kubernetes system components, and the node journal, across Logs, Nodes, and Events tabs.
+Also Loki-only.
+Where `env-logs` opens on the Materialize namespaces, this one subtracts them, so each dashboard answers for one side of the deployment.
+
+{{< download-dashboards name="infra-logs" >}}
+
+## What the annotations mean
+
+Each render carries its compatibility in the dashboard's own `metadata.annotations`, which is what the Annotations column above shows.
+The manifests the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) applies carry the same annotations.
+
+| Annotation | Meaning |
+|---|---|
+| **Minimum Materialize** (`min-mz-version`) | The oldest Materialize release the dashboard's queries assume. Below it, panels lose data rather than the dashboard breaking. |
+| **Recommended Materialize** (`rec-mz-version`) | The release at which every panel has something to show. |
+| **SQL metric prefix** (`sql-metric-prefix`) | `mz_` on self-managed. It reaches the cluster-discovery variable, which reads a SQL-derived metric; Materialize Cloud renders use `v2_mz_`. |
+| **Grafana folder** (`grafana.app/folder`) | The folder the dashboard is filed under. Grafana's own annotation rather than one of ours, and it holds a folder *name* here: the chart rewrites it to that folder's UID at install time — see [Folders]({{< relref "grafana/grafana-operator.md" >}}#folders). Importing the file by hand does no such rewrite, so choose the folder as you import. |
+| **Export target** (`target-export`) | Which variant of the render this is. `generic` is the only one — the GKE-specific variants were retired once the Alloy gateway began scraping the kubelet's cAdvisor directly instead of consuming GKE's reduced allowlist, which left one render per dashboard carrying the same `container_*` and `kube_*` families everywhere. |
+
+
+--------------------------------------------------------------------------------
 title: "Importing Dashboards"
 url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/importing/index.md
 --------------------------------------------------------------------------------
 
 # Importing Grafana Dashboards
 
-The Grafana dashboards below are recommended for managing Materialize and its infrastructure.
-This page covers the ways to import them and where to download them.
+This page covers the ways to get a Materialize dashboard into a Grafana instance.
+For the dashboards themselves — what each one is for, and where to download it — see [Available Dashboards]({{< relref "../all.md" >}}).
 
 ## Importing Dashboards via the Grafana UI
 
-Download one of the corresponding `.json` files from the [Download Dashboards](#download-dashboards) section below.
+Download the corresponding `.json` file from [Available Dashboards]({{< relref "../all.md" >}}).
 
 From a Grafana instance, navigate to the "New" menu on any page
 or within a specific folder.
@@ -3669,7 +3755,7 @@ The recommended filters are already in place.
 managing Grafana from the command line.
 It is built for Dashboards-as-Code workflows and AI agent usage.
 
-1. Download one of the corresponding `.json` files from the [Download Dashboards](#download-dashboards) section below.
+1. Download the corresponding `.json` file from [Available Dashboards]({{< relref "../all.md" >}}).
 2. If you are not logged in via `gcx`, run `gcx login --server YOUR_GRAFANA` to authenticate with your Grafana instance.
 3. Run `gcx dashboards create -f DOWNLOADED_FILE.json` to import the dashboard to your Grafana instance.
 
@@ -3680,35 +3766,6 @@ keeps them in sync rather than importing a point-in-time copy.
 Refer to the [Grafana Operator documentation](../grafana-operator/).
 
 For how the chart wires Grafana, the Grafana Operator, and the datasources together, see [Grafana Architecture](../architecture/).
-
-## Download Dashboards
-
-Below you will find links to download the Grafana dashboards in JSON format.
-These dashboards use features from latest Grafana versions, so be sure to check the compatibility of your Grafana instance before importing.
-
-### Checking your Grafana Version
-
-To check your Grafana version, navigate to the Grafana instance and click on the "Help" menu (represented by a question
-mark icon) in the left sidebar.
-Selecting it will show the current version.
-
-### Grafana 12 and 13 (Dashboard Schema v2)
-
-> [!SUCCESS]
-> Right now, these are the only supported dashboards.
-
-{{< grafana-dashboards pattern="dashboards/grafana/*.json" apiVersion="dashboard.grafana.app/v2" >}}
-
-> [!INFO]
-> There are minor differences in Google Cloud Platform metrics exposed
-> by GKE, so you should select a dashboard that has that particular cloud annotation.
-
-### Grafana 10 and 11 (Dashboard Schema v1)
-
-> [!WARNING]
-> Not published yet. The dashboards are authored against Dashboard v2, and no v1 render ships — see the
-> [roadmap](https://github.com/MaterializeInc/materialize-monitoring/blob/main/docs/content/reference/internal/roadmap.md)
-> for the v1 gallery item. Grafana can import a v2 dashboard on 12+ only.
 
 
 --------------------------------------------------------------------------------
@@ -3867,14 +3924,18 @@ flowchart TB
     subgraph provided["templates/ — provided by this chart"]
       gcr["Grafana CR: mzmon-grafana<br/>spec.external.url + credentials"]
       gman["GrafanaManifest: mzmon-env-top-dashboard<br/>resyncPeriod 5m"]
+      gfld["GrafanaFolder: mzmon-materialize · mzmon-infra · mzmon-meta-o11y"]
       gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki query frontend"]
     end
   end
 
   opdep -->|"reads"| gcr
   opdep -->|"reads"| gman
+  opdep -->|"reads"| gfld
   opdep -->|"reads"| gds
+  gman -.->|"grafana.app/folder<br/>name resolved to its UID"| gfld
   gman -.->|"instanceSelector"| gcr
+  gfld -.->|"instanceSelector"| gcr
   gds -.->|"instanceSelector"| gcr
   opdep ==>|"Grafana HTTP API<br/>at spec.external.url"| gsvc
   gcr -.->|"credentials"| gsec
@@ -3945,7 +4006,13 @@ instead of being reinterpreted by the operator.
 `resyncPeriod` is how often the operator re-pushes the dashboard, which is also how quickly a hand-edit in the Grafana UI gets reverted.
 Treat operator-managed dashboards as read-only: copy to a new dashboard rather than editing in place.
 
-Two dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
+Folder placement is part of the dashboard body rather than of the manifest around it.
+Each render carries a `grafana.app/folder` annotation naming a folder, and the chart rewrites that name to the UID of
+the `GrafanaFolder` it creates from `dashboards.config.grafana.folders` — the same rewrite `apiVersion` gets, and for
+the same reason: neither is knowable when the dashboard is rendered.
+See [Folders](../grafana-operator/#folders).
+
+Five dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -4713,12 +4780,73 @@ dashboards:
         allowCrossNamespaceImport: true
 ```
 
+### Folders
+
+The dashboards are filed into folders rather than dropped at the root of the Grafana.
+The chart creates three, as `GrafanaFolder` resources, from `dashboards.config.grafana.folders`:
+
+| Folder | Holds |
+|---|---|
+| **Materialize** | The `env-*` dashboards — Materialize itself. |
+| **Infrastructure** | The `infra-*` dashboards — the platform underneath it. |
+| **Meta Observability** | Nested under Infrastructure. For the monitoring stack watching itself. |
+
+```bash
+kubectl get grafanafolder -n monitoring
+```
+
+Placement travels **with** the dashboard, not with the manifest: each render carries a `grafana.app/folder` annotation
+naming the folder it belongs in.
+Grafana reads that annotation as a folder **UID**, and a UID depends on the release, so it is not something the render
+can know.
+What the render writes is the folder's *name* — `materialize`, `infra`, `meta-o11y` — and the chart rewrites it to the
+real UID on the way to the operator, exactly as it rewrites `apiVersion`:
+
+```yaml
+# in the pre-rendered dashboard              # in the GrafanaManifest the operator applies
+grafana.app/folder: materialize      →       grafana.app/folder: mzmon-materialize
+```
+
+So the UID is free to move — under a different release name, or onto a folder you already own via `existingUid` — and
+the dashboards follow it without being re-rendered.
+
+What is not free to move is the **name**.
+It is the one string the render and the chart must agree on, and renaming a key under `folders` drops the annotation
+from every dashboard that names it, leaving them at the root.
+Adopt an existing folder with `existingUid` rather than renaming the key:
+
+```yaml
+dashboards:
+  config:
+    grafana:
+      folders:
+        materialize:
+          existingUid: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
+```
+
+To nest the whole set under a folder you already have, give each top-level entry a parent:
+
+```yaml
+dashboards:
+  config:
+    grafana:
+      folders:
+        materialize:
+          parent:
+            folderUID: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
+```
+
+Folders are an operator-mode feature — the standalone Grafana chart has no resource to create them with.
+`create: false` keeps an entry as a resolution target without creating the folder, which is the shape to use when
+something outside this chart owns it; removing the entry outright (`materialize: null`) is what drops those dashboards
+to the root.
+
 ### Dashboard schema version
 
 `dashboards.config.grafana.manifest.apiTarget` selects the dashboard API the manifests declare.
 It defaults to `dashboard.grafana.app/v2`, which needs **Grafana 12 or later**.
 Against an older Grafana, the operator pushes an object the server does not understand and the dashboard never appears.
-Use the [downloadable v1 JSON](../importing/#grafana-10-and-11-dashboard-schema-v1) for Grafana 10 and 11 instead.
+No schema v1 render is published yet for Grafana 10 and 11 — see [Available Dashboards](../../all/#formats).
 
 ### Drift
 
@@ -7837,7 +7965,7 @@ on how they would be used.
 ## Metric Tiers
 
 Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
-For that, see [Stability and Deprecations](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
+For that, see [Stability Guarantees and Deprecation Policy](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
 
 
 Metrics are grouped by "metricImportance" levels (mzmon-specific).
@@ -10135,7 +10263,47 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
 </td>
     </tr>
-    <tr>
+  </tbody>
+</table>
+
+##### Grafana folders.
+
+Grafana folders the dashboards are filed into.
+
+**A map, not a list.** Each key names one folder and becomes both the
+`GrafanaFolder` resource name and, unless `existingUid` overrides it, the
+folder **UID**: `<fullname>-<key>`, which is `mzmon-<key>` at the chart's
+default `fullnameOverride`.
+
+**The keys are the contract with the dashboards.** A dashboard carries its
+placement as a `grafana.app/folder` annotation naming a folder — the names
+are `Folder` in `packages/mzmon-lib/src/grafana/folder.rs`, which spells
+`infra`, `materialize` and `meta-o11y` — and the chart rewrites that name
+to the UID below on the way to the operator, the same way it rewrites
+`apiVersion`. So the UID is free to move with the release or with
+`existingUid`, and the dashboards follow it without being re-rendered.
+
+What does *not* move freely is a key: rename one and the dashboards that
+name it have their annotation dropped and land at the root instead. Adopt
+a folder with `existingUid` rather than renaming, or re-render the
+dashboards against the new name.
+
+Only rendered when `mode` is `operator`; the standalone Grafana chart has
+no folder resource to create.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `create` | `true` | Render a `GrafanaFolder` for this entry. `false` still resolves dashboards to its UID, for a folder created out of band. |
+| `title` | — | Display name in Grafana. Unlike the key, this is free to change. |
+| `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
+| `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
+| `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
@@ -16054,6 +16222,7 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`troubleshooting-materialize`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/troubleshooting-materialize/SKILL.md) | diagnosing Materialize itself *through* this stack — the mirror of `deployment-operations`, which covers the stack |
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
+| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the house voice, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
 | [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
 
 ## Skills in code review
@@ -17558,68 +17727,103 @@ Reads work with a Viewer-scoped token, but PUT requires Edit on the destination 
 
 
 --------------------------------------------------------------------------------
-title: "Stability and Deprecations"
+title: "Stability Guarantees and Deprecation Policy"
 url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stability/index.md
 --------------------------------------------------------------------------------
 
-# Stability and Deprecations
+# Stability Guarantees and Deprecation Policy
 
-This page says what you can safely build on, and what happens when something has to change.
+This page describes what functionality provided by `materialize-monitoring`
+a user can reasonably rely on.
 
-`materialize-monitoring` is **pre-1.0**. Versions are per-artifact (see [Compatibility](../compatibility/) for how they line up with Materialize and the Terraform modules), and until 1.0 a breaking change may ship in a minor release. What the version number does *not* change is the notice you get: the deprecation cycle below applies now.
+<!-- more -->
+{{< rfc-2119 >}}
 
-## What we guarantee
+## Semantic Artifact Versioning
 
-| You can build on | Guarantee |
-|---|---|
-| **Alert names**, and their `severity` and `component` label values | Not renamed or removed without the cycle below |
-| **Recording-rule metric names** | Not renamed or removed without the cycle below. The expression behind a recording rule may change; the name it publishes will not |
-| **Terraform module inputs and outputs** | Not renamed or removed without the cycle below |
-| **Dashboard identities** (a dashboard's `name`, e.g. `mz-mon-env-top`) | Stable, so links and embeds keep working. What is *inside* a dashboard — which panels, which layout — is not |
-| **Metric-importance tier names** (`essential`, `recommended`, `extended`, `diagnostic`, `all`) | Stable |
-| **Chart and image names**, OCI paths, and the `<component>/vX.Y.Z` tag format | Stable |
-| The `monitoring.materialize.cloud/*` annotation namespace | Stable |
-| **Loki stream labels** — the set the collection pipeline promotes to labels (`namespace`, `app`, `container`, `level`, …) | Not renamed or removed without the cycle below. Any LogQL you have written selects on these, so a change breaks saved queries, alerts and panels at once. Whether an attribute is a *label* or *structured metadata* is part of the guarantee: promoting or demoting one changes where it belongs in a query. Adding a new attribute as structured metadata is not a break |
+This repository is broken up into multiple different release artifacts all
+with their own discrete [SemVer](https://semver.org/) versions.
+Generally:
+* Breaking changes are tracked by major version bumps
+* New functionality / non-breaking changes are tracked by minor version bumps
+* Backwards-compatible bug fixes / inconsequential changes are tracked by patch version bumps
 
-**This table is not exhaustive.** It names the surfaces we know people build on, and it grows as we learn about more.
-If you depend on something that is not listed, that is not our licence to change it quietly — [tell us](https://github.com/MaterializeInc/materialize-monitoring/issues) and we will either add a row or explain why we cannot commit to it.
-Either way you will know where you stand, which is the point of the page.
+<!-- TODO: create a reference/components.md page to link to -->
+Most consumers will be concerned specifically with the `materialize-monitoring` Helm chart and Terraform modules.
 
-## The deprecation cycle
+> [!WARNING]
+> Before the Helm/TF 1.0 release, minor versions carry both breaking and non-breaking features.
+> `materialize-monitoring` SHOULD try to adhere to notices of breaking changes and
+> deprecations, but can only provide best-effort guarantees before 1.0.
 
-1. **Announced.** The release's entry in the [Changelog](../changelog/) carries a `**Deprecated:**` note that names the replacement.
-2. **Both work for at least 30 days.** The old name keeps functioning, not merely existing.
-3. **Removed** in a later release, with a `**Removed:**` note.
+## Public Interfaces
 
-A **behavior change counts as a break.** If an alert keeps its name but starts firing under materially different conditions, that goes through the cycle too — your routing and runbooks are keyed on the name, so a silent change of meaning is the same problem as a rename. Tightening a threshold is not a break; changing what the alert *means* is.
+Public interfaces are the pieces of functionality that a direct consumer would use
+to perform a task, without a layer of further indirection.
+Traditionally, these are things like APIs, but in the context of observability
+there's a lot of other ways that a consumer would interact with the monitoring
+systems.
 
-Additions are not breaking changes and can arrive in any release.
+This list describes some of the interfaces (non-comprehensive) a consumer may build upon reliably:
+* Documented Terraform module inputs and outputs
+* Documented `canonical` Prometheus queries (actual PromQL expressions)
+    * `best-effort` queries SHOULD provide release notes but are more free to change
+* Dashboard identities (Grafana UIDs, which show up in URLs)
+* Annotation namespace (`monitoring.materialize.cloud/*`)
+* Artifact and OCI names (chart name and container image repository; not tags)
+* Documented Loki stream labels
+* Documented Alert names
+* Documented Recording Rules
 
-## What we do not guarantee
+> [!NOTE]
+> Any undocumented breakage of above MUST be considered a bug and can be filed to
+> our [issue tracker](https://github.com/MaterializeInc/materialize-monitoring/issues).
 
-**Materialize's own metric names and labels.** `mz_*` metrics come from Materialize itself, which has its [own weekly release cadence](https://materialize.com/docs/releases/). We do not control those names, so we cannot freeze them. What we do instead:
+## Deprecations
 
-- Where our layer can publish both the old and new name at once, we do, for the same 30 days.
-- Where it cannot, the change is called out in the [Changelog](../changelog/) and in [Compatibility](../compatibility/).
-- Dashboards and alerts declare the Materialize version they need, so an artifact never silently depends on a metric your deployment does not have.
+`materialize-monitoring` MUST provide notice for deprecations of a public interface.
+This notice MUST appear in the release notes in [Changelog](../changelog/) using a `**Deprecated**:` notation.
 
-In practice a metric change is the mildest kind of break: a panel goes empty, which is visible and fixable on your own schedule. Nothing pages, and nothing is lost.
+Our policy is as follows (post 1.0):
+1. Deprecated interfaces MUST be clearly documented in the release notes using a `**Deprecated**:` notation.
+2. At least one major version and at least 30 days MUST pass before a deprecated interface is removed.
+3. A removed interface MUST use the `**Removed**:` notation in our release notes after being successfully deprecated.
 
-**Helm chart value paths.** Most installations reach the chart through the [Terraform module](../terraform/), which pins a chart version — so a value rename is absorbed by upgrading the module, and pinning the module defers it entirely. If you run `helm install` directly, tell us: the list of direct installers is short enough that we will contact you before renaming a value you use, which is a better guarantee than a policy.
+> [!WARNING]
+> Interfaces which are known to not have any consumers MAY be treated as unstable
+> retroactively and removed without a full deprecation cycle.
 
-**Subchart values** (`loki.*`, `thanos.*`, `grafana.*`, `alertmanager.*`) belong to those upstream charts and can change when we bump them.
+## Unstable Interfaces
 
-**Dashboard internals and query definitions.** If you fork one of our dashboards, you own the fork. Panels, layout, and the PromQL inside them change freely.
+Some interfaces may be annotated with Unstable, Experimental, or Internal.
+These interfaces are not subject to the same stricter guarantees about stability.
 
-## Where changes are announced
+These interfaces MAY have accompanying documentation.
 
-- **[Changelog](../changelog/)** — every release, per artifact. `**Deprecated:**` and `**Removed:**` notes appear here first.
-- **[Compatibility](../compatibility/)** — version pairings with Materialize, the Terraform modules, Kubernetes, and Grafana, and where upstream changes we absorbed are recorded.
-- **[Terraform module upgrade notes](https://github.com/MaterializeInc/materialize-terraform-self-managed#upgrade-notes)** — if you deploy through the modules, this is the page to read before bumping `ref`.
+The following interfaces (non-exhaustively) may be considered unstable:
+* Helm values
+* Container Image tags
+* Extended and Diagnostic Metric tiers
+* Upstream Metric names and labels
+    * Particularly `mz_*` metrics from Materialize have their own release cadence
+    * Changes to these are RECOMMENDED to be documented
+* Undocumented Alerts
+* Undocumented Recording Rules
+* Dashboard variables
+* Loki structured metadata
+    * Changes that affect labels MUST be considered a breaking change
+* Styles/theming/positioning of panels within dashboards
 
-## If something breaks anyway
+## Intermediate Artifacts
 
-We are pre-1.0 with a small installed base, so if you hit a break that did not go through the cycle above, it is likelier to be our mistake than your misreading. [Open an issue](https://github.com/MaterializeInc/materialize-monitoring/issues) — that is a bug in this policy, and we would rather hear it than not.
+Some components in `materialize-monitoring` are subsumed into other components.
+Breaking changes in those artifacts are not necessarily breaking changes
+in the component that contains them.
+For example, a breaking change within the query registry may not be represented
+as a fully breaking change to the downstream helm charts as the dashboards fully
+abstract such changes.
+This example would still have an entry within the changelog, however, as
+dependent components are shown within a release.
 
 
 --------------------------------------------------------------------------------
@@ -17633,7 +17837,7 @@ This shows the compatibility of materialize-monitoring with various
 technologies.
 
 It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
-For what we guarantee about our own names, and the notice you get before one changes, see [Stability and Deprecations](../stability/).
+For what we guarantee about our own names, and the notice you get before one changes, see [Stability Guarantees and Deprecation Policy](../stability/).
 
 ## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
@@ -17880,7 +18084,7 @@ Values key: `grafana-operator-crds`.
 | `GrafanaDatasource` | **Created.** The Thanos and Loki datasources |
 | `GrafanaManifest` | **Created.** How the bundled dashboards are delivered — [see below](#dashboards-arrive-as-grafanamanifest-not-grafanadashboard) |
 | `GrafanaDashboard` | Available for dashboards you manage yourself |
-| `GrafanaFolder` | Available — folders that dashboards and rules are filed under |
+| `GrafanaFolder` | **Created.** The folders the bundled dashboards are filed under — see [Folders]({{< relref "../dashboards/grafana/grafana-operator.md" >}}#folders) |
 | `GrafanaAlertRuleGroup` | Available — alert rules grouped for evaluation |
 | `GrafanaContactPoint` | Available — alerting notification targets |
 | `GrafanaNotificationPolicy` | Available — the alerting notification tree |
@@ -18044,7 +18248,7 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | Provide [Honeycomb](https://linear.app/materializeinc/issue/DEP-218) dashboard set | OO-M3 | ⬜ |
 | [Dependencies](https://linear.app/materializeinc/issue/DEP-224) (Day 1: are Materialize + o11y requirements satisfied?) | OO-M3 | ⬜ |
 | [Sizing](https://linear.app/materializeinc/issue/DEP-225) (Day 1) | OO-M3 | ⬜ |
-| [Replace dashboard management with a Rust implementation](https://linear.app/materializeinc/issue/DEP-222) | OO-M3 | 🔨 (`env-top` is rendered by Rust and is what ships: `mz-monitoring-build gen-dashboards` writes both the chart's YAML and the docsite's JSON, and the `dashboards` workflow asserts the checked-in output is fresh. All 69 panels ported, pinned against the frozen final Python render with seven allow-listed shell divergences — the threshold base step, the errors/load respacing, `cursorSync`, the `$environmentNameList` rename, the variable order, and the `liveNow` / built-in-annotations fields Grafana writes on save — plus seven description fixes, six of them broken cross-references in the baseline's own prose. Cloud variants are retired: they stopped differing in panel content once the gateway began scraping the kubelet's cAdvisor directly instead of consuming GKE's reduced allowlist, so the eleven panels the Python branched on collapsed to a bare `target-cloud` annotation, and that annotation and the `--cloud` / `--prefix` flags behind it were removed. No Makefile target or CI job renders from the Python any more. Panels take both their expressions and their descriptions from the query registry rather than restating them, which surfaced and fixed four real registry defects (a missing job-dedup on 14 rates, a lost regex-escape on the pod matchers, a missing exporter-including capacity query, and a missing name-join on system arrangements). `packages/grafana-dashboards` and `py-mzmon-lib` are deleted; nothing in the repo renders a dashboard from Python. **Outstanding:** the Grafana 11 (v1) gallery renders. The Python had a `to_v1()` path but never wired it to an artifact, so no v1 dashboard has ever shipped — the docsite's v1 table has always been empty) |
+| [Replace dashboard management with a Rust implementation](https://linear.app/materializeinc/issue/DEP-222) | OO-M3 | 🔨 (`env-top` is rendered by Rust and is what ships: `mz-monitoring-build gen-dashboards` writes both the chart's YAML and the docsite's JSON, and the `dashboards` workflow asserts the checked-in output is fresh. All 69 panels ported, pinned against the frozen final Python render with seven allow-listed shell divergences — the threshold base step, the errors/load respacing, `cursorSync`, the `$environmentNameList` rename, the variable order, and the `liveNow` / built-in-annotations fields Grafana writes on save — plus seven description fixes, six of them broken cross-references in the baseline's own prose. Cloud variants are retired: they stopped differing in panel content once the gateway began scraping the kubelet's cAdvisor directly instead of consuming GKE's reduced allowlist, so the eleven panels the Python branched on collapsed to a bare `target-cloud` annotation, and that annotation and the `--cloud` / `--prefix` flags behind it were removed. No Makefile target or CI job renders from the Python any more. Panels take both their expressions and their descriptions from the query registry rather than restating them, which surfaced and fixed four real registry defects (a missing job-dedup on 14 rates, a lost regex-escape on the pod matchers, a missing exporter-including capacity query, and a missing name-join on system arrangements). `packages/grafana-dashboards` and `py-mzmon-lib` are deleted; nothing in the repo renders a dashboard from Python. **Outstanding:** the Grafana 11 (v1) gallery renders. The Python had a `to_v1()` path but never wired it to an artifact, so no v1 dashboard has ever shipped — the docsite's gallery lists the format and says it is not published yet) |
 
 ### Infrastructure dashboards (`infra-*`)
 
@@ -18377,7 +18581,7 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   Per-cloud wrappers downstream pin the module by Git ref, so a single number identifies both surfaces and there is no window where the pair is mismatched.
   The trade is that a Terraform-only change publishes a chart release, and a breaking module change bumps the chart's major — both handled in the changelog rather than by splitting the stream.
 - **Deprecation policy.** ✅ ([DEP-127](https://linear.app/materializeinc/issue/DEP-127), OO-M1)
-  Written up in [Stability Guarantees and Deprecation Policy](../design-docs/20260823-deprecation-policy/), landed as [Stability guarantees](../versioning/#stability-guarantees) (policy of record), [Stability and Deprecations](../../stability/) (customer-facing), and [the committed-surface check](../releasing/#the-committed-surface-check).
+  Written up in [Stability Guarantees and Deprecation Policy](../design-docs/20260823-deprecation-policy/), landed as [Stability guarantees](../versioning/#stability-guarantees) (policy of record), [Stability Guarantees and Deprecation Policy](../../stability/) (customer-facing), and [the committed-surface check](../releasing/#the-committed-surface-check).
   Surfaces are graded by how much control we have and by how a break presents — alerts fail silently and get the most care, metrics fail visibly and get the least — with a 30-day cooldown enforced by the generated artifacts we already commit rather than by anything new.
   Query IDs and chart value paths fall outside the customer-facing surface, since their consumers are our own dashboards and our own Terraform module.
   Still open: the **alert and recording-rule naming decision**, which is free only until the alerting path ships, and the upstream window for the load-bearing metric list.
@@ -18745,26 +18949,46 @@ See [Releasing](../releasing/) for the full state machine and the workflows that
 
 ## Stability guarantees {#stability-guarantees}
 
-The published version of this is [Stability and Deprecations](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
-This section is the policy of record.
+The published version of this is [Stability Guarantees and Deprecation Policy](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
+This section is the policy of record, and is kept in step with the published page.
+
+The design doc predates both and argued for a stricter pre-1.0 position than the one below.
+It is a dated artifact and is not being retro-edited; where the two differ, this section governs.
 
 **Surfaces are graded by how much control we have over them.**
 
 | Class | What it covers | Obligation |
 |---|---|---|
-| **Committed** | Alert names and their `severity`/`component` values; recording-rule names; Terraform inputs and outputs; dashboard identities; metric-tier names; artifact and OCI names; the `monitoring.materialize.cloud/*` namespace | Full cycle below |
-| **Coordinated** | `mz_*` metric names and labels — the Materialize product defines them | Disclose always; dual-publish for 30 days wherever our layer can. No cooldown obligation on us, since we do not control upstream timing |
-| **No promise** | Query IDs and chart value paths (consumers are our own dashboards and our own Terraform); dashboard internals; subchart values; Kubernetes, Grafana, and Prometheus API shapes | Changelog note when it changes |
+| **Committed** | Alert names and their `severity`/`component` values; recording-rule names; Terraform inputs and outputs; dashboard identities; metric-tier names; the **content** of queries declared `stability: canonical` — what the expression computes, not the id it is filed under; artifact and OCI **names** — the chart name and the container image repository, but not the tag; the `monitoring.materialize.cloud/*` namespace | Full cycle below |
+| **Coordinated** | `mz_*` metric names and labels — the Materialize product defines them | Documenting a change is RECOMMENDED. No dual-publish and no cooldown obligation, since we control neither the names nor the upstream timing |
+| **No promise** | Query **ids** at every level, including `canonical` (their consumers are dashboards in this repo); the content of `experimental` and `best-effort` queries; chart value paths (consumers are our own Terraform); container image **tags**; dashboard internals and variables; subchart values; Kubernetes, Grafana, and Prometheus API shapes | Changelog note when it changes |
+
+**`canonical` is how a query's content opts into the committed surface.**
+The registry's `stability` ladder runs `unused` → `playground` → `experimental` → `best-effort` → `canonical`, and promoting a query to `canonical` commits what it computes.
+The **id is not the promise**: ids are internal handles whose consumers are dashboards in this repo, and one may be renamed freely.
+What a customer builds on is the expression and its meaning — the units, the aggregation, the label set it returns — because that is what they copied into a panel of their own.
+Re-filing that expression under a new id changes nothing for them; quietly changing what it computes changes everything.
+
+That keeps the obligation deliberate rather than ambient: 76 of the 374 declarations are `canonical` today, and the other 298 carry no commitment about their content.
+`best-effort` still owes a deprecation before removal, but that is internal discipline about our own dashboards, not a commitment to a customer.
 
 **The cycle, for the committed surface:**
 
 1. **Announce** — `stability: deprecated` where the field exists, plus a release-note bullet starting `**Deprecated:**` that names the replacement.
 2. **Overlap** — old and new both *work* for at least **30 days**, measured from that release's tag date.
-3. **Remove** — a later minor (pre-1.0) or major (post-1.0), with a `**Removed:**` bullet.
+3. **Remove** — a later major, with a `**Removed:**` bullet.
    `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
+**The cycle binds from 1.0.**
+Before then, minors carry breaking and non-breaking changes alike, and the obligation is best-effort: announce what we can, and say so in the changelog.
+The steps above describe what we are working toward, not a promise a pre-1.0 release keeps.
+
 Additions are free, in any release.
-A **behavior change is a break**: an alert that keeps its name but fires under materially different conditions goes through the cycle, because routing and runbooks key on the name.
+
+**A behavior change is not, on its own, a break.**
+The cycle is keyed to identifiers, not to conduct.
+Committing to every observable behavior of this stack would be unbounded, and an obligation nobody can enumerate is one nobody can keep.
+The bounded exception is the content of `canonical` queries above, which is committed precisely because it is enumerated.
 
 **Ceremony is graded by failure mode, not by surface size.**
 A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
@@ -18819,7 +19043,7 @@ Alerts are unshipped, so this is free to fix now and a cycle per alert later.
 Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
 No module variable does this yet, so it is a pattern to establish rather than one to copy.
 
-**Pre-1.0.** Breaking changes may ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205); the cycle still applies.
+**Pre-1.0.** Breaking changes ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205), and the cycle is best-effort rather than binding.
 Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
 
 ## Design principles
