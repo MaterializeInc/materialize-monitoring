@@ -8,13 +8,33 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards v0.17.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.22.0 (Unreleased)
 
 _Changes Pending_
 
-## Dashboards v0.16.0 (Unreleased)
+## Dashboards v0.16.0
 
-_Changes Pending_
+* Add Dashboard Folders; Update tags
+    * [materialize-monitoring#329](https://github.com/MaterializeInc/materialize-monitoring/pull/329)
+    * Added several GrafanaFolder resources (default enabled: mzmon-infra, mzmon-materialize, mzmon-meta-o11y)
+    * Changed monitoring tag to mzmon within dashboards
+* Show total lag in env-top / env-upgrade
+    * [materialize-monitoring#312](https://github.com/MaterializeInc/materialize-monitoring/pull/312)
+    * Add new queries around max lag (materialize.compute.freshness.lag_total_by_cluster, materialize.generations.lag.total)
+    * Show max lag as new panels (including per-cluster breakdown) in env-top and env-upgrade dashboards
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Add some sample prose in heather's voice
+        * [materialize-monitoring#331](https://github.com/MaterializeInc/materialize-monitoring/pull/331)
+    * Update Rust crate indexmap to v2.14.2
+        * [materialize-monitoring#328](https://github.com/MaterializeInc/materialize-monitoring/pull/328)
+        * [`v2.14.2`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2142-2026-09-04)
 
 ## Dashboards v0.15.0
 
