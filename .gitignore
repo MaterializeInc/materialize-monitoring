@@ -141,3 +141,4 @@ e2e-diagnostics*/
 trivy-sarif/
 trivy-sarif-images/
 trivy-failed-images.txt
+trivy-images.sarif

@@ -140,13 +140,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: trivy image (sarif)
         run: make security-report-images
-      # One upload for the whole directory. Unlike the misconfig reports, these
-      # do not need a category each: every file names a different image, so
-      # nothing collides.
+      # One merged file, one run, one category. Uploading the directory instead
+      # fails: code scanning rejects several runs sharing a category, and Trivy
+      # writes one run per image. A category per image would go stale as images
+      # are added, bumped and removed.
       - name: Upload image reports
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         with:
-          sarif_file: trivy-sarif-images
+          sarif_file: trivy-images.sarif
           category: trivy-image
       # Deliberately after the upload: an image we could not scan should not
       # cost us the reports for the ones we could, but it must not pass either.

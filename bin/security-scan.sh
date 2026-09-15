@@ -11,7 +11,8 @@
 #   images-gate    fail on fixable HIGH/CRITICAL OS-package vulnerabilities in
 #                  the images we build ourselves. Blocks a pull request.
 #   images-report  write SARIF for every image the chart references, ours and
-#                  upstream, at every severity.
+#                  upstream, at every severity, then merge them into one
+#                  uploadable file ($MERGED_IMAGE_SARIF).
 #
 # Both gates are scoped to findings this repository can actually act on. The
 # upstream population is large, moves on someone else's schedule, and is
@@ -68,6 +69,11 @@ OWN_IMAGE_PREFIX=${OWN_IMAGE_PREFIX:-ghcr.io/materializeinc/}
 # SARIF_DIR, which a CI job uploads wholesale, so nothing has to reason about
 # which files in there are reports. A CI job checks this after the uploads.
 FAILED_IMAGES_FILE=${FAILED_IMAGES_FILE:-trivy-failed-images.txt}
+# images-report writes one SARIF per image, then merges them into this single
+# file. Code scanning rejects an upload carrying several runs under one
+# category, and a category per image would go stale as images come and go --
+# see bin/merge_trivy_sarif.py.
+MERGED_IMAGE_SARIF=${MERGED_IMAGE_SARIF:-trivy-images.sarif}
 
 MODE=${1:-gate}
 
@@ -271,6 +277,9 @@ case "${MODE}" in
         if [ -s "${FAILED_IMAGES_FILE}" ]; then
             _warning "$(wc -l <"${FAILED_IMAGES_FILE}" | tr -d ' ') image(s) could not be scanned; see ${FAILED_IMAGES_FILE}"
         fi
+
+        # Stdlib-only, so this needs no Python environment set up in CI.
+        python3 ./bin/merge_trivy_sarif.py "${SARIF_DIR}" "${MERGED_IMAGE_SARIF}"
         ;;
 esac
 
