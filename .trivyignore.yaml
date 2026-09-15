@@ -1,0 +1,49 @@
+# Accepted misconfiguration findings for the rendered chart.
+#
+# Every entry here is a HIGH or CRITICAL finding that originates in an upstream
+# subchart, not in this repository's own templates. They are baselined so the
+# gate is green on a clean tree and turns red only when a *new* finding class
+# appears — which is the signal worth acting on.
+#
+# The tradeoff: these are suppressed by check ID, not by resource, so an entry
+# also masks the same finding if one of our own templates grows it later. The
+# SARIF report uploaded to code scanning is unfiltered and remains the complete
+# picture; this file only governs what blocks a pull request.
+#
+# Removing an entry is how you re-open a finding. Before adding one, confirm the
+# finding is genuinely upstream and record which component it comes from.
+
+misconfigurations:
+  # node-exporter reads host-level metrics, so host namespaces and host mounts
+  # are the function rather than a defect. Suppressing these is upstream's own
+  # documented posture for the chart.
+  - id: KSV-0009
+    statement: "node-exporter DaemonSet requires hostNetwork to report node metrics."
+  - id: KSV-0010
+    statement: "node-exporter DaemonSet requires hostPID to report process metrics."
+  - id: KSV-0121
+    statement: "node-exporter mounts /, /proc and /sys to read host metrics."
+
+  # Operator and collector RBAC. Each of these ClusterRoles is shipped by the
+  # subchart that needs it: the Alloy agent and gateway read Secrets for
+  # destination credentials, grafana-operator manages the resources it
+  # reconciles, kube-state-metrics and Loki read cluster state.
+  - id: KSV-0041
+    statement: "Upstream ClusterRoles (alloy-agent, alloy-gateway, grafana-operator, loki, kube-state-metrics) read Secrets by design."
+  - id: KSV-0046
+    statement: "grafana-operator reconciles arbitrary resources; scoped down by upstream, not by this chart."
+  - id: KSV-0056
+    statement: "grafana-operator manages Services and Ingresses for the Grafana instances it owns."
+
+  # Pod-level hardening upstream has not adopted. These are the entries most
+  # likely to become fixable through values — revisit when bumping the
+  # subcharts, and drop the entry rather than keeping a stale suppression.
+  - id: KSV-0014
+    statement: "grafana and alertmanager containers write to their root filesystem; upstream charts do not expose readOnlyRootFilesystem cleanly."
+  - id: KSV-0118
+    statement: "grafana-operator and thanos-query ship without a pod securityContext upstream."
+
+  # False positive: the finding matches on the key name, and
+  # `use_federated_token` is a boolean feature flag, not a credential.
+  - id: KSV-0109
+    statement: "Loki ConfigMap key `use_federated_token` is a boolean flag, not a stored secret."

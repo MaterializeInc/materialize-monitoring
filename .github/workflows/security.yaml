@@ -1,0 +1,111 @@
+name: security
+
+# Misconfiguration scanning for the rendered Helm chart.
+#
+# Two halves, deliberately split by who can fix the finding:
+#
+#   misconfig-gate  blocks a pull request on HIGH/CRITICAL findings that are
+#                   not baselined in .trivyignore.yaml. Everything it can fail
+#                   on is a finding this repository introduced.
+#   misconfig-report uploads unfiltered SARIF at every severity to code
+#                   scanning. This is where the upstream-subchart population
+#                   lives -- remediation there is a Renovate bump, not a PR
+#                   fix, so it reports and never blocks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The report half is worth running on a schedule: the checks Trivy ships
+  # change without this repository changing, and a finding that appears on a
+  # quiet week should still surface.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  misconfig-gate:
+    name: trivy config (gate)
+    # Nothing to gate on a schedule run -- the report job covers that path.
+    if: ${{ github.event_name != 'schedule' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The scan renders the chart, and the vendored subchart tarballs are
+          # LFS-tracked. Without this they check out as pointer files and the
+          # render fails. (Same reason as the helm job in lint.yaml.)
+          lfs: true
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.74.0
+          cache: true
+      - name: trivy config
+        run: make security-scan
+
+  misconfig-report:
+    name: trivy config (report)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Required to upload SARIF to code scanning.
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          lfs: true
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.74.0
+          cache: true
+      - name: trivy config (sarif)
+        run: make security-report
+      # One upload per scenario. Each needs its own `category`: uploads sharing
+      # a category replace each other, so without this only the last scenario
+      # would survive in code scanning.
+      - name: Upload tier1
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: trivy-sarif/tier1.sarif
+          category: trivy-misconfig-tier1
+      - name: Upload azure
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: trivy-sarif/azure.sarif
+          category: trivy-misconfig-azure
+      - name: Upload mtls3
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: trivy-sarif/mtls3.sarif
+          category: trivy-misconfig-mtls3
+
+  # Rollup gate -- the single check to require in branch protection for this
+  # workflow. Passes iff every job above finished `success` or `skipped`, so
+  # requiring just this one check stays correct as jobs are added or removed.
+  # `!cancelled()` lets it run even when some needs skipped; any failure or
+  # cancellation fails it. (lint/test/pipelines/dashboards carry the same gate.)
+  security-gate:
+    name: security-gate
+    needs: [misconfig-gate, misconfig-report]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success | skipped) ;;
+              *)
+                echo "::error::a required job did not pass (result: $r)"
+                exit 1
+                ;;
+            esac
+          done
+          echo "All security jobs passed."

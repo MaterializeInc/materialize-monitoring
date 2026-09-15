@@ -46,6 +46,9 @@ HELM_DOCS ?= $(GO) tool helm-docs
 TERRAFORM ?= terraform
 TERRAFORM_DOCS ?= terraform-docs
 
+# Trivy. Also not a Go tool module, so this expects the binary on PATH.
+TRIVY ?= trivy
+
 # Whether brew can be used for installs (use ifneq)
 HAS_BREW := $(shell command -v brew 2> /dev/null)
 
@@ -352,6 +355,21 @@ helm-tests:
 helm-update-snapshots:
 	$(MAKE) helm-tests HELM_UNITTEST_ARGS="--update-snapshot"
 .PHONY: helm-update-snapshots
+
+# Scan the rendered chart for Kubernetes misconfigurations.
+#
+# Renders representative profiles and scans the result -- pointing Trivy at the
+# chart directory instead would silently skip every template. See
+# bin/security-scan.sh for the details and for the scenario list.
+security-scan:
+	TRIVY=$(TRIVY) ./bin/security-scan.sh gate
+.PHONY: security-scan
+
+# The same renders, written out as SARIF at every severity for code scanning.
+# Reports rather than gates; CI uploads the result.
+security-report:
+	TRIVY=$(TRIVY) ./bin/security-scan.sh report
+.PHONY: security-report
 
 helm-docs: \
 	charts/materialize-monitoring/README.md \
