@@ -371,6 +371,20 @@ security-report:
 	TRIVY=$(TRIVY) ./bin/security-scan.sh report
 .PHONY: security-report
 
+# Vulnerability scanning for the images the chart resolves to.
+#
+# The gate covers only the images we publish, and within those only base-layer
+# packages with a fix available -- the rest of the population is upstream and
+# reports instead. See bin/security-scan.sh for why that line is drawn there.
+security-scan-images:
+	TRIVY=$(TRIVY) ./bin/security-scan.sh images-gate
+.PHONY: security-scan-images
+
+# Every image the chart references, ours and upstream, as SARIF.
+security-report-images:
+	TRIVY=$(TRIVY) SARIF_DIR=trivy-sarif-images ./bin/security-scan.sh images-report
+.PHONY: security-report-images
+
 helm-docs: \
 	charts/materialize-monitoring/README.md \
 	charts/materialize-monitoring-crds/README.md \
