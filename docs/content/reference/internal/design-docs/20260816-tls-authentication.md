@@ -181,7 +181,7 @@ Clusters get built with `--cluster-domain=cluster.internal` or a site-specific d
 The chart has **no `clusterDomain` value at all** today, so this work introduces one.
 
 The sharper trap is that a correct cluster domain is not sufficient, because **the chart's own URLs stop short of it**.
-Every in-cluster destination is written as `$svc.$ns.svc` — `http://loki-distributor.{{ ns }}.svc:3100` — while `terraform/test/generic-cloud` writes the object-storage endpoint as `…svc.cluster.local:9000`.
+Every in-cluster destination is written as `$svc.$ns.svc` — `http://loki-distributor.{{ ns }}.svc:3100` — while `terraform/test/generic-cloud` writes the object-storage endpoint as `…svc.cluster.local:3900`.
 A certificate carrying only `*.svc.cluster.local` SANs therefore fails verification against the exact endpoints this chart ships, and the error surfaces as a hostname mismatch that reads like a bug in the certificate rather than a mismatch in name form.
 
 **Decision: every internal `Certificate` carries the full SAN ladder**, rendered from the same namespace helpers the URLs use:
@@ -214,7 +214,7 @@ The surface should let an operator supply additional CAs as a Secret or ConfigMa
 
 Scope stays narrow and one-directional: **we trust the store, we do not authenticate to it with a certificate.** Object-storage auth remains the credential paths already built — workload identity, or the static credentials from [DEP-203](https://linear.app/materializeinc/issue/DEP-203).
 
-Two smaller notes. `tier 2`'s rustfs substrate is plaintext `http://`, so a private-CA object store is not covered by any test today and should get one — it is the configuration a real customer is running. And whatever bundle mechanism lands should be reachable by Alloy too, since a `loki.write` or `prometheus.remote_write` aimed at an operator's own backend has exactly the same problem.
+Two smaller notes. `tier 2`'s Garage substrate is plaintext `http://`, so a private-CA object store is not covered by any test today and should get one — it is the configuration a real customer is running. And whatever bundle mechanism lands should be reachable by Alloy too, since a `loki.write` or `prometheus.remote_write` aimed at an operator's own backend has exactly the same problem.
 
 ## Issuance
 
@@ -503,7 +503,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
-| A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |
+| A tier-2 variant with a private-CA object store, replacing plaintext Garage | trust bundle | 2 |
 | LB-attached certificate passthrough (ACM / GCM / Azure KV references) for the Grafana Service and Ingress | — | 2 |
 | `ServiceMonitor` / `PodMonitor` `tlsConfig` for scrape targets | — | 3 |
 | `kubeRBACProxy` wiring, left off by default | certificates | 3 |

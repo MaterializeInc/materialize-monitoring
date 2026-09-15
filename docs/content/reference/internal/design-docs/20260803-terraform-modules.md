@@ -60,7 +60,7 @@ Three stakeholder classes consume this:
 - **Terraform owns the `[consumer]` column** of the [shared responsibility model](../../../../operating/production-best-practices/#shared-responsibility-model): buckets, IAM, StorageClass, secrets, version pinning, sizing selection. Nothing else.
 - **Values compose as an ordered list** — module-computed wiring first, then the user's raw-YAML overlay last — so the escape hatch always wins and never requires a module release.
 - **Chart-shape drift fails fast in this repo**, via the existing `mzmon.validate.collect` error/warning accumulator plus snapshot tests that pin the rendered service-account names.
-- **Qualification is ours, not downstream's.** Tiered E2E against kind lives here — chart variant on the `loki-test` profile, Terraform variant against in-cluster rustfs and CNPG — asserted by a new Rust suite. The Terraform repo's cloud tests consume released tags only.
+- **Qualification is ours, not downstream's.** Tiered E2E against kind lives here — chart variant on the `loki-test` profile, Terraform variant against in-cluster Garage and CNPG — asserted by a new Rust suite. The Terraform repo's cloud tests consume released tags only.
 - **One major version bump** in the Terraform repo. The change is acceptable to make bluntly, because `enable_observability` has never been load-bearing.
 
 ## Non-goals
@@ -451,7 +451,7 @@ The assertion the E2E suite was missing a reason for: partition the gateway (or 
 
 `hostPath` backing makes a second assertion available and worth having — restart the agent pod itself, not just the gateway, and assert the queued data still arrives. That is the case a PVC-less DaemonSet would normally lose, and it is the one that proves the host mount is actually doing its job.
 
-Both work on kind and both are only meaningful against a real backend, so they belong on the rustfs + CNPG tier-2 variant. This is the test that would catch a regression in the guarantee the change exists to provide.
+Both work on kind and both are only meaningful against a real backend, so they belong on the Garage + CNPG tier-2 variant. This is the test that would catch a regression in the guarantee the change exists to provide.
 
 ## In-cluster TLS and authentication
 
@@ -612,7 +612,7 @@ The corollary is sharper than it looks — **anything the tiers below do not cov
 |---|---|---|---|---|
 | **0 — static** | every PR | this repo | none | none |
 | **1 — chart E2E** | chart changes | this repo | kind | `loki-test` (SingleBinary + filesystem) |
-| **2 — Terraform E2E** | Terraform changes | this repo | kind | rustfs (S3-compatible) + CNPG (Postgres) |
+| **2 — Terraform E2E** | Terraform changes | this repo | kind | Garage (S3-compatible) + CNPG (Postgres) |
 | **3 — cloud integration** | released tags | Terraform repo | real EKS / GKE / AKS | real S3 / GCS / Blob |
 
 **Tier 0 — static, no cluster, seconds.**
@@ -623,29 +623,47 @@ The corollary is sharper than it looks — **anything the tiers below do not cov
 
 **Tier 1 — chart E2E on kind**, on chart changes, using the `loki-test` profile: SingleBinary Loki, local filesystem, no network policy, replication factor 1. This is the fast gate.
 
-**Tier 2 — Terraform E2E on kind**, on Terraform changes. A test wrapper provisions **rustfs** for S3-compatible object storage and **CNPG** for Postgres in the kind cluster, then calls the common module exactly as a cloud wrapper would. `loki-small` on PRs, medium on main.
+**Tier 2 — Terraform E2E on kind**, on Terraform changes. A test wrapper provisions **Garage** for S3-compatible object storage and **CNPG** for Postgres in the kind cluster, then calls the common module exactly as a cloud wrapper would. `loki-small` on PRs, medium on main.
 
 **Tier 3 — cloud integration**, downstream, on released tags only.
 
 ### The test wrapper is a fourth cloud
 
 This is the part of the plan that does the most work beyond catching regressions.
-The test wrapper plays the same role as the AWS, GCP, and Azure wrappers — provision storage, provision credentials, call the common module — with rustfs standing in for S3 and CNPG standing in for RDS or Cloud SQL.
-If kind plus rustfs can satisfy the common module's interface without special-casing, the cloud-agnostic abstraction is real.
+The test wrapper plays the same role as the AWS, GCP, and Azure wrappers — provision storage, provision credentials, call the common module — with Garage standing in for S3 and CNPG standing in for RDS or Cloud SQL.
+If kind plus Garage can satisfy the common module's interface without special-casing, the cloud-agnostic abstraction is real.
 If it cannot, the abstraction was wrong and we find out in CI rather than when Azure lands.
 
 That makes tier 2 a design check, not just scaffolding.
 
+#### Garage costs a chart of unofficial provenance
+
+Garage publishes no Helm chart to any Helm repository, and its own documentation installs from a clone of the source tree.
+The substrate therefore pins a community mirror, [`datahub-local/garage-helm`](https://github.com/datahub-local/garage-helm), by chart version.
+The alternative considered was vendoring the upstream chart, which trades the third-party publisher for a manual bump on every release.
+
+The mirror is the better chart on its merits, not only the more convenient one.
+Its `clusterConfig` block runs the cluster layout, the key import, and the bucket grants as a post-install hook.
+Upstream's chart has no equivalent.
+That matters because a Garage node serves no S3 until a layout is applied, and holds no credentials until a key is imported.
+Without the hook the substrate would owe a hand-written bootstrap against the admin API.
+
+Two properties of that hook shape the substrate around it.
+It runs every command under `|| true`, so a bucket that was never created leaves the release green.
+The substrate therefore keeps a verification Job that writes, reads, and deletes an object in each bucket.
+It does so under the credentials tier 2 is about to hand the module.
+The hook also sleeps for three minutes across its run, which is why the release timeout is 900 rather than the 600 the other substrate releases use.
+
 ### Tier 2 tests the chart harder than tier 1 does
 
 Worth stating explicitly because it inverts the usual assumption.
-rustfs exercises the **real object-storage code paths** in both Loki and Thanos — chunk writes, the compactor's delete-request store, Thanos block upload — where `loki-test` runs filesystem mode and Thanos not at all in any storage-meaningful way.
+Garage exercises the **real object-storage code paths** in both Loki and Thanos — chunk writes, the compactor's delete-request store, Thanos block upload — where `loki-test` runs filesystem mode and Thanos not at all in any storage-meaningful way.
 CNPG exercises the **production Grafana state shape** that `grafana-postgres` exists to argue for, including Grafana running its own schema migrations against a database it owns.
 
 Two consequences:
 
 1. **A chart-only change can pass tier 1 and break tier 2.** A change to Loki's or Thanos's storage wiring is exactly the kind that clears a filesystem-mode gate. Tier 2 should therefore be **path-triggered on chart changes too** — anything touching `loki.*`/`thanos.*` storage values or the objstore helpers — and run on main regardless of trigger.
-2. **The object-storage variant is worth promoting into a chart-level profile.** If rustfs and CNPG are good enough to qualify the Terraform path, they are good enough for the chart's own gate, and a `kind-integration` profile would let tier 1 opt into the deeper shape when a change warrants it.
+2. **The object-storage variant is worth promoting into a chart-level profile.** If Garage and CNPG are good enough to qualify the Terraform path, they are good enough for the chart's own gate, and a `kind-integration` profile would let tier 1 opt into the deeper shape when a change warrants it.
 
 ### Assertions without a Materialize instance
 
@@ -698,9 +716,9 @@ Two operational notes carried over from the Terraform repo's harness, which alre
 
 ### Gaps this plan does not close
 
-- **Workload identity is untestable on kind.** rustfs takes static credentials; there is no OIDC issuer an IAM provider trusts. IRSA, GKE Workload Identity, and Azure Workload Identity are covered **only** at tier 3, on real clouds — and tier 3 runs after we have already tagged. This is the one place where "fully qualified before release" cannot be literally true. Mitigation is the chart-side validators asserting the *shape* of the identity config (annotation present, and consistent with the objstore type), so a misconfiguration fails at render time even though the binding itself is unexercised locally.
+- **Workload identity is untestable on kind.** Garage authenticates with static access keys; there is no OIDC issuer an IAM provider trusts. IRSA, GKE Workload Identity, and Azure Workload Identity are covered **only** at tier 3, on real clouds — and tier 3 runs after we have already tagged. This is the one place where "fully qualified before release" cannot be literally true. Mitigation is the chart-side validators asserting the *shape* of the identity config (annotation present, and consistent with the objstore type), so a misconfiguration fails at render time even though the binding itself is unexercised locally.
 - **Thanos sizing profiles** — `thanos-small` has since landed and the tier-2 root installs on `sizing = "small"`, so the PR variant now means something. Medium needs nothing built (it is the chart defaults, which is a nice property: it puts the default configuration under continuous test), but a `kind` resource-sizing profile is still a prerequisite for medium to fit a runner. See [Sizing profiles](#sizing-profiles-medium-is-the-chart-defaults).
-- **Runner sizing.** Medium-on-main means microservice Loki with real replicas plus Thanos plus Grafana plus CNPG plus rustfs on one kind node. That wants a larger runner and belongs on the post-merge or merge-queue path, not as a PR gate.
+- **Runner sizing.** Medium-on-main means microservice Loki with real replicas plus Thanos plus Grafana plus CNPG plus Garage on one kind node. That wants a larger runner and belongs on the post-merge or merge-queue path, not as a PR gate.
 - **Network policy is invisible to tier 1.** The chart now ships a policy for every component ([parity item 6](#6-networkpolicy-covers-only-loki)), which makes this gap wider rather than narrower: `loki-test` sets `networkPolicy.enabled: false` for Loki, and `kindnet` ignores NetworkPolicy entirely, so tier 1 installs the whole set and exercises none of it. The tier-2 variant needs a policy-enforcing CNI, or the whole policy surface ships unqualified.
 - **mTLS needs its own tier-2 coverage, including rotation.** Same argument as network policy: run tier 2 with certs enabled end-to-end. And add the rotation case — a short-lived cert, forced renewal, assert delivery continues — because that failure is invisible to any test that only exercises a freshly-installed stack. See [In-cluster TLS](#in-cluster-tls-and-authentication).
 - **Node and container metrics** are now collectable — the gateway scrapes `/metrics/cadvisor` on every kubelet and node-exporter installs behind its tag — so `container_*` and `node_*` assertions are writable and simply have not been written. They belong at tier 2, which is the first tier with a metrics backend to query them out of; tier 1 discards metrics entirely.
@@ -709,10 +727,10 @@ This suite is the roadmap's **synthetic-data end-to-end smoke test**, and it pro
 
 ### Does LocalStack make more sense than kind?
 
-**No — and rustfs is the better choice over LocalStack's S3 even for the storage half.**
+**No — and Garage is the better choice over LocalStack's S3 even for the storage half.**
 
 1. **kind is not optional.** `helm_release` needs a real API server, and the thing under test is a Helm chart. LocalStack would be additive, never a substitute.
-2. **We are testing an S3 *protocol* client, not AWS behavior.** rustfs is a real S3 implementation; LocalStack is an emulator. For "does Loki's compactor talk to this endpoint correctly," a real implementation is strictly better evidence.
+2. **We are testing an S3 *protocol* client, not AWS behavior.** Garage is a real S3 implementation; LocalStack is an emulator. For "does Loki's compactor talk to this endpoint correctly," a real implementation is strictly better evidence.
 3. **What LocalStack could uniquely add does not give the coverage that matters.** End-to-end IRSA needs a cluster whose OIDC issuer the IAM provider trusts, which LocalStack does not supply. Worse, its IAM policy enforcement is off by default, so a green LocalStack test would give false confidence about least-privilege policies — the exact property we most want evidence for.
 4. **The IAM logic lives downstream anyway.** The cloud wrappers are in the Terraform repo, so credential-free plan coverage of trust policies belongs there — where real-cloud tests already run.
 
@@ -760,7 +778,7 @@ The Terraform story is stale in several places here and should be corrected as t
 ## Open questions
 
 - [x] ~~Does hosting the module here create a chicken-and-egg problem for the Terraform repo's integration tests?~~ **No.** Downstream consumes released tags only, Renovate-pinned, and assumes qualification already happened here. The contract is one-directional.
-- [x] ~~Does the integration harness run the object-storage path on every apply?~~ Superseded by the [tier structure](#tiers): real object storage is exercised at tier 2 on kind via rustfs, and at tier 3 on real clouds.
+- [x] ~~Does the integration harness run the object-storage path on every apply?~~ Superseded by the [tier structure](#tiers): real object storage is exercised at tier 2 on kind via Garage, and at tier 3 on real clouds.
 - [ ] Reload-on-change or a config-checksum-annotation rollout when a mounted certificate is renewed? The first avoids restarts, the second is simpler and matches how the chart already handles config revisions.
 - [ ] Does Loki and Thanos server-side TLS change the datasource URLs to `https` in a way that interacts with the tenant-header wiring, and does the bundled Grafana trust the internal issuer's CA by default or need it mounted?
 - [ ] Should the Grafana LB be Ingress-through-the-LB-controller on all three clouds, or does GCP/Azure want the `load_balancers` module instead? AWS is clear; the others are not.
@@ -780,7 +798,7 @@ The Terraform story is stale in several places here and should be corrected as t
 - [x] Thanos has no PodDisruptionBudgets or topology spread constraints on any component today, and Receive is PVC-backed and therefore AZ-pinned. Does zone spread land with the sizing profiles, or as its own piece of work?
   **Resolved, partly by removing the premise.** PDBs landed separately (`thanos.global.pdb`). Receive is no longer PVC-backed — it and the Compactor moved to `emptyDir` with explicit `ephemeral-storage` budgets, because a volume that cannot cross zones makes an AZ failure worse rather than safer; only the Store Gateway keeps a PVC. Zone spread is still outstanding and is its own piece of work, but it is now a scheduling change with nothing pinning it — see [Storage: ephemeral by default](../../../../operating/production-best-practices/#thanos-ephemeral-storage).
 - [ ] Should tier 2 also gate chart changes that touch storage wiring, or only run on main? Path-filtering is more precise but more machinery to keep correct.
-- [ ] Is a `kind-integration` (rustfs + CNPG) profile worth adding so the chart's own gate can reach the deeper storage shape, rather than that coverage living only on the Terraform path?
+- [ ] Is a `kind-integration` (Garage + CNPG) profile worth adding so the chart's own gate can reach the deeper storage shape, rather than that coverage living only on the Terraform path?
 - [ ] One `scheduling` profile parameterized by values, or separate `node-selector` / `tolerations` profiles? The former is fewer files; the latter composes more cleanly with the existing one-concern-per-profile convention.
 - [ ] How much of the Loki profiles is genuinely foundational versus illustrative? That answer sets the size of the "migrate into chart defaults" task.
 - [ ] Should the wrapper modules provision the Grafana Postgres database from the existing per-cloud `database` module in the first version, or defer it behind a variable? Deferring ships sooner; not deferring means Grafana state survives a restart out of the box. Note tier 2 covers the CNPG-backed shape either way, so the chart-side path is qualified before the wrapper uses it.

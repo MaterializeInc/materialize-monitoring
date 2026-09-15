@@ -81,7 +81,7 @@ make e2e-cluster          # kind cluster + the namespaces a real install has
 make e2e-tier1            # chart, hermetic shape
 make e2e-verify-tier1     # assert the logging round trip
 make e2e-tier1-down       # remove tier 1 so the same cluster can host tier 2
-make e2e-tier2            # rustfs + CNPG substrate, then the module onto it
+make e2e-tier2            # Garage + CNPG substrate, then the module onto it
 make e2e-verify-tier2     # same assertions, with Thanos live
 make e2e-cluster-down
 ```

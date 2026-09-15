@@ -369,7 +369,7 @@ terraform-render:
 
 ### E2E (kind) ###
 # Tier 1 is the fast gate: the chart's own hermetic shape, no object storage.
-# Tier 2 adds the generic-cloud substrate (rustfs + CNPG), which is what exercises
+# Tier 2 adds the generic-cloud substrate (Garage + CNPG), which is what exercises
 # the real object-storage code paths. See test/e2e/README.md.
 
 KIND ?= kind
