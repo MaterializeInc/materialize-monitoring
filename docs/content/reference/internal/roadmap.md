@@ -393,7 +393,10 @@ Nothing here is ticketed yet.
 | Tenant-scoped query API — design doc plus review | — | 🔨 ([design doc](../design-docs/20260916-tenant-query-api/) drafted; review outstanding) |
 | Per-family tenancy classification generated from the query registry | — | ⬜ |
 | `query-proxy` chart component — JWT verification, label enforcement, per-tenant read limits | — | ⬜ |
+| Separate grants for logs and metrics, and for the classes within each | — | ⬜ |
+| A producer for the `audit` log class — `tenantMap.audit` and `GATEWAY_TENANT_MAP_AUDIT` exist and nothing reads or writes the class | — | ⬜ |
 | Published query manifest for Console to consume by query ID | — | ⬜ |
+| `oauth2.tls` on the destination schema, so BYOC ingest can exchange its certificate for a short-lived token | — | ⬜ |
 
 **The read path is where this stack stops being optional.**
 Console today renders environment metrics from SQL against the environment itself, which keeps a short window of history and is unavailable precisely when the environment is.
@@ -408,6 +411,10 @@ Two consequences reach other rows on this page.
 **This supersedes the earlier plan to expose a Prometheus endpoint for customers to scrape into their own environment.**
 A scrape endpoint delivers current samples to whoever can reach inward and keeps no history across a gap.
 A federated or remote-read endpoint on the same proxy is strictly smaller than the query API, so federation survives as an option for customers with a dedicated Prometheus rather than as the integration story.
+
+Two findings from drafting it belong on this page rather than only in the design doc.
+**The `audit` log class is declared and unimplemented** — `pipeline.logging.tenancy.tenantMap.audit` is a values key and `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway's ConfigMap, where nothing reads it, exactly as `GATEWAY_UNFILTERED_PROM_METRICS` did before [DEP-232](https://linear.app/materializeinc/issue/DEP-232).
+**The destination `oauth2` block models no TLS for the token request**, so a BYOC gateway cannot today exchange its license certificate for a short-lived token without falling back to a long-lived client secret.
 
 The `console` row under [Materialize components beyond the environment](#materialize-components-beyond-the-environment) is a different subject with the same word in it.
 That row tracks Console as a component we cannot monitor; this section tracks Console as a consumer.
