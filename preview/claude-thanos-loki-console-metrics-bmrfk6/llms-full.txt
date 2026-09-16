@@ -18544,7 +18544,10 @@ Nothing here is ticketed yet.
 | Tenant-scoped query API — design doc plus review | — | 🔨 ([design doc](../design-docs/20260916-tenant-query-api/) drafted; review outstanding) |
 | Per-family tenancy classification generated from the query registry | — | ⬜ |
 | `query-proxy` chart component — JWT verification, label enforcement, per-tenant read limits | — | ⬜ |
+| Separate grants for logs and metrics, and for the classes within each | — | ⬜ |
+| A producer for the `audit` log class — `tenantMap.audit` and `GATEWAY_TENANT_MAP_AUDIT` exist and nothing reads or writes the class | — | ⬜ |
 | Published query manifest for Console to consume by query ID | — | ⬜ |
+| `oauth2.tls` on the destination schema, so BYOC ingest can exchange its certificate for a short-lived token | — | ⬜ |
 
 **The read path is where this stack stops being optional.**
 Console today renders environment metrics from SQL against the environment itself, which keeps a short window of history and is unavailable precisely when the environment is.
@@ -18559,6 +18562,10 @@ Two consequences reach other rows on this page.
 **This supersedes the earlier plan to expose a Prometheus endpoint for customers to scrape into their own environment.**
 A scrape endpoint delivers current samples to whoever can reach inward and keeps no history across a gap.
 A federated or remote-read endpoint on the same proxy is strictly smaller than the query API, so federation survives as an option for customers with a dedicated Prometheus rather than as the integration story.
+
+Two findings from drafting it belong on this page rather than only in the design doc.
+**The `audit` log class is declared and unimplemented** — `pipeline.logging.tenancy.tenantMap.audit` is a values key and `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway's ConfigMap, where nothing reads it, exactly as `GATEWAY_UNFILTERED_PROM_METRICS` did before [DEP-232](https://linear.app/materializeinc/issue/DEP-232).
+**The destination `oauth2` block models no TLS for the token request**, so a BYOC gateway cannot today exchange its license certificate for a short-lived token without falling back to a long-lived client secret.
 
 The `console` row under [Materialize components beyond the environment](#materialize-components-beyond-the-environment) is a different subject with the same word in it.
 That row tracks Console as a component we cannot monitor; this section tracks Console as a consumer.
@@ -21594,7 +21601,10 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 - **[Should] As a customer with a dedicated Prometheus,** I want to federate or remote-read from that same endpoint, so that adopting our own long-term store does not mean a second integration.
 - **[Should] As a Materialize support engineer,** I want Console and the Grafana dashboards to read the same query definitions, so that two surfaces cannot disagree about what a number means.
 - **[Should] As an operator on a small install,** I want the mandated backends to fit, so that a requirement is not a sizing floor nobody warned me about.
+- **[Must] As a compliance reviewer,** I want a grant that admits metrics to be separate from one that admits logs, so that reading numbers and reading message bodies are not the same permission.
+- **[Should] As a compliance reviewer,** I want the audit record of who read my telemetry to be complete, so that "we have no record of that" and "that did not happen" are distinguishable.
 - **[Should] As a maintainer,** I want one tenancy mechanism across self-managed, Cloud, and the BYOC control plane, so that we operate one read-authorization story rather than three.
+- **[Should] As a maintainer,** I want the credential story for BYOC ingest and for reads to share an issuer, so that a customer environment carries one identity rather than two unrelated ones.
 - **[Could] As a customer,** I want a read-only view of the reduced copy the control plane holds about me, so that what crosses the boundary is inspectable rather than described.
 
 ## Technical BLUF
@@ -21609,6 +21619,10 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 - **Console should consume the query registry rather than write PromQL**, for the same reason panels do not. That promotes query IDs out of the internal surface the [deprecation policy](../20260823-deprecation-policy/#committed-surface) currently places them in, which is a real cost and should be paid deliberately.
 - **A public read endpoint is a denial-of-service surface.** Thanos's `--store.limits.*` is global rather than per-caller, so per-tenant read limits belong at the proxy, and `thanos.queryFrontend` stops being optional.
 - **Revocation is the hard half.** A stateless JWT cannot be withdrawn before it expires. Short lifetimes work for Console, which refreshes; they do not work for a datasource header a human pasted into Grafana.
+- **Logs and metrics need separate grants, and so do the classes within each.** A metric is a number over a bounded label set; a log line is free text a developer wrote. One "may read telemetry" permission over-grants by however much the message bodies contain.
+- **Loki is the right store for a forensic copy of an audit trail and the wrong one for the system of record.** Every mechanism in the log pipeline — rate limits, stream ceilings, drop and sampling stages, a best-effort flush — exists to shed load, which is correct for operational logs and disqualifying for a record whose value is completeness.
+- **The `audit` log class exists in name only today.** `tenantMap.audit` is a values key, `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway's ConfigMap, and no pipeline stage reads it — the same defect as `GATEWAY_UNFILTERED_PROM_METRICS` before [DEP-232](https://linear.app/materializeinc/issue/DEP-232) found it.
+- **BYOC ingest should exchange its certificate for a short-lived token rather than replace it.** That collapses revocation from CRL freshness to token lifetime and lets the receiver verify identity itself instead of trusting an injected header — but the exchange must be authenticated by the certificate, and the destination `oauth2` block models no TLS for the token request.
 
 ## Non-goals
 
@@ -21776,7 +21790,7 @@ Multiple issuers must be configurable, because a self-managed customer federatin
 | `sub` | ✅ | Logged, never used for authorization |
 | `jti` | ✅ | The revocation handle. Required even before revocation is implemented, because retrofitting it means reissuing every token |
 | Tenant claim | ✅ | The authoritative tenant. Absent means reject, never a default |
-| Scope claim | Should | Which signals this token may read (`metrics`, `logs`) and at which class (see [tenancy classes](#a-generated-tenancy-class-per-family)) |
+| Scope claim | ✅ | The grant: which signal-and-class pairs this token admits. Two axes, not one — see [separate grants](#logs-and-metrics-need-separate-grants). Absent means no grant, never a default |
 
 **The tenant claim's name and shape is a decision, not a detail**, and it is the same decision the BYOC doc leaves open for the certificate subject.
 The two should agree: whatever identifies an environment on the write path should identify it on the read path, so that one identity vocabulary covers both directions.
@@ -21889,6 +21903,101 @@ Loki's header does the real work, so this list is shorter and not empty.
 - **`/loki/api/v1/labels` and `/label/<name>/values`** enumerate, exactly as their Prometheus analogues do.
 - **Tailing (`/loki/api/v1/tail`, WebSocket)** is a long-lived connection whose token expires mid-stream. Decide whether it is offered at all; if it is, the connection must be closed at token expiry rather than inheriting the lifetime of the socket.
 
+## Logs and metrics need separate grants
+
+The scope claim above is a **Must**, and it carries two axes rather than one.
+
+**Signal is an axis because the two disclose differently.**
+A metric is a number over a bounded label set, and what it reveals is whatever the label names say — knowable in advance, and the thing the tenancy classification already reasons about.
+A log line carries a message body: free text a developer wrote, which in practice contains query fragments, object names, user identifiers, and whatever an error formatter put into a string.
+A single "may read telemetry" grant over-grants by however much those bodies contain.
+The redaction work the [BYOC design](../20260813-byoc-observability/#redaction) specifies exists precisely because log content is not safe by default, and a read path that treats logs and metrics as one permission discards that distinction at the last hop.
+
+**Class is an axis because both signals already have one.**
+The two class sets are analogous rather than identical, and neither is new here.
+
+| Signal | Classes | Source | State |
+|---|---|---|---|
+| Metrics | `environment`, `cluster`, `denied` | Generated per family from the query registry | Proposed by this doc |
+| Logs | `default`, `infra`, `audit`, `environment` | `pipeline.logging.tenancy.tenantMap` | Shipped, except `audit` — see [Audit records](#audit-records-two-stores-two-requirements) |
+
+So a grant is a set of signal-and-class pairs, and the token's scope claim lists them.
+
+**The log half is nearly free and the metric half is not**, which is the reverse of the asymmetry in [tenancy enforcement](#logs-already-have-tenancy-metrics-have-none).
+Log classes map to Loki tenants, so enforcing a log-class grant is deciding which `X-Scope-OrgID` values the proxy will set for a given token — a lookup, not a rewrite.
+Metric classes have no such backing, which is why they need the generated classifier.
+
+Recommended defaults, stated as a matrix because that is what a reviewer will ask for:
+
+| Audience | Metrics | Logs |
+|---|---|---|
+| Console, ordinary user | `environment` | None by default |
+| Console, customer administrator | `environment`; `cluster` in self-managed | `default`, `environment` |
+| Customer Grafana service token | As issued, never wider than the issuer holds | As issued, never wider than the issuer holds |
+| Audit reader | None | `audit` only |
+| Materialize support against a self-managed install, with consent | `environment`, `cluster` | `default`, `infra`, `environment` |
+
+Two rules matter more than the defaults.
+
+**A token MUST NOT be issuable with a scope wider than the issuing human holds.**
+Without that rule the datasource token is a privilege-escalation primitive: a user with metrics-only access in Console mints a logs token and reads what Console would not show them.
+
+**An unlisted combination is denied**, the same rule as an unclassified metric family.
+A grant matrix that defaults open has the failure mode of a fail-open classifier, one level up and harder to notice.
+
+The honest cost is configuration.
+This is more surface than one "read telemetry" switch, and it is the kind of setting that gets opened to its widest value once and never revisited.
+The mitigation is narrow defaults and a Console surface that displays what a token can actually reach, not a document asking people to be careful.
+
+## Audit records: two stores, two requirements
+
+There are two distinct things called an audit log here, and conflating them is the main risk in this section — the same shape the BYOC doc's [support bundles](../20260813-byoc-observability/#support-bundles) have.
+
+**The system of record** answers who changed what: DDL, grants and roles inside Materialize, and token issuance and revocation in the control plane.
+Materialize's own audit events already live in the catalog, written transactionally with the change they describe and retained indefinitely.
+
+**The forensic copy** answers what happened around an incident: what the proxy served, who read which tenant, what the pipeline admitted or dropped.
+Most of that has no home today.
+
+The property that separates them is **whether a missing record is acceptable**, and it decides the store.
+
+| | System of record | Forensic copy |
+|---|---|---|
+| Example | Materialize audit events; token issuance and revocation | Proxy read records; pipeline decisions; gateway admission |
+| Requirement | Complete, ordered, tamper-evident, retained for years | Best-effort, correlatable, retained for months |
+| Store | A database, written transactionally with the event | Loki, at a dedicated tenant |
+| May a record be dropped? | Never | Yes, under load, by design |
+
+**Loki is built to shed, and that is disqualifying for the first column.**
+Per-tenant ingestion rate and burst limits, an active-stream ceiling, `stage.drop`, `stage.limit`, `stage.sampling`, an ephemeral WAL, and a best-effort flush on ingester shutdown are all shipped and all correct for operational logs.
+A compliance question is rarely "what do you have"; it is "is this all of it", and a pipeline with a documented drop policy cannot answer the second.
+
+**Recommendation: keep the system of record in a database, and mirror a copy into Loki.**
+The mirror is one-directional and tolerant of loss precisely because authority lives elsewhere.
+What it buys is correlation — an audit event beside the logs and the metrics from the same minute, in one query language, reachable through the read path this doc builds.
+That is the thing a database cannot give, and it is the reason to do it at all.
+
+Where a record must live only in Loki, the object store supplies what Loki does not: [Object Lock or WORM in compliance mode, object versioning, and the bucket-freeze procedure](../../../../logs-and-events/storing/#disaster-recovery) are already documented.
+State the limit alongside them rather than letting the feature list imply more than it gives: **WORM protects a chunk after it is written and does nothing about a line that was never ingested.**
+Immutability is not completeness, and an audit record needs both.
+
+### The proxy's own read record
+
+This design creates an audit stream that does not exist today: who read which tenant's telemetry, with which token.
+Three constraints shape where it goes, and the third is the one that is easy to get backwards.
+
+- **It must not be writable by the tenant it describes.** A customer who can write to the tenant holding their own access records holds a record worth nothing.
+- **It must be readable separately from the telemetry**, which is what the `audit` class in the grant matrix is for.
+- **Its collection must not depend on the proxy.** The proxy writes to stdout and the agent collects it like any other workload's logs. A proxy that ships its own audit trail through itself puts that trail inside its own blast radius, and the compromise that matters most is the one that would edit the evidence.
+
+### The `audit` class exists in name only
+
+`pipeline.logging.tenancy.tenantMap.audit` is a values key, and `GATEWAY_TENANT_MAP_AUDIT` is written into the gateway's env ConfigMap — where nothing reads it.
+The rendered pipeline reads `GATEWAY_TENANT_MAP_INFRA` and `GATEWAY_TENANT_MAP_ENVIRONMENT`; the audit variable has no consumer and no stage assigns anything to the class.
+
+This is the same defect as `GATEWAY_UNFILTERED_PROM_METRICS`, which the roadmap records as having been written to the ConfigMap and read by nothing until [DEP-232](https://linear.app/materializeinc/issue/DEP-232) found it, leaving `minMetricImportance` on remote-write silently inert.
+**Deciding what produces the audit class is therefore a prerequisite rather than a detail**: a tenancy key with no producer routes nothing, and a grant that admits a class nothing writes to is a permission over an empty set.
+
 ## The proxy
 
 ### Request path
@@ -21999,6 +22108,60 @@ Console consuming them makes that no longer true.
 Either query IDs join the committed surface with the cooldown that implies, or the manifest is versioned separately and Console pins a version.
 **Recommendation: pin a version.** The registry is edited constantly and freezing its identifiers would slow the thing it exists to make fast, whereas a pinned manifest gives Console a stable contract and gives the registry room to move.
 
+## Token exchange for BYOC ingest
+
+The [BYOC design](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) authenticates a customer's gateway with a client certificate carried in the license, verified twice: at the load balancer, which can check revocation, and at the receiver, which cannot.
+This design introduces a token issuer and a token verifier, which raises a fair question — should the write path use tokens too?
+
+**The answer is yes for the credential and no for the component.**
+Ingest should exchange its certificate for a short-lived token; the exchange endpoint should be a sibling of the read proxy rather than the read proxy itself.
+
+### Why the ingest path wants a token
+
+**It collapses revocation.**
+BYOC's revocation is a CRL at the load balancer with a refresh interval, and that doc states plainly that any network path reaching the gateway pod while bypassing the load balancer also bypasses revocation.
+A short-lived token makes expiry the revocation mechanism, enforced by every verifier including the receiver, with a window equal to the token lifetime rather than to CRL freshness.
+That removes the design's sharpest operational caveat instead of mitigating it.
+
+**It makes the receiver self-sufficient about identity.**
+The BYOC receiver reads the tenant from a header the load balancer injected, which is why that design must strip everything tenant-shaped the client sent and fail closed when the header is absent.
+A signed claim removes the header entirely: there is nothing to overwrite, because identity arrives inside the thing already being verified.
+
+**Most of the issuance service is being built anyway.**
+The BYOC doc ranks *short-lived credentials with automated renewal, bootstrapped from the license* as [option 1](../20260813-byoc-observability/#the-license-as-credential-carrier) and says it is right if an issuance service exists.
+The marginal cost of an exchange endpoint beside a JWKS-verifying proxy is far below the cost of standing one up alone, which is most of why that option was ranked first and chosen second.
+
+### Why it does not replace mTLS
+
+**The certificate is what makes the exchange safe.**
+It is the only credential in the customer's cluster that is not a static secret, and it already has a renewal story through cert-manager and the license.
+Exchanging it for a token keeps that property; replacing it with anything else discards it.
+
+**A token adds an online dependency to a path that has none.**
+mTLS needs nothing reachable at hand-off time.
+A token needs an issuer reachable at refresh, and an exchange endpoint that is down long enough stops ingest while the network and the backends are healthy.
+The gateway's WAL converts that into a bounded delay rather than a loss, which is real mitigation and not elimination.
+**Direct mTLS on the ingest path must keep working as the fallback**, which is also what makes the migration a gradual one rather than a cutover.
+
+### The blocker, stated precisely
+
+Alloy's destination `oauth2` block models `clientId`, `clientSecret`, `scopes`, and `tokenUrl` — **and no TLS configuration for the token request.**
+Every destination carries client TLS for the destination itself; none of it reaches the token endpoint.
+
+So the exchange as modeled today would authenticate with a client secret: a long-lived bearer credential sitting in the customer's cluster, which is exactly what choosing a certificate avoided.
+**An `oauth2.tls` block on the destination schema is a hard prerequisite**, and without it this proposal is strictly worse than the mTLS it would extend.
+It is a small addition — the same client-TLS shape the destination already has, applied one level in — and it is listed with the other prerequisites below.
+
+### Why the exchange is not the read proxy
+
+The read proxy is a data plane: it terminates customer connections, parses untrusted query text, and answers with telemetry.
+A credential issuer holds signing material.
+Combining them means a bug in a PromQL parser reachable from a public endpoint sits in the same process as the ability to mint identities for the ingest path.
+
+**Separate deployments, shared vocabulary.**
+Same issuer, same JWKS, same claim names, same tenant identity — and different processes, different network exposure, and different blast radius.
+The shared part is the valuable part, and it is the part that costs nothing to share.
+
 ## Deployment shapes
 
 | | Self-managed | Cloud | BYOC control plane |
@@ -22024,6 +22187,10 @@ None of this is ticketed yet.
 | **Per-family tenancy classification** in the query registry, generated as an artifact beside `metric-tiers.yaml` | The policy input the proxy enforces. Everything about the metrics half depends on it, and hand-maintaining it guarantees drift | **Blocking** — the metrics path is not safe without it |
 | **The `query-proxy` component**: Deployment, Service, ServiceAccount, NetworkPolicy, optional Ingress | The feature | **Blocking** |
 | **Issuer values surface** — issuer URL(s), audience, JWKS URL, allowed algorithms, maximum token lifetime, deployment kind | Configuration, and the deployment-kind value that decides `cluster`-class readability | **Blocking** |
+| **The grant matrix as a values surface**, signal × class, denying anything unlisted | Logs and metrics are separate permissions, and so are the classes within each. A single read grant over-grants by whatever the log bodies contain | **Blocking** |
+| **A producer for the `audit` log class** — a stage that assigns it, and a gateway that reads `GATEWAY_TENANT_MAP_AUDIT` | The class is a values key and an env var with no consumer. A grant admitting a class nothing writes to is a permission over an empty set | **Blocking** for the audit grant |
+| **The proxy's read-audit stream**, written to stdout and collected by the agent, landing in a tenant the audited party cannot write | A read path with no record of reads cannot be reviewed, and a record the proxy ships through itself is inside its own blast radius | **Blocking** for exposure |
+| **`oauth2.tls` on the destination schema** — client TLS for the *token request*, not only for the destination | Without it a BYOC token exchange authenticates with a long-lived client secret, which is what choosing a certificate avoided | **Blocking** for [token exchange](#token-exchange-for-byoc-ingest), not for reads |
 | **Fail-closed defaults at render time** — refuse to render with an unset audience, an unset deployment kind, or a symmetric algorithm | Each of those defaults quietly to something wrong, and all three are valid YAML | **Blocking** |
 | **Public-exposure guard**, mirroring `connections.grafana.allowPublicAccess` | The endpoint is designed to be published, which makes publishing it *by accident* the failure to guard against | **Blocking** for the ingress |
 | **NetworkPolicy narrowing on Thanos Query and the Loki query frontend** to the proxy and the bundled Grafana | The proxy is the only enforcement point, so a second path is a bypass of all of it | **Blocking** |
@@ -22052,6 +22219,11 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - **Rewriter fidelity.** A corpus of every expression in the query registry is parsed, rewritten, and re-parsed, asserting the result is a valid query that differs from the input only in the enforced matcher. The registry is the corpus, which means the test grows with the dashboards.
 - **Limits.** A query exceeding the maximum range or minimum step is refused with a useful error rather than attempted.
 - **Base-path concatenation.** A real Grafana Loki datasource against the configured base path returns data, because the failure mode is a 404 that reads like a broken install.
+- **Grant separation.** A metrics-only token is refused on every LogQL endpoint and a logs-only token on every PromQL endpoint, asserted per endpoint rather than once — the enforcement is per handler, and a handler added later is the one that will miss it.
+- **Grant escalation.** An issuance request for a scope wider than the requester holds is refused. This is the privilege-escalation path that makes datasource tokens dangerous, and it lives in Console rather than the proxy, so it needs a test on that side too.
+- **Audit completeness under load.** Drive the proxy past its rate limit and assert that refused requests are still recorded. An audit stream that is the first thing shed under load records exactly the traffic that did not matter.
+- **Audit independence.** Partition the proxy's own read path and assert its audit records still reach Loki, proving collection does not route through the component being audited.
+- **Audit write isolation.** A tenant token is refused when writing to the tenant holding its own access records.
 
 ## Documentation to update
 
@@ -22063,6 +22235,8 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - `reference/stability.md` and `reference/internal/versioning.md` — whichever of the query-manifest options is chosen changes what is committed.
 - `reference/internal/roadmap.md` — ✅ done. A read-path section and a follow-up-documentation entry point here.
 - `operating/production-best-practices.md` — publishing the endpoint is a shared-responsibility item with a checklist of its own.
+- `logs-and-events/storing.md` — the retention section mentions audit-relevant streams as a tiered-retention example; it should say what the `audit` class is and, until a producer exists, that nothing populates it.
+- A **compliance-facing audit page** stating which record is the system of record, what the Loki copy is for, and what WORM does and does not guarantee. The distinction is the whole answer to an auditor's question and it is currently in nobody's document.
 
 ## Open questions
 
@@ -22078,3 +22252,9 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - [ ] **What is the minimum sizing envelope**, and does it fit the smallest install we support? This needs measuring rather than asserting, and the answer decides whether the mandate is honest.
 - [ ] **Is the rewriter's correctness testable enough to trust?** The registry corpus is a strong test and it only covers expressions we wrote. A customer's Grafana sends arbitrary PromQL, which is the case the corpus does not reach.
 - [ ] **Does a customer's read of the control-plane copy ship with the rest**, or wait? It is the strongest trust argument BYOC has and it depends on the control-plane deployment existing at all.
+- [ ] **What feeds the `audit` log class?** Materialize's audit events mirrored in, the proxy's read records, the control plane's issuance records, Kubernetes audit — the class was declared without an answer and the answer decides its retention and its limits.
+- [ ] **Does the audit mirror into Loki carry a completeness marker** — a sequence number or a periodic count from the system of record — so that a gap is detectable rather than invisible? Without one the copy cannot tell "nothing happened" from "the line was dropped", which is most of why it is not the system of record.
+- [ ] **Are log classes really tenants?** Mapping them onto `tenantMap` makes the grant a lookup and makes per-class retention and limits free, and it multiplies the tenant count by the class count. Worth confirming against Loki's per-tenant overhead before committing.
+- [ ] **Is `cluster`-class metric access a class or a role?** It is modelled here as a class in the grant matrix, and it behaves more like an operator role that also implies wider log access. Collapsing the two would simplify the matrix and would couple two decisions that may want to move separately.
+- [ ] **Does BYOC ingest adopt token exchange before or after the read path ships?** The exchange endpoint is cheap once the issuer exists and it is a change to a path that currently works, which argues for after.
+- [ ] **What is the ingest token lifetime**, and does the gateway's WAL bound comfortably exceed the outage the exchange endpoint can have? The two numbers have to be chosen together, and choosing them apart is how a bounded delay becomes a loss.
