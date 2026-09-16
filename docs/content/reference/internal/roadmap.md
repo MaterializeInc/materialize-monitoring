@@ -381,6 +381,45 @@ The gateway pair is what enforces the boundary, rather than ad-hoc network confi
 Sanitization is what makes *anything* crossing safe, since the `_info` metrics that made dashboards legible are precisely the ones carrying customer names, and the same tension applies to log labels.
 Redaction attaches to the destination rather than to the pipeline, so the reduced copy is a fork of the customer's stream and never a downgrade of it.
 
+### Tenant-scoped read path
+
+Every workstream above is about **collecting** telemetry, and every consumer of it so far is a Grafana we deploy, reading backends it reaches over a `ClusterIP` Service.
+This one is about **reading** it from somewhere else: the Materialize console, and a customer's own Grafana attached to our backends as a PromQL and LogQL datasource.
+
+Nothing here is ticketed yet.
+
+| Item | Milestone | Status |
+|---|---|---|
+| Tenant-scoped query API — design doc plus review | — | 🔨 ([design doc](../design-docs/20260916-tenant-query-api/) drafted; review outstanding) |
+| Per-family tenancy classification generated from the query registry | — | ⬜ |
+| `query-proxy` chart component — JWT verification, label enforcement, per-tenant read limits | — | ⬜ |
+| Separate grants for logs and metrics, and for the classes within each | — | ⬜ |
+| A producer for the `audit` log class — `tenantMap.audit` and `GATEWAY_TENANT_MAP_AUDIT` exist and nothing reads or writes the class | — | ⬜ |
+| Published query manifest for Console to consume by query ID | — | ⬜ |
+| `oauth2.tls` on the destination schema, so BYOC ingest can exchange its certificate for a short-lived token | — | ⬜ |
+
+**The read path is where this stack stops being optional.**
+Console today renders environment metrics from SQL against the environment itself, which keeps a short window of history and is unavailable precisely when the environment is.
+Reading PromQL and LogQL instead makes a deployment without those endpoints a deployment with a broken Console, which is a change of posture for a repository whose stated goal is that every component can be turned off.
+
+The design resolves that by mandating **an interface rather than an implementation**: a PromQL endpoint and a LogQL endpoint carrying the documented label contract, reachable through a tenant-scoped proxy.
+Thanos and Loki are the bundled implementation of it; a customer already running an equivalent points the proxy at theirs.
+
+Two consequences reach other rows on this page.
+[Cloud adoption](#adoption--productionalization) becomes a prerequisite for Console dashboards in Cloud rather than a parallel track, and the metric and label contract under [Metrics contract](#metrics-contract-upstream-dependency) becomes load-bearing for a product surface rather than for dashboards alone.
+
+**This supersedes the earlier plan to expose a Prometheus endpoint for customers to scrape into their own environment.**
+A scrape endpoint delivers current samples to whoever can reach inward and keeps no history across a gap.
+A federated or remote-read endpoint on the same proxy is strictly smaller than the query API, so federation survives as an option for customers with a dedicated Prometheus rather than as the integration story.
+
+Two findings from drafting it belong on this page rather than only in the design doc.
+**The `audit` log class is declared and unimplemented** — `pipeline.logging.tenancy.tenantMap.audit` is a values key and `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway's ConfigMap, where nothing reads it, exactly as `GATEWAY_UNFILTERED_PROM_METRICS` did before [DEP-232](https://linear.app/materializeinc/issue/DEP-232).
+**The destination `oauth2` block models no TLS for the token request**, so a BYOC gateway cannot today exchange its license certificate for a short-lived token without falling back to a long-lived client secret.
+
+The `console` row under [Materialize components beyond the environment](#materialize-components-beyond-the-environment) is a different subject with the same word in it.
+That row tracks Console as a component we cannot monitor; this section tracks Console as a consumer.
+Neither blocks the other.
+
 ## Metrics contract (upstream dependency)
 
 Several dashboards depend on metric instrumentation that lives **upstream in the `materialize` repo, not in this repository**.
@@ -452,3 +491,7 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
 - A BYOC gateway-to-gateway design doc is owed under `design-docs/`, tracked as [DEP-219](https://linear.app/materializeinc/issue/DEP-219). 🔨
   [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byoc-observability/) is written and in review as a draft; it also covers [DEP-124](https://linear.app/materializeinc/issue/DEP-124) and [DEP-220](https://linear.app/materializeinc/issue/DEP-220).
   The [BYOC](#byoc) section above is updated to match it: a reduced log subset crosses, where the earlier position was that logs never leave the customer network.
+- [A Tenant-Scoped Query API for Console and Customer Grafana](../design-docs/20260916-tenant-query-api/) is written and in review as a draft. 🔨
+  It proposes mandating a PromQL and LogQL read interface in self-managed and Cloud, and a JWT-authenticated single-tenant proxy in front of it.
+  The [Tenant-scoped read path](#tenant-scoped-read-path) section above is the roadmap position it establishes, including that it supersedes the customer-scraped Prometheus endpoint.
+- A **customer-facing** read-endpoint page — how to obtain a token, the two Grafana datasource shapes, and what a tenant can and cannot read — is owed alongside it. ⬜
