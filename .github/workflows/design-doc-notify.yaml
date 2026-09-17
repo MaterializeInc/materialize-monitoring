@@ -1,0 +1,107 @@
+# Copyright 2020 The Actions Ecosystem Authors
+# Modifications Copyright Materialize, Inc. and contributors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Portions of this file are derived from the README examples in the Action
+# Slack Notifier project. The original source code was retrieved on
+# January 5, 2022 from:
+#
+#     https://github.com/actions-ecosystem/action-slack-notifier/blob/fc778468d09c43a6f4d1b8cccaca59766656996a/README.md
+
+name: design-doc-notify
+
+# Post to the #rnd-design-docs Slack channel when a new design doc shows up in
+# a reviewable PR. Adapted from MaterializeInc/cloud's design_doc_notify.yml so
+# both repositories land in the same channel with the same message shape.
+#
+# A notification is sent when all of these hold:
+#   * A ready-to-review PR is (re-)opened, or a draft is marked ready.
+#   * That PR *adds* a Markdown page under docs/content/reference/internal/design-docs/.
+#
+# pull_request_target rather than pull_request: the Slack credential is only
+# readable from a workflow running against the base repository. Nothing from
+# the PR head is checked out or executed here, so the elevated context stays
+# inert.
+#
+# This is the one workflow that path-filters on the trigger rather than in a
+# `changes` job. The usual reason not to — a required check skipped at the
+# trigger level stays pending forever — does not apply, because this workflow
+# reports no status anyone gates on.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+    paths:
+      - docs/content/reference/internal/design-docs/*.md
+
+# dorny/paths-filter lists a PR's changed files via the API.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The `paths` gate above fires on any touched page in the section,
+      # including an edit to an existing doc. `added` narrows that to genuinely
+      # new ones. `_index.md` and `overview.md` are structural and already
+      # exist, so they cannot be added; a section restructure that recreates
+      # them is the only false positive, and it is worth one stray message to
+      # avoid missing a doc named outside the YYYYMMDD- convention.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            new-design:
+              - added: "docs/content/reference/internal/design-docs/*.md"
+
+      # Requires the SLACK_TOKEN organization secret to be shared with this
+      # repository; it is scoped to selected repositories, and granting it is
+      # an org-admin action.
+      - name: Push to Slack
+        if: steps.filter.outputs.new-design == 'true'
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_TOKEN }}
+          payload: |
+            {
+              "channel": "rnd-design-docs",
+              "text": "A new materialize-monitoring design doc is ready for review!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "A new *materialize-monitoring* design doc is ready for review!"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ${{ toJSON(format('• *PR:* <{0}|{1}>', github.event.pull_request.html_url, github.event.pull_request.title)) }}
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ${{ toJSON(format('• *Author:* <{0}|{1}>', github.event.pull_request.user.html_url, github.event.pull_request.user.login)) }}
+                  }
+                }
+              ]
+            }
