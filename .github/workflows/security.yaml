@@ -7,10 +7,13 @@ name: security
 #   misconfig-gate  blocks a pull request on HIGH/CRITICAL findings that are
 #                   not baselined in .trivyignore.yaml. Everything it can fail
 #                   on is a finding this repository introduced.
-#   misconfig-report uploads unfiltered SARIF at every severity to code
-#                   scanning. This is where the upstream-subchart population
-#                   lives -- remediation there is a Renovate bump, not a PR
-#                   fix, so it reports and never blocks.
+#   misconfig-report uploads one merged, deduplicated SARIF at every severity
+#                   to code scanning. This is where the upstream-subchart
+#                   population lives -- remediation there is a Renovate bump,
+#                   not a PR fix, so it reports and never blocks. Findings
+#                   baselined in .trivyignore.yaml are excluded: the file is
+#                   the record, and re-reporting them produces alerts that can
+#                   only be closed by hand.
 #   image-gate      blocks on fixable HIGH/CRITICAL OS-package vulnerabilities
 #                   in the images we publish. A rebuild is the fix.
 #   image-report    uploads SARIF for every image the chart references. The
@@ -72,21 +75,15 @@ jobs:
       # One upload per scenario. Each needs its own `category`: uploads sharing
       # a category replace each other, so without this only the last scenario
       # would survive in code scanning.
-      - name: Upload tier1
+      # One merged, deduplicated file under one category -- the same shape as
+      # the image report. Uploading a category per scenario instead reported
+      # every shared finding once per scenario, and left a category behind
+      # whenever the scenario set changed.
+      - name: Upload misconfiguration report
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         with:
-          sarif_file: trivy-sarif/tier1.sarif
-          category: trivy-misconfig-tier1
-      - name: Upload azure
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
-        with:
-          sarif_file: trivy-sarif/azure.sarif
-          category: trivy-misconfig-azure
-      - name: Upload mtls3
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
-        with:
-          sarif_file: trivy-sarif/mtls3.sarif
-          category: trivy-misconfig-mtls3
+          sarif_file: trivy-misconfig.sarif
+          category: trivy-misconfig
 
   image-gate:
     name: trivy image (gate)

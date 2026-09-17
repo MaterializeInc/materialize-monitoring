@@ -6,13 +6,15 @@
 #
 #   gate           (default) fail on HIGH/CRITICAL misconfigurations not
 #                  baselined in .trivyignore.yaml. Blocks a pull request.
-#   report         write one SARIF file per scenario to $SARIF_DIR, unfiltered
-#                  and at every severity, for upload to GitHub code scanning.
+#   report         write one SARIF file per scenario to $SARIF_DIR, then merge
+#                  and deduplicate them into $MERGED_MISCONFIG_SARIF for upload
+#                  to code scanning. Findings baselined in the ignore file are
+#                  excluded here as well as at the gate.
 #   images-gate    fail on fixable HIGH/CRITICAL OS-package vulnerabilities in
 #                  the images we build ourselves. Blocks a pull request.
 #   images-report  write SARIF for every image the chart references, ours and
-#                  upstream, at every severity, then merge them into one
-#                  uploadable file ($MERGED_IMAGE_SARIF).
+#                  upstream, at every severity, then merge and deduplicate them
+#                  into one uploadable file ($MERGED_IMAGE_SARIF).
 #
 # Both gates are scoped to findings this repository can actually act on. The
 # upstream population is large, moves on someone else's schedule, and is
@@ -74,6 +76,8 @@ FAILED_IMAGES_FILE=${FAILED_IMAGES_FILE:-trivy-failed-images.txt}
 # category, and a category per image would go stale as images come and go --
 # see bin/merge_trivy_sarif.py.
 MERGED_IMAGE_SARIF=${MERGED_IMAGE_SARIF:-trivy-images.sarif}
+# report merges its per-scenario files into this one, for the same reason.
+MERGED_MISCONFIG_SARIF=${MERGED_MISCONFIG_SARIF:-trivy-misconfig.sarif}
 
 MODE=${1:-gate}
 
@@ -192,17 +196,29 @@ case "${MODE}" in
         ;;
 
     report)
-        # No --severity and no --ignorefile: the SARIF report is the complete
-        # picture, and code scanning does its own triage.
+        # No --severity: severity triage belongs to code scanning, and a LOW we
+        # never gate on is still worth being able to look up.
+        #
+        # --ignorefile, though, is applied here as well as at the gate. An entry
+        # in it is a finding we reviewed and accepted, with the reason written
+        # down next to the code; re-reporting it produces an alert that can
+        # never be closed and has to be dismissed by hand instead. The baseline
+        # is the record, and it is one file rather than a per-alert chore.
         for scenario in "${SCENARIOS[@]}"; do
             name="${scenario%%:*}"
             "${TRIVY}" config \
                 --quiet \
+                --ignorefile "${IGNORE_FILE}" \
                 --format sarif \
                 --output "${SARIF_DIR}/${name}.sarif" \
                 "${WORK_DIR}/${name}.yaml"
             _info "  wrote ${SARIF_DIR}/${name}.sarif"
         done
+
+        # The scenarios overlap heavily -- tier1 and mtls3 produce an identical
+        # finding set -- so without this each shared finding becomes one alert
+        # per scenario. Stdlib-only, so CI needs no Python setup.
+        python3 ./bin/merge_trivy_sarif.py "${SARIF_DIR}" "${MERGED_MISCONFIG_SARIF}"
         ;;
 
     images-gate)
