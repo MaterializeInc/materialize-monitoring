@@ -68,9 +68,51 @@ jobs:
             new-design:
               - added: "docs/content/reference/internal/design-docs/*.md"
 
+      # Slack renders these blocks as `mrkdwn`, and a pull request title is
+      # text an outside contributor chooses. Left raw, a title containing `>`
+      # closes the `<url|label>` link it sits in, and whatever follows renders
+      # as markup that author picked — `<https://elsewhere|Approved>` to forge
+      # a link, or `<!channel>` to page everyone in the channel.
+      #
+      # Slack's rule for text interpolated into mrkdwn is to escape `&`, `<`
+      # and `>`, in that order so the entities the last two produce are not
+      # themselves rewritten. That is exactly html.escape(quote=False), so this
+      # defers to the standard library rather than hand-rolling it. Doing it in
+      # bash invites a real bug: `&` in the replacement half of ${v//p/r} means
+      # "the matched text" from bash 5.2 on, which silently turns `&lt;` into
+      # `<lt;` and leaves the `<` live.
+      #
+      # Newlines collapse to spaces, which would otherwise break both the
+      # one-line message and the `key=value` output format.
+      #
+      # Both values reach Python through the environment, and the heredoc is
+      # quoted, so neither is ever expanded into shell or program text.
+      # `login` is escaped on the same principle, though GitHub already
+      # constrains it to alphanumerics and hyphens. The two URLs are
+      # server-generated under github.com and cannot carry markup, so they are
+      # interpolated as they are.
+      - name: Escape Slack markup
+        id: escape
+        if: steps.filter.outputs.new-design == 'true'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import html, os
+
+          for key, var in (("title", "PR_TITLE"), ("author", "PR_AUTHOR")):
+              escaped = html.escape(os.environ[var], quote=False)
+              print(key + "=" + escaped.replace("\r", " ").replace("\n", " "))
+          PY
+
       # SLACK_TOKEN is an organization secret scoped to selected repositories.
       # This one is on that list; a repository that is not fails here rather
       # than posting.
+      #
+      # toJSON is what keeps the escaped values from breaking the payload's
+      # JSON; the escaping above is what keeps them from breaking the mrkdwn
+      # inside it. Both are needed.
       - name: Push to Slack
         if: steps.filter.outputs.new-design == 'true'
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
@@ -93,14 +135,14 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ${{ toJSON(format('• *PR:* <{0}|{1}>', github.event.pull_request.html_url, github.event.pull_request.title)) }}
+                    "text": ${{ toJSON(format('• *PR:* <{0}|{1}>', github.event.pull_request.html_url, steps.escape.outputs.title)) }}
                   }
                 },
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ${{ toJSON(format('• *Author:* <{0}|{1}>', github.event.pull_request.user.html_url, github.event.pull_request.user.login)) }}
+                    "text": ${{ toJSON(format('• *Author:* <{0}|{1}>', github.event.pull_request.user.html_url, steps.escape.outputs.author)) }}
                   }
                 }
               ]
