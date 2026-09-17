@@ -45,6 +45,13 @@ These are proposed changes to materialize-monitoring.
             <li><strong>status:</strong> Accepted</li>
       </ul>
     </li>
+    <li>
+      <a href="/materialize-monitoring/preview/heather-security-gate/reference/internal/design-docs/20260916-tenant-query-api/">A Tenant-Scoped Query API for Console and Customer Grafana</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-16 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
 </ul>
 
 
