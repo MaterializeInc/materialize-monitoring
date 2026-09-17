@@ -223,7 +223,11 @@ ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile
 # resetting.
 ALLOY_SUFFIX ?= mz3
 
-alloy-image.iid: $(wildcard packages/alloy/*)
+# `Makefile` is a prerequisite because the tag is built from ALLOY_VERSION and
+# ALLOY_SUFFIX, and a suffix bump changes nothing under packages/alloy/. Without
+# it a local tree that already has an iid considers the target up to date, and
+# `make alloy-image` neither builds nor tags the new revision.
+alloy-image.iid: $(wildcard packages/alloy/*) Makefile
 	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
 	docker run --platform linux/amd64 --rm $$(cat "$@") --version
 	docker run --platform linux/arm64 --rm $$(cat "$@") --version
