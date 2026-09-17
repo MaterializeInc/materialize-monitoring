@@ -208,7 +208,10 @@ CONTAINER_REGISTRY ?= ghcr.io/materializeinc
 
 # Upstream alloy version is used for the tag
 ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile | head -n1 | cut -d= -f2)
-# Extra suffix if there are multiple images at the same version (revert back to mz1 on upgrade)
+# Extra suffix distinguishing images built at the same ALLOY_VERSION. An Alloy
+# upgrade restarts it at mz1, except where that version already has published
+# tags: within one ALLOY_VERSION the counter never reuses or moves back over a
+# suffix that is in the registry.
 #
 # Bump this in the same change that alters the image at a fixed ALLOY_VERSION —
 # a base-image digest, a staged library, anything the Dockerfile builds. The
@@ -218,9 +221,8 @@ ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile
 # is then pinning something that no longer matches the tag.
 #
 # `mz1` was skipped at the v1.19.2 upgrade — v1.19.2 first shipped as `-mz2`
-# because the suffix was carried over from v1.18.1. The counter only moves
-# forward from what is published, so this continues from `mz2` rather than
-# resetting.
+# because the suffix was carried over from v1.18.1, so this continues from `mz2`
+# rather than resetting.
 ALLOY_SUFFIX ?= mz3
 
 # `Makefile` is a prerequisite because the tag is built from ALLOY_VERSION and
