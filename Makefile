@@ -208,11 +208,42 @@ CONTAINER_REGISTRY ?= ghcr.io/materializeinc
 
 # Upstream alloy version is used for the tag
 ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile | head -n1 | cut -d= -f2)
-# Extra suffix if there are multiple images at the same version (revert back to mz1 on upgrade)
-ALLOY_SUFFIX ?= mz2
+# Extra suffix distinguishing images built at the same ALLOY_VERSION. An Alloy
+# upgrade restarts it at mz1, except where that version already has published
+# tags: within one ALLOY_VERSION the counter never reuses or moves back over a
+# suffix that is in the registry.
+#
+# Bump this in the same change that alters the image at a fixed ALLOY_VERSION —
+# a base-image digest, a staged library, anything the Dockerfile builds. The
+# release job pushes `<version>-<suffix>` on every container-images release, so
+# leaving the suffix alone republishes a tag that is already in the registry with
+# different content underneath it, and every consumer pinning that tag by digest
+# is then pinning something that no longer matches the tag.
+#
+# `mz1` was skipped at the v1.19.2 upgrade — v1.19.2 first shipped as `-mz2`
+# because the suffix was carried over from v1.18.1, so this continues from `mz2`
+# rather than resetting.
+ALLOY_SUFFIX ?= mz3
 
-alloy-image.iid: $(wildcard packages/alloy/*)
-	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
+ALLOY_IMAGE = $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX)
+
+# The tag the last build was made with, so a tag change invalidates the iid.
+# Nothing under packages/alloy/ moves when the suffix does, and a command-line
+# override (`make ALLOY_SUFFIX=mz4 alloy-image`) changes no file at all — in
+# both cases a tree holding an iid would otherwise consider the image up to
+# date and neither build nor tag the revision that was asked for.
+#
+# The recipe runs every time and rewrites the file only when the tag differs,
+# so its mtime moves exactly when the tag moved.
+.PHONY: alloy-image-tag-force
+alloy-image.tag: alloy-image-tag-force
+	@printf '%s\n' '$(ALLOY_IMAGE)' | cmp -s - "$@" 2>/dev/null \
+		|| printf '%s\n' '$(ALLOY_IMAGE)' > "$@"
+
+# `Makefile` is a prerequisite as well, for the build recipe itself: platforms,
+# flags, and the build context are not covered by the tag stamp.
+alloy-image.iid: $(wildcard packages/alloy/*) Makefile alloy-image.tag
+	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(ALLOY_IMAGE) packages/alloy/
 	docker run --platform linux/amd64 --rm $$(cat "$@") --version
 	docker run --platform linux/arm64 --rm $$(cat "$@") --version
 

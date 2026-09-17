@@ -33,6 +33,8 @@ secrets.dec.*
 
 # ---- Docker ----
 *.iid
+# Records the tag the local alloy image was last built with.
+alloy-image.tag
 
 manifests_out/
 
