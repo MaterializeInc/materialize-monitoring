@@ -209,7 +209,19 @@ CONTAINER_REGISTRY ?= ghcr.io/materializeinc
 # Upstream alloy version is used for the tag
 ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile | head -n1 | cut -d= -f2)
 # Extra suffix if there are multiple images at the same version (revert back to mz1 on upgrade)
-ALLOY_SUFFIX ?= mz2
+#
+# Bump this in the same change that alters the image at a fixed ALLOY_VERSION —
+# a base-image digest, a staged library, anything the Dockerfile builds. The
+# release job pushes `<version>-<suffix>` on every container-images release, so
+# leaving the suffix alone republishes a tag that is already in the registry with
+# different content underneath it, and every consumer pinning that tag by digest
+# is then pinning something that no longer matches the tag.
+#
+# `mz1` was skipped at the v1.19.2 upgrade — v1.19.2 first shipped as `-mz2`
+# because the suffix was carried over from v1.18.1. The counter only moves
+# forward from what is published, so this continues from `mz2` rather than
+# resetting.
+ALLOY_SUFFIX ?= mz3
 
 alloy-image.iid: $(wildcard packages/alloy/*)
 	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
