@@ -136,3 +136,9 @@ packages/ref-*
 
 # E2E diagnostics artifacts, collected on failure.
 e2e-diagnostics*/
+
+# Trivy SARIF reports and scan artifacts, written by the security-* targets.
+trivy-sarif/
+trivy-sarif-images/
+trivy-failed-images.txt
+trivy-images.sarif
