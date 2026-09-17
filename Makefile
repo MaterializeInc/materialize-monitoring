@@ -225,12 +225,25 @@ ALLOY_VERSION ?= $(shell grep -E '^ARG ALLOY_VERSION=' packages/alloy/Dockerfile
 # rather than resetting.
 ALLOY_SUFFIX ?= mz3
 
-# `Makefile` is a prerequisite because the tag is built from ALLOY_VERSION and
-# ALLOY_SUFFIX, and a suffix bump changes nothing under packages/alloy/. Without
-# it a local tree that already has an iid considers the target up to date, and
-# `make alloy-image` neither builds nor tags the new revision.
-alloy-image.iid: $(wildcard packages/alloy/*) Makefile
-	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX) packages/alloy/
+ALLOY_IMAGE = $(CONTAINER_REGISTRY)/mzmon-alloy:$(ALLOY_VERSION)-$(ALLOY_SUFFIX)
+
+# The tag the last build was made with, so a tag change invalidates the iid.
+# Nothing under packages/alloy/ moves when the suffix does, and a command-line
+# override (`make ALLOY_SUFFIX=mz4 alloy-image`) changes no file at all — in
+# both cases a tree holding an iid would otherwise consider the image up to
+# date and neither build nor tag the revision that was asked for.
+#
+# The recipe runs every time and rewrites the file only when the tag differs,
+# so its mtime moves exactly when the tag moved.
+.PHONY: alloy-image-tag-force
+alloy-image.tag: alloy-image-tag-force
+	@printf '%s\n' '$(ALLOY_IMAGE)' | cmp -s - "$@" 2>/dev/null \
+		|| printf '%s\n' '$(ALLOY_IMAGE)' > "$@"
+
+# `Makefile` is a prerequisite as well, for the build recipe itself: platforms,
+# flags, and the build context are not covered by the tag stamp.
+alloy-image.iid: $(wildcard packages/alloy/*) Makefile alloy-image.tag
+	docker buildx build --load --platform linux/amd64,linux/arm64 --iidfile "$@" --tag $(ALLOY_IMAGE) packages/alloy/
 	docker run --platform linux/amd64 --rm $$(cat "$@") --version
 	docker run --platform linux/arm64 --rm $$(cat "$@") --version
 
