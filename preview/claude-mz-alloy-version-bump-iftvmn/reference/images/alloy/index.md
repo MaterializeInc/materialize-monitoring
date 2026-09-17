@@ -25,7 +25,7 @@ Images are tagged `<alloy-version>-<suffix>`, for example `v1.17.0-mz1`.
   Within one `<alloy-version>`, the counter never reuses or moves back over a suffix already published.
   An upgrade that shipped without restarting therefore keeps counting from what the registry holds for that version.
   `v1.19.2` is the standing case of that.
-  It first shipped as `v1.19.2-mz2`, carrying the suffix over from `v1.18.1`, so its next revision is `v1.19.2-mz3`.
+  It first shipped as `v1.19.2-mz2`, carrying the suffix over from `v1.18.1`, so no `v1.19.2-mz1` was ever published.
 - Pull requests that touch the image publish a throwaway build tagged `<alloy-version>-dev.0--pr.g<short-sha>` for pre-release testing.
 
 ## Compliance and security posture
