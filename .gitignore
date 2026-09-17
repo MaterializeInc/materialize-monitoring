@@ -142,3 +142,4 @@ trivy-sarif/
 trivy-sarif-images/
 trivy-failed-images.txt
 trivy-images.sarif
+trivy-misconfig.sarif
