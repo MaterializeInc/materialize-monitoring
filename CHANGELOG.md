@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.6.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.22.0 (Unreleased)
 
 _Changes Pending_
@@ -55,9 +59,10 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Container Images v0.5.0 (Unreleased)
+## Container Images v0.5.0
 
-_Changes Pending_
+* Update gcr.io/distroless/base-debian13 Docker digest to 0ebad35
+    * [materialize-monitoring#340](https://github.com/MaterializeInc/materialize-monitoring/pull/340)
 
 ## Dashboards v0.14.0
 
