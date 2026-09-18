@@ -67,7 +67,7 @@ Without a cloud identity provider there is no workload identity to bind, so cred
 - Loki takes them under `loki.loki.storage.object_store.<backend>`; prefer supplying the values through `loki.<component>.extraEnvFrom` (a `secretRef`) over inlining them, since inline values render into a ConfigMap in plaintext.
 - Thanos takes them inside `thanos.global.objstore.config`, which becomes a Secret when `createSecret: true`.
 
-Any S3-compatible endpoint works — set `object_storage.endpoint` in Loki's config and `endpoint` in Thanos's. The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs) this way, so a self-hosted MinIO, Ceph, or rustfs is a supported shape rather than an untested one.
+Any S3-compatible endpoint works — set `object_storage.endpoint` in Loki's config and `endpoint` in Thanos's. The chart's own tier-2 E2E runs against [Garage](https://garagehq.deuxfleurs.fr/) this way, so a self-hosted MinIO, Ceph, or Garage is a supported shape rather than an untested one.
 
 > [!WARNING]
 >  The chart's validators grade credential handling and will tell you when a cloud backend has neither an identity annotation nor inline credentials — at which point the component falls back to ambient node credentials, which usually means it silently works in one cluster and fails in another. Read the render output rather than assuming silence.

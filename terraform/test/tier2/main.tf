@@ -3,11 +3,11 @@
 # What this proves that tier 1 cannot: the object-storage code paths. Tier 1 runs
 # Loki on a local filesystem and no Thanos at all, because Thanos needs a real
 # bucket in every deployment shape it supports. Here both backends talk S3 to
-# rustfs and Grafana keeps its state in a real Postgres, so the storage wiring,
+# Garage and Grafana keeps its state in a real Postgres, so the storage wiring,
 # the static-credential path, and the Thanos assertions in the E2E suite all
 # become live.
 #
-# What it still cannot prove is workload identity — rustfs takes static keys and
+# What it still cannot prove is workload identity — Garage takes static keys and
 # kind has no OIDC issuer an IAM provider trusts. The substrate says so in its
 # `workload_identity_available` output; that gap belongs to tier 3.
 
@@ -53,6 +53,13 @@ module "monitoring" {
     loki_bucket   = local.substrate.loki_bucket
     thanos_bucket = local.substrate.thanos_bucket
     endpoint      = local.substrate.s3_endpoint
+
+    # Named rather than left out. Against a real S3 the region is inferred from
+    # the endpoint host and omitting it costs nothing, but Garage validates the
+    # region the request was signed for: a client that falls back to the SDK
+    # default while the store expects something else gets a 403 that reads like a
+    # bad secret key. The substrate outputs the value it will accept.
+    region = local.substrate.s3_region
 
     # No service-account annotations: there is no workload identity to bind to.
     # That is the case these static credentials exist for, and the case a

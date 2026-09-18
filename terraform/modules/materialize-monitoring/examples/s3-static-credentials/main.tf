@@ -6,7 +6,7 @@
 # values and proves the credential path lands, which is the half `terraform
 # validate` cannot see.
 #
-# This is the shape the tier-2 E2E root uses against rustfs, and the shape an
+# This is the shape the tier-2 E2E root uses against Garage, and the shape an
 # on-prem MinIO or Ceph deployment uses in production. It is deliberately a
 # separate example from `aws`: that one carries IRSA annotations and no keys, so
 # it cannot catch a regression in the static path, and this one carries keys and
@@ -60,8 +60,10 @@ module "monitoring" {
     # Named by URL, scheme included, which is how an S3-compatible store is
     # normally addressed. The module strips the scheme — the objstore client
     # rejects one outright — and reads `http://` as "use plain HTTP", so this one
-    # value also selects the transport. No region: the store is not AWS, so there
-    # is no regional host to derive and nothing to sign against a region.
+    # value also selects the transport. No region: there is no regional host to
+    # derive here, and this store does not check the region a request was signed
+    # for. One that does — Garage, which the tier-2 root runs — needs `region`
+    # named, or every signed request comes back 403.
     endpoint = "http://objectstore.example.internal:9000"
 
     # No service-account annotations. That is the point of this example — the

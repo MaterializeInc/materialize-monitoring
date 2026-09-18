@@ -73,9 +73,21 @@ Every other component's NetworkPolicy is on, as it is by default, and none of it
 Two roots, composed in one direction.
 
 `terraform/test/generic-cloud` provisions what a cloud wrapper provisions — S3-compatible storage with credentials, and Postgres — and stops there.
-rustfs stands in for S3 and CNPG for RDS/Cloud SQL. It does not call the monitoring module: the substrate has to be provable on its own.
+Garage stands in for S3 and CNPG for RDS/Cloud SQL. It does not call the monitoring module: the substrate has to be provable on its own.
 
-`terraform/test/tier2` is the composition. It reads the substrate's outputs and installs the module against them — both backends on rustfs, Grafana's state in the Postgres, `sizing = "small"` so it fits a kind node.
+Garage needs bootstrapping that most S3-compatible stores do not.
+A fresh node serves no S3 until a cluster layout is applied, and holds no credentials until a key is imported.
+The chart runs both as a post-install hook, alongside the bucket creation and grants.
+That hook sleeps for three minutes across its run, which is most of what a first `make e2e-tier2` spends on the substrate.
+Hence the 900-second release timeout, where the other substrate releases use 600.
+It also runs every command under `|| true`, so the substrate follows it with a Job that writes, reads, and deletes an object in each bucket.
+A failure there means the hook swallowed one.
+
+Garage also validates the region a request was signed for, where other stores ignore it.
+The substrate's `s3_region` output is the value it will accept, and tier 2 passes it to the module as `object_storage.region`.
+A mismatch surfaces as a 403 on every request, which reads like a wrong secret key.
+
+`terraform/test/tier2` is the composition. It reads the substrate's outputs and installs the module against them — both backends on Garage, Grafana's state in the Postgres, `sizing = "small"` so it fits a kind node.
 
 It composes through the substrate's **state file** rather than instantiating it as a child module, because the substrate configures its own providers to stay applyable alone, and a child module carrying provider blocks cannot be cleanly removed. Hence two applies; `make e2e-tier2` runs both.
 
@@ -92,7 +104,7 @@ Locally it reports `ignored`, because `KIND_CONTEXT` is only a default and someo
 The ordering here is load-bearing and silent when wrong: the profiles arrive through `additional_values`, which the module puts last, so they override the sizing profile's `thanos.receive.extraArgs` rather than the reverse.
 Helm overwrites lists, and whichever side loses that merge does so without a word — either the TLS flags vanish or `--receive.replication-factor=3` does, and the second one drops write quorum to 1.
 
-**What tier 2 cannot cover:** workload identity. rustfs takes static credentials and kind has no OIDC issuer an IAM provider trusts, so IRSA and GKE Workload Identity are only exercised at tier 3 — after we have already tagged. The `workload_identity_available` output states this so a caller cannot miss it.
+**What tier 2 cannot cover:** workload identity. Garage authenticates with static access keys and kind has no OIDC issuer an IAM provider trusts, so IRSA and GKE Workload Identity are only exercised at tier 3 — after we have already tagged. The `workload_identity_available` output states this so a caller cannot miss it.
 
 ## Notes for whoever extends this
 

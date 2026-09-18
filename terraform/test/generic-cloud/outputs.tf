@@ -18,14 +18,23 @@ output "s3_credentials_secret_name" {
 
 output "s3_access_key_id" {
   description = "Access key for the object store. Prefer the Secret; this is here for the components that only take an inline value."
-  value       = random_password.s3_access_key.result
+  value       = random_id.s3_access_key.hex
   sensitive   = true
 }
 
 output "s3_secret_access_key" {
   description = "Secret key for the object store."
-  value       = random_password.s3_secret_key.result
+  value       = random_id.s3_secret_key.hex
   sensitive   = true
+}
+
+# Garage checks the region in the request signature rather than ignoring it, so a
+# consumer that signs for a different one gets a 403 that reads like a bad secret
+# key. Output rather than left to a caller's default: this is the value the module
+# has to be given, not a preference.
+output "s3_region" {
+  description = "Region the object store expects requests to be signed for. Goes to `object_storage.region`."
+  value       = var.s3_region
 }
 
 output "loki_bucket" {
@@ -55,7 +64,7 @@ output "postgres_host" {
 # there is no workload identity here, and the module's `*_service_account_annotations`
 # have nothing to point at.
 output "workload_identity_available" {
-  description = "Always false. rustfs takes static credentials and kind has no OIDC issuer an IAM provider trusts, so IRSA and Workload Identity are only covered at tier 3."
+  description = "Always false. Garage authenticates with static access keys and kind has no OIDC issuer an IAM provider trusts, so IRSA and Workload Identity are only covered at tier 3."
   value       = false
 }
 

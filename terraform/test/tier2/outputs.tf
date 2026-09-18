@@ -14,6 +14,6 @@ output "metrics_url" {
 }
 
 output "s3_endpoint" {
-  description = "The rustfs endpoint both backends were pointed at, echoed so a failing run does not need the substrate's state to interpret."
+  description = "The Garage endpoint both backends were pointed at, echoed so a failing run does not need the substrate's state to interpret."
   value       = local.substrate.s3_endpoint
 }
