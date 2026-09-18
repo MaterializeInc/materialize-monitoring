@@ -40,7 +40,7 @@ _register_traceback
 
 FSDK_REPO="grafana/grafana-foundation-sdk"
 # renovate: datasource=github-tags packageName=grafana/grafana-foundation-sdk
-FSDK_REF="v0.0.18"
+FSDK_REF="v0.0.20"
 
 OUT_DIR="packages/mzmon-lib/schemas/grafana"
 MANIFEST="$OUT_DIR/packages.json"
