@@ -23050,8 +23050,18 @@ A self-managed customer upgrades when they decide to, which makes a weekly windo
 Alertmanager inhibition suppresses one alert while another is firing.
 A rollout-in-progress alert — `notice` severity, routed nowhere, existing only to be inhibited against — turns "an upgrade is happening" into a condition the routing tree can read.
 
-The signal exists.
-The `env-upgrade` dashboard is built on generation-scoped metrics and orchestratord's reconciliation state, and its centrepiece is the hydrating-collection count descending toward zero, which is exactly "a rollout is in progress and has not converged".
+The signal exists, and picking the right one matters more than it looks.
+
+**The signal is the generation count, not the hydration count.**
+`materialize.generations.active` counts the deployment generations currently running, and the registry already states its meaning exactly: one between rollouts, two for as long as a rollout takes.
+`> 1` is therefore a rollout and nothing else.
+
+The hydrating-collection count is the obvious candidate and is the wrong one.
+It is the `env-upgrade` dashboard's centrepiece because it answers *has the new generation caught up*, which is the question a rollout poses — but hydration also spikes on an ordinary pod restart, on replica creation, and after DDL.
+Inhibiting on it would suppress restart and pending-pod alerts during any of those, which is to say it would hide the incidents those alerts exist to report, at the moment they are most likely to be real.
+
+The two signals compose rather than compete: generation count gates the inhibition, and hydration says how far along the gated rollout is.
+Only the first belongs in a routing decision.
 
 Two properties make this better than a window and they are worth stating.
 **It closes itself.** A window that a customer opens by hand is a window somebody forgets to close, and the alerts that were suppressed for the upgrade stay suppressed for the incident.
@@ -23157,7 +23167,7 @@ Work in this repository, roughly in dependency order.
 | `alerting.routes.extra`, spliced ahead of the matrix | The extension point whose absence forces forks |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |
-| Rollout-inhibition rule over the `env-upgrade` generation signals | Maintenance windows that close themselves |
+| Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
 | Alertmanager datasource in Grafana, and an alerts dashboard | Alert state has no view today |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
 | Terraform module surface for receivers and criticality, with `sensitive` credential variables | Where the Secret-creation ergonomics belong |
@@ -23183,6 +23193,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **`ALERTS` arrives through the gateway.** Assert the series is queryable in Thanos *and* visible to a gateway destination, because landing in Thanos by a second path would satisfy a naive version of this test.
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
 - **Silences suppress notification and not state.** Silence an alert, assert no notification and a firing `ALERTS` series. This is the over-reporting behaviour the call-home level inherits, and pinning it keeps it a known property rather than a surprise.
+- **Inhibition suppresses a rollout and not a restart.** Stand up a second generation and assert the restart alerts are inhibited; restart a pod without a rollout and assert they are not. The second half is the assertion, since an inhibition rule that fires too widely is indistinguishable from one that works until the day it hides something.
 - **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus.
 - **Not covered by any tier:** that a notification reaches a receiver. Every receiver is a third-party endpoint, and a test that posts to a real one is a test that pages somebody. A local webhook receiver proves Alertmanager's delivery path and proves nothing about a vendor's ingestion.
 
