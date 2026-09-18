@@ -287,18 +287,24 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | ⬜ |
-| Severity-to-urgency matrix (`alerting.criticality`) and the receivers map | OO-M2 | ⬜ |
+| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ⬜ |
+| Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ⬜ |
+| Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | ⬜ |
+| Alert and recording-rule names added to the committed surface | OO-M2 | ⬜ |
 | Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | ⬜ |
 | Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | ⬜ |
-| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ |
+| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ (**HA moves into the default** rather than staying a hardening step; see below) |
 
 Alertmanager is bundled and the rules exist, but nothing routes them anywhere.
 Until that lands the alerting story is "we ship rules", which is half a feature.
 
 The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and are best worked together.
-Adoption is the higher-value half — until routing exists nobody is paged, which is why hardening is the lower priority of the pair despite Alertmanager being a single replica holding the only copy of its silences.
+Adoption was previously the higher-value half, on the reasoning that until routing exists nobody is paged.
+**The design doc revises that: HA belongs in the default configuration rather than in a later hardening step.**
+A single-replica notifier is lost to an ordinary node drain, it holds the only copy of every silence, and it cannot report its own absence — and shipping routing on top of it is shipping the failure the workstream exists to prevent.
+Two replicas with gossip and a PDB of one is the shape; the rest of DEP-226 stays hardening.
 
-Four findings from drafting the design doc belong on this page rather than only in it.
+Five findings from drafting the design doc belong on this page rather than only in it.
 
 **`PrometheusRule` has exactly one consumer in this stack, and it is off.**
 The chart installs the Prometheus Operator CRDs and not the operator, and Alloy consumes `ServiceMonitor` and `PodMonitor` only.
@@ -307,10 +313,17 @@ A template emitting `PrometheusRule` resources today would render, apply, pass C
 
 **The rule set is Cloud's rule set, and 28 of its 85 rules cannot fire in a stock self-managed install.**
 CockroachDB, the egress gateway, LaunchDarkly, the external uptime checkers, and Cilium account for most of them, and only five carry the `deploymentMode: cloud-only` label that exists to say so.
-Applicability should be derived from the metrics a rule names, checked against the extracted metric set at build time, rather than asserted by a label that is already wrong in 23 of 28 cases.
+**`cloud-only` is also the wrong axis.**
+A CockroachDB rule is for a deployment running CockroachDB, and a Cilium rule is for a cluster whose CNI is Cilium — both of which a self-managed customer may be.
+Rules should declare capability tags (`crdb-dedicated`, `cilium`, `aws`, …) describing what they require, with applicability checked at build time against the extracted metric set, so that no rule is deleted and selection follows what a deployment contains rather than who operates it.
 
 **Severity is a property of the alert and urgency is a property of the deployment**, and conflating them is what makes one rule set unable to serve both a customer for whom Materialize is critical infrastructure and one who is evaluating it.
 The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment, with a severity-to-receiver-class matrix between them.
+
+**Alert names become a committed surface, which closes an open naming decision.**
+[Stamping 1.0](#versioning-changelog-and-releases) records the alert and recording-rule naming decision as free only until the alerting path ships.
+It ships here, and the answer is that names are committed from the release that first carries rules: `rules.disabled` names alerts, an external Alertmanager's routing matches on them, and a runbook link is built from them.
+Names churn while the default set is derived, and each rename owes a changelog entry even then.
 
 **Log-derived alerting has never been code anywhere at Materialize.**
 Cloud's pipeline emits PromQL rule groups, so the alerts that detect panics, correctness violations, and data-corruption patterns are clicked into Grafana — duplicated per region, drifted between copies, and carrying deployment-specific exclusions compiled into the LogQL.
@@ -567,7 +580,9 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   The [Call-home from self-managed](#call-home-from-self-managed) section above is the roadmap position it establishes, including that the alerts level is blocked on rule evaluation rather than on the pipeline.
 - A **customer-facing** call-home page — the levels, the generated schedule for each, how to preview before enabling, how to read the local meter, and the retention, access and deletion commitments — is owed alongside it. ⬜
 - [Alerting in Self-Managed: Evaluation, Routing, and Customer Extension](../design-docs/20260917-alerting-self-managed/) is written and in review as a draft. 🔨
-  It proposes two evaluators and one notifier, a severity-to-urgency matrix selected by a single values key, a re-derived default rule set checked against the metric registry, and four additive extension points so that customer-specific alerting never enters this repository.
-  The [Rules & alerts](#rules--alerts) section above is the roadmap position it establishes, including that `thanos.ruler.enabled` is the switch that makes alerting exist at all.
+  It proposes two evaluators and one notifier, a severity-to-urgency matrix selected by a single values key, a capability-tagged rule set checked against the metric registry, and four additive extension points so that customer-specific alerting never enters this repository.
+  The [Rules & alerts](#rules--alerts) section above is the roadmap position it establishes, including that `thanos.ruler.enabled` is the switch that makes alerting exist at all, that Alertmanager HA moves into the default, and that alert names become a committed surface.
 - The three **customer-facing** alerting pages under `alerting/` are owed alongside it: `configuring.md` is currently the word `TODO`, and `channels.md` and `maintenance.md` are bare headings. ⬜
   A **label contract** page is owed with them — every label a shipped rule emits and what it means — because a customer routing in their own Alertmanager has nothing to route on without it.
+- A **runbook per shipped alert** under `operating/runbooks/` is owed with the rules themselves, since every alert links to one. ⬜
+  Runbooks that stop changing and describe a practice rather than a workaround should be promoted to the product documentation.
