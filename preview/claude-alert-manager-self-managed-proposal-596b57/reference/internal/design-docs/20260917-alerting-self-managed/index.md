@@ -35,6 +35,16 @@ date: 2026-09-17
 
 This doc proposes that **a default install of this chart page somebody when Materialize breaks**, and describes what has to exist for that sentence to be true.
 
+<!-- more -->
+
+<blockquote class="book-hint note">
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in
+<a href="https://datatracker.ietf.org/doc/html/rfc2119" rel="external" class="external-link">RFC 2119</a>.
+</blockquote>
+
+
 Three things stand between here and there, and they are independent problems that happen to share a workstream.
 
 **Nothing evaluates rules.**
@@ -57,11 +67,16 @@ Turning alerting off yields a stack that looks complete and is silent, which is 
 Agent note: this doc records decisions and their *why*. When a decision lands in code, update the section and
 check the matching row in "Chart-side prerequisites".
 
-Four things here are easy to get wrong and are stated deliberately: that `PrometheusRule` has exactly one
+Five things here are easy to get wrong and are stated deliberately: that `PrometheusRule` has exactly one
 consumer in this stack and it is off by default ("Nothing evaluates rules"); that the alerting path runs
 through the query path and therefore fails with it ("The evaluator depends on the query path"); that severity
-and urgency are different properties owned by different people ("Severity belongs to the alert"); and that
-`$__range` does not survive the move out of Grafana ("The range trap"). Revise those rather than softening them.
+and urgency are different properties owned by different people ("Severity belongs to the alert"); that
+`$__range` does not survive the move out of Grafana ("The range trap"); and that `cloud-only` names the
+operator rather than the requirement ("`cloud-only` is the wrong axis"). Revise those rather than softening them.
+
+This page uses RFC 2119 keywords. They are load-bearing on the credential rule, the deadman's-switch
+exemption, the override restriction, and the runbook annotation; elsewhere the prose is descriptive and
+lowercase on purpose. Do not uppercase a keyword to add emphasis.
 
 No customer names, organization identifiers, or environment identifiers appear on this page, including in
 examples. The survey of clicked-in rules that motivates "The class that has never been code" found several;
@@ -78,17 +93,20 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 - **[Must] As an operator,** I want every rule that ships enabled to be one that can fire in my deployment, so that the rule list is not mostly a list of things that will never happen.
 - **[Must] As an operator for whom Materialize is critical infrastructure,** I want a critical alert to reach a pager.
 - **[Must] As an operator evaluating Materialize,** I want that same alert to reach a chat channel and nothing else, without editing a rule.
-- **[Must] As an operator,** I want to configure the notification tools already in use — incident.io, Slack, PagerDuty, email, a webhook — so that adopting this stack does not mean adopting a new incident tool.
+- **[Must] As an operator,** I want to configure whichever notification tools are already in use — a chat channel, a pager, an incident-management product, an internal webhook — so that adopting this stack does not mean adopting a new incident tool.
 - **[Must] As an operator,** I want my own alert rules installed alongside the shipped ones, so that the deployment-specific alerting every real deployment needs has a supported home.
 - **[Must] As a Materialize support engineer,** I want a customer-specific alert to be expressible without being committed to this repository, so that a public repository never carries a customer's name.
 - **[Must] As an operator,** I want to retune, relabel, or disable a shipped rule from values, so that disagreeing with one default is not a reason to fork the chart.
 - **[Must] As an operator,** I want an alert that fires when alerting itself has stopped working, so that silence and health are distinguishable.
+- **[Must] As an operator,** I want a notifier that survives a node being drained, because a drain is an ordinary Tuesday and a missed page is not.
+- **[Must] As an operator woken at 03:00,** I want the alert to link to a runbook, so that the notification tells me what to do and not only what happened.
 - **[Must] As a security reviewer,** I want notification credentials to be referenced rather than inlined, so that a values file is not a place a Slack token can be committed.
 - **[Should] As a Materialize support engineer,** I want log-derived alerts defined as code, so that the rules that catch data-correctness bugs are reviewed rather than clicked.
 - **[Should] As an operator,** I want the alert noise from a Materialize upgrade suppressed by the rollout itself rather than by a wall-clock window, because the schedule is mine.
 - **[Should] As an operator who already runs Alertmanager,** I want the rulers to notify the one I have.
 - **[Should] As a maintainer,** I want the alert-state series to traverse the gateway, so that the call-home alerts level has something to forward.
 - **[Should] As a maintainer,** I want one rule definition to serve the docsite, the chart, and Cloud, so that three surfaces cannot disagree about what an alert means.
+- **[Should] As an operator running a component Materialize Cloud also runs,** I want the rules for it, so that a rule is selected by what my deployment contains rather than by who operates it.
 - **[Could] As an operator,** I want a rule that references a metric my install does not collect to be excluded automatically, rather than shipped and silent.
 - **[Could] As an operator,** I want alerts grouped so that one bad node produces one notification rather than forty.
 
@@ -108,8 +126,21 @@ A single values key, `alerting.criticality`, selects one of three severity-to-ro
 The same rule set serves a critical-infrastructure install and an evaluation install, and the difference is a routing table.
 
 **The shipped rule set is re-derived rather than inherited.**
-A rule ships enabled only when it can fire in a stock self-managed install, means the same thing in every install, and has a documented operator action.
+A rule ships enabled only when it can fire in a stock self-managed install, means the same thing in every install, and has a runbook.
+Rules that need more than that declare it with **capability tags** — `crdb-dedicated`, `cilium`, `aws` — rather than being written off as Cloud-only, because the thing that makes a CockroachDB rule inapplicable is not running CockroachDB rather than not being Cloud.
 Applicability is checked at build time against the metric registry rather than asserted by a hand-maintained label, because the hand-maintained label already exists and is already wrong.
+
+**Alert names are a committed surface**, from the release that first ships rules.
+Three extension points name alerts, and an unstable name makes all three unstable.
+
+**Every alert carries a runbook link**, to a page under `operating/runbooks/` in this repository, promoted to the product documentation once the practice stops changing.
+
+**Alertmanager ships HA.**
+Two replicas with gossip, in the default configuration rather than behind a hardening profile, because a single notifier lost to an ordinary node drain is the failure this design exists to prevent.
+
+**The chart does not model receiver types.**
+Alertmanager's own receiver configuration passes through, so every integration it supports works and every one it gains later works too.
+The chart owns only which class a receiver serves and where its credentials are mounted from.
 
 **Extension is additive in four places**, each independently useful: extra rules, rule overrides, extra receivers, and extra routes.
 Customer-specific alerting composes out of those and never enters this repository.
@@ -117,7 +148,7 @@ Customer-specific alerting composes out of those and never enters this repositor
 **Log-derived alerts become first-class**, defined in the query registry beside the metric ones and rendered into Loki ruler rule files.
 This is the first place at Materialize where they can be.
 
-**Grafana-managed alerting stays supported and is not the default**, because it makes Grafana's database load-bearing for alert state, and a Grafana that loses its database on restart is the shape this chart still ships by default.
+**Grafana-managed alerting stays supported and is not the default**, because Grafana is the most replaceable component in this stack and alerting is the least.
 
 ## Non-goals
 
@@ -125,7 +156,7 @@ This is the first place at Materialize where they can be.
 - **SLO definition and error budgets.** Worth having and a separate design; burn-rate alerting needs recording rules and a stated objective, neither of which exists yet.
 - **Anomaly detection or forecasting.** Every rule here is a threshold over a signal with a documented meaning.
 - **Alerting on Materialize's SQL-level introspection.** The alerts here read metrics and logs. `mz_internal` is reachable only from a SQL session and belongs to a different collection path.
-- **Replacing Cloud's alerting.** Convergence is a goal for the *definitions*; the deployment mechanism stays Pulumi on that side for now.
+- **Migrating Materialize Cloud onto this alerting path.** Cloud adopts these rules when it adopts this stack's Alertmanager, which is scoped as separate work. This design is what that adoption lands on, and sequencing it is not part of it.
 - **Routing to Materialize.** Forwarding alert state to a Materialize-operated control plane is [call-home](../20260917-call-home-self-managed/), which depends on this and is not part of it.
 
 ## What exists today
@@ -144,6 +175,7 @@ The honest summary is that every component is present and none of them are wired
 | `thanos.ruler.enabled` | `false` | The PromQL evaluator is off |
 | `loki.ruler.enabled` | `true`, 2 replicas, 5Gi PVC | Running. The chart sets no `loki.rulerConfig`, so it has no Alertmanager URL and no rules |
 | `tags.alertmanager` | `false`, but in `bundled-backends` and `default` | Deployed by a default install. Configured with a priority class and a 4Gi PVC, and nothing else |
+| Alertmanager replicas | Subchart default, one | A single notifier holding the only copy of every silence, lost to any node drain |
 | Alertmanager scrape | Absent | The component is emitting metrics that reach nothing. The roadmap already records this as the smallest and most embarrassing of the collection gaps |
 | `docs/content/alerting/` | Four pages, three of which are a heading or the word `TODO` | The customer-facing documentation is a stub |
 
@@ -172,16 +204,20 @@ The design consequence is that **`thanos.ruler.enabled` is the switch that makes
 The 85 definitions were ported from `infra/prometheus/alerting.py` in the Cloud repository, where they are deployed as an AWS Managed Prometheus `RuleGroupNamespace` and routed by `tier` and `team` labels.
 That provenance shows.
 
-| Group | Count | Present in a stock self-managed install? |
-|---|---|---|
-| `crdb` | 15 | No. Self-managed uses PostgreSQL for consensus |
-| `egress_gateway` | 5 | No. A Cloud networking component |
-| `external_uptime` | 3 | No. Marked `deploymentMode: cloud-only` |
-| `launchdarkly` | 2 | No. Marked `deploymentMode: cloud-only` |
-| `cilium` | 2 | Only on a cluster that runs Cilium, which is a customer choice |
-| `coredns` | 1 | Usually, but as a cluster-provided component |
+| Group | Count | Present in a stock self-managed install? | What it actually depends on |
+|---|---|---|---|
+| `crdb` | 15 | No. Self-managed uses PostgreSQL for consensus | Running a dedicated CockroachDB |
+| `egress_gateway` | 5 | No. A Cloud networking component | The cloud-specific egress path |
+| `external_uptime` | 3 | No. Marked `deploymentMode: cloud-only` | An external synthetic checker |
+| `launchdarkly` | 2 | No. Marked `deploymentMode: cloud-only` | A feature-flag service in the request path |
+| `cilium` | 2 | Only on a cluster that runs Cilium | Cilium as the CNI, exporting its metrics |
+| `coredns` | 1 | Usually, as a cluster-provided component | CoreDNS being scraped |
 
 That is 28 of 85 that a stock install cannot fire, and only five of them carry the `deploymentMode: cloud-only` label that exists to say so.
+
+The fourth column is the point, and it is why the label is the wrong shape rather than merely incomplete.
+Every one of those dependencies is a property of a *deployment*, and each is a property a self-managed deployment may well have.
+[`cloud-only` is the wrong axis](#cloud-only-is-the-wrong-axis) takes that up.
 A further set is shaped by Cloud even where the component exists: `env-uptime-sla` and `env-uptime-slo` read `v2_mz_can_connect`, which is produced by a Cloud-side synthetic checker, and `new-clusterd-restarts` is scoped to a release window that self-managed does not have.
 
 None of this is a criticism of the port, which preserved definitions that were worth preserving.
@@ -212,36 +248,38 @@ Those are the load-bearing evidence for two requirements on this page: that cust
 
 ## Architecture
 
-```
-  ┌──────────────┐        PromQL          ┌──────────────┐
-  │ Thanos Query │◀───────────────────────│ Thanos Ruler │
-  └──────────────┘                        │  (stateless) │
-         ▲                                └──────┬───────┘
-         │                                       │ remote_write (ALERTS, recording rules)
-         │                                       ▼
-  ┌──────────────┐                        ┌──────────────┐
-  │Thanos Receive│◀───────────────────────│Alloy Gateway │────▶ destination fan-out
-  └──────────────┘      remote_write      └──────────────┘      (Thanos, AMP, OTLP, call-home)
-                                                 ▲
-                                                 │ remote_write (recording rules)
-  ┌──────────────┐        LogQL           ┌──────┴───────┐
-  │     Loki     │◀───────────────────────│  Loki Ruler  │
-  └──────────────┘                        └──────┬───────┘
-                                                 │
-         ┌───────────────────────────────────────┘
-         │  alerts (both rulers)
-         ▼
-  ┌──────────────┐   routing tree    ┌────────────────────────────────┐
-  │ Alertmanager │──────────────────▶│ receivers: webhook / slack /   │
-  │              │  grouping         │ pagerduty / email              │
-  │              │  inhibition       └────────────────────────────────┘
-  │              │  silences
-  └──────────────┘
-         ▲
-         │ read-only (Alertmanager datasource)
-  ┌──────────────┐
-  │   Grafana    │
-  └──────────────┘
+```mermaid
+flowchart TB
+  subgraph eval["Evaluation — the only components that need the query path"]
+    truler["Thanos Ruler<br/>stateless · PromQL"]
+    lruler["Loki Ruler<br/>LogQL · per tenant"]
+  end
+
+  gw["alloy-gateway<br/>prometheus.receive_http"]
+  fanout{{"Destination fan-out<br/>Thanos · AMP · OTLP · call-home"}}
+
+  subgraph store["Storage and query"]
+    treceive["Thanos Receive"]
+    tquery["Thanos Query"]
+    loki[("Loki")]
+  end
+
+  subgraph notify["Notification — one surface for both evaluators"]
+    am["Alertmanager<br/>2 replicas, gossip<br/>routing · grouping · inhibition · silences"]
+    recv["Any receiver Alertmanager supports,<br/>plus webhook for everything else"]
+  end
+
+  graf["Grafana<br/>Alertmanager datasource, read-only"]
+
+  truler -->|"PromQL"| tquery
+  lruler -->|"LogQL"| loki
+  truler -->|"remote_write: ALERTS + recording rules"| gw
+  lruler -->|"remote_write: recording rules"| gw
+  gw --> fanout --> treceive --> tquery
+  truler -->|"alerts"| am
+  lruler -->|"alerts"| am
+  am --> recv
+  am -.->|"alert state, silences"| graf
 ```
 
 Four properties of that shape are the design.
@@ -292,7 +330,7 @@ The cost is paid in the chart, once, and an operator configuring notifications n
 
 ### Thanos Ruler runs stateless
 
-**Decision: the ruler remote-writes to the Alloy gateway and keeps no TSDB.**
+**Decision: the ruler remote-writes to the Alloy gateway and keeps no TSDB. It MUST NOT be configured with an object-store bucket of its own.**
 
 Thanos Ruler has two modes.
 The default keeps a local TSDB of rule results and ships blocks to object storage, which is why the subchart defaults it a 10Gi PVC.
@@ -310,6 +348,29 @@ Stateless is correct here for three reasons, in ascending order of how much they
 `thanos.ruler` exposes no `remoteWrite` key.
 It exposes `ruler.extraArgs`, so `--remote-write.config` is reachable, and reaching it that way leaves the PVC and the objstore flag configured for a mode the ruler is no longer in.
 Modeling stateless ruler properly is a prerequisite rather than a values trick, and it is the kind of subchart gap this repository has fixed upstream before.
+
+### Alertmanager runs HA by default
+
+**Decision: two replicas with gossip enabled, in the default configuration rather than behind a hardening profile.**
+
+The roadmap files Alertmanager HA under production hardening and ranks it below adoption, on the reasoning that until routing exists nobody is paged.
+That ordering was right while there was no routing.
+Once there is, shipping a single-replica notifier as the default is shipping the failure this whole page exists to prevent.
+
+A single Alertmanager is a single point at which alerting stops, and it stops the way alerting always stops: quietly.
+Node disruption is the ordinary case rather than the exotic one — a drain, an autoscaler consolidation, a spot reclaim, a kernel patch — and each of them is a window during which a notification is dropped rather than delayed.
+**That window is exactly the condition an operator most needs to be able to see**, and one replica cannot report its own absence.
+A surviving peer can, which is what makes the second replica a visibility improvement and not only an availability one.
+
+Three consequences follow from making it the default rather than an upgrade.
+
+**Deduplication has to be right from the start.** Gossiped Alertmanagers deduplicate notifications between themselves, and a configuration that scales to two replicas without gossip configured sends every notification twice. The existing NetworkPolicy already opens `9094` on both TCP and UDP for this, and its values comment already warns that the alternative is a cluster that silently doubles every notification the day someone scales it up. Making two the default is what turns that warning into a tested path.
+
+**Silences and the notification log replicate.** A silence created on one replica reaches the other through gossip, which removes the current shape's worst property: a single replica holding the only copy of every silence, on a PVC, with no second copy anywhere.
+
+**Two is the number, not three.** Alertmanager's gossip tolerates a partition by notifying from both sides rather than by electing, so the availability argument for a third replica is weak, and the cost of a third is a third set of duplicate notifications when gossip is misconfigured. Two replicas with a PodDisruptionBudget of one is the shape that survives a node disruption, which is the failure being designed against.
+
+The stack's own meta-alerting then has something to say when it breaks: `alertmanager_cluster_members` below the expected count is a real alert, and it is only writable once the expected count is more than one.
 
 ## Severity belongs to the alert, urgency belongs to the deployment
 
@@ -338,7 +399,7 @@ The columns are receiver *classes*, not receivers.
 An operator maps `page`, `high`, `normal`, and `low` onto their own contact points once, and the matrix does the rest.
 That indirection is what lets the same values file work for a deployment with a pager and one with a single Slack channel.
 
-Three notes on the table.
+Four notes on the table.
 
 **`important` is the default** because it is the assumption that is wrong in the least damaging direction.
 A deployment that is really critical infrastructure and routes `critical` to a notification instead of a page has a delayed response.
@@ -351,9 +412,20 @@ The distinction matters during an incident, when the question is what else was t
 **The matrix is values, not a template.**
 An operator who wants `warning` on `evaluation` to be low rather than normal edits one cell, and does not have to understand the routing tree to do it.
 
+**Cells that agree are not the same cell.**
+`critical` and `warning` both reach `normal` on an `evaluation` deployment, and the temptation is to read that as evidence the two levels have collapsed and one of them could go.
+They MUST stay distinct.
+A level is a statement about the condition, and the matrix is one deployment's current opinion of it — an operator who later splits those two cells has to be able to, and an operator whose external Alertmanager routes on `severity` directly never saw the matrix at all.
+The same argument keeps `notice` even where it routes identically to `warning`: collapsing a level to save a row in a table removes a distinction that cannot be recovered without re-editing every rule that carried it.
+
 ## Notification channels
 
-**Decision: named receivers as a map, typed for the four shapes Alertmanager supports natively, with a raw passthrough beside them.**
+**Decision: the chart does not model receiver types. It passes Alertmanager's own receiver configuration through, and owns only the parts Alertmanager cannot know about — which class a receiver serves, and where its credentials come from.**
+
+The instinct is to type the common shapes and call the rest an escape hatch.
+It is the wrong trade here.
+Alertmanager already supports around twenty receiver integrations and documents every one of them, it gains more on its own release cadence, and a typed subset in this chart is a promise to track that cadence in exchange for slightly shorter YAML.
+Worse, the subset decides for an operator which tools are first-class, and the tool a given customer runs is exactly the thing this chart cannot know.
 
 ```yaml
 alerting:
@@ -361,55 +433,65 @@ alerting:
   receivers:
     oncall:
       class: page
-      type: pagerduty
-      routingKeySecret:
-        name: mzmon-alerting
-        key: pagerduty-routing-key
+      # Everything below `config` is an Alertmanager receiver, verbatim.
+      config:
+        pagerduty_configs:
+          - service_key_file: /etc/alertmanager/secrets/mzmon-alerting/pagerduty-key
     platform-alerts:
       class: [high, normal]
-      type: slack
-      channel: "#platform-alerts"
-      apiUrlSecret:
-        name: mzmon-alerting
-        key: slack-webhook-url
-    incident-io:
-      class: page
-      type: webhook
-      url: https://api.incident.io/v2/alert_events/http/<id>
-      bearerTokenSecret:
-        name: mzmon-alerting
-        key: incident-io-token
+      config:
+        slack_configs:
+          - channel: "#platform-alerts"
+            api_url_file: /etc/alertmanager/secrets/mzmon-alerting/slack-url
+    ticketing:
+      class: [normal, low]
+      config:
+        webhook_configs:
+          - url: https://example.invalid/hooks/alerts
+            http_config:
+              authorization:
+                credentials_file: /etc/alertmanager/secrets/mzmon-alerting/ticketing-token
+  # Secrets mounted into the Alertmanager pod, referenced by the paths above.
+  secrets:
+    - name: mzmon-alerting
 ```
 
-The map-keyed-by-name shape follows `pipeline.metrics.gateway.destination.prometheusRemoteWrite`, which is the established precedent in this chart for "several of these, each configured independently".
+Three properties make this more than a passthrough.
 
-`class` is how a receiver attaches to the matrix above, and it takes a list because one channel absorbing several classes is the common small-deployment case.
-A class with no receiver is a render-time error, not a silent drop — an unroutable severity is exactly the kind of misconfiguration that is discovered during the incident it should have reported.
+**`class` is the chart's one addition**, and it is what attaches a receiver to the severity matrix.
+It takes a list, because one channel absorbing several classes is the common small-deployment case.
+A class with no receiver MUST be a render-time error rather than a silent drop, since an unroutable severity is the kind of misconfiguration that gets discovered during the incident it should have reported.
+
+**Every receiver an operator already knows how to configure works on day one**, including ones that did not exist when this was written, and the documentation for configuring them is Alertmanager's.
+`alerting/channels.md` then documents the *pattern* and links out, rather than restating a schema that will drift.
+
+**The chart still validates.**
+A `config` block is checked with `amtool check-config` at render, so a malformed receiver fails the install rather than the reload.
 
 ### Credentials are referenced, never inlined
 
-**Every credential field on a receiver takes a Secret reference and has no inline form.**
+**A receiver's credentials MUST come from a mounted Secret. The chart SHOULD reject a rendered configuration containing an inline credential field.**
 
 Alertmanager's own configuration is a Secret, so an inline token is not exposed at rest.
 It is exposed in the values file, and values files are committed, diffed, pasted into support threads, and rendered into Terraform plans.
 Grafana's `assertNoLeakedSecrets` guard exists in this chart for the same reason on a neighbouring surface, and the argument has already been won there.
 
+Alertmanager makes this easy to hold to, because nearly every credential field has a `_file` variant — `api_url_file`, `service_key_file`, `credentials_file`, `password_file`.
+`alerting.secrets` names Secrets to mount, the `_file` paths reference them, and no credential passes through values at all.
+
 The cost is that an operator creates a Secret before configuring a receiver.
-The Terraform module can create it from a variable marked `sensitive`, which is where the ergonomics belong.
+The Terraform module MAY create it from a variable marked `sensitive`, which is where the ergonomics belong.
 
-### incident.io is a webhook, and that is the right answer
+### Vendors get profiles, not types
 
-Materialize routes to incident.io, which accepts Alertmanager's native webhook payload with a bearer token.
-There is no incident.io-specific protocol to model.
+A vendor with a well-known configuration is worth shipping guidance for, and a profile is the right vehicle.
+Profiles are documentation in this chart, a convention the [Terraform modules design](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception) established.
 
-**Decision: ship `type: webhook` with bearer and basic authentication, and an `incident-io` profile rather than an `incident-io` receiver type.**
+An incident-management vendor consuming Alertmanager's native webhook — incident.io, Opsgenie via webhook, or an internal receiver — needs the URL shape, a bearer token in a Secret, and grouping that produces one incident per condition rather than one per series.
+That is four lines of values and a paragraph of explanation, and a customer using a different vendor copies the profile and changes the URL.
+None of that is reachable if the chart has instead typed a receiver around one vendor's assumptions.
 
-Profiles are documentation in this chart, a convention the [Terraform modules design](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception) established and this is a clean case for it.
-The profile carries the URL shape, the grouping that produces one incident per condition rather than per series, the label set incident.io keys on, and the Secret the token goes in.
-A customer using a different incident tool copies it and changes four lines, which they cannot do with a receiver type they would first have to learn does not fit them.
-
-A typed receiver per vendor is also a maintenance liability that scales with the vendor list and pays off only for vendors whose payload Alertmanager does not already speak.
-PagerDuty, Slack, and email are typed because Alertmanager types them.
+Which vendors get a shipped profile is a question about demand rather than about design, and it is left open.
 
 ### External Alertmanager
 
@@ -420,22 +502,81 @@ Deploying a second one beside it and asking which alerts arrive from which is a 
 
 In `external` mode the chart configures both rulers to notify the given endpoints, renders no Alertmanager, and skips the routing tree entirely — the routing matrix above is bundled-mode configuration, and an external Alertmanager's tree belongs to its owner.
 What the chart still owes that operator is the **label contract**: which labels the rules emit, what values they take, and what they mean, so that routing can be written against them.
+That contract MUST be documented and MUST move only under the deprecation cycle, because an external routing tree is written against it and cannot be migrated by this chart.
 That contract is a documentation deliverable and is listed as one.
 
 ## Choosing what ships enabled
 
-**Decision: `rules.selected` globs over rendered rule groups, defaulting to the self-managed-applicable set, with applicability checked at build time.**
+**Decision: every rule declares the capabilities it requires; `rules.selected` selects by capability and by name; applicability is checked at build time.**
 
-Three mechanisms, in the order they apply.
+### `cloud-only` is the wrong axis
 
-**Build-time exclusion.** A rule whose query names a metric family that no scrape source in this chart produces cannot fire, and the build knows this. `extract_metrics` already walks the registry and resolves every metric a query names, and `metric-tiers.yaml` already groups the result. Extending that to fail the build — or to file the rule under a non-default group — is a small change to machinery that exists, and it replaces a hand-maintained `deploymentMode` label that is already unreliable at 5 of 28 cases.
+The registry marks a handful of rules `deploymentMode: cloud-only`, and the label is wrong twice over.
 
-**Selection.** `rules.selected` defaults to the applicable set and follows the `dashboards.selected` glob pattern, which is a shape contributors and operators already know.
+It is wrong about coverage — 28 rules cannot fire in a stock self-managed install and five carry the label.
+More importantly it is wrong about the *question*.
+A CockroachDB rule is not a Cloud rule; it is a rule for a deployment that runs CockroachDB, which a self-managed customer on a dedicated CockroachDB cluster does.
+A Cilium rule is not a Cloud rule; it is a rule for a cluster whose CNI is Cilium, which is a choice any operator can make.
+Marking either `cloud-only` throws away a rule that some self-managed deployments want, and encodes today's Cloud topology as though it were a property of the rule.
+
+**Decision: rules carry `requires`, a list of capability tags naming what must be true for the rule to be meaningful.**
+
+| Tag | Means | Example rules |
+|---|---|---|
+| `crdb-dedicated` | Consensus is a dedicated CockroachDB cluster | The 15 `crdb` rules |
+| `cilium` | The cluster CNI is Cilium and exports its metrics | BPF map pressure, drop rate |
+| `aws` | Running on AWS, with the cloud-specific signals that implies | Egress-gateway traffic shape |
+| `synthetic-uptime` | An external connection checker is writing uptime series | `env-uptime-sla`, `env-uptime-slo` |
+| `feature-flags` | A feature-flag service is in the request path | The flag-staleness rules |
+
+The tags describe the deployment, not the vendor of it.
+A Cloud region satisfies several at once, which is why the rules looked Cloud-shaped, and a self-managed deployment that satisfies one gets the rules that go with it.
+
+Two consequences worth stating.
+**`deploymentMode: cloud-only` goes away**, replaced by the tags that say what it was actually standing for.
+**No rule is deleted**, which resolves the disposal question by dissolving it: a rule nobody can currently run stays in the registry, tagged, documented, and off.
+
+### Three mechanisms, in the order they apply
+
+**Build-time applicability.** A rule whose query names a metric family that no scrape source in this chart produces cannot fire, and the build knows this. `extract_metrics` already walks the registry and resolves every metric a query names, and `metric-tiers.yaml` already groups the result. A rule with no `requires` tag whose metrics are unreachable MUST fail the build, because it is either mistagged or broken. A rule whose tags are not satisfied is excluded quietly, which is the tag doing its job.
+
+**Selection.** `rules.selected` takes capability tags and glob patterns over rule-group names, following the `dashboards.selected` shape that contributors and operators already know. An operator running a dedicated CockroachDB adds `crdb-dedicated` and gets fifteen rules.
 
 **Per-rule disable.** `rules.disabled` takes a list of alert names, because the common case is disagreeing with one rule rather than a category.
 
 The build-time check is the load-bearing one.
-Selection and disabling are how an operator expresses a preference; the check is what keeps a rule that cannot possibly fire from being shipped as though it might.
+Selection and disabling are how an operator expresses a preference; the check is what keeps a rule that cannot possibly fire from shipping as though it might.
+
+### Alert names are a committed surface
+
+**Decision: an alert name is a customer-facing surface subject to the deprecation cycle, from the release that first ships rules — not from this design.**
+
+The [roadmap records this as open](../../roadmap/#versioning-changelog-and-releases) and notes the decision is free only until the alerting path ships.
+This is the decision, and the reason to make it now is that three of the extension points on this page name alerts: `rules.disabled` names them, an external Alertmanager's routing tree matches on them, and a runbook link is built from them.
+An unstable name makes all three unstable, and an operator who cannot rely on a name cannot build a route.
+
+The cycle does not begin immediately, and pretending otherwise would be a promise nobody could keep.
+Names will churn while the default set is being derived and the log-derived rules are being written, and the churn SHOULD be visible: a renamed alert during that period still owes a changelog entry, so that an operator tracking pre-release versions can follow it.
+Once the alerting path ships in a release, a rename owes the full `**Deprecated:**` cycle the [committed-surface check](../../releasing/) already enforces for dashboards and Terraform variables.
+
+Recording-rule names acquire the same status at the same time, and for the same reason: a recording rule is a metric name to anyone querying it.
+
+### Runbooks live in this repository
+
+**Decision: every shipped alert MUST carry a `runbook_url` annotation resolving to a page under `operating/runbooks/` in this docsite.**
+
+An alert whose annotation says what fired but not what to do is half an alert, and the roadmap's base-alert-set row has carried "runbook stubs" as a deliverable since FCO-M2 without a home for them.
+
+Three properties of putting them here.
+
+**They are reviewed with the rule.** A rule and its runbook change in one pull request, which is the only arrangement under which they stay in agreement.
+
+**They are linkable and stable.** The annotation is a URL built from the alert name, which is a surface the section above just committed to, so the link is as stable as the rule.
+
+**Stable ones graduate.** A runbook that has stopped changing and describes a practice rather than a workaround SHOULD be promoted to the customer-facing product documentation. This docsite is where a runbook is written and iterated; it is not where the good ones should end up.
+
+One caveat the annotation cannot solve.
+A deployment on an air-gapped network cannot follow a link to a hosted docsite, so the `summary` annotation MUST remain self-contained enough to act on — what fired, on what, and the first thing to check — with the runbook carrying the depth rather than the whole content.
 
 ### Log-pattern rules are best-effort by construction
 
@@ -444,7 +585,7 @@ Materialize can reword a message in a patch release and silently disable the ale
 
 Two things follow.
 
-**Every log-pattern rule is `stability: best-effort`**, and none of them graduate to `canonical` while the contract is a string.
+**Every log-pattern rule MUST be `stability: best-effort`**, and none of them graduate to `canonical` while the contract is a string.
 The registry's stability field already means "how much this repository commits to it", and a string match is not something to commit to.
 
 **The real fix is upstream.** A structured error code in the log line — a stable field, versioned like a metric name — turns a pattern match into a label match, and turns a rule that decays silently into one that fails loudly. That belongs on the metrics-contract dependency list beside the other asks, and the correctness-violation alerts are the strongest case for it, because they are the ones whose silent decay costs the most.
@@ -486,7 +627,7 @@ rules:
         team: platform
 ```
 
-**Decision: overrides may change `for`, `severity`, `labels`, `annotations`, and `keepFiringFor`. They may not change the expression.**
+**Decision: overrides MAY change `for`, `severity`, `labels`, `annotations`, and `keepFiringFor`. They MUST NOT change the expression.**
 
 The tempting next step is threshold parameterization — exposing the numbers inside an expression as values.
 It is deliberately not proposed, because doing it generically requires the renderer to know which literal in an arbitrary PromQL expression is the threshold, and doing it specifically requires every rule author to remember to name one.
@@ -513,7 +654,7 @@ alerting:
         continue: false
 ```
 
-Extra routes are spliced into the tree **ahead of** the severity matrix, so a specific match wins and the matrix remains the fallback.
+Extra routes MUST be spliced into the tree **ahead of** the severity matrix, so a specific match wins and the matrix remains the fallback.
 That ordering is the whole value: a customer with one team that owns sources and another that owns everything else expresses it in four lines, and every alert not matching still routes correctly.
 
 There is prior art for exactly this problem in the operator CRDs this chart already installs.
@@ -609,7 +750,7 @@ For a deployment routing to incident.io or PagerDuty, that is a heartbeat monito
 For a deployment routing to a Slack channel, it is a message every few minutes that somebody mutes within a week.
 For a deployment with no external receiver at all, it is worth nothing, and saying so is better than shipping it as a checkbox.
 
-The deadman's switch must be exempt from the severity matrix and from `alerting.criticality`, because a `notice` suppressed on `evaluation` is a deadman's switch that is always dead.
+The deadman's switch MUST be exempt from the severity matrix and from `alerting.criticality`, because a `notice` suppressed on `evaluation` is a deadman's switch that is always dead.
 
 **Alertmanager also has to be scraped.**
 The roadmap records this as an open collection gap and calls it the most embarrassing of them, which is fair — it is our own component, deployed by our own chart, emitting metrics to nothing.
@@ -637,21 +778,28 @@ It is a complete alternative, not a partial one, and it has two real advantages.
 
 **One rule model across both datasources.** A Grafana alert rule queries whatever datasource it names, so metric rules and log rules are the same kind of object — no second evaluator, no second rule format, no `$__range` trap.
 
-**It matches what Materialize already does.** The clicked-in rules are Grafana rules. Codifying them as `GrafanaAlertRuleGroup` resources is a smaller step than porting them to a Loki ruler.
+**It is closer to existing practice.** The clicked-in rules are Grafana rules. Codifying them as `GrafanaAlertRuleGroup` resources is a smaller step than porting them to a Loki ruler.
 
-It is not the default for one reason, which is sufficient.
+The obvious argument against it is that Grafana's alert state lives in Grafana's database, and the chart's stock Grafana is SQLite on an `emptyDir`.
+**That argument is weaker than it looks and should not be the one this rests on.**
+A stateful Grafana is strongly recommended regardless — for service accounts, annotations, dashboard versions, and anything a human creates — so a production deployment has `grafana-postgres` or `grafana-pvc` applied before alerting enters the picture.
+Resting the decision on a default that production deployments are already told not to use would make it an argument about the ephemeral case only, which is not the case that matters.
 
-**Grafana's alert state lives in Grafana's database**, and this chart's default Grafana is SQLite on an `emptyDir`.
-Alert state, silences, and rule evaluation history are lost on every restart, upgrade, and reschedule.
-The chart already documents that the default Grafana is the safe shape rather than the production shape, and requires `grafana-postgres` or `grafana-pvc` for anything stateful.
-Making alerting depend on that is making the most important guarantee in the stack depend on the profile most likely to be skipped.
+The reason it is not the default is the composability posture, and it survives a stateful Grafana intact.
 
-Two secondary reasons reinforce it.
-A deployment using `connections.grafana.mode: external` — a shared platform Grafana, or Grafana Cloud — cannot be given alert rules by this chart in any mode where it does not hold credentials.
-And routing through Grafana's embedded Alertmanager means the alerting path depends on Grafana being up, which is a component this chart's own guidance describes as losing nothing important when it restarts.
+**Grafana is the most replaceable component in this stack, and alerting is the least.**
+`connections.grafana.mode: external` is a supported and expected configuration — a shared platform Grafana, or Grafana Cloud — and in that mode the chart holds no credentials with which to install rules.
+The `existing-grafana` profile exists precisely for customers who will not run ours.
+Making the one guarantee that has to hold depend on the one component a customer is most likely to bring their own of is the inversion.
 
-The documented shape for a customer who wants it: enable Grafana-managed alerting, turn off the rulers and the bundled Alertmanager, and apply `grafana-postgres`.
+**The failure modes differ in kind.**
+Grafana restarting costs a reload; this chart's own guidance describes it as losing nothing important.
+That is only true while nothing load-bearing runs inside it.
+Routing through Grafana's embedded Alertmanager makes a Grafana restart an alerting outage, and changes the priority class Grafana should carry — it sits in `monitoring-scalable` today on the stated grounds that a surviving replica or a retry absorbs its loss.
+
+The documented shape for a customer who wants it: enable Grafana-managed alerting, turn off the rulers and the bundled Alertmanager, and apply a persistence profile.
 That is a profile, and it is worth shipping as one.
+A customer already standardized on Grafana alerting is a real case, and the argument above is about which default serves the most deployments rather than about the approach being wrong.
 
 ## Chart-side prerequisites
 
@@ -660,22 +808,27 @@ Work in this repository, roughly in dependency order.
 | Item | Why it blocks |
 |---|---|
 | `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | Nothing renders rules today; every item below consumes the output |
-| Build-time applicability check against the extracted metric set | Decides the default-enabled set; replaces the unreliable `deploymentMode` label |
+| Capability tags (`requires`) on rules, and the schema change behind them | Replaces `deploymentMode: cloud-only` with what it was standing for |
+| Build-time applicability check against the extracted metric set | Decides the default-enabled set, and catches an untagged rule that cannot fire |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | Required for `ALERTS` on the gateway; `extraArgs` reaches it and leaves the rest inconsistent |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | The Loki ruler runs today and notifies nothing |
-| Alertmanager configuration surface: receivers map, class matrix, `alerting.criticality`, inhibition, mute timings | The routing half of the feature |
-| Alertmanager Secret wiring for receiver credentials | Credentials are referenced, never inlined |
+| Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | The routing half of the feature |
+| `amtool check-config` over the rendered configuration | The chart validates a passthrough it does not model |
+| `alerting.secrets` mounting, and the `_file` credential convention | Credentials are referenced, never inlined |
+| Alertmanager at two replicas with gossip, and a PDB of one | HA is the default rather than a hardening profile |
 | Alertmanager ServiceMonitor | Two of three meta-alerting rows depend on it, and it is an existing recorded gap |
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
+| `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | An alert with no stated action is half an alert |
+| Alert names added to the committed-surface check | Three extension points name alerts |
 | `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | The extension surface |
 | `alerting.routes.extra`, spliced ahead of the matrix | The extension point whose absence forces forks |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |
 | Rollout-inhibition rule over the `env-upgrade` generation signals | Maintenance windows that close themselves |
 | Alertmanager datasource in Grafana, and an alerts dashboard | Alert state has no view today |
-| `incident-io` profile, `grafana-managed-alerting` profile | Profiles are documentation |
+| A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
 | Terraform module surface for receivers and criticality, with `sensitive` credential variables | Where the Secret-creation ergonomics belong |
 | Remove `config.rules.*` / `config.alerts.enabled` or make them load-bearing | Four values keys currently read by nothing |
 
@@ -690,6 +843,11 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **The routing matrix routes.** For each of the three criticality settings, assert that a synthetic alert at each severity lands on the expected receiver, read from Alertmanager's own routing-tree API rather than from the rendered config. Rendering the tree correctly and Alertmanager interpreting it as intended are different claims.
 - **Extra routes take precedence.** A route added through `alerting.routes.extra` wins over the matrix for a matching alert, and a non-matching alert still reaches the matrix. Ordering bugs here are invisible until the wrong team is paged.
 - **An unroutable class fails the render.** A receiver set missing a class that the matrix references is a render-time error, tested as one.
+- **A malformed receiver fails the render.** `amtool check-config` over the rendered configuration, asserted on a deliberately broken passthrough. The chart does not model these blocks, so this is the only thing standing between a typo and a failed reload in a running Alertmanager.
+- **Gossip converges and deduplicates.** Create a silence on one replica and assert it is visible on the other; fire an alert and assert one notification rather than two. The second half is the check that a two-replica default does not double every page.
+- **Losing a replica keeps notifying.** Delete one Alertmanager pod and assert an alert still reaches its receiver, which is the node-drain case the HA default exists for.
+- **Every shipped alert has a reachable runbook.** Assert each `runbook_url` resolves to a page that exists in the built docsite, in CI without a cluster. A dead runbook link is discovered at 03:00 otherwise.
+- **Capability-tagged rules stay out until selected.** Assert a `crdb-dedicated` rule is absent by default and present once the tag is selected, since a tag that fails open is worse than no tag.
 - **Credentials do not appear in the render.** Assert no receiver credential is present in any rendered object except by Secret reference, which is the mechanical half of the inlining rule.
 - **`ALERTS` arrives through the gateway.** Assert the series is queryable in Thanos *and* visible to a gateway destination, because landing in Thanos by a second path would satisfy a naive version of this test.
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
@@ -700,29 +858,30 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 ## Documentation to update
 
 - **`alerting/configuring.md`** — currently the word `TODO`. The severity table, the criticality matrix, and the receiver map. This is the page an operator reads once and configures from.
-- **`alerting/channels.md`** — currently a heading. One section per receiver type, the Secret shape, and the incident.io profile.
+- **`alerting/channels.md`** — currently a heading. The `class` concept, the Secret-mounting and `_file` convention, one worked example, and a link to Alertmanager's own receiver reference for everything else. This page documents a pattern rather than a schema, deliberately.
 - **`alerting/maintenance.md`** — currently a heading. Inhibition on the rollout signal first, mute timings second, and why that order.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.
-- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is culled that warning should become a statement about which set is default and why.
+- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
+- **`operating/runbooks/`** — a new section, one page per shipped alert, and the convention that a stable runbook graduates to the product documentation.
 - **`operating/production-best-practices.md`** — alerting is a shared-responsibility item and has no entry. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
 - **`architecture.md`** — the alerting path is absent from the architecture page.
 - **`reference/internal/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
-- **`reference/internal/versioning.md`** — whether an alert name is a committed surface. An operator's `rules.disabled` entry and an external Alertmanager's routing both name alerts, which makes renaming one a breaking change to something.
-- **A migration note for Cloud** — the clicked-in Loki rules are the ones this makes definable. Whether Cloud adopts the registry's log alerts is a separate decision, and the rules being in one place is the precondition for it.
+- **`reference/internal/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
+- **A migration note for Cloud** — Cloud adopts these rules when it adopts this stack's Alertmanager. The note that is owed is what changes for the definitions in the process, since per-region duplication, the `tier`/`team` label vocabulary, and the stack-type exclusions have no equivalent here.
 
 ## Open questions
 
-- [ ] **Which rules are in the default-enabled set, exactly?** The mechanism is proposed; the list is not. It should be short enough that an operator reads all of it, and every entry should have an operator action.
-- [ ] **Does the build-time applicability check exclude or fail?** Excluding is friendlier and hides a rule that was meant to ship. Failing is louder and turns a scrape-config change into a broken build in an unrelated area.
-- [ ] **Is `severity` on the deprecation cycle?** External routing is written against it, which makes adding a fourth value a change to somebody's routing tree.
-- [ ] **Are alert names a committed surface?** They appear in `rules.disabled`, in external routing, and in notification payloads people build automation against. Committing them is a real constraint and not committing them makes the extension points unstable.
+Settled in review and recorded in the sections above rather than here: alert names are committed, `notice` stays, Alertmanager runs two replicas with gossip by default, runbooks live under `operating/runbooks/`, receiver types are Alertmanager's rather than the chart's, and the `cloud-only` rules become capability-tagged rather than deleted.
+
+- [ ] **Which rules are in the default-enabled set, exactly?** The mechanism is proposed; the list is not. It SHOULD be short enough that an operator reads all of it, and every entry SHOULD have a runbook.
+- [ ] **What is the full capability-tag vocabulary?** Five tags are named as examples. The set wants deriving from the rules rather than inventing, and a tag that applies to one rule is a label pretending to be a category.
+- [ ] **Does the build-time applicability check exclude or fail for an untagged rule?** Failing is proposed, on the grounds that an untagged unreachable rule is mistagged or broken. It turns a scrape-config change into a broken build in an unrelated area, which is the cost.
+- [ ] **Is `severity` itself on the deprecation cycle?** Alert names are, as of this design. External routing matches on `severity` too, which makes adding a fourth value a change to somebody's routing tree, and the same argument that committed the names applies to the label values.
 - [ ] **Does the chart render log rules per tenant, and is `byNamespace` supportable at all?** A namespace created after the last Helm run has no rules under it, and there may be no version of this that is complete.
 - [ ] **What is the grouping key?** `[alertname, namespace]` produces one notification per condition per environment, which is right for most rules and wrong for a node-level condition affecting forty pods. Grouping may need to be per rule rather than global.
 - [ ] **Does the stateless ruler need a WAL?** The Loki ruler keeps a PVC specifically so its remote-write WAL survives a gateway outage. The same argument applies to the Thanos ruler, and it undercuts the "removes a stateful workload" reason for going stateless.
-- [ ] **Two Alertmanager replicas or one?** Gossip-based HA is what the roadmap's hardening item covers, and a single replica holds the only copy of every silence. Alerting that duplicates notifications during a rolling update is a different failure from alerting that loses silences on restart, and the choice depends on which one an operator would rather have.
-- [ ] **Where does the runbook live?** Every alert should link to one, and a link into this docsite is a link a customer may not be able to reach from an air-gapped network. Embedding the operator action in the annotation is self-contained and much less useful.
-- [ ] **Does Cloud converge on these definitions?** The stated goal is one definition for three surfaces. Cloud's deployment path is Pulumi against managed Prometheus, and converging the definitions without converging the deployment is achievable and is a second consumer of `gen-rules` that nobody has scoped.
-- [ ] **What happens to the Cloud-only rules?** Deleting them loses definitions that work in Cloud. Keeping them in this repository under a `cloud-only` selection keeps a public repository carrying rules for components it does not document. Neither is obviously right.
-- [ ] **Should `notice` exist?** Three severities with the middle one doing most of the work is the common outcome, and a severity that routes nowhere on two of three criticality settings is close to a label. Collapsing to two would simplify the matrix and would lose the distinction between "act before this becomes an outage" and "know this happened".
+- [ ] **Which vendor profiles ship?** The design says vendors get profiles rather than receiver types and deliberately does not pick them. This is a question about demand.
 - [ ] **Does the deadman's switch ship enabled?** It is worth nothing without an external receiver, and shipping it disabled means the deployments most likely to need it are the ones that never turn it on.
+- [ ] **What does Cloud's adoption change about the definitions?** Cloud adopts these rules when it adopts this stack's Alertmanager, which is separately scoped. What is not yet known is how much of the Cloud-shaped detail survives the move — per-region duplication, the `tier`/`team` label vocabulary, and the stack-type exclusions are all Pulumi-side concepts with no equivalent here, and each is either a capability tag, a route, or something that goes away.
+- [ ] **Do capability tags reach the dashboards?** The same argument — a CockroachDB panel is for deployments running CockroachDB, not for Cloud — applies to `dashboards.selected`, and solving it once in two places is better than solving it twice differently.
 
