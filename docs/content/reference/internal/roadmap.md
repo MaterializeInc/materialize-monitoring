@@ -387,6 +387,42 @@ The gateway pair is what enforces the boundary, rather than ad-hoc network confi
 Sanitization is what makes *anything* crossing safe, since the `_info` metrics that made dashboards legible are precisely the ones carrying customer names, and the same tension applies to log labels.
 Redaction attaches to the destination rather than to the pipeline, so the reduced copy is a fork of the customer's stream and never a downgrade of it.
 
+### Call-home from self-managed
+
+The [BYOC](#byoc) section above is about environments Materialize operates.
+This one is about the deployments Materialize cannot see at all: self-managed installs, which are invisible between escalations.
+
+Nothing here is ticketed yet.
+
+| Item | Milestone | Status |
+|---|---|---|
+| Call-home design doc plus review | — | 🔨 ([design doc](../design-docs/20260917-call-home-self-managed/) drafted; review outstanding) |
+| The `callHome.level` consent ladder and its profiles, defaulting to off | — | ⬜ |
+| Heartbeat producer — a fixed, enumerable install record | — | ⬜ |
+| Alert-state forwarding, once rule evaluation ships | — | ⬜ |
+| `previewOnly` destination mode — full chain, counted locally, never sent | — | ⬜ |
+| The egress meter — a dashboard row over the existing per-destination counters | — | ⬜ |
+| A generated egress schedule per level, extending the `metric-tiers.yaml` pattern | — | ⬜ |
+| OTLP/HTTP default wire, forward-proxy and corporate-CA configuration | — | ⬜ |
+
+**The channel is the BYOC channel; the feature is consent.**
+A BYOC customer bought an operated service, so telemetry crossing the boundary is what they purchased.
+A self-managed customer bought software they run themselves, and every byte that leaves is a concession.
+The design is therefore a bounded, monotone, locally-visible ladder — `off`, `heartbeat`, `alerts`, `metrics`, `diagnostics` — rather than a pipeline, which already exists.
+
+Two findings from drafting it belong on this page rather than only in the design doc.
+
+**The cheapest useful level is alerts, and nothing evaluates alerting rules today.**
+That is the same gap the [Rules & alerts](#rules--alerts) row records, reached from the other direction: a call-home channel forwarding alert state from a stack that evaluates no rules forwards an empty set, which reads as good news.
+Alert *state* (the `ALERTS` series, over the existing metric fan-out) and alert *notification* (an Alertmanager webhook, after grouping and silences) are different signals, and the state series is the one that ships first because it reuses the channel.
+
+**A TLS-intercepting corporate forward proxy defeats mTLS outright**, and that network shape is common in exactly this segment.
+That makes token exchange a reachability requirement for self-managed rather than the security refinement it is for BYOC, and it is the strongest argument for the [`oauth2.tls`](#tenant-scoped-read-path) prerequisite already owed to the read path.
+
+**Receiving a signal creates an obligation.**
+Collecting alerts nobody is paged on is worse than collecting nothing, because the customer took a disclosure risk on the assumption that someone is watching.
+A stated response model — and a stated *non*-response — is a prerequisite for the alerts level, not a follow-up.
+
 ### Tenant-scoped read path
 
 Every workstream above is about **collecting** telemetry, and every consumer of it so far is a Grafana we deploy, reading backends it reaches over a `ClusterIP` Service.
@@ -501,3 +537,7 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   It proposes mandating a PromQL and LogQL read interface in self-managed and Cloud, and a JWT-authenticated single-tenant proxy in front of it.
   The [Tenant-scoped read path](#tenant-scoped-read-path) section above is the roadmap position it establishes, including that it supersedes the customer-scraped Prometheus endpoint.
 - A **customer-facing** read-endpoint page — how to obtain a token, the two Grafana datasource shapes, and what a tenant can and cannot read — is owed alongside it. ⬜
+- [Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane](../design-docs/20260917-call-home-self-managed/) is written and in review as a draft. 🔨
+  It proposes an opt-in consent ladder over the BYOC channel, with alerts as the lowest useful level and the bound made verifiable by a preview mode and a local egress meter.
+  The [Call-home from self-managed](#call-home-from-self-managed) section above is the roadmap position it establishes, including that the alerts level is blocked on rule evaluation rather than on the pipeline.
+- A **customer-facing** call-home page — the levels, the generated schedule for each, how to preview before enabling, how to read the local meter, and the retention, access and deletion commitments — is owed alongside it. ⬜
