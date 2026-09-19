@@ -120,6 +120,24 @@ pub mod variables {
     pub const NAMESPACE_LIST: &str = "namespaceList";
 }
 
+/// Drops pods sharing the node's network namespace from a cAdvisor rollup.
+///
+/// cAdvisor reports a container's network counters from its network namespace,
+/// and a host-network pod's namespace is the node's. Such a pod therefore
+/// reports *every* interface on the machine — 31 on a reference GKE node,
+/// against one for an ordinary pod — so it counts the node's whole traffic,
+/// including every other pod's veth. A DaemonSet doing this on every node makes
+/// a cluster-wide sum wrong by an order of magnitude: measured at 27,831 KiB/s
+/// against a true 1,700, with the ten busiest "pods" all being host-network
+/// DaemonSets reporting their node.
+///
+/// The discriminator is the series set rather than any label: a pod with its own
+/// network namespace reports `eth0` and `lo` and nothing else.
+const HOST_NETWORK_EXCLUSION: &str = concat!(
+    "unless on (namespace, pod) ",
+    r#"count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})"#,
+);
+
 /// Variables a dashboard must define for [`dashboard_context`] to render usefully.
 ///
 /// Not including the datasource variable: that is referenced by the dataquery's
@@ -444,6 +462,17 @@ pub fn dashboard_context<'a>(
             "cAdvisorFilter",
             format!(r#"{namespace_selector},container!="",container!="POD""#),
         ),
+        // Not a matcher: a whole `unless` clause, appended to a
+        // `sum by (namespace, pod)` over a cAdvisor network family. Being
+        // host-network is a property of a pod's entire series set rather than
+        // of any one series, so no label matcher can express it.
+        //
+        // Deliberately references no dashboard variable. The exclusion is a
+        // fact about the pod, not about the selection, so it composes with
+        // whatever namespace scope the caller already applied -- and a
+        // variable here would tie a shared parameter to one dashboard's
+        // pickers.
+        ("excludeHostNetworkPods", HOST_NETWORK_EXCLUSION.to_string()),
         (
             "excludeEnvironmentFilter",
             scope.exclude_environments.clone(),
@@ -596,6 +625,7 @@ mod tests {
             "range",
             "mzSqlPrefix",
             "cAdvisorFilter",
+            "excludeHostNetworkPods",
             "mzOperatorNamespaceFilter",
             "mzEnvironmentNamespaceFilter",
             "mzSystemNamespaceFilter",

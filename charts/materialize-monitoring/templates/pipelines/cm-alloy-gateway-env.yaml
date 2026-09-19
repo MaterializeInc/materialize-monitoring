@@ -18,6 +18,8 @@ data:
          `encoding.from_json` — sys.env yields a string and the attribute wants
          a bool. */}}
   GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
+  {{- $kubeProxy := .Values.pipeline.metrics.kubeProxy }}
+  GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL: {{ $kubeProxy.scrapeInterval | quote }}
   {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
   {{- if $lokiDest.enabled }}
   GATEWAY_LOKI_DEST: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $lokiDest.url $ ) "tls" $lokiDest.tls ) | quote }}

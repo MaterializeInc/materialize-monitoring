@@ -59,9 +59,13 @@ fn lb_table(q: &Queries) -> dashboardv2::PanelKind {
         .no_value(NoValue::Custom(
             "No Service in this cluster has a cloud load balancer.".to_string(),
         ))
+        // `hostname` beside `ip`: a load balancer is reached by address on GCP
+        // and Azure and by DNS name on AWS, and Kubernetes reports whichever
+        // applies. Ordering by `ip` alone dropped the AWS case entirely, which
+        // would have read as a load balancer with no address.
         .transformations(vec![transform::organize(
             &["Time", "Value", "__name__"],
-            &["namespace", "service", "ip"],
+            &["namespace", "service", "ip", "hostname"],
         )])
         .build(0)
 }

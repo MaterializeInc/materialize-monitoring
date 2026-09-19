@@ -45,11 +45,11 @@ fn services(q: &Queries) -> Row {
     )
 }
 
-/// Collapsed because it is empty on any cluster without kube-proxy — GKE
-/// Dataplane V2, or Cilium in kube-proxy-replacement mode — and a row that is
-/// blank on a third of installs should not be the first thing on screen. The
-/// title says it exists, which is what an operator needs in order to go
-/// looking.
+/// Collected by default — the gateway scrapes kube-proxy where it runs — and
+/// still collapsed, because it is empty on any cluster that runs none: GKE
+/// Dataplane V2, or Cilium in kube-proxy-replacement mode. A row blank on a
+/// third of installs should not be the first thing on screen, and the title
+/// says it exists, which is what an operator needs in order to go looking.
 fn proxy(q: &Queries) -> Row {
     Row::new("kube-proxy").collapsed().grid(
         AutoGrid::new(2)

@@ -154,6 +154,16 @@ $defs:
       # Kubernetes namespace selector value (regex) for kube-state-metrics /
       # cAdvisor panels, e.g. namespace=~"%%{mzNamespaceList}".
       - "mzNamespaceList"
+      # A whole `unless` clause rather than a matcher, dropping pods that share
+      # the node's network namespace. cAdvisor reports every interface on the
+      # machine for a host-network pod -- 31 of them on a reference node against
+      # one for an ordinary pod -- so each such pod reports the whole node's
+      # traffic and a cluster-wide sum over-counts by an order of magnitude
+      # (measured: 27,831 KiB/s against a true 1,700). It appends to a
+      # `sum by (namespace, pod)` and cannot be written as a label matcher,
+      # because being host-network is a property of a pod's whole series set
+      # rather than of any one series.
+      - "excludeHostNetworkPods"
 
   metricImportance:
     description: |

@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# kube-proxy metrics, scraped from the gateway.
+#
+# kube-proxy turns a Service into rules on the node, so its sync latency is the
+# answer when connections to a Service fail while every pod behind it is
+# healthy. The properties below are the ones that would regress quietly: a
+# scrape addressed at nodes rather than pods (which would fail forever on the
+# clusters that run no kube-proxy), a lost port, a duplicated scrape, or a
+# missing dataplane label that leaves the metrics uncollectable by the
+# dashboard's discovery.
+suite: kube-proxy scrape
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.logging.gateway.destination.loki.enabled: false
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+tests:
+  - it: should scrape kube-proxy from the gateway
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.scrape "kube_proxy"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'job_name = "kube-proxy"'
+
+  # The whole safety story. kube-proxy is absent on GKE Dataplane V2 and on any
+  # Cilium install in kube-proxy-replacement mode; node discovery would leave a
+  # refused connection on every node of those clusters forever, while a
+  # server-side pod selector simply returns nothing.
+  - it: should discover kube-proxy by pod selector, not by node
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'discovery\.kubernetes "kube_proxy_pods" \{\s+role = "pod"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'label = "k8s-app=kube-proxy"'
+      # Not the node-discovery target set the kubelet scrape uses.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'targets = discovery\.relabel\.kube_proxy\.output'
+
+  # kube-proxy declares no container ports, so pod discovery emits one bare-IP
+  # target and the port has to be appended. Verified on EKS 1.34, where the pod's
+  # `ports` list is empty although :10249 serves 233 series.
+  - it: should append the metrics port to the discovered pod address
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '"__meta_kubernetes_pod_ip",[\s\S]{0,200}?replacement\s+= "\$\{1\}:10249"'
+
+  # Without clustering every gateway replica scrapes every node.
+  - it: should cluster the scrape so replicas do not duplicate
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.scrape "kube_proxy" \{[\s\S]*?clustering \{\s+enabled = true'
+
+  # `infra-net` discovers its dataplane from
+  # `label_values(up{network_component=~".+"}, network_component)`. Without this
+  # label the metrics arrive and the dashboard cannot find them.
+  - it: should stamp the dataplane identity the dashboard discovers
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'target_label = "network_component"[\s\S]{0,100}?replacement\s+= "kube-proxy"'
+
+  # Terminated pods linger in the API until garbage collection, and scraping one
+  # is a guaranteed refusal.
+  - it: should skip pods that are not running
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'discovery\.relabel "kube_proxy" \{[\s\S]*?regex\s+= "Pending\|Succeeded\|Failed"'
+
+  - it: should take its scrape interval from values
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      pipeline.metrics.kubeProxy.scrapeInterval: 5m
+    asserts:
+      - equal:
+          path: data.GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL
+          value: 5m

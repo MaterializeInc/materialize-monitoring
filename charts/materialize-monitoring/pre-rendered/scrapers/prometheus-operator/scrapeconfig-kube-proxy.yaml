@@ -12,6 +12,13 @@
 # container port, so either would drop every target. Addressing the pod IP
 # directly is the only shape that reaches it.
 #
+# **This file is for a Prometheus a consumer runs themselves**, the same
+# relationship `scrapeconfig-cadvisor.yaml` has: the chart's own Alloy path
+# scrapes kube-proxy from the gateway pipeline instead, because the gateway has
+# no `prometheus.operator.scrapeconfigs` component to pick a ScrapeConfig CR up
+# with. The two are kept in step by hand; the relabeling below is the same set
+# the pipeline applies.
+#
 # Absence is handled by the `keep` on the pod label rather than by the port: a
 # cluster running no kube-proxy has no pod carrying `k8s-app: kube-proxy`, so
 # this collects nothing and costs nothing. GKE Dataplane V2 is exactly that

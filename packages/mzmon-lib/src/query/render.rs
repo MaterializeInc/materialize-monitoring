@@ -265,6 +265,14 @@ fn extraction_context<'a>(
         // spurious label matchers to the parsed selectors. A real deployment
         // fills this in (e.g. mz_context_org_type!="e2e_test").
         ("excludeEnvironmentFilter", ""),
+        // Unlike the above this cannot be empty: it is a whole `unless` clause
+        // rather than a matcher, and a query built around one does not parse
+        // without it. The metric it names is one the same queries already read,
+        // so extraction gains nothing spurious.
+        (
+            "excludeHostNetworkPods",
+            r#"unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})"#,
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

@@ -137,13 +137,23 @@ fn rules(q: &Queries) -> dashboardv2::PanelKind {
         // egress column.
         .transformations(vec![
             transform::merge(),
-            transform::organize_renamed(
+            // `organize_full`, not `organize_renamed`: the latter takes an
+            // *order* rather than an exclusion, so naming Time there pinned it
+            // to column zero instead of hiding it. A merged instant query still
+            // carries a Time field, and it is the same value on every row.
+            transform::organize_full(
                 &["Time", "__name__"],
+                &["namespace", "networkpolicy"],
                 &[
                     ("Value #query-0", "Ingress Rules"),
                     ("Value #query-1", "Egress Rules"),
                 ],
             ),
+            // One namespace at a time. A cluster's whole policy set is a long
+            // flat list and nobody reads it that way -- the question is always
+            // about one namespace, and the row count per namespace is itself
+            // worth seeing at a glance.
+            transform::group_to_nested_table("namespace"),
         ])
         .build(0)
 }

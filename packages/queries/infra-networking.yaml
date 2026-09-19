@@ -19,6 +19,18 @@ description: |
     cgroup — every interface on the machine, including the veth of every pod on
     it. Panels must pick one and say which.
 
+    **Host-network pods are excluded from every rollup here, and must be.**
+    cAdvisor reads a container's counters from its network namespace, and a
+    host-network pod's namespace is the node's — so such a pod reports all 31 of
+    a reference node's interfaces rather than its own one, and its "pod traffic"
+    is the whole machine's, counting every other pod's veth. Several DaemonSets
+    do this on every node. Left in, a cluster-wide sum read 27,831 KiB/s against
+    a true 1,700, and the ten busiest pods were all host-network DaemonSets
+    reporting their node. `%%{excludeHostNetworkPods}` is the `unless` clause
+    that drops them; it appends to a `sum by (namespace, pod)` and cannot be a
+    label matcher, because being host-network is a property of a pod's whole
+    series set rather than of any one series.
+
   * **kube-state-metrics** (`kube_service_*`, `kube_endpointslice_*`,
     `kube_networkpolicy_*`) is the declared intent: what Services exist, what is
     behind them, and which policies were written. It says nothing about whether
@@ -118,11 +130,15 @@ queries:
     promQL:
       - |
         sum (
-          rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          sum by (namespace, pod) (
+            rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
         )
       - |
         sum (
-          rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          sum by (namespace, pod) (
+            rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
         )
 
   - id: infra.net.overview.errors
@@ -143,13 +159,17 @@ queries:
     promQL:
       - |
         sum (
-          rate(container_network_receive_errors_total{namespace=~"$namespaceList"}%%{interval})
-          + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}%%{interval})
+          sum by (namespace, pod) (
+            rate(container_network_receive_errors_total{namespace=~"$namespaceList"}%%{interval})
+            + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}%%{interval})
+          ) %%{excludeHostNetworkPods}
         )
       - |
         sum (
-          rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
-          + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+          sum by (namespace, pod) (
+            rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+            + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+          ) %%{excludeHostNetworkPods}
         )
 
   - id: infra.net.overview.top_talkers
@@ -172,7 +192,7 @@ queries:
         sum by (namespace, pod) (
           rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
           + rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
-        )
+        ) %%{excludeHostNetworkPods}
       )
 
   # --- Kubernetes ----------------------------------------------------------
@@ -191,11 +211,15 @@ queries:
     promQL:
       - |
         sum by (namespace) (
-          rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          sum by (namespace, pod) (
+            rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
         )
       - |
         sum by (namespace) (
-          rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          sum by (namespace, pod) (
+            rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
         )
 
   - id: infra.net.k8s.errors.by_namespace
@@ -211,10 +235,12 @@ queries:
         where the difference shows.
     promQL: |
       sum by (namespace) (
-        rate(container_network_receive_errors_total{namespace=~"$namespaceList"}%%{interval})
-        + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}%%{interval})
-        + rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
-        + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+        sum by (namespace, pod) (
+          rate(container_network_receive_errors_total{namespace=~"$namespaceList"}%%{interval})
+          + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}%%{interval})
+          + rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+          + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+        ) %%{excludeHostNetworkPods}
       )
 
   - id: infra.net.k8s.services.by_type
@@ -671,9 +697,17 @@ queries:
         exhausted public addresses, or a controller without permission to create
         one.
       notes: |
+        **Two address columns, and a given row fills in one of them.** A cloud
+        load balancer is reached by IP on GCP and Azure and by DNS name on AWS,
+        where an ELB's address is a hostname that resolves to addresses which
+        change underneath it. Kubernetes models both, so the metric carries an
+        `ip` label and a `hostname` label and populates whichever applies —
+        Prometheus drops the empty one, so a row with a blank IP is an AWS load
+        balancer rather than one that failed to get an address.
+
         This is the Kubernetes side of the load balancer — that one exists, and
         its address. What it is *doing* (connections, healthy targets, rejected
         requests) lives at the cloud provider and is not collected yet; see the
         note on the _Cloud Networking_ tab.
     promQL: |
-      max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
+      max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)

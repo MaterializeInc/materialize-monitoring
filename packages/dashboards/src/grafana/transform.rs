@@ -154,6 +154,27 @@ pub fn organize_renamed(
     organize_full(&[], order, renames)
 }
 
+/// Collapse rows under one field, as an expandable nested table.
+///
+/// Grafana renders the grouped field as a parent row with a chevron and the rest
+/// of each group's columns in a subframe beneath it. Useful where a table is long
+/// but naturally clustered — a policy inventory is read one namespace at a time,
+/// not as one flat list of everything in the cluster.
+///
+/// Needs the table panel, and pairs with `showSubframeHeaders` so each expanded
+/// group still labels its columns.
+pub fn group_to_nested_table(field: &str) -> dashboardv2::TransformationKind {
+    raw(
+        "groupToNestedTable",
+        serde_json::json!({
+            "showSubframeHeaders": true,
+            "fields": {
+                field: { "aggregations": [], "operation": "groupby" },
+            },
+        }),
+    )
+}
+
 /// Sort rows by one field.
 pub fn sort_by(field: &str, descending: bool) -> dashboardv2::TransformationKind {
     let mut sort = serde_json::Map::new();

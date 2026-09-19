@@ -341,46 +341,17 @@ The third of the `infra-*` family, and the first dashboard here whose layout is 
 | 5 | Cloud Networking | `cloud.rs` |
 | 6 | Security | `security.rs` |
 
-**Overview** — Traffic and Losses, What This Cluster Runs (the detected dataplane beside Service and load-balancer
-counts), Busiest Pods.
-**Kubernetes** — Pod Traffic, Services and Endpoints, kube-proxy (collapsed).
-**CNI** — see below.
-**Node Networking** — Throughput, Errors and Drops, Connection Tracking, Kernel Receive Path (collapsed).
-**Cloud Networking** — Load Balancers (real), then two stub rows.
-**Security** — Policy Coverage, NetworkPolicy Inventory, and a per-vendor enforcement row.
+Three things about it are not re-derivable by reading the modules:
 
-### The CNI tab builds itself
+- **The CNI and Security vendor rows render on a discovered variable.** The mechanism, and the rules for using it
+  again, are in the style guide under
+  [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable).
+- **`$nodeList` holds node-exporter addresses, not node names**, which is what buys `node-health.yaml` and
+  `node-debug.yaml` unchanged across the fleet. Nothing here may scope a `node` label with it; a test asserts that.
+- **Host-network pods are excluded from every cAdvisor rollup**, via `%%{excludeHostNetworkPods}`. Left in, a
+  cluster-wide sum over-counts by an order of magnitude — see the header of `packages/queries/infra-networking.yaml`.
 
-A cluster's CNI is not knowable from this repository, and the metrics describing each vendor share no names with the
-others — `awscni_ip_max` and `cilium_bpf_map_pressure` are different facts about differently-shaped software. A fixed
-layout therefore means a dashboard per cloud, which this repo built once for GCP and retired.
-
-So the two CNI PodMonitors in `packages/prometheus-scrapers/` stamp every series with a `network_component` label,
-`variable::network_components` discovers it, and each vendor's rows carry `Row::only_when_variable`. `missing()` carries
-`only_unless_variable` over the alternation of every vendor, so exactly one thing is always on screen.
-
-Three things about it that are not guessable:
-
-- **Detection reads `up`, not a vendor metric.** `up` exists for a target being scraped even when the exporter returns
-  nothing, which is the difference between "no CNI here" and "the CNI is here and mute". Only the second is a bug.
-- **The monitors address endpoints by port *name*.** A port name resolves only against a container that declares it, so
-  a vendor built without metrics produces no target rather than a scrape failing on every node forever. That is the
-  mechanism, not a nicety: GKE Dataplane V2 runs Cilium under the `k8s-app: cilium` label and disables the Prometheus
-  endpoint, so a numeric address would have put a permanent failing scrape on every GKE node.
-- **kube-proxy is the exception and uses a ScrapeConfig.** It declares no container ports at all, so both PodMonitor
-  forms compile to a `keep` that drops every target. Its absence is caught by the pod selector instead.
-
-### Two identifier spaces, and only one picker
-
-`$nodeList` holds node-exporter **addresses**, which is what buys `node-health.yaml` and `node-debug.yaml` unchanged.
-Every other family — kube-state-metrics, cAdvisor, the CNI monitors — spells a node as its Kubernetes **name**.
-`infra-nodes` bridges the two with a hidden per-node lookup; a fleet dashboard cannot, since the bridge is per-node.
-So nothing on `infra-net` scopes a `node` label by the picker, and a test asserts it.
-
-### What is deliberately absent
-
-No Loki. No per-pod CNI attribution — Hubble can label flows by source and destination pod, which squares with the
-number of pods talking, and the two worst offenders are dropped at the scrape.
+Cloud Networking is half-stubbed on purpose; the two text rows name the provider metrics that would fill them.
 
 ## Notes on the trickier panels
 

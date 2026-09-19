@@ -92,11 +92,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)\n",
+                        "expr": "max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)\n",
                         "format": "table",
                         "instant": true,
                         "qryType": 2,
-                        "query": "max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)\n"
+                        "query": "max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)\n"
                       },
                       "version": "v0"
                     },
@@ -117,6 +117,7 @@
                         "__name__": true
                       },
                       "indexByName": {
+                        "hostname": 3,
                         "ip": 2,
                         "namespace": 0,
                         "service": 1
@@ -127,7 +128,7 @@
               ]
             }
           },
-          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.",
+          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\n**Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.",
           "id": 1034,
           "links": [],
           "title": "Load Balancer Services",
@@ -1311,10 +1312,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace) (\n  rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n)\n",
+                        "expr": "sum by (namespace) (\n  sum by (namespace, pod) (\n    rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "{{namespace}}",
                         "qryType": 1,
-                        "query": "sum by (namespace) (\n  rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n)\n"
+                        "query": "sum by (namespace) (\n  sum by (namespace, pod) (\n    rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -1602,10 +1603,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace) (\n  rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n",
+                        "expr": "sum by (namespace) (\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "rx {{namespace}}",
                         "qryType": 1,
-                        "query": "sum by (namespace) (\n  rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n"
+                        "query": "sum by (namespace) (\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -1623,10 +1624,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (namespace) (\n  rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n",
+                        "expr": "sum by (namespace) (\n  sum by (namespace, pod) (\n    rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "tx {{namespace}}",
                         "qryType": 1,
-                        "query": "sum by (namespace) (\n  rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n"
+                        "query": "sum by (namespace) (\n  sum by (namespace, pod) (\n    rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2565,10 +2566,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum (\n  rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n)\n",
+                        "expr": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "errors",
                         "qryType": 1,
-                        "query": "sum (\n  rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n)\n"
+                        "query": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_receive_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_errors_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2586,10 +2587,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum (\n  rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n)\n",
+                        "expr": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "drops",
                         "qryType": 1,
-                        "query": "sum (\n  rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n)\n"
+                        "query": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_receive_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n    + rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespaceList\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2656,11 +2657,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)\n",
+                        "expr": "max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)\n",
                         "instant": true,
                         "legendFormat": "{{service}}",
                         "qryType": 1,
-                        "query": "max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)\n"
+                        "query": "max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)\n"
                       },
                       "version": "v0"
                     },
@@ -2672,7 +2673,7 @@
               "transformations": []
             }
           },
-          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.",
+          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\n**Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.",
           "id": 1004,
           "links": [],
           "title": "Load Balancers",
@@ -2809,10 +2810,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum (\n  rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n",
+                        "expr": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "received",
                         "qryType": 1,
-                        "query": "sum (\n  rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n"
+                        "query": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2830,10 +2831,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum (\n  rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n",
+                        "expr": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "transmitted",
                         "qryType": 1,
-                        "query": "sum (\n  rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n)\n"
+                        "query": "sum (\n  sum by (namespace, pod) (\n    rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2900,10 +2901,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "topk(10,\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n    + rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  )\n)\n",
+                        "expr": "topk(10,\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n    + rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n",
                         "legendFormat": "{{namespace}}/{{pod}}",
                         "qryType": 1,
-                        "query": "topk(10,\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n    + rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  )\n)\n"
+                        "query": "topk(10,\n  sum by (namespace, pod) (\n    rate(container_network_receive_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n    + rate(container_network_transmit_bytes_total{namespace=~\"$namespaceList\", interface!=\"lo\"}[$__rate_interval])\n  ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~\"eth0|lo\"})\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3235,14 +3236,33 @@
                   "kind": "Transformation",
                   "spec": {
                     "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true
+                      },
                       "indexByName": {
-                        "Time": 0,
-                        "__name__": 1
+                        "namespace": 0,
+                        "networkpolicy": 1
                       },
                       "renameByName": {
                         "Value #query-0": "Ingress Rules",
                         "Value #query-1": "Egress Rules"
                       }
+                    }
+                  }
+                },
+                {
+                  "group": "groupToNestedTable",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "namespace": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        }
+                      },
+                      "showSubframeHeaders": true
                     }
                   }
                 }
@@ -4542,7 +4562,7 @@
           },
           "definition": "label_values(node_uname_info, instance)",
           "description": "Nodes to include, by node-exporter address",
-          "hide": "dontHide",
+          "hide": "inControlsMenu",
           "includeAll": true,
           "label": "Node",
           "multi": true,

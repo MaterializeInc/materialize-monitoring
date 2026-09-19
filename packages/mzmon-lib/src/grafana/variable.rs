@@ -836,6 +836,13 @@ pub fn all_namespaces() -> dashboardv2::VariableKind {
 /// using this may scope a `node` label with it: kube-state-metrics, cAdvisor and
 /// the CNI monitors all spell a node as its name, and one picker cannot serve
 /// both spaces.
+///
+/// **In the controls menu rather than on the main row.** A fleet dashboard is
+/// read with every node selected almost always — the per-node breakdown is what
+/// the panels already draw, so narrowing to one node answers a question
+/// `infra-nodes` answers better. It is also the one picker here whose values are
+/// addresses rather than names, which makes it the least inviting of the three
+/// to reach for casually.
 pub fn node_instances() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::NODE_LIST,
@@ -845,7 +852,7 @@ pub fn node_instances() -> dashboardv2::VariableKind {
         multi: true,
         include_all: true,
         all_value: Some(".+"),
-        hide: dashboardv2::VariableHide::DontHide,
+        hide: dashboardv2::VariableHide::InControlsMenu,
         sort: dashboardv2::VariableSort::AlphabeticalAsc,
         skip_url_sync: false,
         regex: String::new(),

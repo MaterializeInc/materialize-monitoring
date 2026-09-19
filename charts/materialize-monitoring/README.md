@@ -1855,6 +1855,37 @@ bringing up a new distribution.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.kubeProxy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "scrapeInterval": "60s"
+}</pre>
+</td>
+      <td class="helm-value-desc">Scraping kube-proxy, the service proxy.
+
+kube-proxy turns a Service into rules on the node, so its sync latency is
+the answer when connections to a Service fail while every pod behind it is
+healthy. The `infra-net` dashboard's kube-proxy row reads it.
+
+Discovery is a server-side pod selector, so a cluster without kube-proxy
+returns no targets and this costs nothing. GKE Dataplane V2 and any Cilium
+install in kube-proxy-replacement mode are exactly that case.
+No enable toggle, for the same reason `kubelet` above has none: the
+pipeline is pre-rendered, so a key here would have to be read by something
+to mean anything, and the scrape already disables itself where kube-proxy
+is absent. A knob written to the env ConfigMap and read by nothing is a
+bug this repo has shipped once already.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.kubeProxy<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"60s"</code></td>
+      <td class="helm-value-desc">Scrape interval for kube-proxy. Roughly 230 series per node.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.denyMetrics</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
