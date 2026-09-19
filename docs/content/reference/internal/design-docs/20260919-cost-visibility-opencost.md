@@ -18,7 +18,7 @@ params:
 {{< param-table >}}
 
 This doc proposes **an optional OpenCost component in the `materialize-monitoring` chart**, so that a self-managed operator can see what a Materialize deployment costs, attributed to the Materialize objects they can act on.
-Nothing here is ticketed yet.
+Tracked as [DEP-252](https://linear.app/materializeinc/issue/DEP-252).
 
 {{< rfc-2119 >}}
 
@@ -450,11 +450,11 @@ A cost anomaly alert needs a baseline to be meaningful, and the alerting path in
 
 Work in **this** repo, except where noted.
 Ordered roughly by dependency.
-None of it is ticketed yet.
+Only the allowlist row is ticketed, as [DEP-253](https://linear.app/materializeinc/issue/DEP-253); the rest is deliberately held until this proposal goes through.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **`metricLabelsAllowlist` on kube-state-metrics**, naming the Materialize pod labels explicitly and exposed as a values key | `kube_pod_labels` carries no Materialize identity today, so there is nothing to join cost against. Also closes an existing parity gap against Cloud (internal) | **Blocking** for attribution |
+| **`metricLabelsAllowlist` on kube-state-metrics** ([DEP-253](https://linear.app/materializeinc/issue/DEP-253)), naming the Materialize pod labels explicitly and exposed as a values key | `kube_pod_labels` carries no Materialize identity today, so there is nothing to join cost against. Also closes an existing parity gap against Cloud (internal) | **Blocking** for attribution |
 | **The OpenCost subchart, its `cost` tag, and its values block** — UI off, Thanos Query as the read endpoint, ServiceMonitor on | The component | **Blocking** |
 | **`EMIT_KSM_V1_METRICS=false`**, asserted by a render test | A second implementation emitting v1-shaped `kube_*` families is not a replica, and the de-duplication convention assumes one implementation behind however many replicas serve it | **Blocking** |
 | **A NetworkPolicy with an explicit egress set** — DNS, API server, Thanos Query, and the billing endpoint only when `cloudBilling` is on | Every workload here carries one, and this is the first with public-internet egress in a normal configuration | **Blocking** |
