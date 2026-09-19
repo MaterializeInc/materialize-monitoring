@@ -110,6 +110,14 @@ pub mod variables {
     /// dashboard. A dashboard that uses those queries must define it; nothing in
     /// the render context can.
     pub const NODE_LIST: &str = "nodeList";
+    /// Kubernetes namespaces an infrastructure dashboard scopes by.
+    ///
+    /// Written literally by `infra-networking.yaml`, like [`NODE_LIST`] and for
+    /// the same reason: an infrastructure dashboard's namespace scope is the
+    /// whole cluster's, not the Materialize deployment's, so no render parameter
+    /// supplies it. Distinct from [`MZ_NAMESPACE_LIST`], which is derived from
+    /// the environment picker and offers only the deployment's own namespaces.
+    pub const NAMESPACE_LIST: &str = "namespaceList";
 }
 
 /// Variables a dashboard must define for [`dashboard_context`] to render usefully.
@@ -141,6 +149,15 @@ pub const REQUIRED_VARIABLES: &[&str] = &[
 /// `instance=~"$nodeList"`. Both are written literally by their queries, so both
 /// live here.
 pub const NODE_VARIABLES: &[&str] = &[variables::NODE_LIST, "node"];
+
+/// Variables required only by a cluster-wide infrastructure dashboard.
+///
+/// `infra-net` defines this one and reuses [`variables::NODE_LIST`] from
+/// [`NODE_VARIABLES`] -- the node-exporter families it draws on write that name
+/// literally, so a fleet dashboard inherits the convention along with the
+/// queries. What it must *not* do is scope a `node` label by it: that variable
+/// holds addresses and every `node` label holds a Kubernetes name.
+pub const INFRA_VARIABLES: &[&str] = &[variables::NAMESPACE_LIST];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
 /// [`DashboardScope::operator_variable`].

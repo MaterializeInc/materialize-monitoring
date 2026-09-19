@@ -40,4 +40,7 @@ pub mod content {
 
     /// Covers the nodes of the cluster.
     pub const NODES: &str = "nodes";
+
+    /// Covers the cluster's networking: pods, Services, the CNI, and policy.
+    pub const NETWORK: &str = "network";
 }

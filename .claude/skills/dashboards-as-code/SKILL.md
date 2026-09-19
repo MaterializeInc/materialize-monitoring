@@ -46,6 +46,8 @@ Frequently needed deep links into the Style Guidelines:
   — Loki-discovered pickers, `all_value` rules, the non-empty-matcher anchor, and how exclusion switches are wired
 - [Time-range guards on expensive rows](../../../docs/content/reference/internal/dashboard/style-guidelines.md#time-range-guards-on-expensive-rows)
   — the paired show/hide rows that keep volume panels off a month-wide range
+- [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable)
+  — how `infra-net` shows a cluster its own CNI, and why the negated fallback row is not optional
 - [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
   — labels vs structured metadata, and why an event's namespace is the involved object's
 - [Deployment generations (blue/green)](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-generations-bluegreen)
@@ -104,6 +106,7 @@ from.
 | `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
 | `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
 | `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
+| `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -324,6 +327,60 @@ usually what the reader came for. The journal is where the explanation is once a
 The identifier join this dashboard rests on — and the vetting status of the node query families — is a convention
 rather than state, so it lives in the
 [style guide](../../../docs/content/reference/internal/dashboard/style-guidelines.md#node-identifiers-across-three-families).
+
+## `infra-net` tabs
+
+The third of the `infra-*` family, and the first dashboard here whose layout is not fixed.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Kubernetes | `kubernetes.rs` |
+| 3 | CNI | `cni.rs` |
+| 4 | Node Networking | `nodes.rs` |
+| 5 | Cloud Networking | `cloud.rs` |
+| 6 | Security | `security.rs` |
+
+**Overview** — Traffic and Losses, What This Cluster Runs (the detected dataplane beside Service and load-balancer
+counts), Busiest Pods.
+**Kubernetes** — Pod Traffic, Services and Endpoints, kube-proxy (collapsed).
+**CNI** — see below.
+**Node Networking** — Throughput, Errors and Drops, Connection Tracking, Kernel Receive Path (collapsed).
+**Cloud Networking** — Load Balancers (real), then two stub rows.
+**Security** — Policy Coverage, NetworkPolicy Inventory, and a per-vendor enforcement row.
+
+### The CNI tab builds itself
+
+A cluster's CNI is not knowable from this repository, and the metrics describing each vendor share no names with the
+others — `awscni_ip_max` and `cilium_bpf_map_pressure` are different facts about differently-shaped software. A fixed
+layout therefore means a dashboard per cloud, which this repo built once for GCP and retired.
+
+So the two CNI PodMonitors in `packages/prometheus-scrapers/` stamp every series with a `network_component` label,
+`variable::network_components` discovers it, and each vendor's rows carry `Row::only_when_variable`. `missing()` carries
+`only_unless_variable` over the alternation of every vendor, so exactly one thing is always on screen.
+
+Three things about it that are not guessable:
+
+- **Detection reads `up`, not a vendor metric.** `up` exists for a target being scraped even when the exporter returns
+  nothing, which is the difference between "no CNI here" and "the CNI is here and mute". Only the second is a bug.
+- **The monitors address endpoints by port *name*.** A port name resolves only against a container that declares it, so
+  a vendor built without metrics produces no target rather than a scrape failing on every node forever. That is the
+  mechanism, not a nicety: GKE Dataplane V2 runs Cilium under the `k8s-app: cilium` label and disables the Prometheus
+  endpoint, so a numeric address would have put a permanent failing scrape on every GKE node.
+- **kube-proxy is the exception and uses a ScrapeConfig.** It declares no container ports at all, so both PodMonitor
+  forms compile to a `keep` that drops every target. Its absence is caught by the pod selector instead.
+
+### Two identifier spaces, and only one picker
+
+`$nodeList` holds node-exporter **addresses**, which is what buys `node-health.yaml` and `node-debug.yaml` unchanged.
+Every other family — kube-state-metrics, cAdvisor, the CNI monitors — spells a node as its Kubernetes **name**.
+`infra-nodes` bridges the two with a hidden per-node lookup; a fleet dashboard cannot, since the bridge is per-node.
+So nothing on `infra-net` scopes a `node` label by the picker, and a test asserts it.
+
+### What is deliberately absent
+
+No Loki. No per-pod CNI attribution — Hubble can label flows by source and destination pod, which squares with the
+number of pods talking, and the two worst offenders are dropped at the scrape.
 
 ## Notes on the trickier panels
 

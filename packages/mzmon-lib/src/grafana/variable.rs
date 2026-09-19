@@ -96,6 +96,10 @@ pub mod extra {
     pub const EXCLUDE_MATERIALIZE: &str = "excludeMaterialize";
     /// The node a node-detail dashboard is scoped to, by Kubernetes node name.
     pub const NODE: &str = "node";
+    /// Which networking dataplanes a cluster was found to be running.
+    pub const NETWORK_COMPONENT_LIST: &str = "networkComponentList";
+    /// Kubernetes namespaces, for an infrastructure view that scopes by them.
+    pub const NAMESPACE_LIST: &str = "namespaceList";
 }
 
 /// An empty current selection.
@@ -753,6 +757,102 @@ pub fn node_instance() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Which networking dataplanes this cluster was found to be running.
+///
+/// **The dashboard's auto-detection, and the reason it needs no per-cloud
+/// variant.** A cluster's CNI is not something this repository can know — EKS
+/// defaults to the AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by
+/// Cilium, and a bring-your-own cluster to anything at all. So the CNI monitors
+/// in `packages/prometheus-scrapers/` stamp every series they collect with a
+/// `network_component` label, and this reads it back off `up`.
+///
+/// Discovery is on `up` rather than on any vendor metric on purpose: `up` exists
+/// for a target that is being scraped even when the exporter behind it returns
+/// nothing, which is the difference between "no CNI here" and "the CNI is here
+/// and mute". Only the second is a collection bug, and only the second should
+/// leave the vendor's rows on screen saying so.
+///
+/// Multi-select because a cluster legitimately runs more than one of these at
+/// once — a CNI and `kube-proxy` beside it is the common shape. The rows keyed
+/// on it use a *substring* regex against the interpolated value, so a row asking
+/// for `cilium` still renders when the value is `cilium,kube-proxy`.
+pub fn network_components() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::NETWORK_COMPONENT_LIST,
+        label: "Dataplane",
+        description: "Networking components found to be collecting on this cluster",
+        expr: r#"label_values(up{network_component=~".+"}, network_component)"#.to_string(),
+        multi: true,
+        include_all: true,
+        // `.+` rather than the discovered values, for the same reason the log
+        // pickers state their own: an expansion is empty whenever discovery has
+        // not run, and `network_component=~""` matches the series *missing* the
+        // label rather than all of them.
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Kubernetes namespaces, for an infrastructure view that scopes by them.
+///
+/// Discovered from `kube_pod_info`, so it offers every namespace that runs
+/// something rather than only the Materialize ones — this is a cluster-wide
+/// dashboard and `kube-system` is frequently the answer.
+///
+/// Distinct from [`namespaces`], which is hidden and derived from the selected
+/// environment. That one exists to keep an environment dashboard consistent with
+/// its environment picker; this one is the control.
+pub fn all_namespaces() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::NAMESPACE_LIST,
+        label: "Namespace",
+        description: "Kubernetes namespaces to include",
+        expr: "label_values(kube_pod_info, namespace)".to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Every node, by node-exporter address, for a fleet-wide view.
+///
+/// Shares the name [`node_instance`] uses on `infra-nodes`, and for the same
+/// reason: `node-health.yaml` and `node-debug.yaml` write `instance=~"$nodeList"`
+/// literally, 220 times between them. Keeping the name lets a fleet dashboard
+/// back every one of those expressions unchanged — where `infra-nodes` resolves
+/// the variable to a single address, this leaves it plural, which is what the
+/// name said all along.
+///
+/// Addresses rather than Kubernetes names, therefore. Nothing on a dashboard
+/// using this may scope a `node` label with it: kube-state-metrics, cAdvisor and
+/// the CNI monitors all spell a node as its name, and one picker cannot serve
+/// both spaces.
+pub fn node_instances() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::NODE_LIST,
+        label: "Node",
+        description: "Nodes to include, by node-exporter address",
+        expr: "label_values(node_uname_info, instance)".to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Whether the Materialize namespaces are excluded from an infrastructure view.
 ///
 /// **On by default**, which is the point: an infrastructure dashboard opens on
@@ -1020,6 +1120,26 @@ pub fn node_scoped() -> Vec<dashboardv2::VariableKind> {
         log_search(),
         metric_adhoc(),
         logs_adhoc(),
+    ]
+}
+
+/// Controls for a cluster-wide networking dashboard.
+///
+/// Metrics only — unlike `infra-nodes`, nothing here reads Loki. The scope is
+/// three independent axes rather than a funnel: which namespaces' pods,
+/// which nodes, and which dataplane's panels. None narrows another, because a
+/// namespace does not imply a node and neither implies a CNI.
+///
+/// [`network_components`] is the one that does more than filter: the CNI rows
+/// are *rendered* on it, so it is the dashboard's auto-detection as much as it
+/// is a control.
+pub fn network_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        network_components(),
+        all_namespaces(),
+        node_instances(),
+        metric_adhoc(),
     ]
 }
 

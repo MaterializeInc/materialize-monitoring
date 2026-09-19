@@ -9,11 +9,15 @@
   name: cilium_bpf_map_pressure
   usage:
   - infra.cilium.bpf_map_pressure
+  - infra.net.cni.cilium.bpf_map_pressure
 - importance: essential
-  labels: []
+  labels:
+  - reason
   name: cilium_drop_count_total
   usage:
   - infra.cilium.drop_rate_elevated
+  - infra.net.cni.cilium.drops
+  - infra.net.security.drops.cilium
 - importance: essential
   labels:
   - container
@@ -87,6 +91,7 @@
   - materialize.kubernetes.pods.memory_usage
 - importance: essential
   labels:
+  - interface
   - namespace
   - pod
   - workload
@@ -96,6 +101,9 @@
   - infra.egress_gateway.high_traffic
   - infra.egress_gateway.low_traffic
   - infra.egress_gateway.traffic_missing_metrics
+  - infra.net.k8s.throughput.by_namespace
+  - infra.net.overview.throughput
+  - infra.net.overview.top_talkers
   - materialize.kubernetes.pods.network_rx
 - importance: essential
   labels:
@@ -103,6 +111,8 @@
   - pod
   name: container_network_receive_errors_total
   usage:
+  - infra.net.k8s.errors.by_namespace
+  - infra.net.overview.errors
   - materialize.kubernetes.pods.network_errors
 - importance: essential
   labels:
@@ -110,13 +120,19 @@
   - pod
   name: container_network_receive_packets_dropped_total
   usage:
+  - infra.net.k8s.errors.by_namespace
+  - infra.net.overview.errors
   - materialize.kubernetes.pods.network_drops
 - importance: essential
   labels:
+  - interface
   - namespace
   - pod
   name: container_network_transmit_bytes_total
   usage:
+  - infra.net.k8s.throughput.by_namespace
+  - infra.net.overview.throughput
+  - infra.net.overview.top_talkers
   - materialize.kubernetes.pods.network_tx
 - importance: essential
   labels:
@@ -124,6 +140,8 @@
   - pod
   name: container_network_transmit_errors_total
   usage:
+  - infra.net.k8s.errors.by_namespace
+  - infra.net.overview.errors
   - materialize.kubernetes.pods.network_errors
 - importance: essential
   labels:
@@ -131,6 +149,8 @@
   - pod
   name: container_network_transmit_packets_dropped_total
   usage:
+  - infra.net.k8s.errors.by_namespace
+  - infra.net.overview.errors
   - materialize.kubernetes.pods.network_drops
 - importance: essential
   labels:
@@ -427,9 +447,11 @@
   - materialize.clusterd.new_restarts_during_release
 - importance: essential
   labels:
+  - namespace
   - node
   name: kube_pod_info
   usage:
+  - infra.net.security.policies.uncovered
   - infra.nodes.allocation.pods
   - infra.nodes.pods.by_namespace
   - infra.nodes.pods.by_phase
@@ -877,10 +899,12 @@
   - cluster_environmentd_materialize_cloud_cluster_id
   - job
   - namespace
+  - network_component
   name: up
   usage:
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
+  - infra.net.overview.dataplane
   - materialize.scraper.mzmon.clusterd
   - materialize.scraper.mzmon.environmentd
   - materialize.scraper.mzmon.orchestratord
@@ -902,11 +926,123 @@
   - materialize.environmentd.query_views_critical
   - materialize.environmentd.query_views_warning
 - importance: recommended
+  labels: []
+  name: awscni_assigned_ip_addresses
+  usage:
+  - infra.net.cni.aws.addresses
+  - infra.net.cni.aws.ip_utilization
+- importance: recommended
+  labels: []
+  name: awscni_aws_api_latency_ms_count
+  usage:
+  - infra.net.cni.aws.api_latency
+- importance: recommended
+  labels: []
+  name: awscni_aws_api_latency_ms_sum
+  usage:
+  - infra.net.cni.aws.api_latency
+- importance: recommended
+  labels: []
+  name: awscni_eni_allocated
+  usage:
+  - infra.net.cni.aws.enis
+- importance: recommended
+  labels: []
+  name: awscni_eni_max
+  usage:
+  - infra.net.cni.aws.enis
+- importance: recommended
+  labels: []
+  name: awscni_ip_max
+  usage:
+  - infra.net.cni.aws.addresses
+  - infra.net.cni.aws.ip_utilization
+- importance: recommended
+  labels: []
+  name: awscni_no_available_ip_addresses
+  usage:
+  - infra.net.cni.aws.exhaustion
+- importance: recommended
+  labels: []
+  name: awscni_total_ip_addresses
+  usage:
+  - infra.net.cni.aws.addresses
+- importance: recommended
+  labels: []
+  name: cilium_endpoint_regeneration_time_stats_seconds_bucket
+  usage:
+  - infra.net.cni.cilium.endpoint_regeneration
+- importance: recommended
+  labels: []
+  name: cilium_endpoint_state
+  usage:
+  - infra.net.cni.cilium.endpoints
+- importance: recommended
+  labels: []
+  name: cilium_policy_verdict_total
+  usage:
+  - infra.net.cni.cilium.policy_verdicts
+- importance: recommended
+  labels: []
+  name: cilium_unreachable_health_endpoints
+  usage:
+  - infra.net.cni.cilium.unreachable
+- importance: recommended
+  labels: []
+  name: cilium_unreachable_nodes
+  usage:
+  - infra.net.cni.cilium.unreachable
+- importance: recommended
   labels:
   - namespace
   name: environmentd_needs_update
   usage:
   - materialize.operator.environments.needing_update
+- importance: recommended
+  labels: []
+  name: hubble_flows_processed_total
+  usage:
+  - infra.net.cni.cilium.hubble_flows
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_endpointslice_endpoints
+  usage:
+  - infra.net.k8s.endpoints.by_namespace
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_networkpolicy_spec_egress_rules
+  usage:
+  - infra.net.security.policies.rules
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_networkpolicy_spec_ingress_rules
+  usage:
+  - infra.net.security.policies.by_namespace
+  - infra.net.security.policies.rules
+  - infra.net.security.policies.uncovered
+- importance: recommended
+  labels: []
+  name: kube_service_spec_type
+  usage:
+  - infra.net.k8s.services.by_type
+- importance: recommended
+  labels: []
+  name: kube_service_status_load_balancer_ingress
+  usage:
+  - infra.net.cloud.load_balancers
+- importance: recommended
+  labels: []
+  name: kubeproxy_network_programming_duration_seconds_bucket
+  usage:
+  - infra.net.k8s.proxy.programming_latency
+- importance: recommended
+  labels: []
+  name: kubeproxy_sync_proxy_rules_duration_seconds_bucket
+  usage:
+  - infra.net.k8s.proxy.sync_latency
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
@@ -1206,6 +1342,11 @@
   name: mz_views_count
   usage:
   - materialize.compute.views.count
+- importance: recommended
+  labels: []
+  name: network_policy_drop_count_total
+  usage:
+  - infra.net.security.drops.aws
 - importance: recommended
   labels:
   - instance

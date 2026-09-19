@@ -1,0 +1,3767 @@
+apiVersion: dashboard.grafana.app/v2
+kind: Dashboard
+metadata:
+  annotations:
+    grafana.app/folder: infra
+    monitoring.materialize.cloud/min-mz-version: v26.24.0
+    monitoring.materialize.cloud/rec-mz-version: v26.24.0
+    monitoring.materialize.cloud/sql-metric-prefix: mz_
+    monitoring.materialize.cloud/target-export: generic
+  name: mz-mon-infra-net
+spec:
+  annotations:
+  - kind: AnnotationQuery
+    spec:
+      builtIn: true
+      enable: true
+      hide: true
+      iconColor: rgba(0, 211, 255, 1)
+      name: Annotations & Alerts
+      query:
+        datasource:
+          name: -- Grafana --
+        group: grafana
+        kind: DataQuery
+        spec: {}
+        version: v0
+  cursorSync: Crosshair
+  description: |-
+    How traffic moves through the cluster Materialize runs on, and what stops it.
+
+    Pod and Service networking, the CNI underneath — discovered rather than configured — the nodes' own interfaces, and the NetworkPolicy objects that decide what is allowed.
+  editable: true
+  elements:
+    cloud-egress-stub:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: What a VPC-side scrape would add here, and why it is absent.
+        id: 1036
+        links: []
+        title: VPC and Egress
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **VPC and egress metrics are not collected yet.**
+
+                The network the cluster sits in is invisible from inside it. What a provider-side scrape would add:
+
+                - **NAT gateway throughput, packet drops and port allocation errors.** Port exhaustion on a NAT gateway presents inside the cluster as intermittent connection failures to external sources — a Materialize source that stalls and recovers with no in-cluster cause is the classic symptom, and nothing on this dashboard can currently confirm it.
+                - **Cross-zone traffic volume**, which is both a latency and a billing question for a deployment spread across availability zones.
+                - **VPC flow logs**, for the connections that never arrived at all. These are logs rather than metrics and would belong with _Logs and Events_ rather than here.
+
+                Tracked as DEP-233 🔒.
+
+                Until then, _Node Networking -> Conntrack Table_ is the nearest in-cluster signal: a node whose connection table is full fails in much the same way and for a similar reason.
+              mode: markdown
+          version: ''
+    cloud-load-balancers:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                    Value: true
+                    __name__: true
+                  indexByName:
+                    ip: 2
+                    namespace: 0
+                    service: 1
+        description: |-
+          **Every Service in the cluster that has a cloud load balancer, and the address it was given.**
+
+          **Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.
+
+          **Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.
+
+          This is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.
+        id: 1034
+        links: []
+        title: Load Balancer Services
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                noValue: No Service in this cluster has a cloud load balancer.
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ''
+    cloud-provider-stub:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: What a cloud-provider scrape would add here, and why it is absent.
+        id: 1035
+        links: []
+        title: Load Balancer Traffic and Health
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **Load balancer metrics are not collected yet.**
+
+                Kubernetes can say that a load balancer exists and what address it was given — that is the table above. Everything about what it is *doing* lives at the cloud provider:
+
+                - **AWS** — `AWS/ApplicationELB` and `AWS/NetworkELB` in CloudWatch: request and connection counts, target response time, `HealthyHostCount`, `UnHealthyHostCount`, and the 4xx/5xx families that separate a backend fault from a load balancer one.
+                - **GCP** — the `loadbalancing.googleapis.com` metrics in Cloud Monitoring.
+                - **Azure** — the Load Balancer and Application Gateway metric namespaces in Azure Monitor.
+
+                Collecting these needs a cloud-provider scrape path, which this stack does not have. Tracked as DEP-233 🔒.
+
+                Until then: an unreachable endpoint whose Service *does* appear above is usually a target health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster substitute — a Service with no endpoints has nothing for the load balancer to send to.
+              mode: markdown
+          version: ''
+    cni-aws-addresses:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: max by (node) (awscni_assigned_ip_addresses)
+                    legendFormat: assigned {{node}}
+                    qryType: 1
+                    query: max by (node) (awscni_assigned_ip_addresses)
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: max by (node) (awscni_total_ip_addresses)
+                    legendFormat: pool {{node}}
+                    qryType: 1
+                    query: max by (node) (awscni_total_ip_addresses)
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: max by (node) (awscni_ip_max)
+                    legendFormat: max {{node}}
+                    qryType: 1
+                    query: max by (node) (awscni_ip_max)
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Addresses assigned to pods on each node, against the pool the CNI is holding and the ceiling it cannot pass.**
+
+          **Nominal:** Assigned below total, total below max. The gap between assigned and total is the warm pool, which exists so that starting a pod does not wait on an EC2 API call.
+
+          **Degraded:** Total meeting max means the node cannot grow its pool any further, and assigned approaching it is the exhaustion in `infra.net.cni.aws.ip_utilization`.
+
+          The per-address breakdown this CNI also exports is dropped at the scrape: it is one series per pod IP, which is linear in pod density and answers nothing these three do not.
+        id: 1014
+        links: []
+        title: Addresses per Node
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-aws-api-latency:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (api) (rate(awscni_aws_api_latency_ms_sum[$__rate_interval]))
+                      /
+                      sum by (api) (rate(awscni_aws_api_latency_ms_count[$__rate_interval]))
+                    legendFormat: '{{api}}'
+                    qryType: 1
+                    query: |
+                      sum by (api) (rate(awscni_aws_api_latency_ms_sum[$__rate_interval]))
+                      /
+                      sum by (api) (rate(awscni_aws_api_latency_ms_count[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How long the CNI's calls to the EC2 API are taking, by operation.**
+
+          **Nominal:** Tens to low hundreds of milliseconds. Attaching an interface is legitimately slower than describing one.
+
+          **Degraded:** Slow calls delay pod startup directly, because assigning an address to a new pod can require one. Sustained slowness is usually EC2 API throttling rather than a network problem, and throttling is per account and per region — so a busy neighbour cluster can cause it.
+
+          A rate-of-sum over rate-of-count, which is a mean rather than a percentile: this metric is a summary with no quantiles.
+        id: 1016
+        links: []
+        title: EC2 API Latency (mean)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No EC2 API calls in this window — the CNI calls EC2 when pods are placed, not continuously.
+                unit: ms
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-aws-enis:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: max by (node) (awscni_eni_allocated)
+                    legendFormat: attached {{node}}
+                    qryType: 1
+                    query: max by (node) (awscni_eni_allocated)
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: max by (node) (awscni_eni_max)
+                    legendFormat: max {{node}}
+                    qryType: 1
+                    query: max by (node) (awscni_eni_max)
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Network interfaces attached to each node, against the most it can have.**
+
+          **Nominal:** Grows in steps as pods are added and rarely shrinks — the CNI holds interfaces rather than detaching them for a pod that may come back.
+
+          **Degraded:** Allocated meeting max is the ceiling behind address exhaustion. The ENI limit is per instance type and cannot be raised without changing the instance.
+
+          Each attached ENI also consumes an address in the subnet for itself, so a busy node costs the VPC more addresses than it has pods.
+        id: 1015
+        links: []
+        title: Network Interfaces per Node
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-aws-exhausted:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum (max by (node) (awscni_no_available_ip_addresses))
+                    legendFormat: nodes
+                    qryType: 1
+                    query: |
+                      sum (max by (node) (awscni_no_available_ip_addresses))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Nodes that have run out of pod addresses outright.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** **Any node here is refusing to start pods.** Unlike the utilization ratio this is the CNI's own verdict rather than an inference, so it is what to quote when reporting the problem. The remedy is prefix delegation, a larger instance type, or a bigger subnet, in roughly that order of effort.
+        id: 1013
+        links: []
+        title: Nodes Out of Addresses
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#009988'
+                  mode: shades
+                min: 0
+                noValue: Every node still has addresses to give out.
+                unit: short
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    cni-aws-ip-utilization:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (node) (awscni_assigned_ip_addresses)
+                      /
+                      max by (node) (awscni_ip_max)
+                    legendFormat: '{{node}}'
+                    qryType: 1
+                    query: |
+                      max by (node) (awscni_assigned_ip_addresses)
+                      /
+                      max by (node) (awscni_ip_max)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How much of each node's pod-IP allowance is in use.**
+
+          **Nominal:** Below ~0.8. The CNI keeps a warm pool, so a node running pods sits well above zero even when it is not close to full.
+
+          **Unhealthy:** **At 1.0 the node cannot start another pod.** The scheduler does not know that — it counts pod slots, not addresses — so it keeps placing work there and the pods sit in `ContainerCreating` with a `failed to assign an IP address to container` event. This is the single most common AWS-specific scheduling failure, and it looks nothing like an out-of-resources one.
+
+          The ceiling is a function of instance type: each ENI carries a fixed number of addresses, and the node can attach a fixed number of ENIs. Prefix delegation raises it substantially and is the usual fix, ahead of moving to larger instances.
+        id: 1012
+        links: []
+        title: Pod Address Utilization
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#CEFFFF'
+                    value: null
+                  - color: '#F94902'
+                    value: 0.8
+                  - color: '#E40515'
+                    value: 0.8500000000000001
+                  - color: '#E40515'
+                    value: 0.9000000000000001
+                  - color: '#AB0003'
+                    value: 0.9500000000000002
+                  - color: '#AB0003'
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-cilium-bpf-pressure:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (node, map_name) (cilium_bpf_map_pressure)
+                    legendFormat: '{{node}} {{map_name}}'
+                    qryType: 1
+                    query: |
+                      max by (node, map_name) (cilium_bpf_map_pressure)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How full Cilium's BPF maps are, as a fraction of their capacity.**
+
+          **Nominal:** Well below 1.
+
+          **Unhealthy:** **A full map fails closed.** The connection-tracking map filling up drops new connections; the policy map filling up stops policy being programmed for new endpoints. Both present as intermittent, partial connectivity failure rather than as an outage, which makes them hard to find from the symptom.
+
+          Map sizes are a Cilium install option. Raising them costs kernel memory on every node.
+        id: 1022
+        links: []
+        title: BPF Map Pressure
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#CEFFFF'
+                    value: null
+                  - color: '#F94902'
+                    value: 0.8
+                  - color: '#E40515'
+                    value: 0.8500000000000001
+                  - color: '#E40515'
+                    value: 0.9000000000000001
+                  - color: '#AB0003'
+                    value: 0.9500000000000002
+                  - color: '#AB0003'
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-cilium-drops:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (reason) (rate(cilium_drop_count_total[$__rate_interval]))
+                    legendFormat: '{{reason}}'
+                    qryType: 1
+                    query: |
+                      sum by (reason) (rate(cilium_drop_count_total[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets the Cilium datapath dropped, by the reason it gives.**
+
+          **Nominal:** Low and not always zero. `Policy denied` is a working policy doing its job, not a fault.
+
+          **Degraded:** Read the reason before reacting. `Policy denied` means a policy is blocking real traffic and belongs on _Security_; `Stale or unroutable IP` and `Missed tail call` are dataplane faults; `CT: Map insertion failed` means a BPF map is full and is a capacity problem.
+
+          Cilium reports drops by direction too. This sums over it, because the reason is what selects the remedy and the direction rarely changes it.
+        id: 1020
+        links: []
+        title: Datapath Drops by Reason
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No packets dropped.
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-cilium-endpoints:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (node, endpoint_state) (cilium_endpoint_state)
+                    legendFormat: '{{endpoint_state}}'
+                    qryType: 1
+                    query: |
+                      sum by (node, endpoint_state) (cilium_endpoint_state)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Cilium endpoints per node, by state. An endpoint is roughly a pod as the dataplane sees it.**
+
+          **Nominal:** Almost all `ready`. The count tracks the number of pods on the node.
+
+          **Degraded:** Endpoints stuck outside `ready` are pods the dataplane has not finished programming, which means traffic to them may not work yet even though Kubernetes considers them running.
+        id: 1017
+        links: []
+        title: Endpoints by State
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-cilium-regeneration:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.99,
+                        sum by (le, scope) (
+                          rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[$__rate_interval])
+                        )
+                      )
+                    legendFormat: '{{scope}}'
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.99,
+                        sum by (le, scope) (
+                          rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[$__rate_interval])
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How long Cilium takes to reprogram an endpoint's datapath, at the 99th percentile.**
+
+          **Nominal:** Well under a second. Regeneration happens whenever a pod starts or a policy that selects it changes, so the rate rises during a deploy and the duration should not.
+
+          **Degraded:** Seconds here mean policy and connectivity changes are slow to take effect, and a pod can be running for that long before traffic reaches it. It usually tracks the number of endpoints and policies on the node rather than anything transient.
+
+          The signal the internal cloud networking dashboards lead with, which is why it is here rather than only the drop counters — it is the earliest sign that the dataplane is struggling, and it degrades long before anything starts dropping.
+        id: 1018
+        links: []
+        title: Endpoint Regeneration (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-cilium-unreachable:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: sum (max by (node) (cilium_unreachable_nodes))
+                    legendFormat: nodes
+                    qryType: 1
+                    query: sum (max by (node) (cilium_unreachable_nodes))
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: sum (max by (node) (cilium_unreachable_health_endpoints))
+                    legendFormat: health endpoints
+                    qryType: 1
+                    query: sum (max by (node) (cilium_unreachable_health_endpoints))
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Nodes and health endpoints Cilium's own connectivity probes cannot reach.**
+
+          **Nominal:** Zero for both.
+
+          **Unhealthy:** **Cilium reporting a node unreachable is the dataplane saying the cluster is partitioned**, and it is a far more direct statement than anything inferred from throughput. A pod on this node cannot talk to pods on the unreachable one; everything else can. That presents to a Materialize deployment as one replica unable to reach another while both look healthy from Kubernetes.
+
+          These come from Cilium's own periodic probes between nodes rather than from application traffic, so they detect a partition even while the cluster is idle.
+        id: 1019
+        links: []
+        title: Unreachable Nodes and Endpoints
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: Cilium can reach every node.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-cilium-verdicts:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (action) (rate(cilium_policy_verdict_total[$__rate_interval]))
+                    legendFormat: '{{action}}'
+                    qryType: 1
+                    query: |
+                      sum by (action) (rate(cilium_policy_verdict_total[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Policy decisions the dataplane made, allowed against denied.**
+
+          **Nominal:** Overwhelmingly allowed. A steady trickle of denials is normal on a cluster with policies — it is the scanning and health-checking that the policies exist to stop.
+
+          **Degraded:** A step change in denials that coincides with a deploy is the signature of a workload that moved and a policy that did not follow it. Pair with _Security -> NetworkPolicy Inventory_ to find which one.
+        id: 1021
+        links: []
+        title: Policy Verdicts
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-hubble-flows:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (verdict) (rate(hubble_flows_processed_total[$__rate_interval]))
+                    legendFormat: '{{verdict}}'
+                    qryType: 1
+                    query: |
+                      sum by (verdict) (rate(hubble_flows_processed_total[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Network flows Hubble observed, by verdict.**
+
+          **Nominal:** Tracks cluster traffic. `FORWARDED` should be almost all of it.
+
+          **Degraded:** `DROPPED` rising is the same event as the datapath drop counter, seen from the flow side, and it carries more context per flow — Hubble knows which workloads were talking.
+
+          **Present only where Hubble's metric set is enabled**, which is separate from Hubble itself running. GKE Dataplane V2 runs Hubble and exposes only its own health counters, so this is empty there.
+        id: 1023
+        links: []
+        title: Flows by Verdict
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Hubble is not exporting flow metrics.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cni-none-detected:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why this tab has no vendor rows on it.
+        id: 1024
+        links: []
+        title: No Dataplane Metrics
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **No dataplane metrics are being collected on this cluster.**
+
+                This is not necessarily a fault. Every cluster has a CNI; not every CNI can be scraped.
+
+                - **GKE Dataplane V2** runs Cilium but disables the agent's Prometheus endpoint, sending those metrics to Cloud Monitoring instead. Nothing here can change that, and Hubble on GKE serves only its own health counters rather than flow data.
+                - **A CNI this stack has no monitor for.** Monitors ship for the AWS VPC CNI and for Cilium; Calico, Azure NPM and anything bring-your-own are not covered yet.
+                - **Metrics disabled at the CNI.** Upstream Cilium exposes nothing until it is installed with its Prometheus endpoint enabled, and the monitor addresses that port *by name*, so an install without it produces no target rather than a failing one.
+
+                Everything not specific to a dataplane still works: _Kubernetes_ for pods and Services, _Node Networking_ for interfaces and the kernel, and _Security_ for the NetworkPolicy objects themselves — though what a policy actually *dropped* can only come from the CNI, so that half is empty too.
+              mode: markdown
+          version: ''
+    k8s-endpoints-by-namespace:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace) (
+                        sum by (instance, namespace) (kube_endpointslice_endpoints{namespace=~"$namespaceList"})
+                      )
+                    instant: true
+                    legendFormat: '{{namespace}}'
+                    qryType: 1
+                    query: |
+                      max by (namespace) (
+                        sum by (instance, namespace) (kube_endpointslice_endpoints{namespace=~"$namespaceList"})
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How many endpoints back the Services in each namespace.**
+
+          **Nominal:** At least one per Service. A Service with several replicas behind it has one endpoint each.
+
+          **Degraded:** **Zero is the interesting number, and it is invisible here** — a Service with no endpoints contributes nothing rather than a zero. Read this beside _Services by Type_: a namespace with Services and a suspiciously low endpoint count has some that resolve to nothing, which presents to a client as connection refused rather than as a timeout.
+
+          Counts endpoints, not ready endpoints. A pod that is running but failing its readiness probe is removed from the EndpointSlice, so it is already excluded.
+        id: 1009
+        links: []
+        title: Endpoints by Namespace
+        vizConfig:
+          group: barchart
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: kube-state-metrics is required'
+                unit: short
+              overrides: []
+            options:
+              barRadius: 0
+              barWidth: 0.8
+              fullHighlight: false
+              groupWidth: 0.95
+              legend:
+                calcs: []
+                displayMode: list
+                placement: bottom
+                showLegend: false
+              orientation: horizontal
+              showValue: auto
+              stacking: none
+              tooltip:
+                mode: single
+                sort: asc
+              xTickLabelMaxLength: 0
+              xTickLabelRotation: 0
+              xTickLabelSpacing: 100
+          version: ''
+    k8s-errors-by-namespace:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (namespace) (
+                        rate(container_network_receive_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                      )
+                    legendFormat: '{{namespace}}'
+                    qryType: 1
+                    query: |
+                      sum by (namespace) (
+                        rate(container_network_receive_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Which namespace's pods are losing packets.**
+
+          **Nominal:** Zero everywhere.
+
+          **Degraded:** Losses concentrated in one namespace point at that workload or its node; losses spread evenly across every namespace point at the node or the network under all of them. Check _Node Networking_ next, which is where the difference shows.
+        id: 1007
+        links: []
+        title: Errors and Drops by Namespace
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No pod lost a packet in this window.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    k8s-proxy-programming:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.99,
+                        sum by (le) (
+                          rate(kubeproxy_network_programming_duration_seconds_bucket[$__rate_interval])
+                        )
+                      )
+                    legendFormat: p99
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.99,
+                        sum by (le) (
+                          rate(kubeproxy_network_programming_duration_seconds_bucket[$__rate_interval])
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **End-to-end time from an endpoint changing to the node's rules reflecting it.**
+
+          **Nominal:** A few seconds at most.
+
+          **Degraded:** This is the number a user would feel. Unlike sync duration it includes the time spent waiting to be told, so it is the honest measure of how stale a node's view of a Service can be.
+
+          Empty wherever kube-proxy is not running; see `infra.net.k8s.proxy.sync_latency`.
+        id: 1011
+        links: []
+        title: Network Programming Latency (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No kube-proxy on this cluster — Dataplane V2 and Cilium's kube-proxy replacement both program Services themselves.
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    k8s-proxy-sync:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(0.99,
+                        sum by (le) (
+                          rate(kubeproxy_sync_proxy_rules_duration_seconds_bucket[$__rate_interval])
+                        )
+                      )
+                    legendFormat: p99
+                    qryType: 1
+                    query: |
+                      histogram_quantile(0.99,
+                        sum by (le) (
+                          rate(kubeproxy_sync_proxy_rules_duration_seconds_bucket[$__rate_interval])
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How long kube-proxy takes to turn a Service change into rules on the node.**
+
+          **Nominal:** Well under a second. It rises with the number of Services and endpoints in the cluster rather than with traffic.
+
+          **Degraded:** Seconds here means a Service change takes seconds to take effect, which presents as connections to a just-scaled workload failing for longer than the rollout should have taken. It is one of the few explanations for "the pods are healthy but the Service is not".
+
+          Only collected where kube-proxy runs. GKE Dataplane V2 and any Cilium install in kube-proxy-replacement mode have none, and this is empty there by design rather than by fault.
+        id: 1010
+        links: []
+        title: Rule Sync Duration (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No kube-proxy on this cluster — Dataplane V2 and Cilium's kube-proxy replacement both program Services themselves.
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    k8s-services-by-type:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (type) (
+                        sum by (instance, type) (kube_service_spec_type)
+                      )
+                    instant: true
+                    legendFormat: '{{type}}'
+                    qryType: 1
+                    query: |
+                      max by (type) (
+                        sum by (instance, type) (kube_service_spec_type)
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Services in the cluster, by how they are exposed.**
+
+          **Nominal:** Mostly `ClusterIP`. Each `LoadBalancer` is a real load balancer at the cloud provider, billed and provisioned — see _Cloud Networking_.
+
+          `NodePort` and `LoadBalancer` are the two that reach outside the cluster, so their count is the size of the deployment's external surface.
+        id: 1008
+        links: []
+        title: Services by Type
+        vizConfig:
+          group: piechart
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: 'No metrics: kube-state-metrics is required'
+                unit: short
+              overrides: []
+            options:
+              displayLabels:
+              - name
+              - value
+              legend:
+                asTable: true
+                calcs: []
+                displayMode: table
+                isVisible: true
+                placement: right
+                showLegend: true
+                values:
+                - value
+              orientation: auto
+              pieType: donut
+              reduceOptions:
+                calcs: []
+                values: false
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    k8s-throughput-by-namespace:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (namespace) (
+                        rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                    legendFormat: rx {{namespace}}
+                    qryType: 1
+                    query: |
+                      sum by (namespace) (
+                        rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (namespace) (
+                        rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                    legendFormat: tx {{namespace}}
+                    qryType: 1
+                    query: |
+                      sum by (namespace) (
+                        rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Pod traffic split by namespace, received and transmitted.**
+
+          **Nominal:** The Materialize namespaces carry most of it on a deployment doing work, with the monitoring namespace second.
+
+          **Degraded:** A namespace climbing without a matching change in what it runs is worth a look — the common causes are a retry loop and a newly added replica re-reading a source from the beginning.
+        id: 1006
+        links: []
+        title: Throughput by Namespace
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-conntrack:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (node_nf_conntrack_entries{instance=~"$nodeList"})
+                      /
+                      max by (instance) (node_nf_conntrack_entries_limit{instance=~"$nodeList"})
+                    legendFormat: '{{instance}}'
+                    qryType: 1
+                    query: |
+                      max by (instance) (node_nf_conntrack_entries{instance=~"$nodeList"})
+                      /
+                      max by (instance) (node_nf_conntrack_entries_limit{instance=~"$nodeList"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Netfilter connection-tracking table occupancy as a fraction of its limit.**
+
+          **Nominal:** Below ~0.7.
+
+          **Degraded:** At 1.0 the kernel drops new connections and logs `nf_conntrack: table full`. This is the classic failure behind a NAT gateway, and it presents as intermittent connection timeouts from a node that looks otherwise healthy.
+
+          Both sides are aggregated before dividing, so the ratio still resolves if the entries and the limit ever arrive under different `job` labels.
+        id: 1029
+        links: []
+        title: Conntrack Table
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#CEFFFF'
+                    value: null
+                  - color: '#F94902'
+                    value: 0.8
+                  - color: '#E40515'
+                    value: 0.8500000000000001
+                  - color: '#E40515'
+                    value: 0.9000000000000001
+                  - color: '#AB0003'
+                    value: 0.9500000000000002
+                  - color: '#AB0003'
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-drops:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance, device) (
+                        rate(node_network_receive_drop_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: rx {{instance}} {{device}}
+                    qryType: 1
+                    query: |
+                      max by (instance, device) (
+                        rate(node_network_receive_drop_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance, device) (
+                        rate(node_network_transmit_drop_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: tx {{instance}} {{device}}
+                    qryType: 1
+                    query: |
+                      max by (instance, device) (
+                        rate(node_network_transmit_drop_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Receive and transmit packet drop rates per interface.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** Receive drops usually mean the kernel could not keep up rather than the wire being faulty — check `node.debug.softnet.dropped` and `node.debug.softnet.squeezed`, which say whether the softirq budget was the limit.
+        id: 1028
+        links: []
+        title: Interface Drops
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No interface drops recorded.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-errors:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance, device) (
+                        rate(node_network_receive_errs_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: rx {{instance}} {{device}}
+                    qryType: 1
+                    query: |
+                      max by (instance, device) (
+                        rate(node_network_receive_errs_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance, device) (
+                        rate(node_network_transmit_errs_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: tx {{instance}} {{device}}
+                    qryType: 1
+                    query: |
+                      max by (instance, device) (
+                        rate(node_network_transmit_errs_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Receive and transmit error rates per interface.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** Non-zero on a physical interface points at the NIC, the driver, or the link. Sustained errors on a cloud instance are more often a hypervisor or allowance problem than a cable.
+
+          Per-pod veths are excluded at the collector, so `device` here is the node's real interfaces plus the stable `cilium_*` devices.
+        id: 1027
+        links: []
+        title: Interface Errors
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No interface errors recorded.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-rx:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (instance) (
+                        max by (instance, device) (
+                          rate(node_network_receive_bytes_total{instance=~"$nodeList"}[$__rate_interval])
+                        )
+                      )
+                    legendFormat: '{{instance}}'
+                    qryType: 1
+                    query: |
+                      sum by (instance) (
+                        max by (instance, device) (
+                          rate(node_network_receive_bytes_total{instance=~"$nodeList"}[$__rate_interval])
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes per second received across every interface on the node.**
+
+          **Nominal:** Whatever the workload calls for, well under the link's capacity.
+
+          **Degraded:** Read against `node.debug.network.saturation`, which is the same traffic as a fraction of what the link can carry.
+
+          **Summed across interfaces, unlike `node.debug.network.throughput`**, which splits by device. A single-value panel cannot be hovered to find out which interface a line belongs to, so a per-device breakdown reduced to one number is worse than useless there — it silently shows one arbitrary device. Use this for stats and that one for graphs.
+
+          Includes loopback and the container-network interfaces, so on a Kubernetes node this counts pod-to-pod traffic as well as traffic that left the machine.
+        id: 1025
+        links: []
+        title: Received
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-softnet-dropped:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance, cpu) (
+                        rate(node_softnet_dropped_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: '{{instance}} core {{cpu}}'
+                    qryType: 1
+                    query: |
+                      max by (instance, cpu) (
+                        rate(node_softnet_dropped_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets dropped in the network softirq path because the backlog queue was full, per CPU.**
+
+          These are packets the kernel discarded before any socket saw them, so they are invisible to the application and to per-pod metrics. On a network-hungry workload behind an eBPF dataplane this is one of the few places the loss is attributable.
+        id: 1032
+        links: []
+        title: Softnet Dropped
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No softnet drops recorded.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-softnet-squeezed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance, cpu) (
+                        rate(node_softnet_times_squeezed_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: '{{instance}} core {{cpu}}'
+                    qryType: 1
+                    query: |
+                      max by (instance, cpu) (
+                        rate(node_softnet_times_squeezed_total{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Times the softirq handler exhausted its budget with work still queued, per CPU.**
+
+          Squeezing is the precursor to dropping: the handler ran out of budget and deferred the rest. A rising rate here with drops still at zero is the warning you get before `node.debug.softnet.dropped` moves.
+        id: 1033
+        links: []
+        title: Softnet Squeezed
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-tcp-retransmits:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (
+                        rate(node_netstat_Tcp_RetransSegs{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: retransmitted {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (
+                        rate(node_netstat_Tcp_RetransSegs{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (
+                        rate(node_netstat_TcpExt_TCPSynRetrans{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: SYN retransmits {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (
+                        rate(node_netstat_TcpExt_TCPSynRetrans{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (
+                        rate(node_netstat_Tcp_OutSegs{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                    legendFormat: segments sent {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (
+                        rate(node_netstat_Tcp_OutSegs{instance=~"$nodeList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **TCP segment retransmits and SYN retransmits per second, against total segments out.**
+
+          Read as a ratio against `OutSegs` rather than in absolute terms — a busy node retransmits constantly and that is fine. SYN retransmits rising specifically means new connections are failing to establish, which is a different problem from an established connection losing packets.
+        id: 1031
+        links: []
+        title: TCP Retransmits
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-tcp-sockets:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (node_sockstat_TCP_inuse{instance=~"$nodeList"})
+                    legendFormat: in use {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (node_sockstat_TCP_inuse{instance=~"$nodeList"})
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (node_sockstat_TCP_alloc{instance=~"$nodeList"})
+                    legendFormat: allocated {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (node_sockstat_TCP_alloc{instance=~"$nodeList"})
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (node_sockstat_TCP_orphan{instance=~"$nodeList"})
+                    legendFormat: orphaned {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (node_sockstat_TCP_orphan{instance=~"$nodeList"})
+                  version: v0
+                refId: query-2
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (node_sockstat_TCP_tw{instance=~"$nodeList"})
+                    legendFormat: time-wait {{instance}}
+                    qryType: 1
+                    query: |
+                      max by (instance) (node_sockstat_TCP_tw{instance=~"$nodeList"})
+                  version: v0
+                refId: query-3
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **TCP sockets by state: in use, allocated, orphaned, and TIME_WAIT.**
+
+          A TIME_WAIT count climbing toward the ephemeral port range is the classic symptom of short-lived connections being opened faster than they can be retired — a connection-pooling problem, not a network one.
+        id: 1030
+        links: []
+        title: TCP Sockets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    nodes-tx:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (instance) (
+                        max by (instance, device) (
+                          rate(node_network_transmit_bytes_total{instance=~"$nodeList"}[$__rate_interval])
+                        )
+                      )
+                    legendFormat: '{{instance}}'
+                    qryType: 1
+                    query: |
+                      sum by (instance) (
+                        max by (instance, device) (
+                          rate(node_network_transmit_bytes_total{instance=~"$nodeList"}[$__rate_interval])
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes per second transmitted across every interface on the node.**
+
+          **Nominal:** Whatever the workload calls for, well under the link's capacity.
+
+          **Degraded:** Read against `node.debug.network.saturation`, which is the same traffic as a fraction of what the link can carry.
+
+          The transmit half of `node.network.rx.total`; the same summing applies, and for the same reason.
+        id: 1026
+        links: []
+        title: Transmitted
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    overview-dataplane:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (network_component) (up{network_component=~".+"})
+                    instant: true
+                    legendFormat: '{{network_component}}'
+                    qryType: 1
+                    query: |
+                      max by (network_component) (up{network_component=~".+"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Which networking components this cluster is running, as discovered rather than configured.**
+
+          **Nominal:** One CNI, and on most clusters `kube-proxy` beside it. Two CNIs at once is a migration in progress.
+
+          **Degraded:** **Empty does not mean the cluster has no CNI** — it always has one. It means nothing is collecting from it, which is the normal reading on GKE Dataplane V2, where Google disables the Cilium agent's Prometheus endpoint. See _CNI -> No dataplane metrics_ for what is and is not possible per vendor.
+
+          The label comes from the scrape config rather than from the exporter, so this answers "what are we collecting from" and not "what is installed". Those differ exactly when a CNI is present but unscraped.
+        id: 1002
+        links: []
+        title: Dataplane
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#0077BB'
+                  mode: shades
+                noValue: No networking exporter detected — see the CNI tab.
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ''
+    overview-errors:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum (
+                        rate(container_network_receive_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                      )
+                    legendFormat: errors
+                    qryType: 1
+                    query: |
+                      sum (
+                        rate(container_network_receive_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum (
+                        rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                      )
+                    legendFormat: drops
+                    qryType: 1
+                    query: |
+                      sum (
+                        rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                        + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Interface errors and dropped packets across every pod in the cluster.**
+
+          **Nominal:** Zero, and it usually is exactly zero rather than merely low.
+
+          **Degraded:** Anything sustained here is worth chasing. Drops are far more common than errors and usually mean a receive queue overflowed rather than anything being wrong with the wire — _Node Networking -> Kernel_ says whether the softirq budget was the limit.
+
+          Errors and drops are summed separately because they fail differently: an error is the interface rejecting a frame, a drop is the kernel choosing not to keep one.
+        id: 1001
+        links: []
+        title: Errors and Drops
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No interface errors or dropped packets.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    overview-load-balancers:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
+                    instant: true
+                    legendFormat: '{{service}}'
+                    qryType: 1
+                    query: |
+                      max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Every Service in the cluster that has a cloud load balancer, and the address it was given.**
+
+          **Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.
+
+          **Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.
+
+          This is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.
+        id: 1004
+        links: []
+        title: Load Balancers
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#0077BB'
+                  mode: shades
+                min: 0
+                noValue: No LoadBalancer Services have been given an address.
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: name
+              wideLayout: true
+          version: ''
+    overview-services:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (type) (
+                        sum by (instance, type) (kube_service_spec_type)
+                      )
+                    instant: true
+                    legendFormat: '{{type}}'
+                    qryType: 1
+                    query: |
+                      max by (type) (
+                        sum by (instance, type) (kube_service_spec_type)
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Services in the cluster, by how they are exposed.**
+
+          **Nominal:** Mostly `ClusterIP`. Each `LoadBalancer` is a real load balancer at the cloud provider, billed and provisioned — see _Cloud Networking_.
+
+          `NodePort` and `LoadBalancer` are the two that reach outside the cluster, so their count is the size of the deployment's external surface.
+        id: 1003
+        links: []
+        title: Services by Type
+        vizConfig:
+          group: piechart
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: 'No metrics: kube-state-metrics is required'
+                unit: short
+              overrides: []
+            options:
+              displayLabels:
+              - name
+              - value
+              legend:
+                asTable: true
+                calcs: []
+                displayMode: table
+                isVisible: true
+                placement: right
+                showLegend: true
+                values:
+                - value
+              orientation: auto
+              pieType: donut
+              reduceOptions:
+                calcs: []
+                values: false
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    overview-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum (
+                        rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                    legendFormat: received
+                    qryType: 1
+                    query: |
+                      sum (
+                        rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum (
+                        rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                    legendFormat: transmitted
+                    qryType: 1
+                    query: |
+                      sum (
+                        rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Total bytes per second in and out of the cluster's pods.**
+
+          **Nominal:** Tracks the workload. Materialize sources and sinks dominate it on a busy deployment.
+
+          **Degraded:** A cliff in both directions at once is usually a collection problem rather than a traffic one — check that cAdvisor is still being scraped before reading it as an outage.
+
+          Pods only. The node's own traffic is on _Node Networking_, and it is the larger number, since it includes everything the machine sends on its own behalf.
+
+          Excludes `lo`: a pod talking to itself is not traffic anyone is asking about here, and on some workloads it is the majority of the bytes.
+        id: 1000
+        links: []
+        title: Pod Throughput
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    overview-top-talkers:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      topk(10,
+                        sum by (namespace, pod) (
+                          rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                          + rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                        )
+                      )
+                    legendFormat: '{{namespace}}/{{pod}}'
+                    qryType: 1
+                    query: |
+                      topk(10,
+                        sum by (namespace, pod) (
+                          rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                          + rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The ten pods moving the most traffic, in and out combined.**
+
+          **Nominal:** Materialize's `environmentd` and `clusterd` pods, plus the monitoring stack's own ingesters. A source or sink pulling from outside the cluster will out-send everything else while it hydrates.
+
+          **Degraded:** A pod here that you cannot account for is the finding. The usual surprise is a log or metric shipper duplicating a destination.
+
+          Ten is a display choice, not a property of the data — a pod just outside the cut is not meaningfully quieter than the tenth.
+        id: 1005
+        links: []
+        title: Busiest Pods
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    security-drops-aws:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (node) (rate(network_policy_drop_count_total[$__rate_interval]))
+                    legendFormat: '{{node}}'
+                    qryType: 1
+                    query: |
+                      sum by (node) (rate(network_policy_drop_count_total[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets the AWS network policy agent dropped for violating a policy.**
+
+          **Nominal:** Low and steady, or zero. A working policy set drops the traffic it was written to stop, so this is not an error rate.
+
+          **Degraded:** A step change after a deploy usually means a workload moved and its policy did not follow. The agent can log the flows it drops — enabling that is how the specific connection gets identified, since the counter alone cannot say which.
+
+          Only present where the AWS VPC CNI is running with network policy enabled. Unrelated to `kube_networkpolicy_*`, which counts the policies that exist rather than the packets they stopped.
+        id: 1040
+        links: []
+        title: Packets Dropped by Policy
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No packets have been dropped by a NetworkPolicy.
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    security-drops-cilium:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (node) (rate(cilium_drop_count_total{reason=~"Policy denied.*"}[$__rate_interval]))
+                    legendFormat: '{{node}}'
+                    qryType: 1
+                    query: |
+                      sum by (node) (rate(cilium_drop_count_total{reason=~"Policy denied.*"}[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets Cilium dropped specifically because a policy denied them.**
+
+          **Nominal:** Low and steady, or zero. This is a working policy set, not an error rate.
+
+          **Degraded:** A step change coinciding with a deploy is a workload that moved out from under its policy. Hubble is where the specific flow is identified, when its metrics or its CLI are available.
+
+          A narrowed view of the datapath drop counter on the _CNI_ tab, which carries every reason. Policy denials are pulled out here because they are the only ones that are somebody's intent rather than a fault.
+        id: 1041
+        links: []
+        title: Packets Dropped by Policy
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No packets have been dropped by a NetworkPolicy.
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    security-policies-by-namespace:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace) (
+                        count by (instance, namespace) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+                      )
+                    instant: true
+                    legendFormat: '{{namespace}}'
+                    qryType: 1
+                    query: |
+                      max by (namespace) (
+                        count by (instance, namespace) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How many NetworkPolicy objects each namespace has.**
+
+          **Nominal:** Every namespace running something worth protecting has at least one.
+
+          **Degraded:** **A namespace missing from this list has no policy at all**, which in Kubernetes means every pod in it accepts traffic from everywhere in the cluster. That is the default and it is rarely what anyone intended — _Namespaces Without Policy_ states it directly rather than by absence.
+
+          Counts policies, not their effect. A namespace with twenty policies that select nothing is less protected than one with a single default-deny.
+        id: 1038
+        links: []
+        title: Policies by Namespace
+        vizConfig:
+          group: barchart
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No NetworkPolicy objects exist in this cluster.
+                unit: short
+              overrides: []
+            options:
+              barRadius: 0
+              barWidth: 0.8
+              fullHighlight: false
+              groupWidth: 0.95
+              legend:
+                calcs: []
+                displayMode: list
+                placement: bottom
+                showLegend: false
+              orientation: horizontal
+              showValue: auto
+              stacking: none
+              tooltip:
+                mode: single
+                sort: asc
+              xTickLabelMaxLength: 0
+              xTickLabelRotation: 0
+              xTickLabelSpacing: 100
+          version: ''
+    security-policy-rules:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, networkpolicy) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      max by (namespace, networkpolicy) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, networkpolicy) (kube_networkpolicy_spec_egress_rules{namespace=~"$namespaceList"})
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      max by (namespace, networkpolicy) (kube_networkpolicy_spec_egress_rules{namespace=~"$namespaceList"})
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations:
+            - group: merge
+              kind: Transformation
+              spec:
+                options: {}
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  indexByName:
+                    Time: 0
+                    __name__: 1
+                  renameByName:
+                    'Value #query-0': Ingress Rules
+                    'Value #query-1': Egress Rules
+        description: |-
+          **Each policy's ingress and egress rule counts, one row per policy.**
+
+          **Nominal:** Whatever the policy was written to say. A policy with zero ingress rules and zero egress rules is a **default-deny** for whatever it selects, which is a deliberate and common shape rather than an empty policy.
+
+          **Degraded:** A policy you did not expect to be default-deny showing zero of both is worth checking — it is the shape an incomplete edit leaves behind, and it fails closed.
+
+          Rule counts, not selected pods. Kubernetes exports no metric for how many pods a policy actually matches, which is the number that would answer "is this policy doing anything"; `kubectl describe networkpolicy` is still the way to find that out.
+        id: 1039
+        links: []
+        title: Ingress and Egress Rules per Policy
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ''
+    security-uncovered:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count by (namespace) (kube_pod_info{namespace=~"$namespaceList"})
+                      unless on (namespace)
+                      count by (namespace) (kube_networkpolicy_spec_ingress_rules)
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      count by (namespace) (kube_pod_info{namespace=~"$namespaceList"})
+                      unless on (namespace)
+                      count by (namespace) (kube_networkpolicy_spec_ingress_rules)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                    Value: true
+                    __name__: true
+                  indexByName:
+                    namespace: 0
+        description: |-
+          **Namespaces that run pods and have no NetworkPolicy.**
+
+          **Nominal:** Empty on a cluster that has adopted policy throughout. `kube-system` is the usual and mostly unavoidable exception.
+
+          **Degraded:** Each namespace listed accepts traffic from every pod in the cluster. Whether that matters depends on what it runs, but it should be a decision rather than an oversight — which is the point of naming them.
+
+          Derived by subtracting the namespaces that have policies from those that have pods, so a namespace with neither does not appear. `unless` on the namespace label is what does it; there is no metric for "has no policy".
+        id: 1037
+        links: []
+        title: Namespaces Without Policy
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                noValue: Every namespace running pods has at least one NetworkPolicy.
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ''
+  layout:
+    kind: TabsLayout
+    spec:
+      tabs:
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-throughput
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-errors
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Traffic and Losses
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: narrow
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-dataplane
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-services
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-load-balancers
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: What This Cluster Runs
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-top-talkers
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: Busiest Pods
+          title: Overview
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: k8s-throughput-by-namespace
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: k8s-errors-by-namespace
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Pod Traffic
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: k8s-services-by-type
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: k8s-endpoints-by-namespace
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Services and Endpoints
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: k8s-proxy-sync
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: k8s-proxy-programming
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: kube-proxy
+          title: Kubernetes
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: aws-vpc-cni
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-aws-ip-utilization
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-aws-exhausted
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-aws-addresses
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-aws-enis
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: 'VPC CNI: Addresses and Interfaces'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: aws-vpc-cni
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-aws-api-latency
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: 'VPC CNI: AWS API'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cilium
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-cilium-endpoints
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-cilium-regeneration
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-cilium-unreachable
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-cilium-drops
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-cilium-verdicts
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: 'Cilium: Datapath'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cilium
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-cilium-bpf-pressure
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: 'Cilium: BPF Maps'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cilium
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-hubble-flows
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: 'Hubble: Flows'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: aws-vpc-cni|cilium
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cni-none-detected
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: No Dataplane Metrics
+          title: CNI
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-rx
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-tx
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Throughput
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-errors
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-drops
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Errors and Drops
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-conntrack
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-tcp-sockets
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-tcp-retransmits
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Connection Tracking
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-softnet-dropped
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: nodes-softnet-squeezed
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Kernel Receive Path
+          title: Node Networking
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-load-balancers
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: Load Balancers
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-provider-stub
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: Load Balancer Traffic and Health
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-egress-stub
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: VPC and Egress
+          title: Cloud Networking
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: security-uncovered
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: security-policies-by-namespace
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Policy Coverage
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: security-policy-rules
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: NetworkPolicy Inventory
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: aws-vpc-cni
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: security-drops-aws
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: 'Enforcement: AWS VPC CNI'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cilium
+                          variable: networkComponentList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: security-drops-cilium
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: 'Enforcement: Cilium'
+          title: Security
+  links: []
+  liveNow: false
+  preload: false
+  tags:
+  - infrastructure
+  - mzmon
+  - network
+  timeSettings:
+    autoRefresh: ''
+    autoRefreshIntervals:
+    - 5s
+    - 10s
+    - 30s
+    - 1m
+    - 5m
+    - 15m
+    - 30m
+    - 1h
+    - 2h
+    - 1d
+    fiscalYearStartMonth: 0
+    from: now-6h
+    hideTimepicker: false
+    timezone: browser
+    to: now
+  title: Infrastructure Networking
+  variables:
+  - kind: DatasourceVariable
+    spec:
+      allowCustomValue: false
+      current:
+        text: ''
+        value: ''
+      description: Datasource for metrics queries
+      hide: dontHide
+      includeAll: false
+      label: Metrics Datasource
+      multi: false
+      name: metricsDatasource
+      options: []
+      pluginId: prometheus
+      refresh: never
+      regex: ''
+      skipUrlSync: false
+  - kind: QueryVariable
+    spec:
+      allValue: .+
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(up{network_component=~".+"}, network_component)
+      description: Networking components found to be collecting on this cluster
+      hide: dontHide
+      includeAll: true
+      label: Dataplane
+      multi: true
+      name: networkComponentList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(up{network_component=~".+"}, network_component)
+          qryType: 1
+          query: label_values(up{network_component=~".+"}, network_component)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: alphabeticalAsc
+  - kind: QueryVariable
+    spec:
+      allValue: .+
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(kube_pod_info, namespace)
+      description: Kubernetes namespaces to include
+      hide: dontHide
+      includeAll: true
+      label: Namespace
+      multi: true
+      name: namespaceList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(kube_pod_info, namespace)
+          qryType: 1
+          query: label_values(kube_pod_info, namespace)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: alphabeticalAsc
+  - kind: QueryVariable
+    spec:
+      allValue: .+
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(node_uname_info, instance)
+      description: Nodes to include, by node-exporter address
+      hide: dontHide
+      includeAll: true
+      label: Node
+      multi: true
+      name: nodeList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(node_uname_info, instance)
+          qryType: 1
+          query: label_values(node_uname_info, instance)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: alphabeticalAsc
+  - datasource:
+      name: $metricsDatasource
+    group: ''
+    kind: AdhocVariable
+    spec:
+      allowCustomValue: true
+      baseFilters:
+      - key: namespace
+        operator: =~
+        origin: dashboard
+        value: $mzNamespaceList
+      defaultKeys: []
+      description: Adhoc filters to apply to all metrics queries
+      enableGroupBy: false
+      filters: []
+      hide: inControlsMenu
+      label: Advanced Metric Filter
+      name: metricAdhoc
+      skipUrlSync: false

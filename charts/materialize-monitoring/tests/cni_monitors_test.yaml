@@ -1,0 +1,167 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# CNI dataplane monitors.
+#
+# These are deployed to every cluster and are expected to collect from at most
+# one vendor, so the properties worth holding are the ones that make "deploy
+# them all" safe: each monitor selects only its own daemon, each names container
+# ports rather than numbers so a vendor without metrics yields no target at all,
+# and every series carries the `network_component` label the dashboard's
+# dataplane discovery reads.
+suite: CNI dataplane monitors
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  pipeline.logging.gateway.destination.loki.enabled: false
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+templates:
+  - templates/scrapers/monitor-cni.yaml
+tests:
+  - it: should deploy a monitor per vendor by default
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: PodMonitor
+        documentIndex: 0
+      - isAPIVersion:
+          of: monitoring.coreos.com/v1
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: mzmon-cni-aws-vpc
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: mzmon-cni-cilium
+        documentIndex: 1
+
+  # The whole reason it is safe to ship every vendor's monitor to every cluster.
+  # A selector that matched more than its own daemon would collect one vendor's
+  # metrics under another's `network_component`, and the dashboard would name
+  # the wrong dataplane.
+  - it: should select only its own vendor's daemon
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["k8s-app"]
+          value: aws-node
+        documentIndex: 0
+      - equal:
+          path: spec.selector.matchLabels["k8s-app"]
+          value: cilium
+        documentIndex: 1
+
+  # Named ports, not numbers. A port name resolves only against a container that
+  # declares it, so a Cilium built without metrics -- GKE Dataplane V2, which
+  # disables the agent's Prometheus endpoint outright -- produces no target
+  # rather than a scrape that fails on every node forever.
+  - it: should address endpoints by port name so absent exporters yield no target
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].port
+          value: metrics
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[1].port
+          value: agentmetrics
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[0].port
+          value: prometheus
+        documentIndex: 1
+      - equal:
+          path: spec.podMetricsEndpoints[1].port
+          value: hubble-metrics
+        documentIndex: 1
+      - notExists:
+          path: spec.podMetricsEndpoints[0].portNumber
+        documentIndex: 0
+      - notExists:
+          path: spec.podMetricsEndpoints[0].portNumber
+        documentIndex: 1
+
+  # `infra-net` discovers its dataplane from
+  # `label_values(up{network_component=~".+"}, network_component)`, so a monitor
+  # that forgot this label collects metrics the dashboard cannot find.
+  - it: should stamp every endpoint with the dataplane identity
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].relabelings[0].targetLabel
+          value: network_component
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[0].relabelings[0].replacement
+          value: aws-vpc-cni
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[1].relabelings[0].replacement
+          value: aws-vpc-cni
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[0].relabelings[0].replacement
+          value: cilium
+        documentIndex: 1
+      - equal:
+          path: spec.podMetricsEndpoints[1].relabelings[0].replacement
+          value: cilium
+        documentIndex: 1
+
+  # Every panel on the CNI tab groups by node, and the pod name is the daemon
+  # rather than the machine it describes.
+  - it: should label each series with the node it describes
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].relabelings[1].targetLabel
+          value: node
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[0].relabelings[1].sourceLabels[0]
+          value: __meta_kubernetes_pod_node_name
+        documentIndex: 0
+
+  # One series per assigned pod IP, linear in pod density and multiplied by every
+  # node. `awscni_assigned_ip_addresses` answers the same question in one series.
+  - it: should drop the per-address IPAM gauge before it reaches the pipeline
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].metricRelabelings[0].regex
+          value: awscni_assigned_ip_per_cidr
+        documentIndex: 0
+      - equal:
+          path: spec.podMetricsEndpoints[0].metricRelabelings[0].action
+          value: drop
+        documentIndex: 0
+
+  - it: should let a vendor be turned off
+    set:
+      networking.cni.aws-vpc.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: mzmon-cni-cilium
+
+  - it: should render nothing when every vendor is turned off
+    set:
+      networking.cni.aws-vpc.enabled: false
+      networking.cni.cilium.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should honor a namespace override
+    set:
+      networking.cni.cilium.namespaces:
+        - networking
+    asserts:
+      - equal:
+          path: spec.namespaceSelector.matchNames
+          value:
+            - networking
+        documentIndex: 1

@@ -1,0 +1,55 @@
+# kube-proxy, the service proxy.
+#
+# Not a CNI, and the dashboard does not present it as one -- but it is the
+# component that turns a Service into rules on the node, so when connections to
+# a Service fail while the pods behind it are healthy, its sync latency is where
+# the answer is.
+#
+# **A ScrapeConfig rather than a PodMonitor, because kube-proxy declares no
+# container ports.** Verified on EKS 1.34: the pod's `ports` list is empty
+# although `:10249` serves 233 `kubeproxy_*` series. Both PodMonitor forms --
+# `port` by name and `portNumber` -- compile to a `keep` on a discovered
+# container port, so either would drop every target. Addressing the pod IP
+# directly is the only shape that reaches it.
+#
+# Absence is handled by the `keep` on the pod label rather than by the port: a
+# cluster running no kube-proxy has no pod carrying `k8s-app: kube-proxy`, so
+# this collects nothing and costs nothing. GKE Dataplane V2 is exactly that
+# case, as is any Cilium install in kube-proxy-replacement mode.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: kube-proxy
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: kube-proxy
+spec:
+  kubernetesSDConfigs:
+    - role: Pod
+  relabelings:
+    # Narrow to kube-proxy. A ScrapeConfig's SD has no selector, so the
+    # selection that a PodMonitor expresses in `selector` and
+    # `namespaceSelector` is these two keeps.
+    - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+      regex: kube-proxy
+      action: keep
+    - sourceLabels: [__meta_kubernetes_namespace]
+      regex: kube-system
+      action: keep
+    # Only the running ones. Pod SD lists terminated pods until they are garbage
+    # collected, and scraping those is a guaranteed connection refusal.
+    - sourceLabels: [__meta_kubernetes_pod_phase]
+      regex: Pending|Succeeded|Failed
+      action: drop
+    # A pod declaring no ports gets one target at its bare IP, so the metrics
+    # port has to be appended rather than replaced.
+    - sourceLabels: [__meta_kubernetes_pod_ip]
+      regex: (.+)
+      targetLabel: __address__
+      replacement: ${1}:10249
+    # The same identity label the CNI monitors set, so one discovery query
+    # enumerates everything on the dashboard's Dataplane picker.
+    - targetLabel: network_component
+      replacement: kube-proxy
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node

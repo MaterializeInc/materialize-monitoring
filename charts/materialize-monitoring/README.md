@@ -1210,6 +1210,100 @@ Materialize-specific configuration values.
   </tbody>
 </table>
 
+### Networking collection
+
+Collection from the cluster's networking layer.
+
+The CNI is the one part of the platform this chart cannot assume, because it
+differs per cloud and per install: EKS defaults to the AWS VPC CNI, GKE to
+Dataplane V2, AKS to Azure CNI powered by Cilium.
+
+Rather than asking which one is present, the monitors below are all deployed
+and each is **self-disabling**. Their pod selectors match nothing on a cluster
+running a different vendor, and their endpoints name container ports that
+exist only where the vendor exposes metrics at all — so a cluster collects
+from whichever it runs, and from nothing else. Every series they collect
+carries a `network_component` label, which is what the `infra-net` dashboard
+discovers its dataplane from.
+
+Leaving these on costs a cluster nothing it does not use. Turn one off to stop
+collecting from a CNI that *is* present.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect from the AWS VPC CNI (`aws-node`): IPAM, ENI and address exhaustion, plus NetworkPolicy drops from the node agent where it runs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.namespaces</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces to look for the CNI daemon in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default pod selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect from Cilium, including GKE Dataplane V2 and Azure CNI powered by Cilium, plus Hubble where its metrics are enabled. Note that GKE Dataplane V2 disables the agent's Prometheus endpoint, so this collects nothing there by design — see the dashboard's CNI tab.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.namespaces</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces to look for the CNI daemon in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default pod selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Pipeline configuration
 
 Pipeline configuration values that drive Alloy behavior and defaults.

@@ -1,0 +1,45 @@
+{{- /*
+  CNI dataplane monitors, one PodMonitor per vendor.
+
+  Deployed unconditionally by default, and that is safe because every one of
+  them is self-disabling: the pod selector matches nothing on a cluster running
+  a different CNI, and the endpoints name container ports that only exist when
+  the vendor was built with metrics enabled. A cluster therefore collects from
+  whichever of these it actually runs, and the dashboard's Dataplane picker
+  discovers the answer from the `network_component` label they set rather than
+  from a value an operator had to know.
+
+  The objects are created in the release namespace rather than in `kube-system`,
+  since a PodMonitor selects pods wherever it lives.
+*/ -}}
+{{- $cni := .Values.networking.cni | required "missing networking.cni from .Values" }}
+{{- range $vendor, $config := $cni }}
+  {{- if $config.enabled }}
+    {{- $source := printf "pre-rendered/scrapers/prometheus-operator/podmonitor-cni-%s.yaml" $vendor }}
+    {{- $monitor := $.Files.Get $source | fromYaml }}
+    {{- if not $monitor }}
+      {{- fail (printf "networking.cni.%s is enabled but %s does not exist" $vendor $source) }}
+    {{- end }}
+
+    {{- $fullname := printf "%s-cni-%s" ( include "mzmon.fullname" $ ) $vendor -}}
+    {{- $newMetadata := ( dict
+      "namespace" ( include "mzmon.namespace" $ )
+      "name" $fullname
+      "labels" ( include "mzmon.labels" $ | fromYaml )
+      "annotations" ( include "mzmon.annotations" $ | fromYaml )
+    ) }}
+    {{- $_ := mergeOverwrite $monitor.metadata $newMetadata }}
+
+    {{- if $config.namespaces }}
+      {{- $_ := set $monitor.spec "namespaceSelector" ( dict "matchNames" $config.namespaces ) }}
+    {{- end }}
+    {{- if $config.selector }}
+      {{- $_ := set $monitor.spec "selector" $config.selector }}
+    {{- end }}
+    {{- if $config.metricEndpoints }}
+      {{- $_ := set $monitor.spec "podMetricsEndpoints" $config.metricEndpoints }}
+    {{- end }}
+---
+    {{- toYaml $monitor | nindent 0 }}
+  {{- end }}
+{{- end }}
