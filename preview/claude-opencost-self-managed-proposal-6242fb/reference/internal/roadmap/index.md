@@ -467,12 +467,13 @@ Neither blocks the other.
 Every workstream above measures what a deployment is *doing*.
 This one measures what it *costs*, which is the question a self-managed operator is asked by whoever owns the cloud bill.
 
-Nothing here is ticketed yet.
+The design and the one item that stands on its own are ticketed.
+The rest is deliberately not, pending the proposal.
 
 | Item | Milestone | Status |
 |---|---|---|
-| Cost visibility design doc plus review | — | 🔨 ([design doc](../design-docs/20260919-cost-visibility-opencost/) drafted; review outstanding) |
-| `metricLabelsAllowlist` on kube-state-metrics, naming the Materialize pod labels | — | ⬜ |
+| [Cost visibility design doc plus review](https://linear.app/materializeinc/issue/DEP-252) | OO-M2 | 🔨 ([design doc](../design-docs/20260919-cost-visibility-opencost/) drafted; review outstanding) |
+| [`metricLabelsAllowlist` on kube-state-metrics](https://linear.app/materializeinc/issue/DEP-253), naming the Materialize pod labels | OO-M2 | ⬜ |
 | The OpenCost subchart, its `cost` tag and its values block — UI off, Thanos Query as the read endpoint | — | ⬜ |
 | `EMIT_KSM_V1_METRICS=false`, asserted — OpenCost emits its own kube-state-metrics families by default | — | ⬜ |
 | A `cost` query-registry family at `metricImportanceHint: recommended` | — | ⬜ |
