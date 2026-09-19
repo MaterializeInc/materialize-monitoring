@@ -15,13 +15,69 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.23.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.6.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.22.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.22.0
 
-_Changes Pending_
+* Update docker.io/grafana/grafana Docker tag to v13.2.2
+    * [materialize-monitoring#359](https://github.com/MaterializeInc/materialize-monitoring/pull/359)
+    * [`v13.2.2`](https://redirect.github.com/grafana/grafana/releases/tag/v13.2.2): 13.2.2
+* Update docker.io/grafana/grafana Docker tag to v13.2.1
+    * [materialize-monitoring#321](https://github.com/MaterializeInc/materialize-monitoring/pull/321)
+    * [`v13.2.1`](https://redirect.github.com/grafana/grafana/compare/v13.2.0...v13.2.1)
+* Move the chart's alloy image to v1.19.2-mz3
+    * [materialize-monitoring#348](https://github.com/MaterializeInc/materialize-monitoring/pull/348)
+    * The bundled Alloy image moves from `v1.18.1-mz2` to `v1.19.2-mz3`, which is Alloy v1.19.2 on a rebased distroless base. This is an Alloy minor upgrade for anyone who has not overridden `alloy-agent.image` / `alloy-gateway.image`; see the [Alloy v1.19 release notes](https://github.com/grafana/alloy/releases/tag/v1.19.0).
+* Add Dashboard Folders; Update tags
+    * [materialize-monitoring#329](https://github.com/MaterializeInc/materialize-monitoring/pull/329)
+    * Added several GrafanaFolder resources (default enabled: mzmon-infra, mzmon-materialize, mzmon-meta-o11y)
+    * Changed monitoring tag to mzmon within dashboards
+
+### Dependencies
+
+* Included Dashboards @ v0.15.0..v0.16.0
+    * Show total lag in env-top / env-upgrade
+        * [materialize-monitoring#312](https://github.com/MaterializeInc/materialize-monitoring/pull/312)
+        * Add new queries around max lag (materialize.compute.freshness.lag_total_by_cluster, materialize.generations.lag.total)
+        * Show max lag as new panels (including per-cluster breakdown) in env-top and env-upgrade dashboards
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate clap to v4.6.7
+        * [materialize-monitoring#355](https://github.com/MaterializeInc/materialize-monitoring/pull/355)
+        * [`v4.6.7`](https://redirect.github.com/clap-rs/clap/compare/clap_complete-v4.6.6...clap_complete-v4.6.7)
+    * Update Rust crate rustls to v0.23.45
+        * [materialize-monitoring#349](https://github.com/MaterializeInc/materialize-monitoring/pull/349)
+    * Update Rust crate jsonschema to 0.56.0
+        * [materialize-monitoring#267](https://github.com/MaterializeInc/materialize-monitoring/pull/267)
+        * [`v0.56.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0560---2026-09-10)
+        * [`v0.55.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0551---2026-09-08)
+        * [`v0.55.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0550---2026-09-06)
+        * [`v0.54.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0540---2026-09-06)
+        * [`v0.53.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0530---2026-09-02)
+        * [`v0.52.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0521---2026-08-30)
+        * [`v0.52.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0520---2026-08-26)
+        * [`v0.51.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0510---2026-08-23)
+        * [`v0.50.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0501---2026-08-22)
+        * [`v0.50.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0500---2026-08-20)
+    * Update Rust crate reqwest to v0.13.5
+        * [materialize-monitoring#335](https://github.com/MaterializeInc/materialize-monitoring/pull/335)
+        * [`v0.13.5`](https://redirect.github.com/seanmonstar/reqwest/blob/HEAD/CHANGELOG.md#v0135)
+    * Update Rust crate rustls to v0.23.44
+        * [materialize-monitoring#332](https://github.com/MaterializeInc/materialize-monitoring/pull/332)
+    * Update Rust crate tokio-rustls to v0.26.5
+        * [materialize-monitoring#326](https://github.com/MaterializeInc/materialize-monitoring/pull/326)
+    * Add some sample prose in heather's voice
+        * [materialize-monitoring#331](https://github.com/MaterializeInc/materialize-monitoring/pull/331)
+    * Update Rust crate indexmap to v2.14.2
+        * [materialize-monitoring#328](https://github.com/MaterializeInc/materialize-monitoring/pull/328)
+        * [`v2.14.2`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2142-2026-09-04)
 
 ## Dashboards v0.16.0 (Unreleased)
 
