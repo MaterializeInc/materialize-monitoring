@@ -790,6 +790,44 @@ Two things worth keeping if this pattern spreads:
 
 `text` was added to `bin/gen-grafana-models.sh` for this — it is the only plugin here that shows no data.
 
+## Rendering a row on a discovered variable
+
+**New precedent, first used on `infra-net`'s CNI and Security tabs.** `Row::only_when_variable` and
+`Row::only_unless_variable` own it, beside the time-range pair.
+
+A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
+variant, or render conditionally.
+The per-variant route was tried for GCP and retired, because the variants stopped differing in anything but which
+panels were blank.
+
+Reach for a variable condition when a whole *section* of a dashboard is meaningless on some clusters and the clusters
+cannot be told apart at render time.
+A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
+once.
+
+Four rules, all of them learned from the one implementation:
+
+- **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
+  every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
+  being asked a question the system can answer.
+- **Discover it from `up`, not from a vendor metric.** `up` exists for a target that is being scraped even when the
+  exporter returns nothing. A vendor metric conflates "this cluster runs something else" with "this cluster's exporter
+  is mute", and only the second is a collection bug worth showing rows about.
+- **Always pair the set with a negated fallback.** A tab whose every condition failed is indistinguishable from a
+  broken one. One row carries `only_unless_variable` over the alternation of every pattern its siblings match, so
+  exactly one thing is always on screen. Derive the alternation from the same constants the sibling rows use, or a
+  vendor added later renders its panels *and* a note saying nothing was detected.
+- **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
+  fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
+  Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
+
+The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
+for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
+(`matches` / `notMatches`) rather than by flipping the group's visibility, unlike the time-range pair, because Grafana
+offers the negative operator directly.
+
+Verified round-tripping: Grafana accepts all eight conditional rows and returns them unchanged on a read.
+
 ## Kubernetes events in Loki
 
 What the `env-upgrade` Events tab is built on, and the parts that are not guessable.
