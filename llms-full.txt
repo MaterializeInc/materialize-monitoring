@@ -3649,7 +3649,7 @@ url: https://materializeinc.github.io/materialize-monitoring/dashboards/all/inde
 
 # Available Dashboards
 
-Five dashboards ship today: three scoped to a Materialize environment (`env-*`), and two to the platform underneath it (`infra-*`).
+Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring` chart, you do not need to download anything — `dashboards.selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -3713,6 +3713,26 @@ Also Loki-only.
 Where `env-logs` opens on the Materialize namespaces, this one subtracts them, so each dashboard answers for one side of the deployment.
 
 {{< download-dashboards name="infra-logs" >}}
+
+### Infrastructure Networking (`infra-net`)
+
+How traffic moves through the cluster, and what stops it, across six tabs: Overview, Kubernetes, CNI, Node Networking, Cloud Networking, and Security.
+Pod and Service traffic come from cAdvisor and kube-state-metrics and are the same everywhere.
+The nodes' own interfaces, connection tables, and kernel receive path are read across the whole fleet rather than one machine at a time, which is the difference between this dashboard's Node Networking tab and `infra-nodes`.
+
+**The CNI tab adapts to the cluster it is open on.**
+A cluster's container network interface differs per cloud, and the metrics describing each share no names with the others.
+The scrape configs label every series they collect with the dataplane they came from, the dashboard discovers that label into its `Dataplane` picker, and each vendor's rows render only where that vendor was found.
+A cluster whose CNI exports nothing gets a single row explaining which case it is in, because that is not always a fault: GKE Dataplane V2 runs Cilium and disables the agent's Prometheus endpoint, so nothing can be collected from it.
+
+The Security tab is split the same way and for the same reason.
+Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
+A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
+
+Cloud Networking is partly stubbed.
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#collection-gaps-these-depend-on).
+
+{{< download-dashboards name="infra-net" >}}
 
 ## What the annotations mean
 
@@ -9216,6 +9236,100 @@ Materialize-specific configuration values.
   </tbody>
 </table>
 
+### Networking collection
+
+Collection from the cluster's networking layer.
+
+The CNI is the one part of the platform this chart cannot assume, because it
+differs per cloud and per install: EKS defaults to the AWS VPC CNI, GKE to
+Dataplane V2, AKS to Azure CNI powered by Cilium.
+
+Rather than asking which one is present, the monitors below are all deployed
+and each is **self-disabling**. Their pod selectors match nothing on a cluster
+running a different vendor, and their endpoints name container ports that
+exist only where the vendor exposes metrics at all — so a cluster collects
+from whichever it runs, and from nothing else. Every series they collect
+carries a `network_component` label, which is what the `infra-net` dashboard
+discovers its dataplane from.
+
+Leaving these on costs a cluster nothing it does not use. Turn one off to stop
+collecting from a CNI that *is* present.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect from the AWS VPC CNI (`aws-node`): IPAM, ENI and address exhaustion, plus NetworkPolicy drops from the node agent where it runs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.namespaces</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces to look for the CNI daemon in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default pod selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect from Cilium, including GKE Dataplane V2 and Azure CNI powered by Cilium, plus Hubble where its metrics are enabled. Note that GKE Dataplane V2 disables the agent's Prometheus endpoint, so this collects nothing there by design — see the dashboard's CNI tab.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.namespaces</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces to look for the CNI daemon in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default pod selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Pipeline configuration
 
 Pipeline configuration values that drive Alloy behavior and defaults.
@@ -9764,6 +9878,37 @@ signs kubelet certs with a CA the pod does not trust needs this true, and
 the failure is quiet — scrapes fail and container metrics stop rather
 than anything erroring at install. Check `up{job="cadvisor"}` when
 bringing up a new distribution.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.kubeProxy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "scrapeInterval": "60s"
+}</pre>
+</td>
+      <td class="helm-value-desc">Scraping kube-proxy, the service proxy.
+
+kube-proxy turns a Service into rules on the node, so its sync latency is
+the answer when connections to a Service fail while every pod behind it is
+healthy. The `infra-net` dashboard's kube-proxy row reads it.
+
+Discovery is a server-side pod selector, so a cluster without kube-proxy
+returns no targets and this costs nothing. GKE Dataplane V2 and any Cilium
+install in kube-proxy-replacement mode are exactly that case.
+No enable toggle, for the same reason `kubelet` above has none: the
+pipeline is pre-rendered, so a key here would have to be read by something
+to mean anything, and the scrape already disables itself where kube-proxy
+is absent. A knob written to the env ConfigMap and read by nothing is a
+bug this repo has shipped once already.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.kubeProxy<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"60s"</code></td>
+      <td class="helm-value-desc">Scrape interval for kube-proxy. Roughly 230 series per node.
 </td>
     </tr>
     <tr>
@@ -14589,7 +14734,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
     * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment, `infra-*.yaml` for the platform, `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
-    * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-cadvisor.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`
+    * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
     * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
@@ -17092,6 +17237,44 @@ Two things worth keeping if this pattern spreads:
 
 `text` was added to `bin/gen-grafana-models.sh` for this — it is the only plugin here that shows no data.
 
+## Rendering a row on a discovered variable
+
+**New precedent, first used on `infra-net`'s CNI and Security tabs.** `Row::only_when_variable` and
+`Row::only_unless_variable` own it, beside the time-range pair.
+
+A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
+variant, or render conditionally.
+The per-variant route was tried for GCP and retired, because the variants stopped differing in anything but which
+panels were blank.
+
+Reach for a variable condition when a whole *section* of a dashboard is meaningless on some clusters and the clusters
+cannot be told apart at render time.
+A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
+once.
+
+Four rules, all of them learned from the one implementation:
+
+- **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
+  every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
+  being asked a question the system can answer.
+- **Discover it from `up`, not from a vendor metric.** `up` exists for a target that is being scraped even when the
+  exporter returns nothing. A vendor metric conflates "this cluster runs something else" with "this cluster's exporter
+  is mute", and only the second is a collection bug worth showing rows about.
+- **Always pair the set with a negated fallback.** A tab whose every condition failed is indistinguishable from a
+  broken one. One row carries `only_unless_variable` over the alternation of every pattern its siblings match, so
+  exactly one thing is always on screen. Derive the alternation from the same constants the sibling rows use, or a
+  vendor added later renders its panels *and* a note saying nothing was detected.
+- **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
+  fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
+  Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
+
+The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
+for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
+(`matches` / `notMatches`) rather than by flipping the group's visibility, unlike the time-range pair, because Grafana
+offers the negative operator directly.
+
+Verified round-tripping: Grafana accepts all eight conditional rows and returns them unchanged on a read.
+
 ## Kubernetes events in Loki
 
 What the `env-upgrade` Events tab is built on, and the parts that are not guessable.
@@ -18244,7 +18427,7 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | [Troubleshooting](https://linear.app/materializeinc/issue/DEP-208) — symptom-first entry into the rest | OO-M2 | ⬜ |
 | [Logs & Events](https://linear.app/materializeinc/issue/DEP-209) (Loki + Alloy + logs now shipped) | OO-M2 | ✅ (`env-logs` dashboard ships, `mz-mon-env-logs`, with **Logs** and **Events** tabs. The repo's first Loki-only dashboard: it defines no metrics datasource and its namespace / app / level pickers are Loki-discovered, so it keeps working when the metrics pipeline is the thing being investigated. Materialize-first rather than Materialize-only — the namespace picker discovers every namespace and merely *defaults* to the Materialize ones, so the monitoring stack and `kube-system` are one selection away rather than behind a filter. That is where the answer lives when collection itself is what broke. Ports the shape of the internal cloud dashboards (namespace/app/level pickers, case-insensitive search box, ad-hoc filter) **without** their Snowflake org lookup, which does not exist on self-managed; `organization_name` structured metadata is the equivalent where one is needed. Its Kubernetes-event queries are deliberately separate definitions from `env-upgrade`'s rollout-scoped ones, which carry generation and reporting-controller filters a general browser must not inherit. Verified against a live self-managed install. **Later:** a per-pod drilldown, and log-derived alerting — neither blocks the dashboard, which is why this is done) |
 | [Upgrades](https://linear.app/materializeinc/issue/DEP-210) (Day 2 ops) — **customer-blocking**, see below | OO-M2 | 🔨 (`env-upgrade` dashboard exists, `mz-mon-env-upgrade`, with three tabs: **Events**, **Generations**, and **Reconciliation**. This is the repo's first dashboard on Loki, and the first LogQL family in the query registry — Kubernetes events from the operator and environment namespaces, with orchestratord's own lifecycle transitions and reconciliation failures picked out by `reportingcontroller`. **Generations** splits a blue/green rollout into its two sides via a new `$mzGenerationList` selector, so the question the rollout actually poses — has the new generation caught up yet — can be asked at all; its centrepiece is the hydrating-collection count descending toward zero, beside a version-per-generation table that states what the rollout is changing. Verified against a live rollout: gen 2 on `v26.38.2` beside gen 3 on `v26.40.0-rc.1`, 116 of 191 collections hydrating. **Reconciliation** is the operator's control loop as metrics — pass outcomes, durations, and the per-step counters that turn "reconciliation is failing" into "reconciliation is failing *here*". The two tabs are scoped differently on purpose: events are per-resource and therefore per-environment, while the operator's metrics carry no organization label at all, because one operator reconciles every environment in the cluster. Together they answer *is it stuck* from the rollout's own account of itself rather than from version counts. **Installed by default**, since the stem matches the `["env-*"]` pattern `dashboards.selected` ships with. The operator-side events and metrics depend on unreleased Materialize changes ([CLO-188](https://linear.app/materializeinc/issue/CLO-188)), so against a current release it degrades unevenly rather than going dark: **Generations works fully** (its panels read metrics that predate the change, and the blue/green split comes from pod names), Events keeps its Kubernetes Activity row, and Reconciliation is empty but for its two pre-existing gauges. Requires `v26.41.0`, recorded in `compatibility.md`; narrow `dashboards.selected` to `["env-top"]` to hold it back. **Outstanding:** *what do I do about it* beyond what the panel descriptions say, and a Day 2 change-operations view) |
-| [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ⬜ |
+| [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ✅ (`infra-net` dashboard ships, `mz-mon-infra-net`, with six tabs: **Overview**, **Kubernetes**, **CNI**, **Node Networking**, **Cloud Networking** and **Security**. Filed under `infra-*` rather than `env-*`: the question is the cluster's, not one environment's, and the row below in the infrastructure table is the same deliverable. **The repo's first dashboard whose layout is not fixed.** A cluster's CNI is not knowable from here — EKS defaults to the AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium — and the metrics describing each share no names with the others, so a fixed layout would mean a dashboard per cloud. That was built once for GCP and retired. Instead the CNI monitors stamp every series with a `network_component` label, a `$networkComponentList` variable discovers it, and each vendor's rows render on a `ConditionalRenderingVariable` match — new machinery in `layout.rs`, which previously modelled only the time-range condition. A cluster with no dataplane metrics gets a single row on the complement of every vendor pattern, saying which case it is in: on GKE that is not a fault, since Google disables the Cilium agent's Prometheus endpoint outright. Detection reads `up` rather than a vendor metric, which is what tells a mute exporter apart from an absent one. **Verified against both live clusters:** all 51 rendered queries execute, 33 return data on the GKE cluster where no CNI is collectable, and the AWS VPC CNI rows return real IPAM, ENI and policy-drop data on EKS once the new monitor was applied. Grafana round-trips all eight conditional rows unchanged. Endpoint regeneration time and unreachable-node counts come from the internal cloud networking dashboards, which both lead with the former. **Outstanding:** the cloud-provider half, which is [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and ships as two stub rows naming the metrics that would fill them) |
 | [Hydration Drilldown](https://linear.app/materializeinc/issue/DEP-212) | OO-M2 | ⛓️ |
 | [Freshness Drilldown](https://linear.app/materializeinc/issue/DEP-213) | OO-M2 | ⛓️ |
 | [Sources Drilldown](https://linear.app/materializeinc/issue/DEP-214) | OO-M2 | ⛓️ |
@@ -18288,7 +18471,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
 | **Meta-monitoring** — every component of this stack | **Yes, and then some.** Grafana 523 families, Loki 439, Thanos 220, Alloy 35. **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | ⬜ |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
-| **Networking** — throughput, traffic shape, policy metrics | **Partly.** 8 `container_network_*` families carry throughput and errors (`env-top` already plots four of them). **No CNI or NetworkPolicy metrics at all** — no `cilium_*`, no `hubble_*` | OO-M3 | ⬜ |
+| **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M3 | ✅ |
 | **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents). **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics | OO-M3 | ⬜ |
 
 Ordering follows what is buildable and what an operator reaches for first.
@@ -18296,7 +18479,8 @@ Ordering follows what is buildable and what an operator reaches for first.
 the platform healthy, and is the telemetry itself trustworthy.
 **Pods** is the natural drilldown target from both, and from `env-logs`.
 **Autoscaling** is buildable now as an events dashboard and becomes a real one when the controller is scraped.
-**Networking** and **External components** are gated on the collection gaps below.
+**External components** is gated on the collection gap below.
+**Networking** was too, and stopped being: the gap turned out to be unscraped endpoints rather than absent ones, so the dashboard and the scrape configs landed together.
 
 #### Collection gaps these depend on
 
@@ -18307,7 +18491,7 @@ Found while surveying a live install; each is a scrape-side gap in *this* repo r
 | ✅ **kube-state-metrics label collision** — fixed, and now asserted | *was:* Pods, Nodes, and five shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fixed by setting `honorLabels: true` on both ServiceMonitor endpoints (the vendored 8.4.0 subchart defaults them to `false`). Now asserted by `kube_state::labels_are_honored` and `kube_state::pods_are_distinguishable` in the e2e suite, which between them catch the collision's signature (`exported_*` labels) and its consequence (`kube_pod_info` collapsing to one identity). Verified against a live install *before* the fix: 15 families carrying `exported_*`, and 117 `kube_pod_info` series reporting a single pod. The three `materialize.kubernetes.*` readiness queries are `canonical` on the strength of that coverage |
 | Alertmanager is not scraped | Meta-monitoring | Deployed by the chart and emitting nothing to Thanos. The smallest of these and the most embarrassing, since it is our own component |
 | No cluster-autoscaler / Karpenter scrape | Autoscaling | Distro-specific: GKE's autoscaler, Karpenter and Cluster Autoscaler each expose different endpoints, so this is a per-flavor scrape source rather than one config |
-| No CNI / NetworkPolicy metrics | Networking (policy half) | Needs a CNI that exports them and a scrape source for it. Throughput and traffic shape do not depend on this and can land first |
+| ✅ **No CNI / NetworkPolicy metrics** — fixed for the two CNIs with monitors | *was:* Networking (policy half) | Two PodMonitors ship, for the AWS VPC CNI and for Cilium, plus a kube-proxy ScrapeConfig. All three are **self-disabling**, which is what makes it safe to deploy every one to every cluster: the pod selector matches nothing on a cluster running another vendor, and the CNI endpoints name *container ports* rather than numbers, so a vendor built without metrics yields no target instead of a scrape failing on every node forever. Each stamps a `network_component` label, which is the dashboard's whole detection mechanism. Measured rather than assumed: EKS `aws-node` serves `awscni_*` on the `metrics` port and `network_policy_drop_count_total` on the nodeagent's, both verified landing in Thanos; GKE Dataplane V2 serves nothing on `:9962` and only Hubble's own health counters on `:9965`. **kube-proxy is collected too**, from the gateway pipeline rather than from its ScrapeConfig CR: the gateway has no `prometheus.operator.scrapeconfigs` component, so the CR is a Prometheus-consumer artifact exactly as the cAdvisor one is, and the pipeline carries the same relabeling. Discovery is a server-side pod selector, so a cluster running no kube-proxy returns no targets rather than a refused connection on every node. **Still uncovered:** Calico and Azure NPM, which no monitor ships for |
 | Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not |
 
 ### Materialize components beyond the environment

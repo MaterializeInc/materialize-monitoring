@@ -197,30 +197,53 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     </tr>
   </thead>
   <tbody>
+      
     <tr>
       <td>clusterd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-clusterd.yaml?xxhash=d1343768d3865164" download="clusterd-d1343768d3865164.yaml"><code>podmonitor-clusterd.yaml</code></a></td>
     </tr>
+      
+    <tr>
+      <td>cni-aws-vpc</td>
+      <td>monitoring.coreos.com/v1/PodMonitor</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-cni-aws-vpc.yaml?xxhash=408c75a604b95c73" download="cni-aws-vpc-408c75a604b95c73.yaml"><code>podmonitor-cni-aws-vpc.yaml</code></a></td>
+    </tr>
+      
+    <tr>
+      <td>cni-cilium</td>
+      <td>monitoring.coreos.com/v1/PodMonitor</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-cni-cilium.yaml?xxhash=2aef64505a8c1aa8" download="cni-cilium-2aef64505a8c1aa8.yaml"><code>podmonitor-cni-cilium.yaml</code></a></td>
+    </tr>
+      
     <tr>
       <td>environmentd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-environmentd.yaml?xxhash=cb80961f5213b005" download="environmentd-cb80961f5213b005.yaml"><code>podmonitor-environmentd.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-operator</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-materialize-operator.yaml?xxhash=64335808148e4ef8" download="materialize-operator-64335808148e4ef8.yaml"><code>podmonitor-materialize-operator.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-sql</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=564076a90db12393" download="materialize-sql-564076a90db12393.yaml"><code>podmonitor-sql.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>mz-kubelet-cadvisor</td>
       <td>monitoring.coreos.com/v1alpha1/ScrapeConfig</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/scrapeconfig-cadvisor.yaml?xxhash=9f7fd044ea2df9c7" download="mz-kubelet-cadvisor-9f7fd044ea2df9c7.yaml"><code>scrapeconfig-cadvisor.yaml</code></a></td>
+    </tr>
+      
+    <tr>
+      <td>kube-proxy</td>
+      <td>monitoring.coreos.com/v1alpha1/ScrapeConfig</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/scrapeconfig-kube-proxy.yaml?xxhash=bd37b8ebf6d0dbb6" download="kube-proxy-bd37b8ebf6d0dbb6.yaml"><code>scrapeconfig-kube-proxy.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
@@ -257,10 +280,11 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     </tr>
   </thead>
   <tbody>
+      
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/prometheus-scrapers/classic/scrape_config.yaml?xxhash=9c95cae25d1b638c" download="scrape_config-9c95cae25d1b638c.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/classic/scrape_config.yaml?xxhash=8159614b4f8eaeb8" download="scrape_config-8159614b4f8eaeb8.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
@@ -286,36 +310,67 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
     </tr>
   </thead>
   <tbody>
+      
     <tr>
       <td>clusterd</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/clusterd.yaml?xxhash=94899a50af87d083" download="clusterd-94899a50af87d083.yaml"><code>clusterd.yaml</code></a></td>
     </tr>
+      
+    <tr>
+      <td>cni-aws-vpc-metrics-0</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/cni-aws-vpc-metrics-0.yaml?xxhash=e9963caecfa9c4e2" download="cni-aws-vpc-metrics-0-e9963caecfa9c4e2.yaml"><code>cni-aws-vpc-metrics-0.yaml</code></a></td>
+    </tr>
+      
+    <tr>
+      <td>cni-aws-vpc-metrics-1</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/cni-aws-vpc-metrics-1.yaml?xxhash=dae11abdbdb66f13" download="cni-aws-vpc-metrics-1-dae11abdbdb66f13.yaml"><code>cni-aws-vpc-metrics-1.yaml</code></a></td>
+    </tr>
+      
+    <tr>
+      <td>cni-cilium-metrics-0</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/cni-cilium-metrics-0.yaml?xxhash=0098f6086855c75a" download="cni-cilium-metrics-0-0098f6086855c75a.yaml"><code>cni-cilium-metrics-0.yaml</code></a></td>
+    </tr>
+      
+    <tr>
+      <td>cni-cilium-metrics-1</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/cni-cilium-metrics-1.yaml?xxhash=3527423cc8bf7694" download="cni-cilium-metrics-1-3527423cc8bf7694.yaml"><code>cni-cilium-metrics-1.yaml</code></a></td>
+    </tr>
+      
     <tr>
       <td>environmentd</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/environmentd.yaml?xxhash=7e24b75a0d93e8bb" download="environmentd-7e24b75a0d93e8bb.yaml"><code>environmentd.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-operator</td>
       <td>monitoring.googleapis.com/v1/PodMonitoring</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/materialize-operator.yaml?xxhash=d216820a50b4ec53" download="materialize-operator-d216820a50b4ec53.yaml"><code>materialize-operator.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-sql-mz-compute</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/materialize-sql-mz-compute.yaml?xxhash=ada272b9fa0082c2" download="materialize-sql-mz-compute-ada272b9fa0082c2.yaml"><code>materialize-sql-mz-compute.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-sql-mz-frontier</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/materialize-sql-mz-frontier.yaml?xxhash=db50e8f025eeb840" download="materialize-sql-mz-frontier-db50e8f025eeb840.yaml"><code>materialize-sql-mz-frontier.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-sql-mz-storage</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
       <td><a href="/materialize-monitoring/prometheus-scrapers/gmp/materialize-sql-mz-storage.yaml?xxhash=af6b93d644fb3d5c" download="materialize-sql-mz-storage-af6b93d644fb3d5c.yaml"><code>materialize-sql-mz-storage.yaml</code></a></td>
     </tr>
+      
     <tr>
       <td>materialize-sql-mz-usage</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
