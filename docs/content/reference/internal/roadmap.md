@@ -198,19 +198,19 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | External dependency monitoring ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)) — design doc plus review | OO-M2 | 🔨 ([design doc](../design-docs/20260920-external-dependency-monitoring/) drafted; review outstanding) |
 | Split `persist-failures` into consensus, blob and persist-internal alerts | OO-M2 | ⬜ |
 | Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe. Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
-| Tier A — client-side signals (`mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*`) into the query registry | OO-M2 | ⬜ |
+| The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry | OO-M2 | ⬜ |
 | The normalized `ext:*` recording-rule layer | OO-M2 | ⬜ |
 | `infra-deps` dashboard, with discovered-flavor rows and a negated fallback | OO-M2 | ⬜ |
-| Tier B — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M2 | ⬜ |
+| The **exporter** vantage point — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M2 | ⬜ |
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters | OO-M2 | ⬜ |
 | On-premise object-store adapter (MinIO / Garage / Ceph) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter | OO-M2 | ⬜ |
-| Tier C — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M2 | ⬜ |
+| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M2 | ⬜ |
 | Terraform: read-only provider roles on the per-cloud monitoring modules | OO-M2 | ⬜ |
 
 **The design's central claim is that the client's measurement of a dependency is the SLI and the dependency's own telemetry is the diagnosis.**
 `environmentd`, Loki and Thanos already time and count every call they make to both dependencies, identically on every cloud and with no credentials.
-That tier ships on by default; everything flavor-specific is opt-in behind a normalized contract, which is what keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
+That vantage point ships on by default; everything flavor-specific is opt-in behind a normalized contract, which is what keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
 Provider metrics are **pulled into the Alloy gateway as an ingest source** rather than queried as a Grafana datasource.
 That makes the cost a function of what is configured rather than of how closely anyone is watching, puts the result in the same retention and the same PromQL surface as everything else, and makes a dependency series joinable with `mz_persist_blob_failures` in a single expression.
@@ -218,7 +218,7 @@ That makes the cost a function of what is configured rather than of how closely 
 **The default is a default rather than a ranking, and the field evidence is what keeps it from becoming one.**
 Of the incidents seen so far, two were CockroachDB exhausting disk and CPU, one was a neighbouring project consuming a shared database instance, one was a component running an out-of-date version, and the most common class was day-0 setup failure.
 Only the first pair is visible from the client side at all, and only after the dependency has begun to fail.
-So the design carries two signals that came from the field rather than from analysis — **per-database storage attribution** and **version reporting** — and treats **Day 0 as a separate problem with a separate answer**, served by render-time validation and a probe rather than by any metric tier.
+So the design carries two signals that came from the field rather than from analysis — **per-database storage attribution** and **version reporting** — and treats **Day 0 as a separate problem with a separate answer**, served by render-time validation and a probe rather than by any of the three vantage points.
 
 Three findings from drafting it belong on this page rather than only in the design doc.
 
@@ -229,7 +229,7 @@ Fixing either alone would still have produced silence.
 Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions managed **PostgreSQL**, nothing in the registry names a `pg_*` family, and CNPG is arriving in customer clusters — so no flavor is the one that waits.
 
 **The design is the first consumer of the query registry's `rules:` branch**, which has no producer, leaving `pre-rendered/rules/{prometheus,thanos,loki}/` empty.
-The evaluated-rule path it also depends on is owned by [Alerting in self-managed](#rules--alerts), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
+The evaluated-rule path it also depends on is owned by [Alerting in self-managed](../design-docs/20260917-alerting-self-managed/), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
 Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
 
 **One alert covers both dependencies, and it is the shortest path to value here.**
@@ -239,7 +239,7 @@ Splitting it needs no adapter, no exporter and no new collection — only the ev
 
 **Failure counters report that a dependency broke, never that one is degrading.**
 Neither persist's consensus path nor its blob path emits latency or retry-rate, so the slow-and-getting-slower case that precedes an outage has no signal at all.
-Tiers B and C watch the database slow down and cannot attribute it to Materialize's traffic.
+The exporter and the provider watch the database slow down and cannot attribute it to Materialize's traffic.
 That is an addition to the [Tier 2 upstream asks](#metrics-contract-upstream-dependency) rather than work that can land here, and it is the most important thing this design cannot do.
 
 **The Materialize persist bucket has no `AbortIncompleteMultipartUpload` lifecycle rule**, while the monitoring stack's own telemetry buckets do, on both AWS and GCS.
@@ -248,7 +248,7 @@ That is a fix in the Terraform repo rather than here, and the monitoring work is
 
 Two smaller notes that change where the work is easiest.
 **There is no `generic-cloud` wrapper downstream** corresponding to the generic path this repository supports, and one may be worth having; its absence does not leave the shape unobserved, because `terraform/test/generic-cloud` already runs rustfs and CNPG and is that deployment.
-**On-premise object stores publish their own capacity, drive health and healing state**, which no managed cloud offers at any price — so the one shape with no Terraform wrapper is the one whose adapters this repository can test end to end, and the one where object storage gets tier B rather than tier A alone.
+**On-premise object stores publish their own capacity, drive health and healing state**, which no managed cloud offers at any price — so the one shape with no Terraform wrapper is the one whose adapters this repository can test end to end, and the one where object storage earns an exporter rather than the client alone.
 
 ### Pipelines (Alloy)
 
