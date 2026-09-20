@@ -191,21 +191,22 @@ That makes it dependent on those existing, so it sequences last within OO-M2.
 `env-*` and `infra-*` both stop at the cluster boundary.
 The two services a Materialize deployment cannot run without and does not run itself — the **metadata (consensus) database** and the **object store** — have no dashboard, no working alert, and no collection path beyond what their clients happen to publish.
 
-This is the subject of [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/), which owns the [External components row](#infrastructure-dashboards-infra-) above and the consensus-DB collection gap beneath it.
+Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and designed in [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/), which owns the [External components row](#infrastructure-dashboards-infra-) above and the consensus-DB collection gap beneath it.
 
 | Item | Milestone | Status |
 |---|---|---|
-| External dependency monitoring — design doc plus review | OO-M3 | 🔨 ([design doc](../design-docs/20260920-external-dependency-monitoring/) drafted; review outstanding) |
-| Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe | OO-M3 | ⬜ |
-| Tier A — client-side signals (`mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*`) into the query registry | OO-M3 | ⬜ |
-| The normalized `ext:*` recording-rule layer | OO-M3 | ⬜ |
-| `infra-deps` dashboard, with discovered-flavor rows and a negated fallback | OO-M3 | ⬜ |
-| Tier B — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M3 | ⬜ |
-| PostgreSQL, self-hosted CockroachDB and CNPG adapters | OO-M3 | ⬜ |
-| On-premise object-store adapter (MinIO / Garage / Ceph) | OO-M3 | ⬜ |
-| Version reporting (`ext:*_version_info`) across every adapter | OO-M3 | ⬜ |
-| Tier C — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M3 | ⬜ |
-| Terraform: read-only provider roles on the per-cloud monitoring modules | OO-M3 | ⬜ |
+| External dependency monitoring ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)) — design doc plus review | OO-M2 | 🔨 ([design doc](../design-docs/20260920-external-dependency-monitoring/) drafted; review outstanding) |
+| Split `persist-failures` into consensus, blob and persist-internal alerts | OO-M2 | ⬜ |
+| Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe. Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
+| Tier A — client-side signals (`mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*`) into the query registry | OO-M2 | ⬜ |
+| The normalized `ext:*` recording-rule layer | OO-M2 | ⬜ |
+| `infra-deps` dashboard, with discovered-flavor rows and a negated fallback | OO-M2 | ⬜ |
+| Tier B — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M2 | ⬜ |
+| PostgreSQL, self-hosted CockroachDB and CNPG adapters | OO-M2 | ⬜ |
+| On-premise object-store adapter (MinIO / Garage / Ceph) | OO-M2 | ⬜ |
+| Version reporting (`ext:*_version_info`) across every adapter | OO-M2 | ⬜ |
+| Tier C — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M2 | ⬜ |
+| Terraform: read-only provider roles on the per-cloud monitoring modules | OO-M2 | ⬜ |
 
 **The design's central claim is that the client's measurement of a dependency is the SLI and the dependency's own telemetry is the diagnosis.**
 `environmentd`, Loki and Thanos already time and count every call they make to both dependencies, identically on every cloud and with no credentials.
@@ -230,6 +231,16 @@ Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions
 **The design is the first consumer of the query registry's `rules:` branch**, which has no producer, leaving `pre-rendered/rules/{prometheus,thanos,loki}/` empty.
 The evaluated-rule path it also depends on is owned by [Alerting in self-managed](#rules--alerts), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
 Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
+
+**One alert covers both dependencies, and it is the shortest path to value here.**
+`persist-failures` `or`s sixteen counters at `severity: notice` with `for: 15m`, and its degraded text concedes that a sustained rate *points at object storage or consensus trouble*.
+Its severity and window are set by its least serious member, its runbook cannot be written because it covers two dependencies with different ones, and its description names CockroachDB on deployments that run PostgreSQL.
+Splitting it needs no adapter, no exporter and no new collection — only the evaluated-rule path everything else here waits on.
+
+**Failure counters report that a dependency broke, never that one is degrading.**
+Neither persist's consensus path nor its blob path emits latency or retry-rate, so the slow-and-getting-slower case that precedes an outage has no signal at all.
+Tiers B and C watch the database slow down and cannot attribute it to Materialize's traffic.
+That is an addition to the [Tier 2 upstream asks](#metrics-contract-upstream-dependency) rather than work that can land here, and it is the most important thing this design cannot do.
 
 **The Materialize persist bucket has no `AbortIncompleteMultipartUpload` lifecycle rule**, while the monitoring stack's own telemetry buckets do, on both AWS and GCS.
 Aborted multipart uploads leave parts that are billed, do not appear in an object listing, and are not counted by any bucket-size metric.
@@ -573,6 +584,7 @@ High-leverage asks, in priority order:
 - ⬜ Native **source/sink status** metrics (no genuine source exists today).
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
+- ⬜ **Latency and retry-rate on persist's consensus and blob paths.** Today both publish failure counters only, so a dependency that is degrading rather than broken is invisible from the one vantage point that could attribute it to Materialize's own traffic. Asked for by [DEP-233](https://linear.app/materializeinc/issue/DEP-233); see [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
   actually connects *through* are observable only as logs. Blocks the dashboards listed under

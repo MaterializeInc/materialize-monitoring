@@ -18,8 +18,11 @@ params:
 {{< param-table >}}
 
 This doc proposes how `materialize-monitoring` covers the two services a Materialize deployment cannot run without and does not run itself: the **metadata (consensus) database** and the **object store**.
-It is the design owed by the [External components row](../../roadmap/#infrastructure-dashboards-infra-) of the `infra-*` dashboard family, which today reads "object store yes, consensus DB effectively no" and is the last of that family's collection gaps without a plan.
-Nothing here is ticketed yet.
+It is the design owed by [DEP-233](https://linear.app/materializeinc/issue/DEP-233) (OO-M2), and it covers the [External components row](../../roadmap/#infrastructure-dashboards-infra-) of the `infra-*` dashboard family, which today reads "object store yes, consensus DB effectively no".
+
+DEP-233 names four pieces of scope, and this document answers all four.
+A **consensus view** and where it lives; **PostgreSQL metadata-backend health** and which source it standardizes on; **splitting consensus out of the catch-all `persist-failures` alert**; and **reconciling the CockroachDB alert set** rather than leaving it looking like coverage it does not provide.
+The object store is in scope beside the consensus database because the two share every mechanism below, and because the same catch-all alert conflates them.
 
 The central claim is that **the client's measurement of a dependency is the SLI, and the dependency's own telemetry is the diagnosis.**
 `environmentd` already times and counts every consensus round-trip and every blob operation it makes.
@@ -198,6 +201,11 @@ That moves the synthetic probe from a **Could** to a **Should**, on the strength
 
 Day 0 coverage is deliberately not a fourth tier.
 It runs once, it answers a yes-or-no question, and it belongs to the install rather than to the collection pipeline.
+
+**This is adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)) and is not the same question.**
+That one asks whether the *cluster* can run Materialize and this stack — cert-manager, the CSI driver, metrics-server, the load-balancer controller, the CRDs, and enough capacity for the profile in use.
+This one asks whether the two *external* dependencies are reachable with the credentials the deployment was given.
+They share an audience and a moment, and they should share a page when both exist; neither blocks the other.
 
 ## The dependency surface, as actually deployed
 
@@ -562,7 +570,14 @@ Three clients already measure the same bucket, and between them they cover every
 | Thanos | `thanos_objstore_bucket_operation_*`, `..._failures_total`, `..._duration_seconds` | Block upload, compaction, and store-gateway reads |
 
 The Loki and Thanos families follow the same `objstore` convention, which means one pair of recording rules covers both and the adapter is nearly free.
-The persist families are counters without a latency histogram, so `ext:objstore_request_duration_seconds` is recorded from Loki and Thanos and is absent for the persist bucket — an honest gap, and one worth raising upstream, since persist's own view of blob latency is the single most useful missing signal in this whole design.
+The persist families are counters without a latency histogram, so `ext:objstore_request_duration_seconds` is recorded from Loki and Thanos and is absent for the persist bucket.
+
+**That gap is the same one on the consensus side, and it is the most important thing this design cannot do.**
+A failure counter reports that a dependency *broke*; it never reports that one is *degrading*.
+The slow-and-getting-slower case that precedes an outage — rising commit latency, rising retry rates on the compare-and-swap loop — has no signal in persist at all, on either dependency.
+Tiers B and C see the database slowing down and cannot attribute it to Materialize's traffic; only persist can say what it experienced.
+
+This belongs in the [Tier 2 upstream asks](https://linear.app/materializeinc/issue/DEP-207) rather than in any work item here, and DEP-233 says the same.
 
 Two conventions apply to reading these.
 
@@ -763,6 +778,26 @@ An instance at 95% pages the same way whichever workload filled it, and only the
 **The version alert is a notice and has no threshold this repository can set.**
 What counts as out of date is a support policy rather than a metric, so the rule ships as a comparison against a values-supplied floor and stays silent when none is set.
 
+### Splitting the catch-all
+
+`persist-failures` is the only alert that fires on either dependency today, and it is one alert for sixteen counters.
+It `or`s them together at `severity: notice` with `for: 15m`, and its own degraded text concedes the ambiguity: a sustained rate *points at object storage or consensus trouble*.
+
+The `metric` label names which counter tripped, which is better than nothing and is not a substitute for separate alerts.
+
+| Problem | Consequence |
+|---|---|
+| One alert means either dependency | The two have different runbooks, and a page that could be either is a page nobody can act on directly |
+| `severity: notice` for all sixteen | Consensus failing is not a notice. The severity is set by the least serious member of the set |
+| `for: 15m` for all sixteen | Right for `compaction_noop`, far too slow for consensus unavailability |
+| The degraded text names CockroachDB | Stale on every deployment the shipped wrappers produce, and the first thing an operator reads |
+
+**Consensus failures and blob failures become their own alerts**, at their own severities, with their own runbooks, reading the normalized layer.
+What remains of `persist-failures` keeps the counters that are genuinely persist-internal — compaction, columnar validation, pushdown statistics — and stops claiming to cover dependencies that now have their own coverage.
+Its description is corrected in the same pass.
+
+This is the piece of DEP-233 with the shortest path to value: it needs no adapter, no exporter and no new collection, only the evaluated-rule path that everything else here also waits on.
+
 ### How these reach a human
 
 [Alerting in self-managed](https://github.com/MaterializeInc/materialize-monitoring/pull/356) is the design for the path, and three of its findings land directly on this one.
@@ -777,6 +812,16 @@ A rule renderer alone would render, apply, pass CI, and do nothing.
 Every alert here also owes a runbook under `operating/runbooks/`, and the dependency alerts are the ones where the runbook carries most of the value — "CockroachDB is out of disk" is not an instruction, and the existing alert descriptions already contain the instruction that would become one.
 
 ## Dashboards
+
+DEP-233 leaves open where the consensus view belongs — a tab on `env-top`, a drilldown beside the others, or something the Troubleshooting dashboard ([DEP-208](https://linear.app/materializeinc/issue/DEP-208)) reaches into.
+
+**It belongs in `infra-*`, as its own dashboard, for the same reason `infra-net` does.**
+The database and the bucket belong to the platform rather than to an environment, they are shared by every environment on the cluster, and their series carry no environment label to scope by.
+An `env-top` tab would be the only tab there that cannot honour the dashboard's own environment variable.
+
+**Troubleshooting is the entry point, not the owner.**
+"Consensus is slow" is a symptom, and the roadmap already places symptom-first entry in the Troubleshooting dashboard with every panel linking onward into the matching drilldown.
+That makes `infra-deps` the link target rather than a competitor, and it is the same relationship `env-logs` and the other drilldowns already have.
 
 One dashboard, `infra-deps`, in the `infra-*` family, with a tab per dependency and a summary that answers the triage question first.
 
@@ -840,6 +885,7 @@ None of this is ticketed yet.
 | **Day 0: render-time validation and an install-time connectivity probe** | The most common incident class, and the one no metric tier reaches. The existing pre-install `alloy validate` hook is the shape | **Blocking** — it is the largest gap by incident count |
 | **Tier-A queries and rules** — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the normalized contract | The default tier, and the only one that works everywhere. Nothing in the registry reads these families today | **Blocking** |
 | **`infra-deps` dashboard**, Summary tab first, with `only_when_variable` flavor rows and a negated fallback | The deliverable. The mechanism exists — `infra-net` shipped it — so this is reuse rather than invention | **Blocking** |
+| **Split `persist-failures`** into consensus, blob, and persist-internal alerts, and correct its CockroachDB-naming description | DEP-233 scope. One alert for sixteen counters at `notice` / `for: 15m` cannot be acted on, and its severity and window are set by its least serious member | **Blocking**, and the shortest path to value — no adapter or exporter needed |
 | **A `postgres_exporter` subchart**, multi-target, with a custom query for transaction-ID age, an unscoped `pg_database_size_bytes`, and a least-privilege grant documented | Tier B for the flavor every wrapper provisions. A deployment has several databases to watch, and the default exporter publishes neither the wraparound signal nor a version | **Blocking** for tier B |
 | **A CNPG adapter** — a scrape source and recording rules, no exporter | CNPG is arriving in customer clusters and needs no exporter deployed. The cheapest adapter in the set | Should land with the PostgreSQL adapter |
 | **An on-premise object-store adapter** (MinIO / Garage / Ceph) | The only deployments where object storage can fill up or lose a disk, and the only ones where the store publishes its own health | Blocking for the on-premise shape |
@@ -889,6 +935,7 @@ Tier 3 is where the provider pull can be proven against a real account, which is
 - `reference/internal/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
 - `reference/internal/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
 - The **CockroachDB alert descriptions**, which should say which flavor they target. They currently read as general CockroachDB coverage.
+- The **`persist-failures` degraded text**, which names CockroachDB as the likely cause on deployments that run PostgreSQL.
 - `operating/runbooks/` — one per dependency alert, per the alerting design. The remediation text already in the existing CockroachDB alert descriptions is most of the first two.
 - **A Day 0 dependency-preflight page**, since the failure it describes happens before anyone has a dashboard to read.
 - `docs/content/reference/internal/dashboard/style-guidelines.md` — the discovered-variable section gains a second worked example if the flavor mechanism diverges from the CNI one.
@@ -903,6 +950,7 @@ Four questions from the first draft are settled and are recorded here rather tha
 | Whether `postgres_exporter` is a subchart, an Alloy component, or a gateway sidecar | **A subchart.** A deployment has several databases to watch and the gateway's scaling profile is unrelated to an exporter's. [The reasoning](#the-exporter-is-a-subchart) |
 | Whether the Provider content renders conditionally | **Yes, and it is no longer a departure.** `infra-net` shipped the mechanism, including the negated fallback that makes it better than the absent tab first proposed |
 | Whether adapter applicability is a cloud flag | **A capability tag**, shared with the alerting design rather than reimplemented |
+| Where the consensus view lives (DEP-233 scope 1) | **`infra-deps`, in the `infra-*` family.** The dependency belongs to the platform, not to an environment, and Troubleshooting links into it rather than owning it |
 
 - [ ] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides.
 - [ ] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious.
