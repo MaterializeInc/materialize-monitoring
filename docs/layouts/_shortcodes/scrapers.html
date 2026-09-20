@@ -28,7 +28,14 @@
     {{- range $found }}
       {{- $content := .Content }}
       {{- $contentHash := hash.XxHash $content }}
-      {{- $data := transform.Unmarshal $content }}
+      {{/*
+        Unmarshal the *resource*, not its content string. Given a string, Hugo
+        guesses the format from the first bytes and falls back to CSV, which
+        fails on any YAML whose leading comment block does not look like YAML
+        to that heuristic -- the CNI monitors are the first scrapers to trip it.
+        Given the resource, Hugo uses the media type from the .yaml extension.
+      */}}
+      {{- $data := transform.Unmarshal . }}
       {{- $apiVersion := $data.apiVersion | default "" }}
       {{- $kind := $data.kind | default "Classic ScrapeConfig" }}
       {{- if $apiVersion }}

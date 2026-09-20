@@ -46,6 +46,8 @@ Frequently needed deep links into the Style Guidelines:
   — Loki-discovered pickers, `all_value` rules, the non-empty-matcher anchor, and how exclusion switches are wired
 - [Time-range guards on expensive rows](../../../docs/content/reference/internal/dashboard/style-guidelines.md#time-range-guards-on-expensive-rows)
   — the paired show/hide rows that keep volume panels off a month-wide range
+- [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable)
+  — how `infra-net` shows a cluster its own CNI, and why the negated fallback row is not optional
 - [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
   — labels vs structured metadata, and why an event's namespace is the involved object's
 - [Deployment generations (blue/green)](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-generations-bluegreen)
@@ -104,6 +106,7 @@ from.
 | `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
 | `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
 | `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
+| `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -324,6 +327,31 @@ usually what the reader came for. The journal is where the explanation is once a
 The identifier join this dashboard rests on — and the vetting status of the node query families — is a convention
 rather than state, so it lives in the
 [style guide](../../../docs/content/reference/internal/dashboard/style-guidelines.md#node-identifiers-across-three-families).
+
+## `infra-net` tabs
+
+The third of the `infra-*` family, and the first dashboard here whose layout is not fixed.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Kubernetes | `kubernetes.rs` |
+| 3 | CNI | `cni.rs` |
+| 4 | Node Networking | `nodes.rs` |
+| 5 | Cloud Networking | `cloud.rs` |
+| 6 | Security | `security.rs` |
+
+Three things about it are not re-derivable by reading the modules:
+
+- **The CNI and Security vendor rows render on a discovered variable.** The mechanism, and the rules for using it
+  again, are in the style guide under
+  [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable).
+- **`$nodeList` holds node-exporter addresses, not node names**, which is what buys `node-health.yaml` and
+  `node-debug.yaml` unchanged across the fleet. Nothing here may scope a `node` label with it; a test asserts that.
+- **Host-network pods are excluded from every cAdvisor rollup**, via `%%{excludeHostNetworkPods}`. Left in, a
+  cluster-wide sum over-counts by an order of magnitude — see the header of `packages/queries/infra-networking.yaml`.
+
+Cloud Networking is half-stubbed on purpose; the two text rows name the provider metrics that would fill them.
 
 ## Notes on the trickier panels
 

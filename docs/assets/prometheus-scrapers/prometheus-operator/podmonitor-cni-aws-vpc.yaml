@@ -1,0 +1,62 @@
+# AWS VPC CNI (`aws-node`), the default dataplane on EKS.
+#
+# Two containers in one pod, so two endpoints: `aws-node` runs the IPAM daemon
+# and `aws-eks-nodeagent` enforces NetworkPolicy. The nodeagent is only present
+# when the cluster enabled network policy, and a PodMonitor endpoint naming a
+# port no container declares produces no target -- so the second endpoint is
+# self-disabling rather than a source of failed scrapes.
+#
+# Verified against a live EKS 1.34 cluster running amazon-k8s-cni v1.21.1 and
+# aws-network-policy-agent v1.3.1.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cni-aws-vpc
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: cni-aws-vpc
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: aws-node
+  podMetricsEndpoints:
+    # IPAM: ENIs attached, addresses assigned, and how close the node is to
+    # running out of either.
+    - port: metrics
+      path: /metrics
+      relabelings:
+        # The dataplane's identity, and the whole of the dashboard's CNI
+        # detection. Every series this scrape collects carries it, so
+        # `label_values(up{network_component=~".+"}, network_component)` answers
+        # "what is this cluster's networking" without the dashboard having to
+        # know one vendor's metric names in order to rule out another's.
+        - targetLabel: network_component
+          replacement: aws-vpc-cni
+        # `node` rather than the pod name: every one of these metrics describes
+        # the machine, not the daemon, and the node is what the rest of the
+        # dashboard joins on.
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+      metricRelabelings:
+        # One series per assigned pod IP. Seventeen on an idle node here, and
+        # linear in pod density -- with prefix delegation a single node can hold
+        # several hundred, multiplied by every node in the cluster. Nothing can
+        # be asked of a per-address gauge that `awscni_assigned_ip_addresses`
+        # does not answer in one series, so it is dropped at the source rather
+        # than carried to Thanos and aggregated away on every query.
+        - sourceLabels: [__name__]
+          regex: awscni_assigned_ip_per_cidr
+          action: drop
+    # NetworkPolicy enforcement: what the eBPF agent actually dropped. This is
+    # the half `kube_networkpolicy_*` cannot answer -- kube-state-metrics
+    # reports the policies that exist, not the packets they stopped.
+    - port: agentmetrics
+      path: /metrics
+      relabelings:
+        - targetLabel: network_component
+          replacement: aws-vpc-cni
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node

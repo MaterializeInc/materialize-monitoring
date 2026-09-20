@@ -244,8 +244,108 @@ pub struct Row {
     hide_header: bool,
     collapsed: bool,
     /// Whether this row renders at all, decided by Grafana at view time.
-    time_range: Option<TimeRangeCondition>,
+    condition: Option<RowCondition>,
     grid: AutoGrid,
+}
+
+/// What a row's visibility can depend on.
+///
+/// Grafana allows several conditions in one group, ANDed or ORed; a row here
+/// carries at most one, because every use so far is a single test and a builder
+/// offering combinations would be speculative.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RowCondition {
+    /// The selected time range, relative to a threshold.
+    TimeRange(TimeRangeCondition),
+    /// The value of a dashboard variable.
+    Variable(VariableCondition),
+}
+
+impl RowCondition {
+    fn build(self) -> dashboardv2::ConditionalRenderingGroupKind {
+        match self {
+            RowCondition::TimeRange(c) => c.build(),
+            RowCondition::Variable(c) => c.build(),
+        }
+    }
+}
+
+/// Renders a row only when a dashboard variable matches a pattern.
+///
+/// This is how a dashboard adapts to what a cluster actually runs. `infra-net`
+/// discovers its CNI into `$networkComponentList` and gives each vendor's row a
+/// [`VariableCondition::Matches`] on that variable, so a cluster sees the rows
+/// for its own dataplane and none of the others — without the dashboard
+/// shipping one variant per vendor, and without an operator choosing from a
+/// list of things they may not know the answer to.
+///
+/// The pattern is matched against the variable's *interpolated* value, which is
+/// a substring test in practice. That is what lets a multi-select variable work:
+/// a row asking for `cilium` still renders when the value is
+/// `cilium,kube-proxy`.
+///
+/// Always pair a set of these with one [`VariableCondition::DoesNotMatch`] row
+/// covering the union, for the same reason a time-range guard is paired: a tab
+/// where every row's condition failed is indistinguishable from a broken one,
+/// and the reader needs to be told which case they are in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VariableCondition {
+    /// Show when the variable's value matches this regex.
+    Matches {
+        /// Variable name, without the `$`.
+        variable: &'static str,
+        /// A regex, matched against the variable's current value.
+        pattern: String,
+    },
+    /// Show when the variable's value does *not* match this regex.
+    DoesNotMatch {
+        /// Variable name, without the `$`.
+        variable: &'static str,
+        /// A regex, matched against the variable's current value.
+        pattern: String,
+    },
+}
+
+impl VariableCondition {
+    fn build(self) -> dashboardv2::ConditionalRenderingGroupKind {
+        let (variable, pattern, operator) = match self {
+            VariableCondition::Matches { variable, pattern } => (
+                variable,
+                pattern,
+                dashboardv2::ConditionalRenderingVariableSpecOperator::Matches,
+            ),
+            VariableCondition::DoesNotMatch { variable, pattern } => (
+                variable,
+                pattern,
+                dashboardv2::ConditionalRenderingVariableSpecOperator::NotMatches,
+            ),
+        };
+        dashboardv2::ConditionalRenderingGroupKind {
+            kind: "ConditionalRenderingGroup".to_string(),
+            spec: dashboardv2::ConditionalRenderingGroupSpec {
+                // One item, so the operator is immaterial -- `and` is what
+                // Grafana writes for a single condition.
+                condition: dashboardv2::ConditionalRenderingGroupSpecCondition::And,
+                items: vec![
+                    dashboardv2::ConditionalRenderingGroupSpecItemsItem::VariableKind(
+                        dashboardv2::ConditionalRenderingVariableKind {
+                            kind: "ConditionalRenderingVariable".to_string(),
+                            spec: dashboardv2::ConditionalRenderingVariableSpec {
+                                variable: variable.to_string(),
+                                operator,
+                                value: pattern,
+                            },
+                        },
+                    ),
+                ],
+                // Both directions are expressed by the *operator* rather than by
+                // flipping visibility, unlike the time-range pair: Grafana offers
+                // `notMatches` directly, and a hide-group would read as a double
+                // negative in the JSON.
+                visibility: dashboardv2::ConditionalRenderingGroupSpecVisibility::Show,
+            },
+        }
+    }
 }
 
 /// Renders a row only for time ranges on one side of a threshold.
@@ -311,7 +411,7 @@ impl Row {
             title: title.into(),
             hide_header: false,
             collapsed: false,
-            time_range: None,
+            condition: None,
             grid: AutoGrid::new(3),
         }
     }
@@ -341,7 +441,7 @@ impl Row {
     ///
     /// `value` is a Grafana duration (`7d`, `24h`).
     pub fn only_within(mut self, value: &'static str) -> Self {
-        self.time_range = Some(TimeRangeCondition::AtMost(value));
+        self.condition = Some(RowCondition::TimeRange(TimeRangeCondition::AtMost(value)));
         self
     }
 
@@ -350,7 +450,43 @@ impl Row {
     /// The complement of [`Row::only_within`] at the same threshold, so the two
     /// cover every range with no gap and no overlap.
     pub fn only_beyond(mut self, value: &'static str) -> Self {
-        self.time_range = Some(TimeRangeCondition::LongerThan(value));
+        self.condition = Some(RowCondition::TimeRange(TimeRangeCondition::LongerThan(
+            value,
+        )));
+        self
+    }
+
+    /// Render this row only when `variable`'s value matches `pattern`.
+    ///
+    /// The mechanism behind a dashboard that adapts to what a cluster runs
+    /// rather than asking. See [`VariableCondition`] for why these come in sets
+    /// with a [`Row::only_unless_variable`] fallback.
+    pub fn only_when_variable(
+        mut self,
+        variable: &'static str,
+        pattern: impl Into<String>,
+    ) -> Self {
+        self.condition = Some(RowCondition::Variable(VariableCondition::Matches {
+            variable,
+            pattern: pattern.into(),
+        }));
+        self
+    }
+
+    /// Render this row only when `variable`'s value does *not* match `pattern`.
+    ///
+    /// The complement of [`Row::only_when_variable`]: give it the union of every
+    /// pattern its siblings match, and it is what the reader sees when none of
+    /// them fired.
+    pub fn only_unless_variable(
+        mut self,
+        variable: &'static str,
+        pattern: impl Into<String>,
+    ) -> Self {
+        self.condition = Some(RowCondition::Variable(VariableCondition::DoesNotMatch {
+            variable,
+            pattern: pattern.into(),
+        }));
         self
     }
 
@@ -377,7 +513,7 @@ impl Row {
                     self.grid.build(sink)?,
                 ),
                 fill_screen: None,
-                conditional_rendering: self.time_range.map(TimeRangeCondition::build),
+                conditional_rendering: self.condition.map(RowCondition::build),
                 repeat: None,
                 variables: Vec::new(),
             },
@@ -593,6 +729,74 @@ mod tests {
         assert_eq!(grid.spec.items.len(), 2);
         assert_eq!(grid.spec.items[0].spec.element.name, "a");
         assert_eq!(grid.spec.items[0].spec.element.kind, "ElementReference");
+    }
+
+    /// The condition a row was given reaches the JSON Grafana reads.
+    fn condition_of(row: Row) -> serde_json::Value {
+        let assembled = Layout::rows([row.grid(grid_with(&["a"]))])
+            .assemble()
+            .expect("assemble");
+        let json = serde_json::to_value(&assembled.layout).expect("serialize");
+        json.pointer("/spec/rows/0/spec/conditionalRendering")
+            .cloned()
+            .expect("a conditional rendering group")
+    }
+
+    #[test]
+    fn a_variable_condition_names_its_variable_and_operator() {
+        let group =
+            condition_of(Row::new("Cilium").only_when_variable("networkComponentList", "cilium"));
+        let item = group.pointer("/spec/items/0").expect("one item");
+        assert_eq!(item["kind"], "ConditionalRenderingVariable");
+        assert_eq!(item["spec"]["variable"], "networkComponentList");
+        assert_eq!(item["spec"]["operator"], "matches");
+        assert_eq!(item["spec"]["value"], "cilium");
+    }
+
+    #[test]
+    fn the_negated_form_flips_the_operator_and_not_the_visibility() {
+        // Unlike the time-range pair, which expresses its negation by hiding:
+        // Grafana offers `notMatches` directly, and a hide-group carrying a
+        // negative operator would read as a double negative.
+        let group = condition_of(
+            Row::new("None").only_unless_variable("networkComponentList", "aws-vpc-cni|cilium"),
+        );
+        assert_eq!(group["spec"]["visibility"], "show");
+        assert_eq!(group["spec"]["items"][0]["spec"]["operator"], "notMatches");
+        assert_eq!(
+            group["spec"]["items"][0]["spec"]["value"],
+            "aws-vpc-cni|cilium"
+        );
+    }
+
+    #[test]
+    fn the_time_range_guard_still_negates_by_visibility() {
+        // The two condition kinds express negation differently, which is easy to
+        // "tidy" into one shape. Grafana has no `longerThan` operator, so the
+        // time-range pair genuinely needs the visibility flip.
+        let within = condition_of(Row::new("Volume").only_within("7d"));
+        let beyond = condition_of(Row::new("Volume").only_beyond("7d"));
+        assert_eq!(within["spec"]["visibility"], "show");
+        assert_eq!(beyond["spec"]["visibility"], "hide");
+        assert_eq!(
+            within["spec"]["items"][0]["spec"]["value"],
+            beyond["spec"]["items"][0]["spec"]["value"]
+        );
+    }
+
+    #[test]
+    fn a_row_with_no_condition_emits_none() {
+        // Absent rather than a permissive group: every row in the repo that is
+        // not guarded must serialize exactly as it did before conditions existed.
+        let assembled = Layout::rows([Row::new("Plain").grid(grid_with(&["a"]))])
+            .assemble()
+            .expect("assemble");
+        let json = serde_json::to_value(&assembled.layout).expect("serialize");
+        assert!(
+            json.pointer("/spec/rows/0/spec/conditionalRendering")
+                .is_none_or(serde_json::Value::is_null),
+            "{json}"
+        );
     }
 
     #[test]

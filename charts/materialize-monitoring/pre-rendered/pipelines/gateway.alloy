@@ -218,6 +218,84 @@ prometheus.scrape "kubelet_cadvisor" {
 	}
 }
 
+discovery.kubernetes "kube_proxy_pods" {
+	role = "pod"
+
+	selectors {
+		role  = "pod"
+		label = "k8s-app=kube-proxy"
+	}
+
+	attach_metadata {
+		node = true
+	}
+}
+
+discovery.relabel "kube_proxy" {
+	targets = discovery.kubernetes.kube_proxy_pods.targets
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_ip",
+		]
+		target_label = "__address__"
+		regex = "(.+)"
+		replacement = "${1}:10249"
+	}
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"__meta_kubernetes_pod_phase",
+		]
+		regex = "Pending|Succeeded|Failed"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_node_name",
+		]
+		target_label = "node"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_namespace",
+		]
+		target_label = "namespace"
+	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__meta_kubernetes_pod_name",
+		]
+		target_label = "pod"
+	}
+
+	rule {
+		action       = "replace"
+		target_label = "network_component"
+		replacement  = "kube-proxy"
+	}
+}
+
+prometheus.scrape "kube_proxy" {
+	targets = discovery.relabel.kube_proxy.output
+	forward_to = [
+		otelcol.receiver.prometheus.inputBridge.receiver,
+	]
+	scrape_interval = coalesce(sys.env("GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL"), "60s")
+	job_name = "kube-proxy"
+
+	clustering {
+		enabled = true
+	}
+}
+
 otelcol.exporter.loki "bridge" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,

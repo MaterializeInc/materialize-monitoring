@@ -5,7 +5,7 @@ weight: 1
 
 # Available Dashboards
 
-Five dashboards ship today: three scoped to a Materialize environment (`env-*`), and two to the platform underneath it (`infra-*`).
+Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring` chart, you do not need to download anything — `dashboards.selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -69,6 +69,26 @@ Also Loki-only.
 Where `env-logs` opens on the Materialize namespaces, this one subtracts them, so each dashboard answers for one side of the deployment.
 
 {{< download-dashboards name="infra-logs" >}}
+
+### Infrastructure Networking (`infra-net`)
+
+How traffic moves through the cluster, and what stops it, across six tabs: Overview, Kubernetes, CNI, Node Networking, Cloud Networking, and Security.
+Pod and Service traffic come from cAdvisor and kube-state-metrics and are the same everywhere.
+The nodes' own interfaces, connection tables, and kernel receive path are read across the whole fleet rather than one machine at a time, which is the difference between this dashboard's Node Networking tab and `infra-nodes`.
+
+**The CNI tab adapts to the cluster it is open on.**
+A cluster's container network interface differs per cloud, and the metrics describing each share no names with the others.
+The scrape configs label every series they collect with the dataplane they came from, the dashboard discovers that label into its `Dataplane` picker, and each vendor's rows render only where that vendor was found.
+A cluster whose CNI exports nothing gets a single row explaining which case it is in, because that is not always a fault: GKE Dataplane V2 runs Cilium and disables the agent's Prometheus endpoint, so nothing can be collected from it.
+
+The Security tab is split the same way and for the same reason.
+Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
+A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
+
+Cloud Networking is partly stubbed.
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#collection-gaps-these-depend-on).
+
+{{< download-dashboards name="infra-net" >}}
 
 ## What the annotations mean
 

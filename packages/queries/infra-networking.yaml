@@ -1,0 +1,713 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Cluster networking queries, for the platform underneath Materialize.
+
+description: |
+  How traffic moves through the cluster, and what stops it.
+
+  Where `infra-nodes` asks what one machine is doing, this asks what the
+  *network* is doing across all of them: what pods are sending, what Kubernetes
+  is routing, what the CNI is doing underneath, and which packets a policy
+  dropped.
+
+  Three families meet here, and knowing which is which is most of what makes
+  this file readable:
+
+  * **cAdvisor** (`container_network_*`) is the only per-pod view. It is always
+    present, because the gateway scrapes every kubelet. Note that its series
+    split in two by whether `namespace` is set: with a namespace they describe a
+    pod, and without one they carry `id="/"` and describe the *node's* root
+    cgroup — every interface on the machine, including the veth of every pod on
+    it. Panels must pick one and say which.
+
+    **Host-network pods are excluded from every rollup here, and must be.**
+    cAdvisor reads a container's counters from its network namespace, and a
+    host-network pod's namespace is the node's — so such a pod reports all 31 of
+    a reference node's interfaces rather than its own one, and its "pod traffic"
+    is the whole machine's, counting every other pod's veth. Several DaemonSets
+    do this on every node. Left in, a cluster-wide sum read 27,831 KiB/s against
+    a true 1,700, and the ten busiest pods were all host-network DaemonSets
+    reporting their node. `%%{excludeHostNetworkPods}` is the `unless` clause
+    that drops them; it appends to a `sum by (namespace, pod)` and cannot be a
+    label matcher, because being host-network is a property of a pod's whole
+    series set rather than of any one series.
+
+  * **kube-state-metrics** (`kube_service_*`, `kube_endpointslice_*`,
+    `kube_networkpolicy_*`) is the declared intent: what Services exist, what is
+    behind them, and which policies were written. It says nothing about whether
+    any of it works.
+
+  * **The CNI** is the only family that can say what the dataplane actually did
+    — which packet a policy dropped, how many addresses are left, whether the
+    datapath is erroring. It is also the only family that is not guaranteed to
+    be there, which is why every query reading it is on a row the dashboard
+    shows only when that vendor was detected. See "Dataplane detection" below.
+
+  `node_*` is a fourth family and deliberately *not* redefined here:
+  `node-health.yaml` and `node-debug.yaml` already carry it, every one of their
+  expressions is scoped by `instance=~"$nodeList"`, and `infra-net` defines that
+  variable as a multi-select across the fleet rather than the single address
+  `infra-nodes` resolves it to. The same expressions therefore answer for one
+  node or for all of them depending only on the dashboard that asks.
+
+  ## Dataplane detection
+
+  A cluster's CNI is not something this repository can know: EKS defaults to the
+  AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium, and a
+  bring-your-own cluster to anything at all. Rather than ask the operator, the
+  CNI monitors in `packages/prometheus-scrapers/` stamp every series they
+  collect with a `network_component` label, and the dashboard discovers the
+  answer with `label_values(up{network_component=~".+"}, network_component)`.
+
+  That puts the vendor knowledge in the scrape config, where it already had to
+  live, and leaves the queries below reading ordinary vendor metric names.
+
+  Two conventions apply throughout:
+
+  * **Scope literally, not by parameter.** `namespace=~"$namespaceList"` and
+    `instance=~"$nodeList"` are written out, the same way `infra-nodes.yaml`
+    writes `node="$node"`. A dashboard using these must define the variables; no
+    render parameter supplies them.
+
+    `$nodeList` holds node-exporter *addresses*, inherited from the node query
+    families. Nothing here scopes on a `node` label, which every other family
+    spells as the Kubernetes *name* -- the two cannot be filtered by one picker,
+    and the node-exporter form is the one that buys the 87 vetted expressions in
+    `node-health.yaml` and `node-debug.yaml`.
+
+  * **Deduplicate across scrape replicas.** `instance` is the scrape target, so
+    a bare `sum` over an HA kube-state-metrics adds each object once per
+    replica. Aggregations keep `instance` in the inner step and collapse it with
+    an outer `max`.
+
+  `%%{interval}` is the rate window, including its brackets.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- Overview ------------------------------------------------------------
+  - id: infra.net.overview.dataplane
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        Which networking components this cluster is running, as discovered
+        rather than configured.
+      nominal: |
+        One CNI, and on most clusters `kube-proxy` beside it. Two CNIs at once
+        is a migration in progress.
+      degraded: |
+        **Empty does not mean the cluster has no CNI** — it always has one. It
+        means nothing is collecting from it, which is the normal reading on GKE
+        Dataplane V2, where Google disables the Cilium agent's Prometheus
+        endpoint. See _CNI -> No dataplane metrics_ for what is and is not
+        possible per vendor.
+      notes: |
+        The label comes from the scrape config rather than from the exporter, so
+        this answers "what are we collecting from" and not "what is installed".
+        Those differ exactly when a CNI is present but unscraped.
+    promQL: |
+      max by (network_component) (up{network_component=~".+"})
+
+  - id: infra.net.overview.throughput
+    stability: best-effort
+    description:
+      summary: |
+        Total bytes per second in and out of the cluster's pods.
+      nominal: |
+        Tracks the workload. Materialize sources and sinks dominate it on a busy
+        deployment.
+      degraded: |
+        A cliff in both directions at once is usually a collection problem
+        rather than a traffic one — check that cAdvisor is still being scraped
+        before reading it as an outage.
+      notes: |
+        Pods only. The node's own traffic is on _Node Networking_, and it is the
+        larger number, since it includes everything the machine sends on its own
+        behalf.
+
+        Excludes `lo`: a pod talking to itself is not traffic anyone is asking
+        about here, and on some workloads it is the majority of the bytes.
+    promQL:
+      - |
+        sum (
+          sum by (namespace, pod) (
+            rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
+        )
+      - |
+        sum (
+          sum by (namespace, pod) (
+            rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
+        )
+
+  - id: infra.net.overview.errors
+    stability: best-effort
+    description:
+      summary: |
+        Interface errors and dropped packets across every pod in the cluster.
+      nominal: Zero, and it usually is exactly zero rather than merely low.
+      degraded: |
+        Anything sustained here is worth chasing. Drops are far more common than
+        errors and usually mean a receive queue overflowed rather than anything
+        being wrong with the wire — _Node Networking -> Kernel_ says whether the
+        softirq budget was the limit.
+      notes: |
+        Errors and drops are summed separately because they fail differently: an
+        error is the interface rejecting a frame, a drop is the kernel choosing
+        not to keep one.
+    promQL:
+      - |
+        sum (
+          sum by (namespace, pod) (
+            rate(container_network_receive_errors_total{namespace=~"$namespaceList"}%%{interval})
+            + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}%%{interval})
+          ) %%{excludeHostNetworkPods}
+        )
+      - |
+        sum (
+          sum by (namespace, pod) (
+            rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+            + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+          ) %%{excludeHostNetworkPods}
+        )
+
+  - id: infra.net.overview.top_talkers
+    stability: best-effort
+    description:
+      summary: |
+        The ten pods moving the most traffic, in and out combined.
+      nominal: |
+        Materialize's `environmentd` and `clusterd` pods, plus the monitoring
+        stack's own ingesters. A source or sink pulling from outside the cluster
+        will out-send everything else while it hydrates.
+      degraded: |
+        A pod here that you cannot account for is the finding. The usual
+        surprise is a log or metric shipper duplicating a destination.
+      notes: |
+        Ten is a display choice, not a property of the data — a pod just outside
+        the cut is not meaningfully quieter than the tenth.
+    promQL: |
+      topk(10,
+        sum by (namespace, pod) (
+          rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          + rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+        ) %%{excludeHostNetworkPods}
+      )
+
+  # --- Kubernetes ----------------------------------------------------------
+  - id: infra.net.k8s.throughput.by_namespace
+    stability: best-effort
+    description:
+      summary: |
+        Pod traffic split by namespace, received and transmitted.
+      nominal: |
+        The Materialize namespaces carry most of it on a deployment doing work,
+        with the monitoring namespace second.
+      degraded: |
+        A namespace climbing without a matching change in what it runs is worth
+        a look — the common causes are a retry loop and a newly added replica
+        re-reading a source from the beginning.
+    promQL:
+      - |
+        sum by (namespace) (
+          sum by (namespace, pod) (
+            rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
+        )
+      - |
+        sum by (namespace) (
+          sum by (namespace, pod) (
+            rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
+          ) %%{excludeHostNetworkPods}
+        )
+
+  - id: infra.net.k8s.errors.by_namespace
+    stability: best-effort
+    description:
+      summary: |
+        Which namespace's pods are losing packets.
+      nominal: Zero everywhere.
+      degraded: |
+        Losses concentrated in one namespace point at that workload or its
+        node; losses spread evenly across every namespace point at the node or
+        the network under all of them. Check _Node Networking_ next, which is
+        where the difference shows.
+    promQL: |
+      sum by (namespace) (
+        sum by (namespace, pod) (
+          rate(container_network_receive_errors_total{namespace=~"$namespaceList"}%%{interval})
+          + rate(container_network_transmit_errors_total{namespace=~"$namespaceList"}%%{interval})
+          + rate(container_network_receive_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+          + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
+        ) %%{excludeHostNetworkPods}
+      )
+
+  - id: infra.net.k8s.services.by_type
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        Services in the cluster, by how they are exposed.
+      nominal: |
+        Mostly `ClusterIP`. Each `LoadBalancer` is a real load balancer at the
+        cloud provider, billed and provisioned — see _Cloud Networking_.
+      notes: |
+        `NodePort` and `LoadBalancer` are the two that reach outside the
+        cluster, so their count is the size of the deployment's external
+        surface.
+    promQL: |
+      max by (type) (
+        sum by (instance, type) (kube_service_spec_type)
+      )
+
+  - id: infra.net.k8s.endpoints.by_namespace
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        How many endpoints back the Services in each namespace.
+      nominal: |
+        At least one per Service. A Service with several replicas behind it has
+        one endpoint each.
+      degraded: |
+        **Zero is the interesting number, and it is invisible here** — a Service
+        with no endpoints contributes nothing rather than a zero. Read this
+        beside _Services by Type_: a namespace with Services and a suspiciously
+        low endpoint count has some that resolve to nothing, which presents to a
+        client as connection refused rather than as a timeout.
+      notes: |
+        Counts endpoints, not ready endpoints. A pod that is running but failing
+        its readiness probe is removed from the EndpointSlice, so it is already
+        excluded.
+    promQL: |
+      max by (namespace) (
+        sum by (instance, namespace) (kube_endpointslice_endpoints{namespace=~"$namespaceList"})
+      )
+
+  - id: infra.net.k8s.proxy.sync_latency
+    stability: experimental
+    description:
+      summary: |
+        How long kube-proxy takes to turn a Service change into rules on the
+        node.
+      nominal: |
+        Well under a second. It rises with the number of Services and endpoints
+        in the cluster rather than with traffic.
+      degraded: |
+        Seconds here means a Service change takes seconds to take effect, which
+        presents as connections to a just-scaled workload failing for longer
+        than the rollout should have taken. It is one of the few explanations
+        for "the pods are healthy but the Service is not".
+      notes: |
+        Only collected where kube-proxy runs. GKE Dataplane V2 and any Cilium
+        install in kube-proxy-replacement mode have none, and this is empty
+        there by design rather than by fault.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(kubeproxy_sync_proxy_rules_duration_seconds_bucket%%{interval})
+        )
+      )
+
+  - id: infra.net.k8s.proxy.programming_latency
+    stability: experimental
+    description:
+      summary: |
+        End-to-end time from an endpoint changing to the node's rules reflecting
+        it.
+      nominal: A few seconds at most.
+      degraded: |
+        This is the number a user would feel. Unlike sync duration it includes
+        the time spent waiting to be told, so it is the honest measure of how
+        stale a node's view of a Service can be.
+      notes: |
+        Empty wherever kube-proxy is not running; see
+        `infra.net.k8s.proxy.sync_latency`.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(kubeproxy_network_programming_duration_seconds_bucket%%{interval})
+        )
+      )
+
+  # --- CNI: AWS VPC --------------------------------------------------------
+  - id: infra.net.cni.aws.ip_utilization
+    stability: experimental
+    description:
+      summary: |
+        How much of each node's pod-IP allowance is in use.
+      nominal: |
+        Below ~0.8. The CNI keeps a warm pool, so a node running pods sits well
+        above zero even when it is not close to full.
+      unhealthy: |
+        **At 1.0 the node cannot start another pod.** The scheduler does not
+        know that — it counts pod slots, not addresses — so it keeps placing
+        work there and the pods sit in `ContainerCreating` with a
+        `failed to assign an IP address to container` event. This is the single
+        most common AWS-specific scheduling failure, and it looks nothing like
+        an out-of-resources one.
+      notes: |
+        The ceiling is a function of instance type: each ENI carries a fixed
+        number of addresses, and the node can attach a fixed number of ENIs.
+        Prefix delegation raises it substantially and is the usual fix, ahead of
+        moving to larger instances.
+    promQL: |
+      max by (node) (awscni_assigned_ip_addresses)
+      /
+      max by (node) (awscni_ip_max)
+
+  - id: infra.net.cni.aws.addresses
+    stability: experimental
+    description:
+      summary: |
+        Addresses assigned to pods on each node, against the pool the CNI is
+        holding and the ceiling it cannot pass.
+      nominal: |
+        Assigned below total, total below max. The gap between assigned and
+        total is the warm pool, which exists so that starting a pod does not
+        wait on an EC2 API call.
+      degraded: |
+        Total meeting max means the node cannot grow its pool any further, and
+        assigned approaching it is the exhaustion in
+        `infra.net.cni.aws.ip_utilization`.
+      notes: |
+        The per-address breakdown this CNI also exports is dropped at the
+        scrape: it is one series per pod IP, which is linear in pod density and
+        answers nothing these three do not.
+    promQL:
+      - max by (node) (awscni_assigned_ip_addresses)
+      - max by (node) (awscni_total_ip_addresses)
+      - max by (node) (awscni_ip_max)
+
+  - id: infra.net.cni.aws.enis
+    stability: experimental
+    description:
+      summary: |
+        Network interfaces attached to each node, against the most it can have.
+      nominal: |
+        Grows in steps as pods are added and rarely shrinks — the CNI holds
+        interfaces rather than detaching them for a pod that may come back.
+      degraded: |
+        Allocated meeting max is the ceiling behind address exhaustion. The ENI
+        limit is per instance type and cannot be raised without changing the
+        instance.
+      notes: |
+        Each attached ENI also consumes an address in the subnet for itself, so
+        a busy node costs the VPC more addresses than it has pods.
+    promQL:
+      - max by (node) (awscni_eni_allocated)
+      - max by (node) (awscni_eni_max)
+
+  - id: infra.net.cni.aws.exhaustion
+    stability: experimental
+    description:
+      summary: |
+        Nodes that have run out of pod addresses outright.
+      nominal: Zero.
+      unhealthy: |
+        **Any node here is refusing to start pods.** Unlike the utilization
+        ratio this is the CNI's own verdict rather than an inference, so it is
+        what to quote when reporting the problem. The remedy is prefix
+        delegation, a larger instance type, or a bigger subnet, in roughly that
+        order of effort.
+    promQL: |
+      sum (max by (node) (awscni_no_available_ip_addresses))
+
+  - id: infra.net.cni.aws.api_latency
+    stability: experimental
+    description:
+      summary: |
+        How long the CNI's calls to the EC2 API are taking, by operation.
+      nominal: |
+        Tens to low hundreds of milliseconds. Attaching an interface is
+        legitimately slower than describing one.
+      degraded: |
+        Slow calls delay pod startup directly, because assigning an address to a
+        new pod can require one. Sustained slowness is usually EC2 API
+        throttling rather than a network problem, and throttling is per account
+        and per region — so a busy neighbour cluster can cause it.
+      notes: |
+        A rate-of-sum over rate-of-count, which is a mean rather than a
+        percentile: this metric is a summary with no quantiles.
+    promQL: |
+      sum by (api) (rate(awscni_aws_api_latency_ms_sum%%{interval}))
+      /
+      sum by (api) (rate(awscni_aws_api_latency_ms_count%%{interval}))
+
+  # --- CNI: Cilium ---------------------------------------------------------
+  - id: infra.net.cni.cilium.endpoints
+    stability: experimental
+    description:
+      summary: |
+        Cilium endpoints per node, by state. An endpoint is roughly a pod as the
+        dataplane sees it.
+      nominal: |
+        Almost all `ready`. The count tracks the number of pods on the node.
+      degraded: |
+        Endpoints stuck outside `ready` are pods the dataplane has not finished
+        programming, which means traffic to them may not work yet even though
+        Kubernetes considers them running.
+    promQL: |
+      sum by (node, endpoint_state) (cilium_endpoint_state)
+
+  - id: infra.net.cni.cilium.drops
+    stability: experimental
+    description:
+      summary: |
+        Packets the Cilium datapath dropped, by the reason it gives.
+      nominal: |
+        Low and not always zero. `Policy denied` is a working policy doing its
+        job, not a fault.
+      degraded: |
+        Read the reason before reacting. `Policy denied` means a policy is
+        blocking real traffic and belongs on _Security_; `Stale or unroutable
+        IP` and `Missed tail call` are dataplane faults; `CT: Map insertion
+        failed` means a BPF map is full and is a capacity problem.
+      notes: |
+        Cilium reports drops by direction too. This sums over it, because the
+        reason is what selects the remedy and the direction rarely changes it.
+    promQL: |
+      sum by (reason) (rate(cilium_drop_count_total%%{interval}))
+
+  - id: infra.net.cni.cilium.policy_verdicts
+    stability: experimental
+    description:
+      summary: |
+        Policy decisions the dataplane made, allowed against denied.
+      nominal: |
+        Overwhelmingly allowed. A steady trickle of denials is normal on a
+        cluster with policies — it is the scanning and health-checking that the
+        policies exist to stop.
+      degraded: |
+        A step change in denials that coincides with a deploy is the signature
+        of a workload that moved and a policy that did not follow it. Pair with
+        _Security -> NetworkPolicy Inventory_ to find which one.
+    promQL: |
+      sum by (action) (rate(cilium_policy_verdict_total%%{interval}))
+
+  - id: infra.net.cni.cilium.bpf_map_pressure
+    stability: experimental
+    description:
+      summary: |
+        How full Cilium's BPF maps are, as a fraction of their capacity.
+      nominal: Well below 1.
+      unhealthy: |
+        **A full map fails closed.** The connection-tracking map filling up
+        drops new connections; the policy map filling up stops policy being
+        programmed for new endpoints. Both present as intermittent, partial
+        connectivity failure rather than as an outage, which makes them hard to
+        find from the symptom.
+      notes: |
+        Map sizes are a Cilium install option. Raising them costs kernel memory
+        on every node.
+    promQL: |
+      max by (node, map_name) (cilium_bpf_map_pressure)
+
+  - id: infra.net.cni.cilium.endpoint_regeneration
+    stability: experimental
+    description:
+      summary: |
+        How long Cilium takes to reprogram an endpoint's datapath, at the 99th
+        percentile.
+      nominal: |
+        Well under a second. Regeneration happens whenever a pod starts or a
+        policy that selects it changes, so the rate rises during a deploy and
+        the duration should not.
+      degraded: |
+        Seconds here mean policy and connectivity changes are slow to take
+        effect, and a pod can be running for that long before traffic reaches
+        it. It usually tracks the number of endpoints and policies on the node
+        rather than anything transient.
+      notes: |
+        The signal the internal cloud networking dashboards lead with, which is
+        why it is here rather than only the drop counters — it is the earliest
+        sign that the dataplane is struggling, and it degrades long before
+        anything starts dropping.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le, scope) (
+          rate(cilium_endpoint_regeneration_time_stats_seconds_bucket%%{interval})
+        )
+      )
+
+  - id: infra.net.cni.cilium.unreachable
+    stability: experimental
+    description:
+      summary: |
+        Nodes and health endpoints Cilium's own connectivity probes cannot
+        reach.
+      nominal: Zero for both.
+      unhealthy: |
+        **Cilium reporting a node unreachable is the dataplane saying the
+        cluster is partitioned**, and it is a far more direct statement than
+        anything inferred from throughput. A pod on this node cannot talk to
+        pods on the unreachable one; everything else can. That presents to a
+        Materialize deployment as one replica unable to reach another while
+        both look healthy from Kubernetes.
+      notes: |
+        These come from Cilium's own periodic probes between nodes rather than
+        from application traffic, so they detect a partition even while the
+        cluster is idle.
+    promQL:
+      - sum (max by (node) (cilium_unreachable_nodes))
+      - sum (max by (node) (cilium_unreachable_health_endpoints))
+
+  - id: infra.net.cni.cilium.hubble_flows
+    stability: experimental
+    description:
+      summary: |
+        Network flows Hubble observed, by verdict.
+      nominal: |
+        Tracks cluster traffic. `FORWARDED` should be almost all of it.
+      degraded: |
+        `DROPPED` rising is the same event as the datapath drop counter, seen
+        from the flow side, and it carries more context per flow — Hubble knows
+        which workloads were talking.
+      notes: |
+        **Present only where Hubble's metric set is enabled**, which is separate
+        from Hubble itself running. GKE Dataplane V2 runs Hubble and exposes
+        only its own health counters, so this is empty there.
+    promQL: |
+      sum by (verdict) (rate(hubble_flows_processed_total%%{interval}))
+
+  # --- Security ------------------------------------------------------------
+  - id: infra.net.security.policies.by_namespace
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        How many NetworkPolicy objects each namespace has.
+      nominal: |
+        Every namespace running something worth protecting has at least one.
+      degraded: |
+        **A namespace missing from this list has no policy at all**, which in
+        Kubernetes means every pod in it accepts traffic from everywhere in the
+        cluster. That is the default and it is rarely what anyone intended —
+        _Namespaces Without Policy_ states it directly rather than by absence.
+      notes: |
+        Counts policies, not their effect. A namespace with twenty policies that
+        select nothing is less protected than one with a single default-deny.
+    promQL: |
+      max by (namespace) (
+        count by (instance, namespace) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+      )
+
+  - id: infra.net.security.policies.uncovered
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        Namespaces that run pods and have no NetworkPolicy.
+      nominal: |
+        Empty on a cluster that has adopted policy throughout. `kube-system` is
+        the usual and mostly unavoidable exception.
+      degraded: |
+        Each namespace listed accepts traffic from every pod in the cluster.
+        Whether that matters depends on what it runs, but it should be a
+        decision rather than an oversight — which is the point of naming them.
+      notes: |
+        Derived by subtracting the namespaces that have policies from those that
+        have pods, so a namespace with neither does not appear. `unless` on the
+        namespace label is what does it; there is no metric for "has no policy".
+    promQL: |
+      count by (namespace) (kube_pod_info{namespace=~"$namespaceList"})
+      unless on (namespace)
+      count by (namespace) (kube_networkpolicy_spec_ingress_rules)
+
+  - id: infra.net.security.policies.rules
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        Each policy's ingress and egress rule counts, one row per policy.
+      nominal: |
+        Whatever the policy was written to say. A policy with zero ingress rules
+        and zero egress rules is a **default-deny** for whatever it selects,
+        which is a deliberate and common shape rather than an empty policy.
+      degraded: |
+        A policy you did not expect to be default-deny showing zero of both is
+        worth checking — it is the shape an incomplete edit leaves behind, and
+        it fails closed.
+      notes: |
+        Rule counts, not selected pods. Kubernetes exports no metric for how
+        many pods a policy actually matches, which is the number that would
+        answer "is this policy doing anything"; `kubectl describe networkpolicy`
+        is still the way to find that out.
+    promQL:
+      - |
+        max by (namespace, networkpolicy) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+      - |
+        max by (namespace, networkpolicy) (kube_networkpolicy_spec_egress_rules{namespace=~"$namespaceList"})
+
+  - id: infra.net.security.drops.aws
+    stability: experimental
+    description:
+      summary: |
+        Packets the AWS network policy agent dropped for violating a policy.
+      nominal: |
+        Low and steady, or zero. A working policy set drops the traffic it was
+        written to stop, so this is not an error rate.
+      degraded: |
+        A step change after a deploy usually means a workload moved and its
+        policy did not follow. The agent can log the flows it drops — enabling
+        that is how the specific connection gets identified, since the counter
+        alone cannot say which.
+      notes: |
+        Only present where the AWS VPC CNI is running with network policy
+        enabled. Unrelated to `kube_networkpolicy_*`, which counts the policies
+        that exist rather than the packets they stopped.
+    promQL: |
+      sum by (node) (rate(network_policy_drop_count_total%%{interval}))
+
+  - id: infra.net.security.drops.cilium
+    stability: experimental
+    description:
+      summary: |
+        Packets Cilium dropped specifically because a policy denied them.
+      nominal: |
+        Low and steady, or zero. This is a working policy set, not an error
+        rate.
+      degraded: |
+        A step change coinciding with a deploy is a workload that moved out from
+        under its policy. Hubble is where the specific flow is identified, when
+        its metrics or its CLI are available.
+      notes: |
+        A narrowed view of the datapath drop counter on the _CNI_ tab, which
+        carries every reason. Policy denials are pulled out here because they
+        are the only ones that are somebody's intent rather than a fault.
+    promQL: |
+      sum by (node) (rate(cilium_drop_count_total{reason=~"Policy denied.*"}%%{interval}))
+
+  # --- Cloud networking ----------------------------------------------------
+  - id: infra.net.cloud.load_balancers
+    stability: best-effort
+    instant: true
+    description:
+      summary: |
+        Every Service in the cluster that has a cloud load balancer, and the
+        address it was given.
+      nominal: |
+        One per Service intended to be reachable from outside — typically
+        Grafana, and `balancerd` where a deployment exposes it.
+      degraded: |
+        **A LoadBalancer Service with no row here has not been given an address
+        yet.** That is normal for a minute after creation and a fault after
+        several: the usual causes are subnets missing the required tags,
+        exhausted public addresses, or a controller without permission to create
+        one.
+      notes: |
+        **Two address columns, and a given row fills in one of them.** A cloud
+        load balancer is reached by IP on GCP and Azure and by DNS name on AWS,
+        where an ELB's address is a hostname that resolves to addresses which
+        change underneath it. Kubernetes models both, so the metric carries an
+        `ip` label and a `hostname` label and populates whichever applies —
+        Prometheus drops the empty one, so a row with a blank IP is an AWS load
+        balancer rather than one that failed to get an address.
+
+        This is the Kubernetes side of the load balancer — that one exists, and
+        its address. What it is *doing* (connections, healthy targets, rejected
+        requests) lives at the cloud provider and is not collected yet; see the
+        note on the _Cloud Networking_ tab.
+    promQL: |
+      max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)

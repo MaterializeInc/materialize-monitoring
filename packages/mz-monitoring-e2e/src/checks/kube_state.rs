@@ -52,7 +52,10 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_deployment_status_replicas_ready",
     "kube_deployment_status_replicas_unavailable",
     "kube_horizontalpodautoscaler_spec_max_replicas",
+    "kube_endpointslice_endpoints",
     "kube_horizontalpodautoscaler_status_current_replicas",
+    "kube_networkpolicy_spec_egress_rules",
+    "kube_networkpolicy_spec_ingress_rules",
     "kube_node_created",
     "kube_node_info",
     "kube_node_spec_taint",
@@ -71,6 +74,8 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_pod_start_time",
     "kube_pod_status_phase",
     "kube_pod_status_ready",
+    "kube_service_spec_type",
+    "kube_service_status_load_balancer_ingress",
     "kube_statefulset_status_replicas_ready",
 ];
 
