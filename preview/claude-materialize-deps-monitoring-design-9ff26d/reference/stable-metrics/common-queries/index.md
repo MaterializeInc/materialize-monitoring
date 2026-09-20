@@ -148,6 +148,538 @@ Node journal lines per second by systemd unit.
   </div>
 </div>
 
+## infra-networking
+
+<p>How traffic moves through the cluster, and what stops it.</p>
+<p>Where <code>infra-nodes</code> asks what one machine is doing, this asks what the
+<em>network</em> is doing across all of them: what pods are sending, what Kubernetes
+is routing, what the CNI is doing underneath, and which packets a policy
+dropped.</p>
+<p>Three families meet here, and knowing which is which is most of what makes
+this file readable:</p>
+<ul>
+<li>
+<p><strong>cAdvisor</strong> (<code>container_network_*</code>) is the only per-pod view. It is always
+present, because the gateway scrapes every kubelet. Note that its series
+split in two by whether <code>namespace</code> is set: with a namespace they describe a
+pod, and without one they carry <code>id=&quot;/&quot;</code> and describe the <em>node&rsquo;s</em> root
+cgroup — every interface on the machine, including the veth of every pod on
+it. Panels must pick one and say which.</p>
+<p><strong>Host-network pods are excluded from every rollup here, and must be.</strong>
+cAdvisor reads a container&rsquo;s counters from its network namespace, and a
+host-network pod&rsquo;s namespace is the node&rsquo;s — so such a pod reports all 31 of
+a reference node&rsquo;s interfaces rather than its own one, and its &ldquo;pod traffic&rdquo;
+is the whole machine&rsquo;s, counting every other pod&rsquo;s veth. Several DaemonSets
+do this on every node. Left in, a cluster-wide sum read 27,831 KiB/s against
+a true 1,700, and the ten busiest pods were all host-network DaemonSets
+reporting their node. <code>%%{excludeHostNetworkPods}</code> is the <code>unless</code> clause
+that drops them; it appends to a <code>sum by (namespace, pod)</code> and cannot be a
+label matcher, because being host-network is a property of a pod&rsquo;s whole
+series set rather than of any one series.</p>
+</li>
+<li>
+<p><strong>kube-state-metrics</strong> (<code>kube_service_*</code>, <code>kube_endpointslice_*</code>,
+<code>kube_networkpolicy_*</code>) is the declared intent: what Services exist, what is
+behind them, and which policies were written. It says nothing about whether
+any of it works.</p>
+</li>
+<li>
+<p><strong>The CNI</strong> is the only family that can say what the dataplane actually did
+— which packet a policy dropped, how many addresses are left, whether the
+datapath is erroring. It is also the only family that is not guaranteed to
+be there, which is why every query reading it is on a row the dashboard
+shows only when that vendor was detected. See &ldquo;Dataplane detection&rdquo; below.</p>
+</li>
+</ul>
+<p><code>node_*</code> is a fourth family and deliberately <em>not</em> redefined here:
+<code>node-health.yaml</code> and <code>node-debug.yaml</code> already carry it, every one of their
+expressions is scoped by <code>instance=~&quot;$nodeList&quot;</code>, and <code>infra-net</code> defines that
+variable as a multi-select across the fleet rather than the single address
+<code>infra-nodes</code> resolves it to. The same expressions therefore answer for one
+node or for all of them depending only on the dashboard that asks.</p>
+<h2 id="dataplane-detection">Dataplane detection<a class="anchor" href="#dataplane-detection">#</a></h2>
+<p>A cluster&rsquo;s CNI is not something this repository can know: EKS defaults to the
+AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium, and a
+bring-your-own cluster to anything at all. Rather than ask the operator, the
+CNI monitors in <code>packages/prometheus-scrapers/</code> stamp every series they
+collect with a <code>network_component</code> label, and the dashboard discovers the
+answer with <code>label_values(up{network_component=~&quot;.+&quot;}, network_component)</code>.</p>
+<p>That puts the vendor knowledge in the scrape config, where it already had to
+live, and leaves the queries below reading ordinary vendor metric names.</p>
+<p>Two conventions apply throughout:</p>
+<ul>
+<li>
+<p><strong>Scope literally, not by parameter.</strong> <code>namespace=~&quot;$namespaceList&quot;</code> and
+<code>instance=~&quot;$nodeList&quot;</code> are written out, the same way <code>infra-nodes.yaml</code>
+writes <code>node=&quot;$node&quot;</code>. A dashboard using these must define the variables; no
+render parameter supplies them.</p>
+<p><code>$nodeList</code> holds node-exporter <em>addresses</em>, inherited from the node query
+families. Nothing here scopes on a <code>node</code> label, which every other family
+spells as the Kubernetes <em>name</em> &ndash; the two cannot be filtered by one picker,
+and the node-exporter form is the one that buys the 87 vetted expressions in
+<code>node-health.yaml</code> and <code>node-debug.yaml</code>.</p>
+</li>
+<li>
+<p><strong>Deduplicate across scrape replicas.</strong> <code>instance</code> is the scrape target, so
+a bare <code>sum</code> over an HA kube-state-metrics adds each object once per
+replica. Aggregations keep <code>instance</code> in the inner step and collapse it with
+an outer <code>max</code>.</p>
+</li>
+</ul>
+<p><code>%%{interval}</code> is the rate window, including its brackets.</p>
+
+<h4 id="infra.net.overview.dataplane">infra.net.overview.dataplane
+  <a class="anchor" href="#infra.net.overview.dataplane">#</a>
+</h4>
+Which networking components this cluster is running, as discovered
+rather than configured.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.dataplane-tabs" id="infra.net.overview.dataplane-tab-0" checked>
+  <label for="infra.net.overview.dataplane-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>network_component<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>up{network_component<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.overview.throughput">infra.net.overview.throughput
+  <a class="anchor" href="#infra.net.overview.throughput">#</a>
+</h4>
+Total bytes per second in and out of the cluster&rsquo;s pods.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.throughput-tabs" id="infra.net.overview.throughput-tab-0" checked>
+  <label for="infra.net.overview.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.overview.errors">infra.net.overview.errors
+  <a class="anchor" href="#infra.net.overview.errors">#</a>
+</h4>
+Interface errors and dropped packets across every pod in the cluster.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.errors-tabs" id="infra.net.overview.errors-tab-0" checked>
+  <label for="infra.net.overview.errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.overview.top_talkers">infra.net.overview.top_talkers
+  <a class="anchor" href="#infra.net.overview.top_talkers">#</a>
+</h4>
+The ten pods moving the most traffic, in and out combined.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.top_talkers-tabs" id="infra.net.overview.top_talkers-tab-0" checked>
+  <label for="infra.net.overview.top_talkers-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span><span style="color:#ae81ff">10</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.throughput.by_namespace">infra.net.k8s.throughput.by_namespace
+  <a class="anchor" href="#infra.net.k8s.throughput.by_namespace">#</a>
+</h4>
+Pod traffic split by namespace, received and transmitted.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.throughput.by_namespace-tabs" id="infra.net.k8s.throughput.by_namespace-tab-0" checked>
+  <label for="infra.net.k8s.throughput.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace
+  <a class="anchor" href="#infra.net.k8s.errors.by_namespace">#</a>
+</h4>
+Which namespace&rsquo;s pods are losing packets.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.errors.by_namespace-tabs" id="infra.net.k8s.errors.by_namespace-tab-0" checked>
+  <label for="infra.net.k8s.errors.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.services.by_type">infra.net.k8s.services.by_type
+  <a class="anchor" href="#infra.net.k8s.services.by_type">#</a>
+</h4>
+Services in the cluster, by how they are exposed.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.services.by_type-tabs" id="infra.net.k8s.services.by_type-tab-0" checked>
+  <label for="infra.net.k8s.services.by_type-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_spec_type<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.endpoints.by_namespace">infra.net.k8s.endpoints.by_namespace
+  <a class="anchor" href="#infra.net.k8s.endpoints.by_namespace">#</a>
+</h4>
+How many endpoints back the Services in each namespace.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.endpoints.by_namespace-tabs" id="infra.net.k8s.endpoints.by_namespace-tab-0" checked>
+  <label for="infra.net.k8s.endpoints.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_endpointslice_endpoints{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.proxy.sync_latency">infra.net.k8s.proxy.sync_latency
+  <a class="anchor" href="#infra.net.k8s.proxy.sync_latency">#</a>
+</h4>
+How long kube-proxy takes to turn a Service change into rules on the
+node.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.proxy.sync_latency-tabs" id="infra.net.k8s.proxy.sync_latency-tab-0" checked>
+  <label for="infra.net.k8s.proxy.sync_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kubeproxy_sync_proxy_rules_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.proxy.programming_latency">infra.net.k8s.proxy.programming_latency
+  <a class="anchor" href="#infra.net.k8s.proxy.programming_latency">#</a>
+</h4>
+End-to-end time from an endpoint changing to the node&rsquo;s rules reflecting
+it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.proxy.programming_latency-tabs" id="infra.net.k8s.proxy.programming_latency-tab-0" checked>
+  <label for="infra.net.k8s.proxy.programming_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kubeproxy_network_programming_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.ip_utilization">infra.net.cni.aws.ip_utilization
+  <a class="anchor" href="#infra.net.cni.aws.ip_utilization">#</a>
+</h4>
+How much of each node&rsquo;s pod-IP allowance is in use.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.ip_utilization-tabs" id="infra.net.cni.aws.ip_utilization-tab-0" checked>
+  <label for="infra.net.cni.aws.ip_utilization-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_assigned_ip_addresses<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_ip_max<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.addresses">infra.net.cni.aws.addresses
+  <a class="anchor" href="#infra.net.cni.aws.addresses">#</a>
+</h4>
+Addresses assigned to pods on each node, against the pool the CNI is
+holding and the ceiling it cannot pass.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.addresses-tabs" id="infra.net.cni.aws.addresses-tab-0" checked>
+  <label for="infra.net.cni.aws.addresses-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_assigned_ip_addresses<span style="color:#f92672">)</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_total_ip_addresses<span style="color:#f92672">)</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_ip_max<span style="color:#f92672">)</span></span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.enis">infra.net.cni.aws.enis
+  <a class="anchor" href="#infra.net.cni.aws.enis">#</a>
+</h4>
+Network interfaces attached to each node, against the most it can have.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.enis-tabs" id="infra.net.cni.aws.enis-tab-0" checked>
+  <label for="infra.net.cni.aws.enis-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_eni_allocated<span style="color:#f92672">)</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_eni_max<span style="color:#f92672">)</span></span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.exhaustion">infra.net.cni.aws.exhaustion
+  <a class="anchor" href="#infra.net.cni.aws.exhaustion">#</a>
+</h4>
+Nodes that have run out of pod addresses outright.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.exhaustion-tabs" id="infra.net.cni.aws.exhaustion-tab-0" checked>
+  <label for="infra.net.cni.aws.exhaustion-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_no_available_ip_addresses<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.api_latency">infra.net.cni.aws.api_latency
+  <a class="anchor" href="#infra.net.cni.aws.api_latency">#</a>
+</h4>
+How long the CNI&rsquo;s calls to the EC2 API are taking, by operation.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.api_latency-tabs" id="infra.net.cni.aws.api_latency-tab-0" checked>
+  <label for="infra.net.cni.aws.api_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>api<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>awscni_aws_api_latency_ms_sum<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>api<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>awscni_aws_api_latency_ms_count<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.endpoints">infra.net.cni.cilium.endpoints
+  <a class="anchor" href="#infra.net.cni.cilium.endpoints">#</a>
+</h4>
+Cilium endpoints per node, by state. An endpoint is roughly a pod as the
+dataplane sees it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.endpoints-tabs" id="infra.net.cni.cilium.endpoints-tab-0" checked>
+  <label for="infra.net.cni.cilium.endpoints-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node, endpoint_state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_endpoint_state<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.drops">infra.net.cni.cilium.drops
+  <a class="anchor" href="#infra.net.cni.cilium.drops">#</a>
+</h4>
+Packets the Cilium datapath dropped, by the reason it gives.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.drops-tabs" id="infra.net.cni.cilium.drops-tab-0" checked>
+  <label for="infra.net.cni.cilium.drops-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_drop_count_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.policy_verdicts">infra.net.cni.cilium.policy_verdicts
+  <a class="anchor" href="#infra.net.cni.cilium.policy_verdicts">#</a>
+</h4>
+Policy decisions the dataplane made, allowed against denied.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.policy_verdicts-tabs" id="infra.net.cni.cilium.policy_verdicts-tab-0" checked>
+  <label for="infra.net.cni.cilium.policy_verdicts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>action<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_policy_verdict_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.bpf_map_pressure">infra.net.cni.cilium.bpf_map_pressure
+  <a class="anchor" href="#infra.net.cni.cilium.bpf_map_pressure">#</a>
+</h4>
+How full Cilium&rsquo;s BPF maps are, as a fraction of their capacity.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.bpf_map_pressure-tabs" id="infra.net.cni.cilium.bpf_map_pressure-tab-0" checked>
+  <label for="infra.net.cni.cilium.bpf_map_pressure-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node, map_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_bpf_map_pressure<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.endpoint_regeneration">infra.net.cni.cilium.endpoint_regeneration
+  <a class="anchor" href="#infra.net.cni.cilium.endpoint_regeneration">#</a>
+</h4>
+How long Cilium takes to reprogram an endpoint&rsquo;s datapath, at the 99th
+percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.endpoint_regeneration-tabs" id="infra.net.cni.cilium.endpoint_regeneration-tab-0" checked>
+  <label for="infra.net.cni.cilium.endpoint_regeneration-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, scope<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_endpoint_regeneration_time_stats_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.unreachable">infra.net.cni.cilium.unreachable
+  <a class="anchor" href="#infra.net.cni.cilium.unreachable">#</a>
+</h4>
+Nodes and health endpoints Cilium&rsquo;s own connectivity probes cannot
+reach.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.unreachable-tabs" id="infra.net.cni.cilium.unreachable-tab-0" checked>
+  <label for="infra.net.cni.cilium.unreachable-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_unreachable_nodes<span style="color:#f92672">))</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_unreachable_health_endpoints<span style="color:#f92672">))</span></span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.hubble_flows">infra.net.cni.cilium.hubble_flows
+  <a class="anchor" href="#infra.net.cni.cilium.hubble_flows">#</a>
+</h4>
+Network flows Hubble observed, by verdict.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.hubble_flows-tabs" id="infra.net.cni.cilium.hubble_flows-tab-0" checked>
+  <label for="infra.net.cni.cilium.hubble_flows-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>verdict<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>hubble_flows_processed_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.policies.by_namespace">infra.net.security.policies.by_namespace
+  <a class="anchor" href="#infra.net.security.policies.by_namespace">#</a>
+</h4>
+How many NetworkPolicy objects each namespace has.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.policies.by_namespace-tabs" id="infra.net.security.policies.by_namespace-tab-0" checked>
+  <label for="infra.net.security.policies.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_ingress_rules{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.policies.uncovered">infra.net.security.policies.uncovered
+  <a class="anchor" href="#infra.net.security.policies.uncovered">#</a>
+</h4>
+Namespaces that run pods and have no NetworkPolicy.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.policies.uncovered-tabs" id="infra.net.security.policies.uncovered-tab-0" checked>
+  <label for="infra.net.security.policies.uncovered-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_info{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_ingress_rules<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.policies.rules">infra.net.security.policies.rules
+  <a class="anchor" href="#infra.net.security.policies.rules">#</a>
+</h4>
+Each policy&rsquo;s ingress and egress rule counts, one row per policy.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.policies.rules-tabs" id="infra.net.security.policies.rules-tab-0" checked>
+  <label for="infra.net.security.policies.rules-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, networkpolicy<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_ingress_rules{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, networkpolicy<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_egress_rules{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.drops.aws">infra.net.security.drops.aws
+  <a class="anchor" href="#infra.net.security.drops.aws">#</a>
+</h4>
+Packets the AWS network policy agent dropped for violating a policy.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.drops.aws-tabs" id="infra.net.security.drops.aws-tab-0" checked>
+  <label for="infra.net.security.drops.aws-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>network_policy_drop_count_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.drops.cilium">infra.net.security.drops.cilium
+  <a class="anchor" href="#infra.net.security.drops.cilium">#</a>
+</h4>
+Packets Cilium dropped specifically because a policy denied them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.drops.cilium-tabs" id="infra.net.security.drops.cilium-tab-0" checked>
+  <label for="infra.net.security.drops.cilium-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_drop_count_total{reason<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Policy denied.*</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.load_balancers">infra.net.cloud.load_balancers
+  <a class="anchor" href="#infra.net.cloud.load_balancers">#</a>
+</h4>
+Every Service in the cluster that has a cloud load balancer, and the
+address it was given.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.load_balancers-tabs" id="infra.net.cloud.load_balancers-tab-0" checked>
+  <label for="infra.net.cloud.load_balancers-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, service, ip, hostname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
 ## infra-nodes
 
 <p>What <code>kubectl describe node</code> would tell you, for whoever cannot run it.</p>

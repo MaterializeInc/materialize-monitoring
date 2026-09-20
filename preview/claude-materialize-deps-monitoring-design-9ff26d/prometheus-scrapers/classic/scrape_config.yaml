@@ -41,6 +41,140 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
     target_label: cluster_environmentd_materialize_cloud_replica_id
+- job_name: podMonitor/cni-aws-vpc/metrics-0
+  metrics_path: /metrics
+  kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names:
+      - kube-system
+  relabel_configs:
+  - source_labels:
+    - __meta_kubernetes_pod_label_k8s_app
+    - __meta_kubernetes_pod_labelpresent_k8s_app
+    regex: (aws-node);true
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_container_port_name
+    regex: metrics
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_namespace
+    target_label: namespace
+  - source_labels:
+    - __meta_kubernetes_pod_container_name
+    target_label: container
+  - source_labels:
+    - __meta_kubernetes_pod_name
+    target_label: pod
+  - target_label: network_component
+    replacement: aws-vpc-cni
+  - source_labels:
+    - __meta_kubernetes_pod_node_name
+    target_label: node
+  metric_relabel_configs:
+  - source_labels:
+    - __name__
+    regex: awscni_assigned_ip_per_cidr
+    action: drop
+- job_name: podMonitor/cni-aws-vpc/metrics-1
+  metrics_path: /metrics
+  kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names:
+      - kube-system
+  relabel_configs:
+  - source_labels:
+    - __meta_kubernetes_pod_label_k8s_app
+    - __meta_kubernetes_pod_labelpresent_k8s_app
+    regex: (aws-node);true
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_container_port_name
+    regex: agentmetrics
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_namespace
+    target_label: namespace
+  - source_labels:
+    - __meta_kubernetes_pod_container_name
+    target_label: container
+  - source_labels:
+    - __meta_kubernetes_pod_name
+    target_label: pod
+  - target_label: network_component
+    replacement: aws-vpc-cni
+  - source_labels:
+    - __meta_kubernetes_pod_node_name
+    target_label: node
+- job_name: podMonitor/cni-cilium/metrics-0
+  metrics_path: /metrics
+  kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names:
+      - kube-system
+  relabel_configs:
+  - source_labels:
+    - __meta_kubernetes_pod_label_k8s_app
+    - __meta_kubernetes_pod_labelpresent_k8s_app
+    regex: (cilium);true
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_container_port_name
+    regex: prometheus
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_namespace
+    target_label: namespace
+  - source_labels:
+    - __meta_kubernetes_pod_container_name
+    target_label: container
+  - source_labels:
+    - __meta_kubernetes_pod_name
+    target_label: pod
+  - target_label: network_component
+    replacement: cilium
+  - source_labels:
+    - __meta_kubernetes_pod_node_name
+    target_label: node
+- job_name: podMonitor/cni-cilium/metrics-1
+  metrics_path: /metrics
+  kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names:
+      - kube-system
+  relabel_configs:
+  - source_labels:
+    - __meta_kubernetes_pod_label_k8s_app
+    - __meta_kubernetes_pod_labelpresent_k8s_app
+    regex: (cilium);true
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_container_port_name
+    regex: hubble-metrics
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_namespace
+    target_label: namespace
+  - source_labels:
+    - __meta_kubernetes_pod_container_name
+    target_label: container
+  - source_labels:
+    - __meta_kubernetes_pod_name
+    target_label: pod
+  - target_label: network_component
+    replacement: cilium
+  - source_labels:
+    - __meta_kubernetes_pod_node_name
+    target_label: node
+  metric_relabel_configs:
+  - source_labels:
+    - __name__
+    regex: hubble_(port_distribution|tcp_flags)_total
+    action: drop
 - job_name: podMonitor/environmentd/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
@@ -306,3 +440,29 @@ scrape_configs:
     target_label: __metrics_path__
     regex: (.+)
     replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+- job_name: kube-proxy
+  kubernetes_sd_configs:
+  - role: pod
+  relabel_configs:
+  - source_labels:
+    - __meta_kubernetes_pod_label_k8s_app
+    regex: kube-proxy
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_namespace
+    regex: kube-system
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_phase
+    regex: Pending|Succeeded|Failed
+    action: drop
+  - source_labels:
+    - __meta_kubernetes_pod_ip
+    target_label: __address__
+    regex: (.+)
+    replacement: ${1}:10249
+  - target_label: network_component
+    replacement: kube-proxy
+  - source_labels:
+    - __meta_kubernetes_pod_node_name
+    target_label: node

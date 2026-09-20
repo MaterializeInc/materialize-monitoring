@@ -7,6 +7,9 @@
 
 These are proposed changes to materialize-monitoring.
 
+Opening a non-draft pull request that adds a page here posts a notification to the `#rnd-design-docs` Slack channel (internal), the same channel the cloud repository notifies.
+Marking an existing draft pull request ready for review posts the same notification.
+
 
 
 <ul>
@@ -53,9 +56,16 @@ These are proposed changes to materialize-monitoring.
       </ul>
     </li>
     <li>
-      <a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/reference/internal/design-docs/20260917-external-dependency-monitoring/">Monitoring Materialize&#39;s External Dependencies</a>
+      <a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/reference/internal/design-docs/20260917-call-home-self-managed/">Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane</a>
       <ul>
             <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/reference/internal/design-docs/20260920-external-dependency-monitoring/">Monitoring Materialize&#39;s External Dependencies</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-20 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Draft</li>
       </ul>
     </li>
