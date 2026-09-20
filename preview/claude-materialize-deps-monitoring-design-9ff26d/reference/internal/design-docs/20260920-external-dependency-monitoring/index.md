@@ -59,6 +59,19 @@ A second claim carries the collection design.
 **Provider metrics are pulled into the pipeline as an ingest source, never queried as a Grafana datasource.**
 Pulling converts a cost proportional to how closely anyone watches into a cost proportional to how much is configured, puts the result in the same PromQL surface and the same retention as everything else, and makes a dependency series joinable with `mz_persist_blob_failures` inside a single expression.
 
+<!-- more -->
+
+<blockquote class="book-hint note">
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in
+<a href="https://datatracker.ietf.org/doc/html/rfc2119" rel="external" class="external-link">RFC 2119</a>.
+</blockquote>
+
+
+The keywords carry the obligations an implementation takes on.
+They appear on the adapter contract, on the collection defaults, and on the handful of places where doing the obvious thing produces a silent fault.
+
 <!--
 Agent note: this doc records decisions and their *why*. When a decision lands in code, update the section and
 check the matching row in "Chart-side prerequisites".
@@ -73,14 +86,14 @@ Five things here are easy to get wrong and are stated deliberately:
      rather than an inconsistency ("Why the two dependencies get different defaults"). It inverts again
      on-premise, where the store publishes more than any cloud does.
   4. The self-monitoring circularity in "The stack cannot watch its own bucket fail".
-  5. Day 0 is deliberately NOT a fourth tier. It runs once, answers yes-or-no, and belongs to the install.
+  5. Day 0 is deliberately NOT a fourth vantage point. It runs once, answers yes-or-no, and belongs to the install.
 
 Two sections exist because of field evidence rather than analysis, and should not be trimmed as redundant:
 per-database attribution (a shared instance is the incident an aggregate metric cannot explain) and version
 reporting (cheap, uncollected, and unreconstructable after the fact).
 
 This design is the first consumer of the query registry's `rules:` branch (no producer, `pre-rendered/rules/*`
-empty). The alerting design (PR #356) owns the evaluated-rule path and found that `thanos.ruler.enabled` is
+empty). The alerting design (20260917-alerting-self-managed) owns the evaluated-rule path and found that `thanos.ruler.enabled` is
 the switch, not a PrometheusRule template; do not re-derive that here. Adapter applicability uses its
 capability tags rather than a second mechanism.
 -->
@@ -117,17 +130,17 @@ Four stakeholder classes consume this:
 
 ## Technical BLUF
 
-- **Three collection tiers, one contract.** Tier A is client-side and unconditional; tier B is a direct exporter against a reachable dependency; tier C is a pull from the cloud provider's metric API. Dashboards and alerts read a normalized `ext:*` family that every tier feeds, plus flavor-native families for drilldowns.
-- **Tier A is already arriving and is almost entirely unread.** `mz_persist_consensus_failures` and `mz_persist_blob_failures` reach Thanos today and appear in exactly one alert between them; `loki_objstore_*` and the Thanos equivalents land and no query in the registry references them.
-- **Provider metrics enter through `alloy-gateway`** as `prometheus.exporter.{cloudwatch,gcp,azure}`, joining the existing `otelcol.receiver.prometheus` bridge. They take the same filter, tier, and remote-write path as every other metric, and reach every configured destination.
+- **Three vantage points, one contract.** The **client** measures what it experienced and is always on; an **exporter** reads the dependency's own telemetry directly; the **provider** publishes what its API exposes. Dashboards and alerts read a normalized `ext:*` family that all three feed, plus flavor-native families for drilldowns.
+- **Client collection is already arriving and is almost entirely unread.** `mz_persist_consensus_failures` and `mz_persist_blob_failures` reach Thanos today and appear in exactly one alert between them; `loki_objstore_*` and the Thanos equivalents land and no query in the registry references them.
+- **Provider metrics enter through `alloy-gateway`** as `prometheus.exporter.{cloudwatch,gcp,azure}`, joining the existing `otelcol.receiver.prometheus` bridge. They take the same filter, importance-tiering, and remote-write path as every other metric, and reach every configured destination.
 - **Normalization is recording rules, not relabelling.** The mapping needs arithmetic — ratios, unit conversion, histogram quantiles — which a `prometheus.relabel` cannot express. This makes the design the first consumer of the query registry's `rules:` branch, which today has no producer.
 - **No consensus flavor can be the one that waits, which is what the adapter contract is for.** Every shipped wrapper provisions managed **PostgreSQL** and nothing in the registry names a `pg_*` family; every incident seen in the field has been **CockroachDB**; **CNPG** is arriving in customer clusters now.
 - **The two dependencies get different defaults, on purpose.** Object storage defaults to client-side only, because two of three clouds publish no usable server-side latency signal and the clients publish an excellent one. The consensus database defaults to client-side plus an exporter, because the exporter sees things no other vantage point can.
 - **Dependency series are `infra-*`, not `env-*`,** until a values-supplied mapping says which database and which bucket serve which environment. Provider metrics arrive labelled by resource identifier and carry no Materialize identity.
 - **Flavor is discovered, not configured**, following the precedent `infra-net` set: the scrape stamps the series, a query variable reads the label back, and rows render on a match with a negated fallback that explains itself. Adapter applicability is declared as a **capability tag** rather than a cloud, matching the alerting design.
-- **Two signals come from the field rather than from first principles** — the dependency's *version*, and per-database storage attribution on a shared instance. Both are observed incident causes, both are invisible to every tier but the exporter, and neither was in an earlier draft.
-- **Day 0 is a separate problem with a separate answer.** Setup failures are the most common incident class and happen before any client has produced a metric, so they are served by render-time validation and a probe rather than by any of the three tiers.
-- **Provider-side collection lags.** CloudWatch RDS metrics land at 60-second granularity a few minutes late, S3 storage metrics are daily. Alert `for:` windows and dashboard freshness annotations account for it, and no tier-C signal is used for a fast page.
+- **Two signals come from the field rather than from first principles** — the dependency's *version*, and per-database storage attribution on a shared instance. Both are observed incident causes, both are visible only to the exporter, and neither was in an earlier draft.
+- **Day 0 is a separate problem with a separate answer.** Setup failures are the most common incident class and happen before any client has produced a metric, so they are served by render-time validation and a probe rather than by any of the three vantage points.
+- **Provider-side collection lags.** CloudWatch RDS metrics land at 60-second granularity a few minutes late, S3 storage metrics are daily. Alert `for:` windows and dashboard freshness annotations account for it, and no provider signal is used for a fast page.
 
 ## Non-goals
 
@@ -152,16 +165,18 @@ Four stakeholder classes consume this:
 | Provider metric pull | ❌ **Absent** | No `prometheus.exporter.cloudwatch`, `.gcp` or `.azure` in the schema or any pipeline |
 | Provider metric *push* | ✅ Shipped, opposite direction | `googleCloudExporter` and `datadogExporter` write metrics *out*. The GCP monitoring module already provisions a workload identity for it |
 | Recording rules | ❌ Declared, no producer | The registry models `rules:`, no file uses the branch, and `pre-rendered/rules/{prometheus,thanos,loki}/` are all empty |
-| Alerts as installable rules | 🔨 Designed, not built | `config.rules.prometheus.enabled` defaults true and no template emits a `PrometheusRule`, so an install gets no alerts at all. [Alerting in self-managed](https://github.com/MaterializeInc/materialize-monitoring/pull/356) designs the path and finds that a `PrometheusRule` has exactly one consumer here — the Thanos ruler's `autoImportPrometheusRules` sidecar |
+| Alerts as installable rules | 🔨 Designed, not built | `config.rules.prometheus.enabled` defaults true and no template emits a `PrometheusRule`, so an install gets no alerts at all. [Alerting in self-managed](../20260917-alerting-self-managed/) designs the path and finds that a `PrometheusRule` has exactly one consumer here — the Thanos ruler's `autoImportPrometheusRules` sidecar |
 | Version reporting for any dependency | ❌ **Absent** | Nothing collects or displays what version a database or object store is running |
-| Per-database storage attribution | ❌ **Absent** | Instance-level storage is the only granularity any tier currently reaches |
+| Per-database storage attribution | ❌ **Absent** | Instance-level storage is the only granularity anything currently reaches |
 | Conditional dashboard rendering | ✅ Shipped precedent | `Row::only_when_variable` / `only_unless_variable`, first used by `infra-net` for CNI vendors |
 | Capability tags on rules | 🔨 Designed, not built | The alerting design replaces `deploymentMode: cloud-only` — carried by 5 alerts today — with tags naming what a rule requires |
 | Telemetry-bucket housekeeping | ✅ Shipped | The monitoring module sets `AbortIncompleteMultipartUpload` and noncurrent-version expiry on AWS and GCP |
 | Persist-bucket housekeeping | ⚠️ Not set | `aws/modules/storage` renders a lifecycle configuration only when `bucket_lifecycle_rules` is non-empty, and it models no multipart abort |
 
 Two rows are prerequisites rather than context, and one of them has moved since this was first drafted.
-**No alert this repo defines is installed anywhere**, so every alert proposed below inherits that gap — now designed rather than merely absent, and the design's finding that `thanos.ruler.enabled` is the switch the whole feature hangs off applies here unchanged.
+**No alert this repo defines is installed anywhere**, so every alert proposed below inherits that gap.
+That gap is now designed rather than merely absent.
+The alerting design's finding that `thanos.ruler.enabled` is the switch the whole feature hangs off applies here unchanged.
 **No recording rule can be produced**, so the normalization layer this design depends on still has to build the mechanism it uses.
 
 ## What has actually gone wrong
@@ -169,7 +184,7 @@ Two rows are prerequisites rather than context, and one of them has moved since 
 Design from first principles produces a plausible signal list.
 The incidents this project has seen in the field produce a different one, and where they disagree the field wins.
 
-| Observed | Which tier sees it | Covered today |
+| Observed | Which vantage point sees it | Covered today |
 |---|---|---|
 | **Day 0 setup failures** — the deployment never comes up | None of them. No client has produced a metric yet | ❌ Not at all |
 | **CockroachDB ran out of disk** | B and C | ⚠️ An alert exists, targets the wrong metric names, and is not installed |
@@ -185,7 +200,8 @@ They did not fire, because they read CockroachDB Cloud's metric names and becaus
 That is a sharper statement of the gap than "coverage is aimed at the wrong flavor": the *judgement* was right and everything around it was missing.
 
 **The incidents are CockroachDB and the wrappers provision PostgreSQL.**
-Both are true, and they are not in tension — customers reach a running deployment by more paths than the shipped Terraform.
+Both are true, and they are not in tension.
+Customers reach a running deployment by more paths than the shipped Terraform.
 The conclusion is that neither flavor can be the one that waits, which is the argument for the adapter contract rather than an argument about ordering.
 
 **A shared database is a failure mode no aggregate metric can attribute.**
@@ -197,25 +213,26 @@ Every flavor reports its own version, nothing asks, and the cost of asking is on
 
 ## Day 0 is a different problem
 
-The most common incident class happens before any of the three tiers can report anything.
+The most common incident class happens before any of the three vantage points can report anything.
 A deployment whose metadata DSN is wrong, whose bucket credentials are missing, or whose database is unreachable from the cluster produces no `mz_persist_*` metrics, because `environmentd` never reaches the point of emitting them.
 The monitoring stack's own dependencies fail the same way and take the observability with them.
 
-Three answers, and none of them is a metric tier.
+Three answers, and none of them is a vantage point.
 
 **Render-time validation.**
 The chart already refuses to render configurations it can see are wrong, and the dependency configuration is inspectable the same way.
-A bucket named with no credentials path, a DSN with no `sslmode`, a tier-C adapter with no resource identifier — all are decidable before anything is installed.
+A bucket named with no credentials path, a DSN with no `sslmode`, a provider adapter with no resource identifier — all are decidable before anything is installed.
 
 **A connectivity probe as an install-time hook.**
-Reaching the database and the bucket with the credentials the deployment was given is a one-shot check with an unambiguous answer, and it converts a silent failure into a failed install with a message.
+Reaching the database and the bucket with the credentials the deployment was given is a one-shot check with an unambiguous answer.
+An install whose configured dependency is unreachable MUST fail with a message naming it, rather than proceed and produce no telemetry.
 This is the same shape as the existing pre-install `alloy validate` hook.
 
 **A standing synthetic probe.**
 The probe that answers Day 0 answers a steady-state question too: during a quiet period, "no errors" and "no traffic" are indistinguishable from every client-side signal, because a client that is making no calls reports no failures.
 That moves the synthetic probe from a **Could** to a **Should**, on the strength of Day 0 rather than on the steady-state argument that was never quite enough on its own.
 
-Day 0 coverage is deliberately not a fourth tier.
+Day 0 coverage is deliberately not a fourth vantage point.
 It runs once, it answers a yes-or-no question, and it belongs to the install rather than to the collection pipeline.
 
 **This is adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)) and is not the same question.**
@@ -246,7 +263,7 @@ It is nonetheless where every observed consensus incident has happened, so it is
 
 **GCP's persist client is an S3 client.**
 The DSN is `s3://KEY:SECRET@bucket/materialize?endpoint=https://storage.googleapis.com`, so `mz_persist_blob_*` on GCP is produced by the same code path as on AWS.
-That is a gift to the normalized contract: the client-side tier needs no per-cloud handling for two of three clouds, and Azure's native blob client is the only divergence.
+That is a gift to the normalized contract: the client vantage point needs no per-cloud handling for two of three clouds, and Azure's native blob client is the only divergence.
 
 **Azure has no HMAC-style interop shim**, so its persist path and its provider metrics are both genuinely separate, and it is the cloud where the adapter work is real rather than nominal.
 
@@ -259,15 +276,38 @@ Its absence does not leave the shape unobserved, and the reason is a happy accid
 It runs **rustfs** as a real S3 implementation and **CNPG** as the Postgres, chosen because they are what a cloud wrapper would otherwise have installed.
 So the on-premise adapters are the only ones this repository can exercise end to end in CI, and they are cheaper to prove than the cloud ones rather than more expensive.
 
-**On-premise object stores invert the tier argument.**
+**On-premise object stores invert this argument.**
 MinIO, Garage and Ceph publish Prometheus metrics natively, about the store itself — capacity, per-node health, healing and scrub state — which no cloud object store offers at any price.
-So for an on-premise deployment there *is* a meaningful tier B for object storage, and it is better than any cloud's tier C.
+So for an on-premise deployment there *is* a meaningful exporter collection for object storage, and it is better than any cloud's provider collection.
 The [table below](#why-the-two-dependencies-get-different-defaults) says object storage has no in-cluster exporter equivalent, and that is a statement about the three managed clouds rather than about object storage.
 
-**CNPG is tier B with nothing to deploy.**
+**CNPG is exporter collection with nothing to deploy.**
 The operator exposes Prometheus metrics on every instance and ships a `PodMonitor` for them, carrying replication state, switchover history and backup status alongside the ordinary PostgreSQL statistics.
 A CNPG adapter is a scrape source and a set of recording rules, with no `postgres_exporter` involved unless the in-database statistics are wanted too.
 It is listed here rather than under "future work" because it is turning up in customer clusters now.
+
+## Three vantage points, none of them a substitute
+
+The obvious split — self-hosted gets an exporter, managed gets the provider's metrics — is wrong, and getting it wrong is what makes managed-database coverage feel thin.
+
+| Vantage point | Sees | Cannot see |
+|---|---|---|
+| **The client** (`mz_persist_*`, `loki_objstore_*`) | Latency and errors as experienced, including the network between, DNS, TLS, and the client's own pool | Anything about *why*. A saturated connection pool and a saturated database present identically |
+| **The exporter** (`postgres_exporter`, `/_status/vars`, CNPG's own endpoint) | Inside the database — connections by state, lock waits, dead tuples, transaction-ID age, per-table statistics for the consensus table itself, **per-database size**, and **the version it is running** | The box. A throttled EBS volume shows up as slowness with no local cause |
+| **The provider** (CloudWatch, Cloud Monitoring, Azure Monitor) | The instance and the service — CPU, memory, IOPS, burst balance, storage headroom, service-side error rates | Inside the database. No provider publishes lock waits or table bloat |
+
+**A managed database wants the exporter and the provider both.**
+The provider sees the box it runs on; the exporter sees the database running on it.
+Neither answers "is the consensus table bloating", which is the failure mode most specific to this workload.
+Persist drives a high-churn compare-and-swap table, and a stalled autovacuum on it degrades every Materialize write while every instance-level metric stays flat.
+
+Two of the exporter-only signals are in the table because the field put them there rather than because the taxonomy suggested them.
+**Per-database size** is what distinguishes Materialize filling an instance from a neighbouring project filling it, and the provider reports one number for the volume.
+**The version** is reported by every flavor and asked for by nothing, and an out-of-date component has already been an incident cause here.
+
+That is also the argument for running `postgres_exporter` against RDS, Cloud SQL, and Flexible Server rather than treating them as covered by provider collection.
+All three accept a normal PostgreSQL connection from inside the cluster, which the deployment already has, using the credentials the operator already holds.
+Exporter collection is therefore the recommended default for the consensus database on every flavor, managed or not, and provider collection is the addition rather than the alternative.
 
 ## Architecture
 
@@ -278,18 +318,18 @@ flowchart LR
     obj[("Object storage<br/>S3 · GCS · Azure Blob<br/>S3-compatible")]
   end
 
-  subgraph a["Tier A — client-side · always on"]
+  subgraph a["The client — always on"]
     mz["environmentd / clusterd<br/>mz_persist_consensus_* · mz_persist_blob_*"]
     lk["Loki — loki_objstore_*"]
     th["Thanos — thanos_objstore_bucket_operation_*"]
   end
 
-  subgraph b["Tier B — exporter · opt-in"]
+  subgraph b["An exporter — opt-in"]
     pgx["prometheus.exporter.postgres"]
     crx["CockroachDB /_status/vars"]
   end
 
-  subgraph c["Tier C — provider pull · opt-in"]
+  subgraph c["The provider — opt-in pull"]
     cw["prometheus.exporter.cloudwatch"]
     gc["prometheus.exporter.gcp"]
     az["prometheus.exporter.azure"]
@@ -322,11 +362,15 @@ flowchart LR
 
 Four properties of this diagram carry the design.
 
-**Tier A needs nothing new at the edges.**
-Every arrow out of the client-side box already exists — these are processes this stack already scrapes, emitting families that already reach Thanos.
-The work in tier A is entirely in the registry, the rules, and the dashboards, which is why it ships first and alone.
+**Client collection needs nothing new at the edges.**
+Every arrow out of the client box already exists.
+These are processes this stack already scrapes, emitting families that already reach Thanos.
+The work in client collection is entirely in the registry, the rules, and the dashboards, which is why it ships first and alone.
 
-**Every tier converges before the filter, not after it.**
+**The client vantage point MUST work on every deployment shape, and MUST NOT require a cloud credential.**
+It is the only one available on an air-gapped install and the only one identical across flavors, so anything that makes it conditional removes the design's floor.
+
+**All three converge before the filter, not after it.**
 Provider-pulled metrics land in `otelcol.receiver.prometheus "inputBridge"` like everything else, so they inherit the deny list, the importance tiering, the per-destination remote-write fan-out, and the external labels without a single new seam.
 A design that gave them their own path would have to re-derive all of that.
 
@@ -338,28 +382,6 @@ This is the component that does not exist today.
 Thanos's object-store metrics travel to Thanos.
 That circularity is real and bounded, and [it is treated explicitly below](#the-stack-cannot-watch-its-own-bucket-fail).
 
-## Three vantage points, none of them a substitute
-
-The obvious split — self-hosted gets an exporter, managed gets the provider's metrics — is wrong, and getting it wrong is what makes managed-database coverage feel thin.
-
-| Vantage point | Sees | Cannot see |
-|---|---|---|
-| **The client** (`mz_persist_*`, `loki_objstore_*`) | Latency and errors as experienced, including the network between, DNS, TLS, and the client's own pool | Anything about *why*. A saturated connection pool and a saturated database present identically |
-| **The exporter** (`postgres_exporter`, `/_status/vars`, CNPG's own endpoint) | Inside the database — connections by state, lock waits, dead tuples, transaction-ID age, per-table statistics for the consensus table itself, **per-database size**, and **the version it is running** | The box. A throttled EBS volume shows up as slowness with no local cause |
-| **The provider** (CloudWatch, Cloud Monitoring, Azure Monitor) | The instance and the service — CPU, memory, IOPS, burst balance, storage headroom, service-side error rates | Inside the database. No provider publishes lock waits or table bloat |
-
-**A managed database wants the exporter and the provider both.**
-The provider sees the box it runs on; the exporter sees the database running on it.
-Neither answers "is the consensus table bloating", which is the failure mode most specific to this workload — persist drives a high-churn compare-and-swap table, and a stalled autovacuum on it degrades every Materialize write while every instance-level metric stays flat.
-
-Two of the exporter-only signals are in the table because the field put them there rather than because the taxonomy suggested them.
-**Per-database size** is what distinguishes Materialize filling an instance from a neighbouring project filling it, and the provider reports one number for the volume.
-**The version** is reported by every flavor and asked for by nothing, and an out-of-date component has already been an incident cause here.
-
-That is also the argument for running `postgres_exporter` against RDS, Cloud SQL, and Flexible Server rather than treating them as covered by tier C.
-All three accept a normal PostgreSQL connection from inside the cluster, which the deployment already has, using the credentials the operator already holds.
-Tier B is therefore the recommended default for the consensus database on every flavor, managed or not, and tier C is the addition rather than the alternative.
-
 ## Why the two dependencies get different defaults
 
 The two dependencies look symmetric and are not, and the asymmetry decides what ships on by default.
@@ -370,18 +392,18 @@ The two dependencies look symmetric and are not, and the asymmetry decides what 
 | Provider-side latency signal | Good on all three clouds | **Absent on GCS.** Opt-in and separately billed on S3. Good on Azure |
 | Provider-side capacity signal | **Essential** — storage headroom, connection ceiling, IOPS, burst balance | Nearly irrelevant; object storage does not run out |
 | Exporter available in-cluster | Yes, over the existing connection | **None on the three managed clouds.** On-premise stores publish their own, and better ones |
-| Recommended default | Tier A **and** tier B | Tier A **only** |
+| Recommended default | Client collection **and** exporter collection | Client collection **only** |
 
-Object storage gets the thinner default because the cheap tier is also the better one.
+Object storage gets the thinner default because the cheap vantage point is also the better one.
 GCS publishes request counts by response code and no latency metric at all; S3's `FirstByteLatency` and `TotalRequestLatency` require per-bucket request metrics, which are opt-in and billed as custom metrics.
 Meanwhile Loki, Thanos, and persist each already produce an operation-level latency histogram, for free, at full resolution, attributed to the operation that experienced it.
 
-Tier C for object storage therefore earns its place on **capacity and waste** rather than health: bucket size, object count, and the growth rate that reveals a compactor that has stopped.
+Provider collection for object storage therefore earns its place on **capacity and waste** rather than health: bucket size, object count, and the growth rate that reveals a compactor that has stopped.
 Those are the signals the clients cannot produce, they are free on S3 and GCS, and a daily granularity is appropriate for them.
 
 **The row this table reads oddest on is the on-premise case**, where the recommendation inverts.
 MinIO, Garage and Ceph publish drive and node health, healing progress and capacity headroom about the store itself, and an object store running on disks someone owns genuinely can run out.
-An on-premise deployment therefore gets tier A **and** tier B for object storage, which is the same shape the consensus database gets everywhere.
+An on-premise deployment therefore gets client collection **and** exporter collection for object storage, which is the same shape the consensus database gets everywhere.
 
 ## The coverage that exists is right and unfireable
 
@@ -446,31 +468,34 @@ The two `_info` series carry no measurement at all — they are constants whose 
 Four properties of this contract are load-bearing.
 
 **Absence is a valid adapter answer, and it is not the same as zero.**
-GCS publishes no latency, so the GCS tier-C adapter records no `ext:objstore_request_duration_seconds` rather than recording a constant.
-A panel reading it shows "no data" for that source, which is true, and the tier-A series covers the same question from the client side anyway.
+An adapter that cannot measure a series MUST record nothing for it.
+It MUST NOT substitute a constant, a zero, or a value derived from a different measurement.
+GCS publishes no latency, so the GCS provider adapter records no `ext:objstore_request_duration_seconds`.
+A panel reading it shows "no data" for that source, which is true, and the client series covers the same question from the client side anyway.
 
 **Ratios rather than absolutes, wherever a ceiling exists.**
 `FreeStorageSpace` in bytes is not comparable across a 100 GiB RDS instance and a 4 TiB one, and an alert threshold in bytes has to be re-derived per deployment.
 This is also why relabelling cannot produce the contract: a ratio is a division, and `prometheus.relabel` rewrites labels.
 
 **The flavor stays on the series as a label**, not baked into the name.
+Every normalized series MUST carry a `flavor` label naming the adapter that produced it.
 `ext:consensus_cpu_ratio{flavor="rds", ...}` lets one panel show every consensus database in a deployment, and lets an operator see immediately which adapter produced a number they distrust.
 That label is also the dashboard's detection mechanism, which is the subject of [flavor is discovered, not configured](#flavor-is-discovered-not-configured).
 
 **Applicability is a capability, not a cloud.**
-An adapter declares what it requires — `postgres`, `cnpg`, `crdb-self-hosted`, `crdb-dedicated`, `s3-compatible`, `cloudwatch` — rather than which cloud it belongs to.
-This follows the [alerting design](https://github.com/MaterializeInc/materialize-monitoring/pull/356), which replaces the `deploymentMode: cloud-only` label with capability tags for the same reason: a CockroachDB rule is for a deployment running CockroachDB, and a self-managed customer may well be one.
+An adapter MUST declare the capability it requires — `postgres`, `cnpg`, `crdb-self-hosted`, `crdb-dedicated`, `s3-compatible`, `cloudwatch` — rather than the cloud it belongs to.
+This follows the [alerting design](../20260917-alerting-self-managed/), which replaces the `deploymentMode: cloud-only` label with capability tags for the same reason: a CockroachDB rule is for a deployment running CockroachDB, and a self-managed customer may well be one.
 The cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS, and both of those are real.
 
 Naming this family is not free, and the window has closed since this was first drafted.
-The [alerting design](https://github.com/MaterializeInc/materialize-monitoring/pull/356) makes alert and recording-rule names a committed surface from the release that first ships rules, which settles the roadmap's open naming decision.
+The [alerting design](../20260917-alerting-self-managed/) makes alert and recording-rule names a committed surface from the release that first ships rules, which settles the roadmap's open naming decision.
 `ext:*` would be the first recorded series in the repository, so the convention it sets is the one every later rule inherits.
 
 ## The consensus database
 
 ### PostgreSQL, managed or self-hosted
 
-Tier B is the recommended default, deployed as a `postgres_exporter` against the same DSN the operator already holds.
+Exporter collection is the recommended default, deployed as a `postgres_exporter` against the same DSN the operator already holds.
 The signals worth collecting, and why each is here rather than in a general PostgreSQL dashboard:
 
 | Signal | Family | Why it matters to Materialize |
@@ -491,10 +516,11 @@ Two of these need work beyond enabling a collector.
 **Table-level statistics need the exporter pointed at the right database and given `pg_monitor`**, and a least-privilege grant is part of the deliverable rather than an afterthought.
 
 One of them needs the exporter to be pointed somewhere specific.
-**`pg_database_size_bytes` reports every database on the instance**, which is exactly what the shared-instance incident needs and is only true if the exporter is not scoped to the Materialize database alone.
+**`pg_database_size_bytes` reports every database on the instance**, which is exactly what the shared-instance incident needs.
+The exporter MUST NOT be scoped to the Materialize database alone, or the attribution the row exists for is lost.
 A per-database breakdown is also the cheapest thing in this document to collect and the hardest to reconstruct afterwards, since nothing retains it retroactively.
 
-Tier C adds what the exporter cannot see, and the families differ per cloud:
+Provider collection adds what the exporter cannot see, and the families differ per cloud:
 
 | Cloud | Namespace | Signals that justify the pull |
 |---|---|---|
@@ -504,7 +530,7 @@ Tier C adds what the exporter cannot see, and the families differ per cloud:
 
 The burst-balance family on AWS deserves a specific mention.
 A `gp2` or `gp3` volume that exhausts its burst credit degrades to baseline IOPS, and every in-database metric stays normal while every Materialize write slows down.
-It is invisible from tiers A and B, it is a genuine production failure mode, and it is the single strongest argument for tier C on the database side.
+It is invisible to the client and to the exporter alike. It is a genuine production failure mode, and it is the single strongest argument for provider collection on the database side.
 
 Each cloud publishes a transaction-ID headroom metric, which means the wraparound signal has two independent sources.
 That is fine and worth keeping: the provider's is authoritative and lags, the exporter's is immediate and needs a custom query, and the normalized `ext:consensus_xid_used_ratio` takes whichever exists.
@@ -524,7 +550,7 @@ Three families beyond the ones the existing alerts already name are worth adding
 | `admission_*` | Admission control throttling low-priority work, which is the cluster protecting itself and reaches Materialize as latency |
 
 **CockroachDB Cloud** publishes through its own metric export to CloudWatch, Cloud Monitoring, Datadog, or a Prometheus-scrapable endpoint, with the `crdb_dedicated_*` prefix the existing alerts use.
-The Prometheus endpoint is the cheapest path and needs an API key; the CloudWatch path arrives through the same tier-C adapter as everything else.
+The Prometheus endpoint is the cheapest path and needs an API key; the CloudWatch path arrives through the same provider adapter as everything else.
 
 The existing 15 alerts become the CockroachDB Cloud adapter unchanged, and a self-hosted adapter records the same `ext:*` series from the unprefixed names.
 That is the normalized contract's first real test, and it is a fair one: the two flavors publish the same measurements under different names, which is exactly the case the layer exists for.
@@ -532,10 +558,10 @@ That is the normalized contract's first real test, and it is a fair one: the two
 ### CloudNativePG
 
 CNPG is appearing in customer clusters and is the flavor with the least work behind it.
-The operator publishes Prometheus metrics on every instance and ships a `PodMonitor` for them, so tier B needs a scrape source and a set of recording rules and no exporter at all.
+The operator publishes Prometheus metrics on every instance and ships a `PodMonitor` for them, so exporter collection needs a scrape source and a set of recording rules and no exporter at all.
 
 What it adds beyond the ordinary PostgreSQL statistics is the operator's own view: which instance is primary, replication state and lag between them, switchover and failover history, and whether the configured backup is current.
-Those answer questions that on a managed database belong to tier C, so a CNPG deployment gets provider-grade coverage from a tier-B mechanism.
+Those answer questions that on a managed database belong to provider collection, so a CNPG deployment gets provider-grade coverage from a exporter mechanism.
 
 `postgres_exporter` remains available beside it where the in-database statistics matter — CNPG's endpoint carries the cluster's view, not `pg_stat_user_tables`.
 The two compose, and a CNPG adapter that records the normalized series from the operator's metrics is useful before that question is settled.
@@ -543,7 +569,7 @@ The two compose, and a CNPG adapter that records the normalized series from the 
 ### Grafana's own database
 
 The bundled Grafana defaults to SQLite and optionally takes a PostgreSQL instance, which the monitoring module provisions.
-It gets the same tier-B treatment at the lowest severity here, and the severity is low for a reason worth stating rather than asserting.
+It gets the same exporter treatment at the lowest severity here, and the severity is low for a reason worth stating rather than asserting.
 
 **Grafana holds no alert rules in this stack.** Alerting is evaluated by the Thanos and Loki rulers, so losing Grafana's database loses no alert history and silences nothing.
 **grafana-operator re-pushes dashboards and datasources on every resync**, so the durable content is reconstructed rather than lost.
@@ -566,7 +592,7 @@ The gateway is sized by telemetry throughput, runs several replicas, and is rest
 Exporters are near-idle, want one instance per target, and want a restart to mean nothing.
 Co-locating them makes every database credential a reason to roll the whole metric pipeline, and makes the pipeline's replica count a multiplier on the connections each database sees.
 
-**So tier B is a `postgres_exporter` subchart**, one release covering the configured targets, with credentials mounted rather than passed through values.
+**So the exporter SHOULD be a `postgres_exporter` subchart**, one release covering the configured targets, with credentials mounted rather than passed through values.
 That also isolates the blast radius of a credential and keeps the least-privilege grant per target rather than per cluster.
 
 The Alloy component keeps a narrow role: a **low-criticality target whose exporter is not worth a workload**, of which Grafana's own database is the example.
@@ -591,7 +617,7 @@ The persist families are counters without a latency histogram, so `ext:objstore_
 **That gap is the same one on the consensus side, and it is the most important thing this design cannot do.**
 A failure counter reports that a dependency *broke*; it never reports that one is *degrading*.
 The slow-and-getting-slower case that precedes an outage — rising commit latency, rising retry rates on the compare-and-swap loop — has no signal in persist at all, on either dependency.
-Tiers B and C see the database slowing down and cannot attribute it to Materialize's traffic; only persist can say what it experienced.
+The exporter and the provider see the database slowing down and cannot attribute it to Materialize's traffic; only persist can say what it experienced.
 
 This belongs in the [Tier 2 upstream asks](https://linear.app/materializeinc/issue/DEP-207) rather than in any work item here, and DEP-233 says the same.
 
@@ -627,7 +653,7 @@ That is a Terraform-repo finding rather than a monitoring one, and it belongs in
 ### On-premise stores publish more than any cloud does
 
 MinIO, Garage and Ceph are S3-compatible stores a customer runs on hardware they own, and unlike a cloud bucket they can genuinely fail and genuinely fill up.
-All three publish Prometheus metrics about themselves, which makes object storage a tier-B dependency in exactly the deployments where it most needs to be one.
+All three publish Prometheus metrics about themselves, which makes object storage a exporter dependency in exactly the deployments where it most needs to be one.
 
 | Signal class | What it answers | Cloud equivalent |
 |---|---|---|
@@ -636,7 +662,7 @@ All three publish Prometheus metrics about themselves, which makes object storag
 | Healing and scrub progress | Whether the store is degraded-but-recovering or degraded-and-stuck | None |
 | Request rate, errors and latency, server-side | The same question S3 answers only with billed request metrics, and GCS does not answer at all | Partial, and paid |
 
-Collection is an ordinary scrape of an in-cluster endpoint, which is the cheapest tier-B path in this document.
+Collection is an ordinary scrape of an in-cluster endpoint, which is the cheapest exporter path in this document.
 The normalized contract absorbs it without a new shape: the same `ext:objstore_*` series, with capacity becoming meaningful where it was previously always absent.
 
 Two notes for whoever builds this.
@@ -653,8 +679,10 @@ Thanos Receive holds recent samples in a local TSDB before shipping blocks, the 
 So an alert on a *recent* window still fires during a bucket outage; what is lost is the history of the outage, which is recoverable once the bucket returns.
 
 Two design consequences follow.
-**Object-store alerts evaluate over short windows** — the long-window variants are dashboard panels rather than alerts, because a long window is exactly what a bucket outage makes unanswerable.
-**The telemetry bucket and the persist bucket are alerted separately**, even when a deployment puts them in the same account and region, because one of them can be watched reliably and the other can only be watched by a stack that is itself degraded.
+**Object-store alerts MUST evaluate over short windows.**
+The long-window variants are dashboard panels rather than alerts, because a long window is exactly what a bucket outage makes unanswerable.
+**The telemetry bucket and the persist bucket MUST be alerted separately**, even when a deployment puts them in the same account and region.
+One of them can be watched reliably; the other can only be watched by a stack that is itself degraded.
 
 ## Pulling provider metrics into the pipeline
 
@@ -673,7 +701,8 @@ The agent is a DaemonSet and the pull is per-deployment rather than per-node, so
 This is the same reasoning that moved cAdvisor off the agent, recorded in the roadmap's [pipelines section](../../roadmap/#pipelines-alloy), and it applies here more sharply because the duplicated calls would be billed.
 
 The gateway runs multiple replicas, which makes duplication a live concern within a single role.
-`clustering { enabled = true }` on the scrape is the existing answer for `prometheus.operator.*` and is required here for the same reason, with the same consequence if it is forgotten: a correct-looking dashboard and a bill multiplied by the replica count.
+The provider exporters MUST run with `clustering { enabled = true }`, which is the existing answer for `prometheus.operator.*`.
+Forgetting it produces a correct-looking dashboard and a bill multiplied by the replica count.
 
 ### Why pull rather than a Grafana datasource
 
@@ -704,23 +733,23 @@ Provider metrics are not live, and the delay differs by provider and by metric.
 CloudWatch instance metrics land at 1-minute granularity with a few minutes of delay; S3 storage metrics are daily and are published hours after the period they describe.
 Cloud Monitoring and Azure Monitor are comparable.
 
-**No tier-C signal backs a fast page.**
-A page derived from a metric that is five minutes old is five minutes late by construction, and the client-side tier already answers the same question immediately.
-Tier C alerts use `for:` windows sized well above the provider's publication delay, and they cover the slow-moving conditions — storage headroom, burst-credit exhaustion, connection ceilings — where minutes do not matter.
+**No provider signal backs a fast page.**
+A page derived from a metric that is five minutes old is five minutes late by construction, and the client already answers the same question immediately.
+Provider collection alerts use `for:` windows sized well above the provider's publication delay, and they cover the slow-moving conditions — storage headroom, burst-credit exhaustion, connection ceilings — where minutes do not matter.
 
 Dashboards annotate it rather than hiding it.
-A panel whose data is inherently stale should say so, because an operator comparing a tier-A panel and a tier-C panel during an incident will otherwise read the gap between them as a contradiction.
+A panel whose data is inherently stale should say so, because an operator comparing a client panel and a provider panel during an incident will otherwise read the gap between them as a contradiction.
 
-### Cardinality and tiering
+### Cardinality and importance
 
 Provider exporters are cardinality traps.
 YACE's tag-discovery mode will happily produce a series per resource per tag combination, and `stackdriver_exporter` on a broad prefix pulls metric descriptors nobody asked for.
 
 Three controls, all of which already exist in this stack:
 
-- **Configure by explicit resource, not by tag discovery**, wherever the deployment knows the resource — which the Terraform wrappers do, since they created it.
-- **Assign `metricImportanceHint` deliberately.** The normalized core is `recommended`; the flavor-native families are `extended` or `diagnostic`. This is what keeps a Datadog or BYOC fan-out from carrying a provider's entire metric surface across a boundary at a per-metric price.
-- **Let the deny list catch the rest**, since provider metrics pass through `inputMetricProcessor` like everything else.
+- A provider adapter SHOULD address resources **explicitly rather than by tag discovery**, wherever the deployment knows the resource — which the Terraform wrappers do, since they created it.
+- Every family this design adds MUST carry a `metricImportanceHint`. The normalized core is `recommended` and the flavor-native families are `extended` or `diagnostic`. This is what keeps a Datadog or BYOC fan-out from carrying a provider's whole metric surface across a boundary at a per-metric price.
+- The deny list catches the rest, since provider metrics pass through `inputMetricProcessor` like everything else.
 
 ## Dependency series are `infra-*` until a mapping exists
 
@@ -758,23 +787,24 @@ The dashboards are useful without it on every single-environment install, which 
 
 ## Alerting
 
-Alerts read the normalized layer exclusively, which is what keeps the set at one alert per failure mode.
+Alerts SHOULD read the normalized layer rather than a flavor-native family, which is what keeps the set at one alert per failure mode.
+The documented exception is below.
 
-| Alert | Reads | Severity | Tier |
+| Alert | Reads | Severity | Vantage point |
 |---|---|---|---|
-| Consensus unreachable | `ext:consensus_up` | critical | A/B |
-| Consensus write latency degraded | `ext:consensus_commit_latency_seconds` | warning | B |
-| Connection ceiling approaching | `ext:consensus_connections_used_ratio` | warning → critical | B/C |
-| Storage headroom low | `ext:consensus_storage_used_ratio` | warning → critical | C |
-| Transaction-ID wraparound risk | `ext:consensus_xid_used_ratio` | critical | B/C |
-| Consensus table not vacuuming | `pg_stat_user_tables_*`, flavor-native | warning | B |
-| Blob error rate elevated, by operation class | `ext:objstore_request_errors:rate5m` | warning → critical | A |
-| Blob latency degraded | `ext:objstore_request_duration_seconds` | warning | A |
-| Bucket growth without bound | `ext:objstore_bytes_used` | notice | C |
-| **A neighbouring database is consuming the instance** | `ext:consensus_database_bytes` | warning | B |
-| **A dependency is running an out-of-date version** | `ext:consensus_version_info`, `ext:objstore_version_info` | notice | B |
-| **On-premise store capacity low** | `ext:objstore_bytes_used` against reported capacity | critical | B |
-| **The dependency probe is failing** | the probe's own series | critical | Day 0 |
+| Consensus unreachable | `ext:consensus_up` | critical | Client or exporter |
+| Consensus write latency degraded | `ext:consensus_commit_latency_seconds` | warning | Exporter |
+| Connection ceiling approaching | `ext:consensus_connections_used_ratio` | warning → critical | Exporter or provider |
+| Storage headroom low | `ext:consensus_storage_used_ratio` | warning → critical | Provider |
+| Transaction-ID wraparound risk | `ext:consensus_xid_used_ratio` | critical | Exporter or provider |
+| Consensus table not vacuuming | `pg_stat_user_tables_*`, flavor-native | warning | Exporter |
+| Blob error rate elevated, by operation class | `ext:objstore_request_errors:rate5m` | warning → critical | Client |
+| Blob latency degraded | `ext:objstore_request_duration_seconds` | warning | Client |
+| Bucket growth without bound | `ext:objstore_bytes_used` | notice | Provider |
+| **A neighbouring database is consuming the instance** | `ext:consensus_database_bytes` | warning | Exporter |
+| **A dependency is running an out-of-date version** | `ext:consensus_version_info`, `ext:objstore_version_info` | notice | Exporter |
+| **On-premise store capacity low** | `ext:objstore_bytes_used` against reported capacity | critical | Exporter |
+| **The dependency probe is failing** | the probe's own series | critical | Day 0 probe |
 
 Three conventions, each of which prevents a specific bad alert.
 
@@ -816,7 +846,7 @@ This is the piece of DEP-233 with the shortest path to value: it needs no adapte
 
 ### How these reach a human
 
-[Alerting in self-managed](https://github.com/MaterializeInc/materialize-monitoring/pull/356) is the design for the path, and three of its findings land directly on this one.
+[Alerting in self-managed](../20260917-alerting-self-managed/) is the design for the path, and three of its findings land directly on this one.
 
 **`PrometheusRule` has exactly one consumer in this stack** — the Thanos ruler's `autoImportPrometheusRules` sidecar — so `thanos.ruler.enabled` is the switch every alert here hangs off, not the template that the empty `templates/alerts/` directory invites.
 A rule renderer alone would render, apply, pass CI, and do nothing.
@@ -849,7 +879,7 @@ One dashboard, `infra-deps`, in the `infra-*` family, with a tab per dependency 
 | **Provider** | The instance-level signals and a staleness annotation, on the rows whose adapter was detected |
 
 The Summary tab is the design's real deliverable, and its job is the one sentence support needs: *is the fault inside Materialize or underneath it*.
-It therefore reads tier A only, so that it works on a deployment that configured nothing, and so that it is never the panel that is five minutes stale.
+It therefore reads client collection only, so that it works on a deployment that configured nothing, and so that it is never the panel that is five minutes stale.
 
 ### Flavor is discovered, not configured
 
@@ -860,28 +890,28 @@ The [style guide](../../dashboard/style-guidelines/#rendering-a-row-on-a-discove
 | Rule from `infra-net` | Here |
 |---|---|
 | Discover the condition, do not ask for it | The scrape or the recording rule stamps `flavor`, a `$dependencyFlavorList` variable reads it back. An operator picking "RDS" from a list is being asked something the label already says |
-| Discover it from `up`, not from a vendor metric | `up` for the exporter target distinguishes *no exporter here* from *the exporter is here and mute*, and only the second is a bug worth showing rows about. A mute `postgres_exporter` is a grant problem, which is the most likely tier-B misconfiguration |
-| Always pair the set with a negated fallback | A Consensus tab whose every flavor row failed to match is indistinguishable from a broken dashboard |
-| The fallback's job is the reason, not the absence | "No adapter detected" sends a reader hunting for a scrape to fix. "Tier B is not configured for this deployment; here is what it would add" is the common case and is not a fault |
+| Discover it from `up`, not from a vendor metric | `up` for the exporter target distinguishes *no exporter here* from *the exporter is here and mute*, and only the second is a bug worth showing rows about. A mute `postgres_exporter` is a grant problem, which is the most likely exporter misconfiguration |
+| Always pair the set with a negated fallback | A conditional row set MUST carry one row matching the complement of every pattern its siblings use. A Consensus tab whose every flavor row failed to match is otherwise indistinguishable from a broken dashboard |
+| The fallback's job is the reason, not the absence | "No adapter detected" sends a reader hunting for a scrape to fix. "Exporter collection is not configured for this deployment; here is what it would add" is the common case and is not a fault |
 
 The fourth rule is the one that makes this better than the conditional rendering the earlier draft proposed, which would have made the tab simply absent.
 A tab that disappears teaches nobody that the capability exists, which is the failure the tenant-query-api doc names about empty results, one level up.
 
 ## Deployment shapes
 
-| Shape | Tier A | Tier B | Tier C |
+| Shape | Client | Exporter | Provider |
 |---|---|---|---|
 | Self-managed, the shipped wrappers, any cloud | On | Recommended, one exporter per database | Opt-in, adapter chosen by capability rather than by cloud |
 | Self-managed, customer-provisioned infrastructure | On | Opt-in; the DSN is the only requirement | Opt-in; needs credentials that cannot be assumed |
 | **Self-managed, on-premise or generic-cloud** | On | **Recommended for both dependencies** — CNPG or a self-hosted database, and the object store's own endpoint | Unavailable, and it is the shape that needs it least |
 | Self-managed, air-gapped or no provider access | On | Opt-in | Unavailable, and nothing degrades |
 | Materialize Cloud | On | CockroachDB `/_status/vars` where reachable | The CockroachDB Cloud export, which is the existing alert set |
-| kind, tier 1 | On | — | — |
-| kind, tier 2 | On | **Both** — the substrate's CNPG and rustfs | — |
+| kind, E2E tier 1 | On | — | — |
+| kind, E2E tier 2 | On | **Both** — the substrate's CNPG and rustfs | — |
 
 Two rows carry more than their width.
 
-The **air-gapped** row is the reason tier C is opt-in rather than defaulted-on-when-credentials-exist.
+The **air-gapped** row is the reason provider collection is opt-in rather than defaulted-on-when-credentials-exist.
 A deployment with no provider access loses the capacity signals and keeps every alert that pages, which is the property that makes the tiering honest rather than a way of describing a partial feature.
 
 The **on-premise** row is the one that inverts the design's usual advice, and it is also the one this repository can exercise.
@@ -894,37 +924,37 @@ None of this is ticketed yet.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **An evaluated rule path** — `thanos.ruler.enabled` and the rule rendering behind it, per the [alerting design](https://github.com/MaterializeInc/materialize-monitoring/pull/356) | No alert this repo defines is installed anywhere today. A `PrometheusRule` template alone is not enough: the Thanos ruler's `autoImportPrometheusRules` sidecar is its only consumer here | **Blocking** for all alerting, and not specific to this design |
+| **An evaluated rule path** — `thanos.ruler.enabled` and the rule rendering behind it, per the [alerting design](../20260917-alerting-self-managed/) | No alert this repo defines is installed anywhere today. A `PrometheusRule` template alone is not enough: the Thanos ruler's `autoImportPrometheusRules` sidecar is its only consumer here | **Blocking** for all alerting, and not specific to this design |
 | **A recording-rule producer** — the registry's `rules:` branch rendered into `pre-rendered/rules/prometheus/` | The normalized `ext:*` layer is recording rules. The branch is modelled and has no producer | **Blocking** |
 | **The `ext:*` naming decision** | The first recorded series in the repository, setting the precedent for every one after it. The alerting design makes these names a committed surface on first ship, so the window closes at implementation | **Blocking** for the rules, and now time-bound |
 | **Capability tags**, shared with the alerting design rather than reimplemented | Adapter applicability is `postgres` / `cnpg` / `crdb-dedicated` / `s3-compatible`, not a cloud. Two parallel mechanisms for one idea is the outcome to avoid | **Blocking** for adapter selection |
-| **Day 0: render-time validation and an install-time connectivity probe** | The most common incident class, and the one no metric tier reaches. The existing pre-install `alloy validate` hook is the shape | **Blocking** — it is the largest gap by incident count |
-| **Tier-A queries and rules** — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the normalized contract | The default tier, and the only one that works everywhere. Nothing in the registry reads these families today | **Blocking** |
+| **Day 0: render-time validation and an install-time connectivity probe** | The most common incident class, and the one no vantage point reaches. The existing pre-install `alloy validate` hook is the shape | **Blocking** — it is the largest gap by incident count |
+| **Client queries and rules** — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the normalized contract | The default vantage point, and the only one that works everywhere. Nothing in the registry reads these families today | **Blocking** |
 | **`infra-deps` dashboard**, Summary tab first, with `only_when_variable` flavor rows and a negated fallback | The deliverable. The mechanism exists — `infra-net` shipped it — so this is reuse rather than invention | **Blocking** |
 | **Split `persist-failures`** into consensus, blob, and persist-internal alerts, and correct its CockroachDB-naming description | DEP-233 scope. One alert for sixteen counters at `notice` / `for: 15m` cannot be acted on, and its severity and window are set by its least serious member | **Blocking**, and the shortest path to value — no adapter or exporter needed |
-| **A `postgres_exporter` subchart**, multi-target, with a custom query for transaction-ID age, an unscoped `pg_database_size_bytes`, and a least-privilege grant documented | Tier B for the flavor every wrapper provisions. A deployment has several databases to watch, and the default exporter publishes neither the wraparound signal nor a version | **Blocking** for tier B |
+| **A `postgres_exporter` subchart**, multi-target, with a custom query for transaction-ID age, an unscoped `pg_database_size_bytes`, and a least-privilege grant documented | Exporter collection for the flavor every wrapper provisions. A deployment has several databases to watch, and the default exporter publishes neither the wraparound signal nor a version | **Blocking** for exporter collection |
 | **A CNPG adapter** — a scrape source and recording rules, no exporter | CNPG is arriving in customer clusters and needs no exporter deployed. The cheapest adapter in the set | Should land with the PostgreSQL adapter |
 | **An on-premise object-store adapter** (MinIO / Garage / Ceph) | The only deployments where object storage can fill up or lose a disk, and the only ones where the store publishes its own health | Blocking for the on-premise shape |
 | **Version reporting across every adapter**, as `ext:*_version_info` | An observed incident cause that nothing currently collects. One series per instance | **Blocking** — cheap, and unreconstructable afterwards |
-| **A PostgreSQL adapter** — flavor-native families plus the rules that record `ext:*` from them | The gap this design exists to close | **Blocking** for tier B |
+| **A PostgreSQL adapter** — flavor-native families plus the rules that record `ext:*` from them | The gap this design exists to close | **Blocking** for exporter collection |
 | **A self-hosted CockroachDB adapter**, and reclassifying the existing 15 alerts as the CockroachDB Cloud adapter | The existing set is correct for a flavor no wrapper provisions, and should be labelled as such rather than left implying general coverage | Should land with the PostgreSQL adapter |
-| **Typed `prometheus.exporter.{cloudwatch,gcp,azure}` components** in the Alloy schema, with `clustering` on | Tier C ingest. Without clustering, every call is billed once per gateway replica | **Blocking** for tier C |
-| **A values surface for tier C** — per-cloud adapter selection, explicit resource identifiers, scrape interval, and an importance assignment | Configuration, and the cardinality and cost controls | **Blocking** for tier C |
-| **Credential wiring for the provider pull**, following the gateway-credentials pattern rather than values | Same constraint as every other credential: `helm get values` reads values, and they land in Terraform state | **Blocking** for tier C |
-| **Terraform: a read-only provider role** on each cloud's monitoring module, attached to the existing telemetry identity | The GCP module already provisions a gateway identity for metric *writes*; this is the read counterpart on the same pattern | **Blocking** for tier C on the Terraform path |
+| **Typed `prometheus.exporter.{cloudwatch,gcp,azure}` components** in the Alloy schema, with `clustering` on | Provider collection ingest. Without clustering, every call is billed once per gateway replica | **Blocking** for provider collection |
+| **A values surface for provider collection** — per-cloud adapter selection, explicit resource identifiers, scrape interval, and an importance assignment | Configuration, and the cardinality and cost controls | **Blocking** for provider collection |
+| **Credential wiring for the provider pull**, which MUST follow the gateway-credentials pattern rather than values | Same constraint as every other credential: `helm get values` reads values, and they land in Terraform state | **Blocking** for provider collection |
+| **Terraform: a read-only provider role** on each cloud's monitoring module, attached to the existing telemetry identity | The GCP module already provisions a gateway identity for metric *writes*; this is the read counterpart on the same pattern | **Blocking** for provider collection on the Terraform path |
 | **`externalDependencies:` values block** and the `ext_*_info` series rendered from it | Environment scoping, and the `role: monitoring` distinction the two-bucket alerting needs | Not blocking; the dashboards work without it on a single-environment install |
 | **A `dependency-monitoring` profile** composing the exporter, the adapter selection, and the dashboards | The assembled shape a consumer applies | Blocking for delivery |
-| **Importance tiering on every new family** | Provider surfaces are large, and the fan-out destinations bill per metric | **Blocking** for tier C |
+| **Importance tiering on every new family** | Provider surfaces are large, and the fan-out destinations bill per metric | **Blocking** for provider collection |
 | **Persist-bucket lifecycle rule** (Terraform repo, not this one) — `AbortIncompleteMultipartUpload`, matching what the telemetry buckets already set | A billed leak nothing reclaims and no metric shows. Found while writing this; it is a fix rather than an observation | Not blocking; file separately |
 
 ## Testing
 
 The kind tiers extend to cover this, and tier 2 already provides most of the substrate.
 
-- **Tier-A round trip at tier 2.** Assert that `thanos_objstore_bucket_operation_*` and `loki_objstore_*` are queryable out of Thanos, bounded to a recent window. Tier 2 runs both backends against rustfs, so these families are genuinely produced there and tier 1 cannot see them at all.
+- **Client round trip at tier 2.** Assert that `thanos_objstore_bucket_operation_*` and `loki_objstore_*` are queryable out of Thanos, bounded to a recent window. Tier 2 runs both backends against rustfs, so these families are genuinely produced there and tier 1 cannot see them at all.
 - **The normalized rules produce series.** Assert `ext:objstore_request_errors:rate5m` is non-empty at tier 2. A recording rule that never fires is the failure mode a render test cannot see, and it is the same class of bug as `GATEWAY_UNFILTERED_PROM_METRICS` being written and read by nothing.
-- **Tier-B against a real PostgreSQL.** The tier-2 substrate already runs CNPG. Point the exporter at it and assert `pg_up`, the connection-ratio rule, the custom transaction-ID query, and a `pg_database_size_bytes` series **per database**. This proves the exporter, the grant, the custom query, and the un-scoped size collector together, which is the part most likely to be silently wrong.
-- **Tier-B against a real object store.** The same substrate runs rustfs. Assert the on-premise adapter produces `ext:objstore_*` with capacity populated, which is the series that is absent on every managed cloud. Between this and the row above, tier 2 covers the on-premise shape end to end — better than it covers any cloud.
+- **Exporter against a real PostgreSQL.** The tier-2 substrate already runs CNPG. Point the exporter at it and assert `pg_up`, the connection-ratio rule, the custom transaction-ID query, and a `pg_database_size_bytes` series **per database**. This proves the exporter, the grant, the custom query, and the un-scoped size collector together, which is the part most likely to be silently wrong.
+- **Exporter against a real object store.** The same substrate runs rustfs. Assert the on-premise adapter produces `ext:objstore_*` with capacity populated, which is the series that is absent on every managed cloud. Between this and the row above, tier 2 covers the on-premise shape end to end — better than it covers any cloud.
 - **The CNPG adapter needs no exporter.** Assert the operator's own `PodMonitor` target is scraped and that the normalized series are recorded from it with nothing else deployed.
 - **Version reporting is present for every adapter.** One assertion per adapter that `ext:*_version_info` exists and carries a non-empty version label. A version series that silently stops is indistinguishable from a current version.
 - **The shared-database alert fires on the right cause.** Fill a second database on the substrate's instance and assert the attribution alert fires while the Materialize database is untouched. This is the observed incident, reproduced.
@@ -932,19 +962,19 @@ The kind tiers extend to cover this, and tier 2 already provides most of the sub
 - **Conditional rows resolve.** Assert exactly one flavor row renders on the tier-2 cluster and that the negated fallback does not, then remove the adapter and assert the fallback does. The `infra-net` failure this catches is a tab where every condition missed.
 - **Absence is recorded as absence.** Configure an adapter that cannot produce a given `ext:*` series and assert it is absent rather than zero. The contract permits absence, and a rule that records a constant instead is a false negative on an alert.
 - **Adapter equivalence.** Run the PostgreSQL and CockroachDB adapters against their respective fixtures and assert both populate the same `ext:*` series with the same label set. This is the one assertion that keeps the contract a contract.
-- **Cardinality bound on tier C.** Assert a configured adapter produces series within a stated bound, against a recorded provider response rather than a live account. An exporter that silently discovers everything is the failure this catches, and it is expensive to discover in production.
+- **Cardinality bound on provider collection.** Assert a configured adapter produces series within a stated bound, against a recorded provider response rather than a live account. An exporter that silently discovers everything is the failure this catches, and it is expensive to discover in production.
 - **Clustering.** With two gateway replicas, assert each provider target is scraped once. The failure is invisible in the data and visible only on the bill.
 - **Alert rules install and evaluate.** Once the `PrometheusRule` template exists, assert the rules are loaded and that a deliberately-triggered condition fires. Every alert in this repo is currently untested in the only sense that matters.
-- **Tier C without credentials degrades rather than fails.** Install with tier C configured and the credentials absent, and assert the stack comes up, the dashboards render, and the failure is reported rather than silent.
+- **Provider collection without credentials degrades rather than fails.** Install with provider collection configured and the credentials absent, and assert the stack comes up, the dashboards render, and the failure is reported rather than silent.
 
 Tier 3 is where the provider pull can be proven against a real account, which is after the tag, and the same caveat the E2E docs already record for workload identity applies here.
 
 ## Documentation to update
 
 - **A new page under `metrics/collecting/`** for the provider-pull path, beside the existing scraper, remote-write, and OTLP pages. It is a collection mechanism and belongs with the others.
-- **An operator-facing dependency-monitoring page** — what the three tiers are, what each costs, what is lost by configuring none of them, and the least-privilege grants each needs. This is the artifact an operator reads before deciding, and the most important item here.
+- **An operator-facing dependency-monitoring page** — what the three vantage points are, what each costs, what is lost by configuring none of them, and the least-privilege grants each needs. This is the artifact an operator reads before deciding, and the most important item here.
 - `operating/troubleshooting-materialize.md` — the "is it Materialize or is it underneath" path currently has no entry point.
-- `operating/production-best-practices.md` — the tier recommendation per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
+- `operating/production-best-practices.md` — which vantage points to configure per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
 - `architecture.md` — the dependency surface is not described anywhere; the page starts at the chart.
 - `reference/internal/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
 - `reference/stable-metrics/` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
@@ -973,14 +1003,14 @@ Four questions from the first draft are settled and are recorded here rather tha
 - [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
 - [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.
-- [ ] **What does the persist blob path owe upstream?** Persist publishes failure counters and no latency histogram, which is the largest gap in the client-side tier. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
+- [ ] **What does the persist blob path owe upstream?** Persist publishes failure counters and no latency histogram, which is the largest gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
 - [ ] **Is the Day 0 probe and the steady-state probe one component or two?** They answer the same question with the same credential and differ only in lifecycle — one runs as an install hook and fails the install, the other runs forever and feeds an alert. One component with two invocations is the obvious shape and couples an install-blocking check to a long-running workload.
 - [ ] **What is the version floor, and who owns it?** The version alert has no threshold this repository can set, and a values-supplied floor puts the policy on the operator, which is where it can be wrong quietly. A published support matrix is the real answer and does not exist in a form this can read.
 - [ ] **Does the shared-database signal generalize to object storage?** A bucket shared with another workload has the same attribution problem and no equivalent of `pg_database_size_bytes` — prefix-level size needs Storage Lens or an inventory report, which is a different mechanism at a different price.
-- [ ] **Do tier-C credentials belong to the gateway or to a separate collector?** Giving the gateway cloud-provider read access widens the blast radius of a component that already holds every destination credential.
+- [ ] **Do provider credentials belong to the gateway or to a separate collector?** Giving the gateway cloud-provider read access widens the blast radius of a component that already holds every destination credential.
 - [ ] **How is the CockroachDB Cloud API key handled**, given that its metric endpoint is the cheapest path and is outside every credential mechanism the chart has?
 - [ ] **Is `ext:*` derived for Materialize Cloud too**, or is Cloud's existing CockroachDB alerting left alone? Two conventions for one dependency is the outcome nobody wants and the cheapest thing to do at every individual decision point.
-- [ ] **What granularity does tier C scrape at**, and is it one interval or per-metric? Five minutes is right for storage and wrong for connection counts, and a single interval makes one of the two wrong.
+- [ ] **What granularity does provider collection scrape at**, and is it one interval or per-metric? Five minutes is right for storage and wrong for connection counts, and a single interval makes one of the two wrong.
 - [ ] **Does the environment mapping belong in values, or should it be derived from the operator's `Materialize` resource?** The operator knows the metadata and persist URLs; nothing currently reads them, and a derived mapping cannot drift.
 - [ ] **Is `flavor` discovered from `up` on the exporter, or from the recording rule's own output?** The `infra-net` rule says `up`, and here the normalized series is produced by a rule rather than by a scrape, so the two are a layer apart. Following the rule literally may mean the dashboard detects a target that the rules then fail to normalize.
 - [ ] **Should a generic-cloud Terraform wrapper exist**, and does this design wait for one? The adapters do not depend on it, and its absence is why the on-premise shape has the best test coverage and the least documentation.

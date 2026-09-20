@@ -198,19 +198,19 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | External dependency monitoring ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)) — design doc plus review | OO-M2 | 🔨 ([design doc](../design-docs/20260920-external-dependency-monitoring/) drafted; review outstanding) |
 | Split `persist-failures` into consensus, blob and persist-internal alerts | OO-M2 | ⬜ |
 | Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe. Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
-| Tier A — client-side signals (`mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*`) into the query registry | OO-M2 | ⬜ |
+| The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry | OO-M2 | ⬜ |
 | The normalized `ext:*` recording-rule layer | OO-M2 | ⬜ |
 | `infra-deps` dashboard, with discovered-flavor rows and a negated fallback | OO-M2 | ⬜ |
-| Tier B — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M2 | ⬜ |
+| The **exporter** vantage point — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M2 | ⬜ |
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters | OO-M2 | ⬜ |
 | On-premise object-store adapter (MinIO / Garage / Ceph) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter | OO-M2 | ⬜ |
-| Tier C — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M2 | ⬜ |
+| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M2 | ⬜ |
 | Terraform: read-only provider roles on the per-cloud monitoring modules | OO-M2 | ⬜ |
 
 **The design's central claim is that the client's measurement of a dependency is the SLI and the dependency's own telemetry is the diagnosis.**
 `environmentd`, Loki and Thanos already time and count every call they make to both dependencies, identically on every cloud and with no credentials.
-That tier ships on by default; everything flavor-specific is opt-in behind a normalized contract, which is what keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
+That vantage point ships on by default; everything flavor-specific is opt-in behind a normalized contract, which is what keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
 Provider metrics are **pulled into the Alloy gateway as an ingest source** rather than queried as a Grafana datasource.
 That makes the cost a function of what is configured rather than of how closely anyone is watching, puts the result in the same retention and the same PromQL surface as everything else, and makes a dependency series joinable with `mz_persist_blob_failures` in a single expression.
@@ -218,7 +218,7 @@ That makes the cost a function of what is configured rather than of how closely 
 **The default is a default rather than a ranking, and the field evidence is what keeps it from becoming one.**
 Of the incidents seen so far, two were CockroachDB exhausting disk and CPU, one was a neighbouring project consuming a shared database instance, one was a component running an out-of-date version, and the most common class was day-0 setup failure.
 Only the first pair is visible from the client side at all, and only after the dependency has begun to fail.
-So the design carries two signals that came from the field rather than from analysis — **per-database storage attribution** and **version reporting** — and treats **Day 0 as a separate problem with a separate answer**, served by render-time validation and a probe rather than by any metric tier.
+So the design carries two signals that came from the field rather than from analysis — **per-database storage attribution** and **version reporting** — and treats **Day 0 as a separate problem with a separate answer**, served by render-time validation and a probe rather than by any of the three vantage points.
 
 Three findings from drafting it belong on this page rather than only in the design doc.
 
@@ -229,7 +229,7 @@ Fixing either alone would still have produced silence.
 Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions managed **PostgreSQL**, nothing in the registry names a `pg_*` family, and CNPG is arriving in customer clusters — so no flavor is the one that waits.
 
 **The design is the first consumer of the query registry's `rules:` branch**, which has no producer, leaving `pre-rendered/rules/{prometheus,thanos,loki}/` empty.
-The evaluated-rule path it also depends on is owned by [Alerting in self-managed](#rules--alerts), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
+The evaluated-rule path it also depends on is owned by [Alerting in self-managed](../design-docs/20260917-alerting-self-managed/), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
 Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
 
 **One alert covers both dependencies, and it is the shortest path to value here.**
@@ -239,7 +239,7 @@ Splitting it needs no adapter, no exporter and no new collection — only the ev
 
 **Failure counters report that a dependency broke, never that one is degrading.**
 Neither persist's consensus path nor its blob path emits latency or retry-rate, so the slow-and-getting-slower case that precedes an outage has no signal at all.
-Tiers B and C watch the database slow down and cannot attribute it to Materialize's traffic.
+The exporter and the provider watch the database slow down and cannot attribute it to Materialize's traffic.
 That is an addition to the [Tier 2 upstream asks](#metrics-contract-upstream-dependency) rather than work that can land here, and it is the most important thing this design cannot do.
 
 **The Materialize persist bucket has no `AbortIncompleteMultipartUpload` lifecycle rule**, while the monitoring stack's own telemetry buckets do, on both AWS and GCS.
@@ -248,7 +248,7 @@ That is a fix in the Terraform repo rather than here, and the monitoring work is
 
 Two smaller notes that change where the work is easiest.
 **There is no `generic-cloud` wrapper downstream** corresponding to the generic path this repository supports, and one may be worth having; its absence does not leave the shape unobserved, because `terraform/test/generic-cloud` already runs rustfs and CNPG and is that deployment.
-**On-premise object stores publish their own capacity, drive health and healing state**, which no managed cloud offers at any price — so the one shape with no Terraform wrapper is the one whose adapters this repository can test end to end, and the one where object storage gets tier B rather than tier A alone.
+**On-premise object stores publish their own capacity, drive health and healing state**, which no managed cloud offers at any price — so the one shape with no Terraform wrapper is the one whose adapters this repository can test end to end, and the one where object storage earns an exporter rather than the client alone.
 
 ### Pipelines (Alloy)
 
@@ -341,20 +341,58 @@ See [Testing / CI](#testing--ci--devex).
 
 ### Rules & alerts
 
-The rule set ships; the routing that turns a firing rule into a page does not.
+Every component needed to alert is in the chart, and no two of them are connected.
 
 | Item | Milestone | Status |
 |---|---|---|
+| Alerting design doc plus review | — | 🔨 ([design doc](../design-docs/20260917-alerting-self-managed/) drafted; review outstanding) |
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
+| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ⬜ |
+| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ⬜ |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ |
+| Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | ⬜ |
-| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ |
+| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ⬜ |
+| Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ⬜ |
+| Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | ⬜ |
+| Alert and recording-rule names added to the committed surface | OO-M2 | ⬜ |
+| Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | ⬜ |
+| Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | ⬜ |
+| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ (**HA moves into the default** rather than staying a hardening step; see below) |
 
 Alertmanager is bundled and the rules exist, but nothing routes them anywhere.
 Until that lands the alerting story is "we ship rules", which is half a feature.
 
 The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and are best worked together.
-Adoption is the higher-value half — until routing exists nobody is paged, which is why hardening is the lower priority of the pair despite Alertmanager being a single replica holding the only copy of its silences.
+Adoption was previously the higher-value half, on the reasoning that until routing exists nobody is paged.
+**The design doc revises that: HA belongs in the default configuration rather than in a later hardening step.**
+A single-replica notifier is lost to an ordinary node drain, it holds the only copy of every silence, and it cannot report its own absence — and shipping routing on top of it is shipping the failure the workstream exists to prevent.
+Two replicas with gossip and a PDB of one is the shape; the rest of DEP-226 stays hardening.
+
+Five findings from drafting the design doc belong on this page rather than only in it.
+
+**`PrometheusRule` has exactly one consumer in this stack, and it is off.**
+The chart installs the Prometheus Operator CRDs and not the operator, and Alloy consumes `ServiceMonitor` and `PodMonitor` only.
+The one thing that reads a `PrometheusRule` is the Thanos ruler's import sidecar, which is inert while `thanos.ruler.enabled` is `false`.
+A template emitting `PrometheusRule` resources today would render, apply, pass CI, and do nothing — which makes `thanos.ruler.enabled` the switch that makes alerting exist, rather than an optimization.
+
+**The rule set is Cloud's rule set, and 28 of its 85 rules cannot fire in a stock self-managed install.**
+CockroachDB, the egress gateway, LaunchDarkly, the external uptime checkers, and Cilium account for most of them, and only five carry the `deploymentMode: cloud-only` label that exists to say so.
+**`cloud-only` is also the wrong axis.**
+A CockroachDB rule is for a deployment running CockroachDB, and a Cilium rule is for a cluster whose CNI is Cilium — both of which a self-managed customer may be.
+Rules should declare capability tags (`crdb-dedicated`, `cilium`, `aws`, …) describing what they require, with applicability checked at build time against the extracted metric set, so that no rule is deleted and selection follows what a deployment contains rather than who operates it.
+
+**Severity is a property of the alert and urgency is a property of the deployment**, and conflating them is what makes one rule set unable to serve both a customer for whom Materialize is critical infrastructure and one who is evaluating it.
+The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment, with a severity-to-receiver-class matrix between them.
+
+**Alert names become a committed surface, which closes an open naming decision.**
+[Stamping 1.0](#versioning-changelog-and-releases) records the alert and recording-rule naming decision as free only until the alerting path ships.
+It ships here, and the answer is that names are committed from the release that first carries rules: `rules.disabled` names alerts, an external Alertmanager's routing matches on them, and a runbook link is built from them.
+Names churn while the default set is derived, and each rename owes a changelog entry even then.
+
+**Log-derived alerting has never been code anywhere at Materialize.**
+Cloud's pipeline emits PromQL rule groups, so the alerts that detect panics, correctness violations, and data-corruption patterns are clicked into Grafana — duplicated per region, drifted between copies, and carrying deployment-specific exclusions compiled into the LogQL.
+Self-managed is the first place that class can be defined and reviewed, and the port is not a transcription: the clicked-in rules use `$__range`, which is a Grafana variable that a Loki ruler cannot parse.
 
 ### Profiles
 
@@ -611,4 +649,11 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   It proposes an opt-in consent ladder over the BYOC channel, with alerts as the lowest useful level and the bound made verifiable by a preview mode and a local egress meter.
   The [Call-home from self-managed](#call-home-from-self-managed) section above is the roadmap position it establishes, including that the alerts level is blocked on rule evaluation rather than on the pipeline.
 - A **customer-facing** call-home page — the levels, the generated schedule for each, how to preview before enabling, how to read the local meter, and the retention, access and deletion commitments — is owed alongside it. ⬜
+- [Alerting in Self-Managed: Evaluation, Routing, and Customer Extension](../design-docs/20260917-alerting-self-managed/) is written and in review as a draft. 🔨
+  It proposes two evaluators and one notifier, a severity-to-urgency matrix selected by a single values key, a capability-tagged rule set checked against the metric registry, and four additive extension points so that customer-specific alerting never enters this repository.
+  The [Rules & alerts](#rules--alerts) section above is the roadmap position it establishes, including that `thanos.ruler.enabled` is the switch that makes alerting exist at all, that Alertmanager HA moves into the default, and that alert names become a committed surface.
+- The three **customer-facing** alerting pages under `alerting/` are owed alongside it: `configuring.md` is currently the word `TODO`, and `channels.md` and `maintenance.md` are bare headings. ⬜
+  A **label contract** page is owed with them — every label a shipped rule emits and what it means — because a customer routing in their own Alertmanager has nothing to route on without it.
+- A **runbook per shipped alert** under `operating/runbooks/` is owed with the rules themselves, since every alert links to one. ⬜
+  Runbooks that stop changing and describe a practice rather than a workaround should be promoted to the product documentation.
 
