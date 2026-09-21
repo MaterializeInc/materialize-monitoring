@@ -5,7 +5,7 @@
 
 # Available Dashboards
 
-Five dashboards ship today: three scoped to a Materialize environment (`env-*`), and two to the platform underneath it (`infra-*`).
+Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring` chart, you do not need to download anything — `dashboards.selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/preview/claude-opencost-self-managed-proposal-6242fb/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
@@ -214,6 +214,59 @@ Where `env-logs` opens on the Materialize namespaces, this one subtracts them, s
       <td>
         <a href="/materialize-monitoring/preview/claude-opencost-self-managed-proposal-6242fb/dashboards/grafana/infra-logs.json?xxhash=eb22e84fcee7f65d" download="mz-mon-infra-logs.json"><code>infra-logs.json</code></a>
         <br /><small>UID <code>mz-mon-infra-logs</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Infrastructure Networking (`infra-net`)
+
+How traffic moves through the cluster, and what stops it, across six tabs: Overview, Kubernetes, CNI, Node Networking, Cloud Networking, and Security.
+Pod and Service traffic come from cAdvisor and kube-state-metrics and are the same everywhere.
+The nodes' own interfaces, connection tables, and kernel receive path are read across the whole fleet rather than one machine at a time, which is the difference between this dashboard's Node Networking tab and `infra-nodes`.
+
+**The CNI tab adapts to the cluster it is open on.**
+A cluster's container network interface differs per cloud, and the metrics describing each share no names with the others.
+The scrape configs label every series they collect with the dataplane they came from, the dashboard discovers that label into its `Dataplane` picker, and each vendor's rows render only where that vendor was found.
+A cluster whose CNI exports nothing gets a single row explaining which case it is in, because that is not always a fault: GKE Dataplane V2 runs Cilium and disables the agent's Prometheus endpoint, so nothing can be collected from it.
+
+The Security tab is split the same way and for the same reason.
+Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
+A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
+
+Cloud Networking is partly stubbed.
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/claude-opencost-self-managed-proposal-6242fb/reference/internal/roadmap/#collection-gaps-these-depend-on).
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/claude-opencost-self-managed-proposal-6242fb/dashboards/grafana/infra-net.json?xxhash=7cf14d5efa051e8c" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-net</code></small>
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>infra</code><br />

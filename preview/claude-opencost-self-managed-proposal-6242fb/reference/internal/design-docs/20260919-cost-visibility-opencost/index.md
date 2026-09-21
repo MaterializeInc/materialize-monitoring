@@ -109,6 +109,7 @@ Four stakeholder classes consume this.
 ## Technical BLUF
 
 - **OpenCost ships as an optional subchart, off by default, enabled by a `cost` tag.** It is a new workload that makes claims about money, and the repository's stated goal is that every component can be turned off.
+- **The selected chart is `opencost/opencost-helm-chart`, not `prometheus-community/prometheus-opencost-exporter`.** The latter cannot express cloud billing or custom pricing without pushing those settings into `additional_values`.
 - **Cost is a metric family, not a product.** OpenCost's exporter writes to `/metrics`, the gateway scrapes it through the ServiceMonitor discovery that already runs, and the number lands in Thanos beside everything else. The OpenCost UI is not installed.
 - **Attribution to a Materialize cluster or replica does not work today.** The vendored kube-state-metrics subchart defaults `metricLabelsAllowlist: []`, so `kube_pod_labels` carries no `cluster-id` or `replica-id` and there is nothing to join against. This is an existing parity gap against Cloud (internal), not a new requirement cost invents.
 - **Pricing provenance is a declared value, not an inference.** Two sources that matter — list price and reconciled cloud billing — with the source named on every panel that displays a currency figure.

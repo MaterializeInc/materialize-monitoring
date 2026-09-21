@@ -62,15 +62,19 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.cilium.bpf_map_pressure">infra.cilium.bpf_map_pressure</a></li>
+                <li><a href="../common-queries#infra.net.cni.cilium.bpf_map_pressure">infra.net.cni.cilium.bpf_map_pressure</a></li>
             </ul>
         </details>
     </li>
     <li id="cilium_drop_count_total">cilium_drop_count_total
         <details>
+            Used labels: reason
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.cilium.drop_rate_elevated">infra.cilium.drop_rate_elevated</a></li>
+                <li><a href="../common-queries#infra.net.cni.cilium.drops">infra.net.cni.cilium.drops</a></li>
+                <li><a href="../common-queries#infra.net.security.drops.cilium">infra.net.security.drops.cilium</a></li>
             </ul>
         </details>
     </li>
@@ -179,7 +183,7 @@ like our bundled Thanos provider.
     </li>
     <li id="container_network_receive_bytes_total">container_network_receive_bytes_total
         <details>
-            Used labels: namespace, pod, workload
+            Used labels: interface, namespace, pod, workload
             <br />
             Example queries:
             <ul>
@@ -187,6 +191,9 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.egress_gateway.high_traffic">infra.egress_gateway.high_traffic</a></li>
                 <li><a href="../common-queries#infra.egress_gateway.low_traffic">infra.egress_gateway.low_traffic</a></li>
                 <li><a href="../common-queries#infra.egress_gateway.traffic_missing_metrics">infra.egress_gateway.traffic_missing_metrics</a></li>
+                <li><a href="../common-queries#infra.net.k8s.throughput.by_namespace">infra.net.k8s.throughput.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.throughput">infra.net.overview.throughput</a></li>
+                <li><a href="../common-queries#infra.net.overview.top_talkers">infra.net.overview.top_talkers</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_rx">materialize.kubernetes.pods.network_rx</a></li>
             </ul>
         </details>
@@ -197,6 +204,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_errors">materialize.kubernetes.pods.network_errors</a></li>
             </ul>
         </details>
@@ -207,16 +216,21 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_drops">materialize.kubernetes.pods.network_drops</a></li>
             </ul>
         </details>
     </li>
     <li id="container_network_transmit_bytes_total">container_network_transmit_bytes_total
         <details>
-            Used labels: namespace, pod
+            Used labels: interface, namespace, pod
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.throughput.by_namespace">infra.net.k8s.throughput.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.throughput">infra.net.overview.throughput</a></li>
+                <li><a href="../common-queries#infra.net.overview.top_talkers">infra.net.overview.top_talkers</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_tx">materialize.kubernetes.pods.network_tx</a></li>
             </ul>
         </details>
@@ -227,6 +241,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_errors">materialize.kubernetes.pods.network_errors</a></li>
             </ul>
         </details>
@@ -237,6 +253,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_drops">materialize.kubernetes.pods.network_drops</a></li>
             </ul>
         </details>
@@ -658,10 +676,11 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_info">kube_pod_info
         <details>
-            Used labels: node
+            Used labels: namespace, node
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.security.policies.uncovered">infra.net.security.policies.uncovered</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.pods">infra.nodes.allocation.pods</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.by_namespace">infra.nodes.pods.by_namespace</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.by_phase">infra.nodes.pods.by_phase</a></li>
@@ -1371,12 +1390,13 @@ like our bundled Thanos provider.
     </li>
     <li id="up">up
         <details>
-            Used labels: cluster_environmentd_materialize_cloud_cluster_id, job, namespace
+            Used labels: cluster_environmentd_materialize_cloud_cluster_id, job, namespace, network_component
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
+                <li><a href="../common-queries#infra.net.overview.dataplane">infra.net.overview.dataplane</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.clusterd">materialize.scraper.mzmon.clusterd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.environmentd">materialize.scraper.mzmon.environmentd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.orchestratord">materialize.scraper.mzmon.orchestratord</a></li>
@@ -1419,6 +1439,125 @@ like our bundled Thanos provider.
 
 
 <ul>
+    <li id="awscni_assigned_ip_addresses">awscni_assigned_ip_addresses
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.addresses">infra.net.cni.aws.addresses</a></li>
+                <li><a href="../common-queries#infra.net.cni.aws.ip_utilization">infra.net.cni.aws.ip_utilization</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_aws_api_latency_ms_count">awscni_aws_api_latency_ms_count
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.api_latency">infra.net.cni.aws.api_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_aws_api_latency_ms_sum">awscni_aws_api_latency_ms_sum
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.api_latency">infra.net.cni.aws.api_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_eni_allocated">awscni_eni_allocated
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.enis">infra.net.cni.aws.enis</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_eni_max">awscni_eni_max
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.enis">infra.net.cni.aws.enis</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_ip_max">awscni_ip_max
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.addresses">infra.net.cni.aws.addresses</a></li>
+                <li><a href="../common-queries#infra.net.cni.aws.ip_utilization">infra.net.cni.aws.ip_utilization</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_no_available_ip_addresses">awscni_no_available_ip_addresses
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.exhaustion">infra.net.cni.aws.exhaustion</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_total_ip_addresses">awscni_total_ip_addresses
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.addresses">infra.net.cni.aws.addresses</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_endpoint_regeneration_time_stats_seconds_bucket">cilium_endpoint_regeneration_time_stats_seconds_bucket
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.endpoint_regeneration">infra.net.cni.cilium.endpoint_regeneration</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_endpoint_state">cilium_endpoint_state
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.endpoints">infra.net.cni.cilium.endpoints</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_policy_verdict_total">cilium_policy_verdict_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.policy_verdicts">infra.net.cni.cilium.policy_verdicts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_unreachable_health_endpoints">cilium_unreachable_health_endpoints
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.unreachable">infra.net.cni.cilium.unreachable</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_unreachable_nodes">cilium_unreachable_nodes
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.unreachable">infra.net.cni.cilium.unreachable</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="environmentd_needs_update">environmentd_needs_update
         <details>
             Used labels: namespace
@@ -1426,6 +1565,83 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.operator.environments.needing_update">materialize.operator.environments.needing_update</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="hubble_flows_processed_total">hubble_flows_processed_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.hubble_flows">infra.net.cni.cilium.hubble_flows</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_endpointslice_endpoints">kube_endpointslice_endpoints
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.endpoints.by_namespace">infra.net.k8s.endpoints.by_namespace</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_networkpolicy_spec_egress_rules">kube_networkpolicy_spec_egress_rules
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.security.policies.rules">infra.net.security.policies.rules</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_networkpolicy_spec_ingress_rules">kube_networkpolicy_spec_ingress_rules
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.security.policies.by_namespace">infra.net.security.policies.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.security.policies.rules">infra.net.security.policies.rules</a></li>
+                <li><a href="../common-queries#infra.net.security.policies.uncovered">infra.net.security.policies.uncovered</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_service_spec_type">kube_service_spec_type
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.services.by_type">infra.net.k8s.services.by_type</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_service_status_load_balancer_ingress">kube_service_status_load_balancer_ingress
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cloud.load_balancers">infra.net.cloud.load_balancers</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kubeproxy_network_programming_duration_seconds_bucket">kubeproxy_network_programming_duration_seconds_bucket
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.proxy.programming_latency">infra.net.k8s.proxy.programming_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kubeproxy_sync_proxy_rules_duration_seconds_bucket">kubeproxy_sync_proxy_rules_duration_seconds_bucket
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.proxy.sync_latency">infra.net.k8s.proxy.sync_latency</a></li>
             </ul>
         </details>
     </li>
@@ -1806,6 +2022,15 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.compute.views.count">materialize.compute.views.count</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="network_policy_drop_count_total">network_policy_drop_count_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.security.drops.aws">infra.net.security.drops.aws</a></li>
             </ul>
         </details>
     </li>
