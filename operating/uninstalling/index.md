@@ -13,12 +13,13 @@ The chart's Grafana resources are reconciled by an operator that also owns their
 ## The grafana-operator finalizer deadlock
 
 grafana-operator attaches the finalizer `operator.grafana.com/finalizer` to the custom resources it reconciles.
-This chart creates two kinds that carry it:
+This chart creates three kinds that carry it:
 
 | Kind | Created by |
 |---|---|
 | `GrafanaDatasource` | the Loki and Thanos datasources |
 | `GrafanaManifest` | the bundled dashboards |
+| `GrafanaFolder` | the [folders](../../dashboards/grafana/grafana-operator/#folders) those dashboards are filed into |
 
 The `Grafana` instance CR does **not** carry the finalizer (verified against operator v5.24.0), so Helm removes it unaided.
 
@@ -35,7 +36,7 @@ Those objects enter `Terminating` with their finalizer still set, Helm moves on 
 `cleanup.grafanaOperator` templates a short-lived Job that runs before Helm deletes anything:
 
 ```bash
-kubectl delete grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org \
+kubectl delete grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org,grafanafolders.grafana.integreatly.org \
   --namespace=<release namespace> \
   --selector=app.kubernetes.io/instance=<release name> \
   --ignore-not-found=true --timeout=2m
@@ -67,7 +68,7 @@ This is what the hook automates. Do it yourself when the hook is unavailable —
 Delete the custom resources **while the operator is still running**, then remove the release:
 
 ```bash
-kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanas --all
+kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanafolders,grafanas --all
 ```
 
 The operator observes the deletions, unregisters each object from the Grafana instance, drops the finalizer, and the objects go away.
@@ -80,12 +81,12 @@ helm uninstall mzmon -n monitoring
 With the Terraform module, the same first step applies before the destroy — the module orders its two releases (the main release is destroyed before the CRDs release), but ordering *within* a release is not something Terraform controls:
 
 ```bash
-kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanas --all
+kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanafolders,grafanas --all
 terraform destroy
 ```
 
 > [!TIP]
->   Deleting the `Grafana` instance is what makes the other two finalizable even if their unregistration fails: the operator drops the finalizer once no matching instance exists.
+>   Deleting the `Grafana` instance is what makes the others finalizable even if their unregistration fails: the operator drops the finalizer once no matching instance exists.
 >   That still requires a running operator, so the rule to remember is simply **the operator must outlive its custom resources**.
 
 ## Recovering a stuck teardown
@@ -94,7 +95,7 @@ If the operator is already gone and resources are wedged in `Terminating`, the f
 Nothing else will do it.
 
 ```bash
-for kind in grafanadatasource grafanamanifest grafana; do
+for kind in grafanadatasource grafanamanifest grafanafolder grafana; do
   for name in $(kubectl -n monitoring get "$kind" -o name 2>/dev/null); do
     kubectl -n monitoring patch "$name" --type=merge -p '{"metadata":{"finalizers":null}}'
   done
