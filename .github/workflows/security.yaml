@@ -80,7 +80,7 @@ jobs:
       # every shared finding once per scenario, and left a category behind
       # whenever the scenario set changed.
       - name: Upload misconfiguration report
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
         with:
           sarif_file: trivy-misconfig.sarif
           category: trivy-misconfig
@@ -142,7 +142,7 @@ jobs:
       # writes one run per image. A category per image would go stale as images
       # are added, bumped and removed.
       - name: Upload image reports
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
         with:
           sarif_file: trivy-images.sarif
           category: trivy-image
