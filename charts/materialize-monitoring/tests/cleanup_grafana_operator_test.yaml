@@ -78,13 +78,17 @@ tests:
           content: --timeout=2m
 
   # Fully-qualified resource names: a bare `grafanamanifests` goes through
-  # discovery and can collide with another CRD's short name.
+  # discovery and can collide with another CRD's short name. The list itself is
+  # pinned above; this is about the shape of each entry in it.
   - it: should name resource types by group
     template: cleanup/job-grafana-operator.yaml
+    set:
+      cleanup.grafanaOperator.kinds:
+        - grafanamanifests.grafana.integreatly.org
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].args
-          content: grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org
+      - equal:
+          path: spec.template.spec.containers[0].args[1]
+          value: grafanamanifests.grafana.integreatly.org
 
   # The image entrypoint is already kubectl. Setting `command` would override it
   # and pin this template to the image's internal binary path.
@@ -111,6 +115,19 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
           value: true
+
+  # The default `kinds` is the list that actually runs at uninstall, and it has
+  # to hold every finalizer-bearing kind this chart creates. A kind left out of
+  # it is invisible until teardown, where it wedges the namespace — which is how
+  # `GrafanaFolder` was missed when folders were added. Asserting the argument
+  # verbatim means a new operator resource cannot ship without this list being
+  # looked at.
+  - it: should delete every finalizer-bearing kind the chart creates
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[1]
+          value: grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org,grafanafolders.grafana.integreatly.org
 
   # The Role is generated from `kinds`, so an added kind must bring its own
   # permission with it — otherwise the hook fails at uninstall time with a

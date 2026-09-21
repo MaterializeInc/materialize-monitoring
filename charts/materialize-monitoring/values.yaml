@@ -1980,11 +1980,13 @@ cleanup:
     # discovery and can collide with another CRD of the same short name.
     # Only kinds that actually carry the operator's finalizer belong here — the
     # `Grafana` instance CR does not, so Helm removes it unaided.
-    # Extend this if you add your own operator resources (`GrafanaFolder`,
-    # `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+    # Extend this if you add your own operator resources
+    # (`GrafanaAlertRuleGroup`, `GrafanaContactPoint`, and so on) with the
+    # chart's instance label.
     kinds:
       - grafanamanifests.grafana.integreatly.org
       - grafanadatasources.grafana.integreatly.org
+      - grafanafolders.grafana.integreatly.org
 
     # -- How long `kubectl delete` waits for the finalizers to clear.
     # This bounds the hook rather than the uninstall: on expiry the objects are

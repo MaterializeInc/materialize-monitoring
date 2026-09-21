@@ -156,7 +156,7 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
   Deployment; pushing this content into Grafana happens afterwards and can fail on its
   own. Confirm it landed:
     kubectl --namespace {{ $instanceNamespace }} get grafana
-    kubectl --namespace {{ include "mzmon.namespace" $ }} get grafanamanifest,grafanadatasource
+    kubectl --namespace {{ include "mzmon.namespace" $ }} get grafanamanifest,grafanadatasource,grafanafolder
 {{- end }}
 
 {{- include "mzmon.validate.format" $ | nindent 0 }}
