@@ -14,8 +14,15 @@ description: |
 
   Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
   3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
-  otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. These
-  ingress components are not typed yet, so they use `raw:` escapes.
+  otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. The
+  listeners themselves live in gateway-sources-stub.yaml; every component here
+  is typed and schema-validated, and no `raw:` escape remains in any pipeline.
+
+  A Rust panic is not one log line, so inputProcessor opens with a
+  stage.multiline that reassembles one before any stage can drop or reorder it,
+  and closes with a block that gives the merged entry a level, a message, and
+  the thread and source location as structured metadata. Both are commented
+  where they sit.
 
   Metrics: this file also carries a metrics pipeline, processed primarily in
   otelcol and converted back to Prometheus only on the way out. prometheus
@@ -372,6 +379,102 @@ blocks:
         - "loki.process.egress.receiver"
         - "loki.process.sampleDebug.receiver"
       blocks:
+        # --- multi-line records: Rust panics --------------------------------
+        #
+        # A Rust panic is not one log line. `mz_ore::panic`'s handler builds one
+        # buffer and writes it to stderr in a single `write_all`, and containerd
+        # then splits it back into one CRI line per newline:
+        #
+        #     <ts>  thread 'timely:work-0' panicked at src/…/string.rs:1333:5:
+        #     <the panic message>
+        #        7: core::panicking::panic_fmt
+        #       …
+        #     note: Some details are omitted, run with `RUST_BACKTRACE=full` …
+        #
+        # Left alone, that arrives as ~22 unrelated entries, the backtrace is
+        # unreadable, and the header — the only line naming the thread and the
+        # source location — is indistinguishable from noise. `stage.multiline`
+        # puts it back together.
+        #
+        # The attribute to understand is `firstline`, because it is inverted
+        # from how it reads: it matches the **start of a record**, and every
+        # line that does *not* match is appended to the record in progress. So
+        # `firstline` must match every ordinary line of the stream, and the
+        # continuation lines of a panic are precisely the ones it must miss.
+        # Here that works out cleanly — measured on a live install, not assumed:
+        #
+        #   * environmentd, clusterd and balancerd log tracing JSON, so every
+        #     ordinary line starts `{`. The operator logs tracing's plain format
+        #     instead (`<ts>  INFO  <span>: <target>: <msg>`), so its ordinary
+        #     lines start with a timestamp — the same shape as a panic header.
+        #     One expression covers both families.
+        #   * A panic's message, backtrace frames and `note:` tail match
+        #     neither, which is what makes them append.
+        #
+        # Scoping is by container rather than by namespace because `firstline`
+        # encodes a log format, and only these four are known to be in one of
+        # the two families above. The failure mode for getting that wrong is
+        # narrower than it looks, measured rather than assumed: until a stream
+        # sees its first `firstline` match the stage forwards entries one at a
+        # time, so a container whose format matches *nothing* passes through
+        # untouched. What does damage is a format that matches *occasionally* —
+        # every line between two matches is then swallowed into the earlier
+        # one. That is what the explicit list guards against.
+        #
+        # The one thing that could contaminate an ordinary entry is a bare-text
+        # stderr line, which would be glued onto its predecessor and cost that
+        # entry its JSON parse. environmentd does emit such lines — the startup
+        # banner (`environmentd v26.41.0 … listening…`, then indented address
+        # lines) — but it writes them to **stdout** while tracing and panics go
+        # to **stderr**, and `stage.cri` on the agent makes `stream` a label.
+        # Multiline keys its state on the label set, so stdout and stderr are
+        # separate streams and the banner cannot reach the JSON. Measured: 43
+        # non-JSON lines in 24h on environmentd, all of them that banner, all
+        # on stdout; clusterd emits none at all.
+        #
+        # Why this sits ahead of the drops and the rate limit below:
+        #
+        #   * `stage.limit` runs with `drop: true`. A limiter that sheds a few
+        #     continuation lines leaves a traceback with holes in it, which is
+        #     worse than no traceback — it reads as complete and is not.
+        #   * Merging first also makes a 22-line panic cost the limiter one
+        #     entry rather than 22, so the burst a crash produces stops
+        #     competing with ordinary logs for the same budget.
+        #   * The `longer_than: "1MB"` drop still applies, to the merged entry.
+        #     That is deliberate: it is what discards the separate pathological
+        #     panic that dumps multi-MiB lines, which we do not try to carry.
+        #
+        # `max_wait_time` is the mechanism that actually delivers a panic, not
+        # a timeout that rarely fires. While a container is alive each new
+        # `firstline` flushes its predecessor immediately, but a panic is by
+        # definition the last thing the process writes — nothing follows it to
+        # push it out, so the block is held until this elapses. The agent goes
+        # on tailing the file after the container dies, so the wait is safe;
+        # shortening it to zero would mean never emitting a panic at all.
+        #
+        # `max_lines` is alloy's default, set explicitly because it is the
+        # backstop for the paragraph above: a record that overruns it is
+        # flushed and continued in the next entry, so a long backtrace degrades
+        # into two entries rather than being held or lost.
+        #
+        # This runs at the gateway rather than the agent because `firstline`
+        # needs to know the log format, and the agent is deliberately
+        # format-agnostic — every per-application parser in this stack lives
+        # here. The cost is that the gateway runs 2+ replicas behind a service,
+        # so a panic whose lines straddle two of the agent's write batches can
+        # land on two replicas and stay two entries. The lines are written in
+        # one syscall and read in one go, so the window is the ~20ms they take
+        # to traverse the agent against a 1s batch interval; the failure mode is
+        # a traceback split in two, not one lost. If that ever needs to be zero,
+        # the merge has to move to the agent, where one reader owns the file.
+        - stage.match:
+            selector: '{container=~"environmentd|clusterd|balancerd|materialize-operator"}'
+            blocks:
+              - stage.multiline:
+                  firstline: '^(\{|\d{4}-\d{2}-\d{2}T)'
+                  max_lines: 128
+                  max_wait_time: "3s"
+
         # --- global drops and rate limit ------------------------------------
         - stage.drop:
             drop_counter_reason: "backlog > 2hr"
@@ -909,6 +1012,57 @@ blocks:
               - stage.json: *mz_svc_resphdr_json
               - stage.timestamp: *mz_svc_ts
               - stage.structured_metadata: *mz_svc_sm
+
+        # --- Rust panics: level, message, provenance -------------------------
+        #
+        # The merge at the top of this pipeline makes a panic one entry; this
+        # makes it a *legible* one. Left here, a panic is the only entry from a
+        # Materialize service with no level and no message: it is not JSON, so
+        # the per-service `stage.json` above extracts nothing, the msg template
+        # resolves to empty, and the heuristic level scan below finds no
+        # `level=`/`severity=` pair to latch onto. It would land as UNKNOWN —
+        # filtered out of every level-scoped panel, and rate-limited by the
+        # `{level!~"(CRITICAL|ERROR|WARN|INFO)"}` bucket at the exact moment the
+        # logs matter most.
+        #
+        # Deliberately placed after the per-service blocks rather than beside
+        # the merge: those blocks set `msg` from the JSON they failed to parse,
+        # so anything written earlier is overwritten by an empty template. This
+        # has to be the last word on a panic entry.
+        #
+        # The `stage.regex` is the gate, not the selector. It only populates its
+        # groups on a match, and it is anchored at the start of the entry, so a
+        # tracing line that merely *quotes* a panic — a caught one being
+        # reported, say — cannot be mistaken for the real thing; the templates
+        # below fall through to their existing value whenever it did not fire.
+        # The line filter on the selector is a cheap prefilter so the regex runs
+        # on candidates rather than on every Materialize log line.
+        #
+        # CRITICAL is what the normalization below already resolves `fatal` and
+        # `crit` to, so this reuses an existing level rather than inventing one,
+        # and it is exempt from both per-level rate limits — a crash is never
+        # the thing to shed.
+        #
+        # The panic header carries its own microsecond timestamp, ~18ms ahead of
+        # the CRI timestamp the entry already has. It is deliberately not used:
+        # `stage.timestamp`'s default failure action is to fudge the timestamp
+        # off the previous entry, and buying 18ms of precision is not worth a
+        # stage that misbehaves on every line this regex does not match.
+        - stage.match:
+            selector: '{container=~"environmentd|clusterd|balancerd|materialize-operator"} |= "panicked at"'
+            blocks:
+              - stage.regex:
+                  expression: '^(?:\d{4}-\d{2}-\d{2}T\S+\s+)?thread ''(?P<panic_thread>[^'']*)'' panicked at (?P<panic_location>\S+:\d+:\d+):\n(?P<panic_message>[^\n]*)'
+              - stage.template:
+                  source: level
+                  template: '{{ if .panic_location }}CRITICAL{{ else }}{{ .Value }}{{ end }}'
+              - stage.template:
+                  source: msg
+                  template: '{{ if .panic_location }}panicked at {{ .panic_location }}: {{ .panic_message }}{{ else }}{{ .Value }}{{ end }}'
+              - stage.structured_metadata:
+                  values:
+                    panic_thread: ""
+                    panic_location: ""
 
         # --- promote level to a label ---------------------------------------
         - stage.labels:
