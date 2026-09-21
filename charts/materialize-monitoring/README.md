@@ -3070,10 +3070,11 @@ only once the finalizers have been processed, and Helm proceeds from there.
       <td class="helm-value-default"><pre>
 [
   "grafanamanifests.grafana.integreatly.org",
-  "grafanadatasources.grafana.integreatly.org"
+  "grafanadatasources.grafana.integreatly.org",
+  "grafanafolders.grafana.integreatly.org"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaFolder`, `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaAlertRuleGroup`, `GrafanaContactPoint`, and so on) with the chart's instance label.
 </td>
     </tr>
     <tr>
