@@ -65,6 +65,64 @@ The posture has a real cost, and the project pays it deliberately.
 Composability means the project cannot assume any particular backend exists when it designs a feature.
 That is why the read path below counts as a change of posture rather than a routine addition.
 
+## Who this is for
+
+The stack has four audiences, and they ask different questions of it.
+
+| Reader | What they are trying to do |
+|---|---|
+| **A self-managed operator** | Keep a Materialize deployment healthy without a Materialize engineer beside them |
+| **An SRE or platform engineer** | Fit Materialize into an observability practice that already exists, on that practice's terms |
+| **A field engineer** | Answer a question about a deployment they cannot log into |
+| **Materialize support and engineering** | Diagnose an escalation from evidence that was already being collected |
+
+The maintaining team is small, and the audience above is not.
+That asymmetry is the argument for treating this as a collaborative repository rather than one team's internal tooling.
+The people who meet a failure mode are usually not the people who write the dashboard for it.
+A panel, an alert, a query, or a runbook contributed by whoever hit the problem carries context that a metric list cannot supply afterwards.
+Contributions from field engineers, SREs, and customers are encouraged on the same footing as contributions from the maintaining team.
+The [contributor guide](../reference/internal/contributing/) covers the conventions.
+
+The single-registry design is what makes a small contribution worth making.
+A query added to the registry reaches the dashboard, the published documentation, and any alert referencing it.
+One contribution is therefore not one panel.
+
+## Why a deployment turns it on
+
+Nothing here is required to run Materialize, and every component of it can be switched off.
+The case for turning it on therefore has to be made per deployment, and what makes it is the set of moments a deployment produces on its own.
+
+| The moment | The question it poses | Where the answer comes from otherwise |
+|---|---|---|
+| An upgrade has been running longer than expected | Is it progressing, or is it stuck | A version count, and a decision made on nerve |
+| A replica is resized, or a workload is resharded | Has the new replica caught up, and at what cost | A SQL session against the environment, repeated until it looks settled |
+| A source falls behind | Is it the source, the network, or the cluster reading it | Introspection queries against an environment that is already struggling |
+| The deployment stops accepting connections | Is Materialize unhealthy, or is it the network or the balancer in front of it | Logs gathered by hand once the incident is over |
+| An escalation opens | What was happening in the hour before it broke | A request to the customer to collect evidence nobody was collecting |
+| The platform underneath misbehaves | Is it the node, the CNI, the object store, or the metadata database | `kubectl`, and cluster access the person asking may not have |
+| The cloud bill arrives | What does Materialize cost, and which part of it is largest | An estimate |
+
+Every one of these arrives whether or not anyone prepared for it.
+What the stack changes is whether the evidence was being collected before the question was asked, because most of it cannot be gathered afterwards.
+How much of each row is answered today is the roadmap's subject, and several are answered only in part.
+
+## Why Materialize invests in it
+
+The first question is asked by whoever installs the stack.
+This one is asked internally, and it has a different answer.
+
+| Reason | The evidence behind it |
+|---|---|
+| **Adoption decisions turn on operability** | An upgrade no operator could read blocked a production adoption decision, which is the case behind [the upgrade work](#from-displaying-metrics-to-answering-questions) |
+| **Support cost scales with blindness** | An install nobody can see is an install whose every escalation starts by asking the customer to go gather evidence |
+| **The alternative is the same work once per deployment** | The log alerts that detect panics and correctness violations exist as per-region copies, drifted from each other, maintained by clicking |
+| **Two implementations get fixed once between them** | Cloud and self-managed maintain two versions of nearly the same query set, and twenty-six of those queries are identical SQL under identical names |
+| **It has stopped being an accessory** | The console's [read path](#the-read-path-where-this-stops-being-optional) makes a PromQL and a LogQL endpoint load-bearing rather than optional |
+
+One argument sits outside the table.
+An operator evaluating self-managed asks how they will run it, and that answer is part of the product rather than an appendix to it.
+The stack is what makes the answer demonstrable rather than a claim.
+
 ## Where it stands today
 
 The platform is built and in use.
