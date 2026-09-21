@@ -21,6 +21,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 ## Start here
 
+* [Vision]({{< relref "vision.md" >}}) — what the project is for, where it is going, and why.
 * [Getting Started]({{< relref "getting-started/overview.md" >}}) — the installation paths, and how to choose between them.
 * [Installing via Terraform]({{< relref "getting-started/terraform.md" >}}) — the recommended path: observability comes up with the cluster.
 * [Installing via Helm]({{< relref "getting-started/helm.md" >}}) — the full-fidelity surface, for when Terraform is not how you deploy.
