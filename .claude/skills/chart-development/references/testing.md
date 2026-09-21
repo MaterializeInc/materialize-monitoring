@@ -2,19 +2,32 @@
 
 ## Installing Helm Unittest Plugin
 
-Installation can be verified by checking `helm plugin list` for `unittest`
-and only needs to be run if you have not already installed the plugin.
-
 Helm unittest is a BDD plugin for writing and testing helm unit tests.
 
-`helm plugin install https://github.com/helm-unittest/helm-unittest`
+`make helm-unittest-install`
 
-Note that if installation fails due to "plugin source does not support verification"
-and you are running helm v4, you will need this temporary (until
-[helm-unittest#777](https://github.com/helm-unittest/helm-unittest/issues/777) is resolved)
-workaround:
+`helm plugin list` reports the installed version, which should match
+`HELM_UNITTEST_VERSION` in the Makefile.
 
-`helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest`
+The target exists because the version matters.
+The plugin does not shell out to the `helm` binary.
+It renders through a Helm library compiled into it, so the plugin version alone
+decides what a test sees.
+v1.1.0 moved that library to Helm 3.20, which stopped dropping null values during
+coalescing, and every Loki config checksum in the committed snapshots moved with it.
+A plugin installed at some other version will regenerate snapshots that CI rejects.
+
+The target also absorbs two installation quirks.
+`helm plugin install` refuses while any version of the plugin is present, so the
+target uninstalls first.
+Helm 4 rejects the unsigned upstream source with "plugin source does not support
+verification" unless `--verify=false` is passed, and that flag does not exist on
+Helm 3.
+The target detects which major version is on PATH and passes the flag only where
+it is accepted.
+This workaround stands until
+[helm-unittest#777](https://github.com/helm-unittest/helm-unittest/issues/777) is
+resolved.
 
 ## Helm Unittest Documentation
 

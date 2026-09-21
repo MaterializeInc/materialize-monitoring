@@ -111,10 +111,10 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: 'object_store:\s+s3:\s+bucket_name: test-chunks\s+endpoint: s3\.us-east-1\.amazonaws\.com'
+          pattern: 'object_store:\s+s3:(?:\s+\w+: \S+)*?\s+bucket_name: test-chunks\s+endpoint: s3\.us-east-1\.amazonaws\.com'
       - matchRegex:
           path: data["config.yaml"]
-          pattern: 'ruler_storage:\s+backend: s3\s+s3:\s+bucket_name: test-ruler\s+endpoint: s3\.us-east-1\.amazonaws\.com'
+          pattern: 'ruler_storage:\s+backend: s3\s+s3:(?:\s+\w+: \S+)*?\s+bucket_name: test-ruler\s+endpoint: s3\.us-east-1\.amazonaws\.com'
 
   # Backend-consistency guard: the compactor's delete-request store must name the
   # same backend as storage.object_store.type, or the compactor fails at startup
