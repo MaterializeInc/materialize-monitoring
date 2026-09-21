@@ -1617,6 +1617,25 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
+		selector = "{container=~\"balancerd|materialize-operator\"}"
+
+		stage.regex {
+			expression = "^(?P<ts>\\S+)\\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR)\\s+(?P<msg>.*)$"
+		}
+
+		stage.regex {
+			expression = "^(?:.*?: )?(?P<target>[a-z_][a-z0-9_]*(?:::[a-z0-9_]+)*): (?P<msg>.*)$"
+			source     = "msg"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target = "",
+			}
+		}
+	}
+
+	stage.match {
 		selector = "{container=~\"environmentd|clusterd|balancerd|materialize-operator\"} |= \"panicked at\""
 
 		stage.regex {

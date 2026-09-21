@@ -53,6 +53,7 @@ These are the conventions a contributor must preserve when editing the gateway `
 - **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
 - **Drops and limits.** Lines older than the ingestion backlog window or larger than the per-line ceiling are dropped; per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
 - **Label families.** Only a small, stable set is promoted to **Loki labels**: `level`, `app`, `container`, `namespace`, `component`, `job` and `service_name`, plus `unit` on node journal logs (which carry no `namespace`) and `environment_id` for environment namespaces. Everything else identifying — `pod`, `node`, `pod_id`, `container_id`, `region`, `zone`, `nodepool`, `trace_id`, `span_id`, `error`, `msg`, … — is routed to **structured metadata** so it stays queryable without inflating stream cardinality. The `k8s_`-prefixed aliases (`k8s_namespace`, `k8s_app`, `k8s_container`, `k8s_pod`) were **removed**: the first three duplicated the unprefixed labels exactly, and `k8s_pod` was the only stream label a pod name ever had — a pod name is unbounded and changes on every restart, so it belonged in structured metadata from the start. Asserted by `loki::gateway_labels` in the e2e suite, which fails if any of them returns.
+- **Two log formats.** `environmentd` and `clusterd` log tracing JSON. `balancerd` and `materialize-operator` log tracing's plain text layer, `<ts> LEVEL <spans>: <target>: <message>`, which carries no `level=` pair for the heuristic scan to find and so needs a parser of its own. Both families are handled; a new Materialize binary belongs in one of them.
 - **Timestamps.** Parsed from the source line (`ts`/`timestamp`) as `RFC3339`/`RFC3339Nano` where the application provides one.
 
 > [!WARNING]
@@ -75,8 +76,8 @@ Two log formats appear on the Materialize services, and one expression covers bo
 
 | Stream | An ordinary line starts with | Matched by |
 |---|---|---|
-| `environmentd`, `clusterd`, `balancerd` | `{`, being tracing JSON | `^\{` |
-| `materialize-operator` | an RFC 3339 timestamp, being tracing's plain format | `^\d{4}-\d{2}-\d{2}T` |
+| `environmentd`, `clusterd` | `{`, being tracing JSON | `^\{` |
+| `balancerd`, `materialize-operator` | an RFC 3339 timestamp, being tracing's plain text format | `^\d{4}-\d{2}-\d{2}T` |
 | a panic on any of them | an RFC 3339 timestamp, then `thread '…' panicked at` | `^\d{4}-\d{2}-\d{2}T` |
 
 The stage is scoped by container rather than by namespace, because `firstline` encodes a log format.
