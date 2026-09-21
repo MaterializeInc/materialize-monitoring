@@ -17,6 +17,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 ## Start here
 
+* [Vision](/materialize-monitoring/vision/) — what the project is for, where it is going, and why.
 * [Getting Started](/materialize-monitoring/getting-started/overview/) — the installation paths, and how to choose between them.
 * [Installing via Terraform](/materialize-monitoring/getting-started/terraform/) — the recommended path: observability comes up with the cluster.
 * [Installing via Helm](/materialize-monitoring/getting-started/helm/) — the full-fidelity surface, for when Terraform is not how you deploy.
