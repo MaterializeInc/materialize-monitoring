@@ -249,10 +249,14 @@ and do run quite quickly, so they should be run frequently during development.
 
 Helm unittest is a BDD plugin for writing and testing helm unit tests.
 
-`helm plugin install https://github.com/helm-unittest/helm-unittest`
+`make helm-unittest-install`
 
-See notes in [references/testing.md## Installing Helm Unittest Plugin](references/testing.md)
-about workarounds for installation issues and verifying installation.
+That target installs the version pinned in the Makefile, which is the version CI
+runs.
+Prefer it over a bare `helm plugin install`, which takes the latest release.
+See notes in
+[references/testing.md## Installing Helm Unittest Plugin](references/testing.md)
+about why the version matters, and about verifying installation.
 
 ### Unit Test Layout
 

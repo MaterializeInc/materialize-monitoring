@@ -347,6 +347,31 @@ helm-deps:
 
 HELM_UNITTEST_ARGS ?=
 
+# helm-unittest renders with a Helm library compiled into the plugin, so the
+# plugin version -- not the helm binary on PATH -- decides what the tests see.
+# A library bump can move rendered output. v1.1.0 picked up Helm 3.20, which
+# stopped dropping null values during coalescing, and that moved every Loki
+# config checksum in the committed snapshots. Pinning keeps a local run and the
+# CI job on one renderer, so a snapshot regenerated locally is one CI accepts.
+#
+# renovate: datasource=github-releases depName=helm-unittest/helm-unittest
+HELM_UNITTEST_VERSION ?= v1.1.2
+
+# Helm 4 refuses an unsigned plugin source unless verification is waived, and
+# the flag it wants does not exist on Helm 3, so it cannot be passed
+# unconditionally (helm-unittest#777).
+HELM_UNITTEST_VERIFY = $(shell helm version --short 2>/dev/null | grep -q '^v3\.' || echo --verify=false)
+
+# Install the pinned plugin version, replacing whatever is already on disk.
+# `helm plugin install` refuses while any version of the plugin is present, so
+# the uninstall runs unconditionally and its failure is ignored.
+helm-unittest-install:
+	helm plugin uninstall unittest >/dev/null 2>&1 || true
+	helm plugin install $(HELM_UNITTEST_VERIFY) \
+		https://github.com/helm-unittest/helm-unittest \
+		--version $(HELM_UNITTEST_VERSION)
+.PHONY: helm-unittest-install
+
 helm-tests:
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-crds

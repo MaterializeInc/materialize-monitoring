@@ -23,7 +23,9 @@ Install the toolchain once:
 | Git LFS | latest | `brew install git-lfs` |
 | [Terraform](https://developer.hashicorp.com/terraform) | 1.3+ | `brew install terraform` — needed for `make terraform-check`; `terraform-docs` (`brew install terraform-docs`) regenerates the module reference |
 
-Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`helm plugin install https://github.com/helm-unittest/helm-unittest`), `yq`, `jq`.
+Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`make helm-unittest-install`), `yq`, `jq`.
+The plugin renders through a Helm library of its own, so `make helm-unittest-install` pins the version CI uses rather than taking the latest.
+A plugin installed by hand at another version can regenerate snapshots that CI then rejects.
 
 Only for the E2E tiers, which are the one part of the suite that needs a cluster:
 

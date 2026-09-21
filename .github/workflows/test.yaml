@@ -48,8 +48,10 @@ jobs:
       # (charts/materialize-monitoring/charts/*.tgz are committed), so no
       # `helm dependency build` / OCI registry access is needed.
       - name: Install helm-unittest plugin
-        # Pinned to match the version used locally via `make helm-tests`.
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3
+        # The pin lives in the Makefile (HELM_UNITTEST_VERSION), which is what
+        # a contributor installs from too, so this job and a local run render
+        # through the same Helm library. See the note there.
+        run: make helm-unittest-install
       - name: helm unittest
         run: make helm-tests
 
