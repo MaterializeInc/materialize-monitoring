@@ -2429,6 +2429,8 @@ env:
   CLUSTER_NAME: prod-us-east-1
 ```
 
+The Terraform module sets it from its `cluster_name` input.
+
 `cluster` is applied to every destination.
 Add labels for one destination only with its `externalLabels` map, which is useful where one backend needs a tenant or account key the others do not:
 
@@ -3602,7 +3604,7 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 ## Tuning collection
 
 - **Per-node rate limit.** The agent caps pod-log throughput per node to protect the pipeline from a single noisy node. The rate (lines/sec) and short-term burst are set with the `AGENT_POD_LOG_RATE_LIMIT` (default `5000`) and `AGENT_POD_LOG_BURST` (default `20000`) environment variables on the agent.
-- **Cluster label.** Set `CLUSTER_NAME` in the agent's environment so every collected line carries a stable `cluster` value — important when several clusters write to the same log store.
+- **Cluster label.** Set `CLUSTER_NAME` in `pipeline.env`, or `cluster_name` on the Terraform module, so every collected line carries a stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
 - **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
@@ -15950,6 +15952,17 @@ the two cannot drift. Set it only to pin a chart version different from the modu
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="cluster_name" href="#cluster_name">cluster_<wbr>name</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
+sample the stack collects.
+
+Set it whenever more than one cluster writes to the same log or metrics store — the label is
+the only thing that tells their data apart. Null leaves the chart's default, `default`.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="crds_chart_version" href="#crds_chart_version">crds_<wbr>chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Version of the materialize-monitoring-crds chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the CRDs chart has a deliberately looser lifecycle.</td>
@@ -16907,7 +16920,7 @@ The regular expression is anchored at the start of the entry, so a log line that
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
 
 ## Attribution and adoption status
 
