@@ -296,6 +296,54 @@ queries:
         )
       )
 
+  - id: infra.loki.health.client_errors
+    stability: experimental
+    description:
+      summary: |
+        The share of Loki API requests rejected as the caller's fault — a 4xx —
+        as a proportion of all requests.
+      nominal: |
+        A little above zero, and flat. Something is always asking for a label
+        that has aged out or cancelling a query it no longer wants, so unlike the
+        5xx panel beside it, zero is not the expected reading.
+      unhealthy: |
+        A step. Read it as a change rather than as a level: 4xx is what a
+        *rejected write* looks like from the client's side, so this moves before
+        the discard counters on the Writes tab do — and it moves for the cases
+        those counters never see, where the request was refused before anything
+        was parsed.
+
+        A sustained climb with no deploy behind it is usually a limit the cluster
+        has grown into: per-stream rate limits, a maximum query length, a label
+        budget.
+      notes: |
+        Deliberately beside the 5xx share rather than folded into it. The two
+        answer different questions — 5xx is the store failing, 4xx is the store
+        refusing — and adding them together produces a number that means neither.
+    promQL: |
+      sum(
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent",
+            status_code=~"4.."
+          }
+          %%{interval}
+        )
+      )
+      /
+      sum(
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent"
+          }
+          %%{interval}
+        )
+      )
+
   - id: infra.loki.health.request_failures
     stability: experimental
     description:

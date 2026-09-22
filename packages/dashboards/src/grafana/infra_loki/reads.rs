@@ -86,6 +86,10 @@ fn query_rate(q: &Queries) -> dashboardv2::PanelKind {
 fn bytes_processed(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Bytes Scanned")
         .query(q.get("infra.loki.read.bytes_processed").legend("scanned/s"))
+        // One series, so the tab shade says which tab it belongs to rather than
+        // the palette assigning it an arbitrary colour. The multi-series panels
+        // here stay on the palette, which is what tells their series apart.
+        .shade(SHADE)
         .unit("Bps")
         .min(0.0)
         .no_value(NoValue::Custom("No queries ran in this range".to_string()))

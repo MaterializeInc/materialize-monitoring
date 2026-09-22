@@ -116,21 +116,15 @@ Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashb
 prefixed set until the clouds stopped differing in panel content, which left it recording nothing but its own name.
 The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-cloud` annotation went with it.
 
-**The dashboards ship in a chart of their own**, `materialize-monitoring-dashboards`, because the rendered set
-outgrew the 1 MiB a Helm release Secret allows. `packages/dashboards` renders into
-`charts/materialize-monitoring-dashboards/pre-rendered/`, and `selected` (no longer `dashboards.selected`) lives
-there too. Folders, datasources and the `Grafana` instance stayed in the umbrella chart — a folder is what a
-dashboard is filed *into* rather than part of it — so the dashboards chart resolves a folder name through an explicit
-`grafana.folderUids` map it cannot derive. See [the roadmap
-note](../../../docs/content/reference/internal/roadmap.md#dashboard-delivery-hit-the-1-mib-ceiling-and-the-dashboards-moved-out).
+**The dashboards ship in a chart of their own**, `materialize-monitoring-dashboards`, and render into
+`charts/materialize-monitoring-dashboards/pre-rendered/`. `selected` lives there too — it is no longer
+`dashboards.selected`. Folders, datasources and the `Grafana` instance stayed in the umbrella chart, so a folder name
+resolves through an explicit `grafana.folderUids` map the dashboards chart cannot derive.
+Why, and what it costs: [the size ceiling on dashboard
+delivery](../../../docs/content/reference/internal/dashboard/generating.md#the-size-ceiling-on-dashboard-delivery).
 
-**The chart is not a component of its own.** It belongs to the existing `dashboards` component — retitled
-*Dashboards (Helm chart)* — whose version stream it joined, so `packages/dashboards/`, `packages/queries/` and the
-chart all bump together. That is honest: the chart carries nothing but their output. Two things to know before
-editing `packages/components.yaml`: the umbrella chart no longer lists `dashboards` among its `dependencies` (nothing
-it ships comes from them), and a component's `title` is its identity in `CHANGELOG.md`, so renaming one takes a
-paired edit to the latest released heading — the procedure is in
-[releasing.md](../../../docs/content/reference/internal/releasing.md#renaming-a-component).
+The chart is **not** a component of its own — it belongs to the existing `dashboards` component, so
+`packages/dashboards/`, `packages/queries/` and the chart bump together.
 
 **`env-upgrade` is installed by default**, because `selected` defaults to `["env-*", "infra-*"]` and the stem
 matches. So does every dashboard in the table above.
@@ -386,58 +380,20 @@ something the stack watches.
 | 4 | Storage | `storage.rs` |
 | 5 | Logs | `logs.rs` |
 
-Filed under **`Folder::MetaO11y`**, which it is the first occupant of — `values.yaml` has carried the "Meta
-Observability" folder, nested under Infrastructure, since folders existed.
-It is also the first dashboard to carry `tags::content::META`.
+Filed under **`Folder::MetaO11y`**, which it is the first occupant of, and the first to carry `tags::content::META`.
 
-Four things about it are not re-derivable by reading the modules:
+Three things about it are not re-derivable by reading the modules:
 
-- **The instrument is the subject, and that changes what an empty panel means.** Everywhere else a blank panel means
-  nothing happened; here it may mean the thing that would have told you is down. So the Overview tab leads with scrape
-  health *before* any measurement, every panel writes its own `no_value` text rather than taking the default, and a
-  test (`no_panel_leaves_its_empty_state_to_the_default`) keeps it that way.
-- **`$lokiComponent` is one picker across both engines.** It is discovered from the metrics side off `container`, and
-  the log queries apply it to Loki's `component` label. Sound because both are the Kubernetes container name; the only
-  divergence is `exporter`, the memcached sidecar, which emits no log lines, so selecting it empties the log feeds —
-  the truthful answer rather than a bug. Both `$lokiNamespace` and `$lokiComponent` are written **literally** in
-  `infra-loki.yaml`, on the `$nodeList` / `$namespaceList` precedent, and are listed in
-  `context::LOKI_VARIABLES` so the bridge test can check them.
-- **Three Loki targets never serve TLS** — the canary's own `/metrics` and both memcached exporters — and the
-  subchart's single ServiceMonitor shares one `scheme` across everything it selects. Under `profiles/mtls` that made
-  all three fail, silently taking the end-to-end canary with them. They are now split onto
-  `templates/scrapers/monitor-loki-plaintext.yaml` by an opt-in service label, unconditionally rather than per
-  profile, and **Scrape Health is the panel that says the split is working**.
-- **Both datasources**, unlike the other `infra-*` dashboards. The metrics say whether Loki is healthy; its own logs
-  say why, and sending a reader elsewhere for the second half is the wrong trade on the one subject where the second
-  dashboard might not load.
-
-### Why not the upstream mixin dashboards
-
-The Loki chart vendors `loki-reads`, `loki-writes`, `loki-operational` and the rest, and they were evaluated rather
-than assumed unsuitable.
-They read `cluster_job_route:loki_request_duration_seconds_*:sum_rate` recording rules, and **this stack evaluates no
-PromQL rules at all** — there is no Prometheus, no Thanos Ruler, and Loki's own ruler evaluates LogQL.
-They also scope on a `cluster` variable, where the `cluster` label on these metrics is Loki's own ring name
-(`default`), so the scoping would be silently wrong rather than absent.
-Bloom panels are excluded for the simpler reason that the feature is experimental and unused here.
-
-### Metric overrides cannot introduce a metric
-
-Worth knowing before reaching for one: `metricOverrides` re-weights a metric **some query already references**.
-The tier file is built by `extract_metric_docs`, which walks queries, so a metric no query names is in no tier and
-reaches no metered destination however many overrides match it.
-That is why `infra.loki.pipeline.*` exists — six queries with no dashboard behind them, carrying the Alloy-side
-`loki_write_*` / `loki_source_*` / `loki_process_*` families into `recommended`.
-
-### The two `loki_` families
-
-The prefix is shared and the producers are not, and nothing in a metric name warns you.
-`job=~"loki/.*"` is the log store (391 names on a reference install); `job=~"alloy-.*"` is Alloy's own `loki.*`
-components (43 names, all `loki_write_*`, `loki_source_{file,api,journal}_*`, `loki_process_*`, `loki_relabel_*`).
-Only `loki_experimental_features_in_use_total` is emitted by both.
-Every query on this dashboard separates them with `app_instance="loki"`, which both of the chart's Loki
-ServiceMonitors stamp and nothing else sets — `job=~"loki/.*"` would work too but hardcodes the subchart's
-configurable `jobPrefix`.
+- **An empty panel here is ambiguous in a way it is not elsewhere**, because the instrument can go down with its
+  subject. So Overview leads with scrape health *before* any measurement, and every panel writes its own `no_value`
+  text — a test enforces the second.
+- **`$lokiComponent` scopes both engines**, matched against `container` on a metric and `component` on a log line. The
+  rule for when that is allowed is in the style guide under
+  [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines).
+- **The upstream Loki mixin dashboards were evaluated and rejected**, so this does not need re-litigating: they read
+  `cluster_job_route:*` recording rules that nothing in this stack evaluates (no Prometheus, no Thanos Ruler, and
+  Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name. Bloom
+  panels are excluded as experimental.
 
 ## Notes on the trickier panels
 

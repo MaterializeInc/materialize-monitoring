@@ -65,7 +65,7 @@ spec:
           Reading Loki's logs out of Loki works right up until the moment it matters most. If the store is broken badly enough, this panel is empty for the same reason everything else is — and that is the point at which `kubectl logs` is the tool, not this dashboard.
 
           An empty search matches every line rather than none, so the panel is useful before anything is typed.
-        id: 1044
+        id: 1045
         links: []
         title: All Logs
         vizConfig:
@@ -137,7 +137,7 @@ spec:
           **Nominal:** A steady baseline dominated by the canary, which is expected — it exists to write and read a line on a loop, and says so each time.
 
           **Unhealthy:** A sharp step up confined to one component. That is a single process in a retry loop, and it is the shape that precedes most of the failures the other tabs measure.
-        id: 1040
+        id: 1041
         links: []
         title: Log Rate by Component
         vizConfig:
@@ -199,7 +199,7 @@ spec:
           **Unhealthy:** A steady stream. Read the component: an ingester complaining is a write path problem, a querier complaining is usually a query someone ran, and a compactor complaining is the storage tab's business.
 
           Independent of the level picker, like the other warning feeds in this repository: this panel answers "is anything wrong", and narrowing the selection to INFO would silently zero it.
-        id: 1043
+        id: 1044
         links: []
         title: Warnings and Errors
         vizConfig:
@@ -271,7 +271,7 @@ spec:
           **Nominal:** Zero, or close to it.
 
           **Unhealthy:** A sustained non-zero rate. The feed below says which component and why.
-        id: 1041
+        id: 1042
         links: []
         title: Warning Rate
         vizConfig:
@@ -310,7 +310,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: Why the volume panels are not drawn over long ranges.
-        id: 1042
+        id: 1043
         links: []
         title: Volume (skipped)
         vizConfig:
@@ -545,7 +545,7 @@ spec:
           A burst on the first series at startup is not a finding: entries written before the canary's own scrape target existed are counted missing once and never recovered. Read the sustained level, not the first few minutes after a rollout.
 
           The re-read series comes from the canary re-querying a sample of its own older lines on a schedule, which is what makes it independent of the ingest-time check rather than a lagging copy of it.
-        id: 1009
+        id: 1010
         links: []
         title: Canary Losses
         vizConfig:
@@ -740,7 +740,7 @@ spec:
           **Nominal:** Under a second at p99. The canary queries a tiny time range for a single stream, so this is close to the floor of what the read path can do.
 
           **Unhealthy:** Seconds, or a p99 pulling away from the median. Both point at the read path rather than the write path — a line that arrived slowly would show up as missing first.
-        id: 1008
+        id: 1009
         links: []
         title: Canary Round Trip
         vizConfig:
@@ -765,6 +765,113 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
+          version: ''
+    overview-client-error-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          loki_request_duration_seconds_count{
+                            app_instance="loki",
+                            namespace=~"$lokiNamespace",
+                            container=~"$lokiComponent",
+                            status_code=~"4.."
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                      /
+                      sum(
+                        rate(
+                          loki_request_duration_seconds_count{
+                            app_instance="loki",
+                            namespace=~"$lokiNamespace",
+                            container=~"$lokiComponent"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: 4xx share
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          loki_request_duration_seconds_count{
+                            app_instance="loki",
+                            namespace=~"$lokiNamespace",
+                            container=~"$lokiComponent",
+                            status_code=~"4.."
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                      /
+                      sum(
+                        rate(
+                          loki_request_duration_seconds_count{
+                            app_instance="loki",
+                            namespace=~"$lokiNamespace",
+                            container=~"$lokiComponent"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The share of Loki API requests rejected as the caller's fault — a 4xx — as a proportion of all requests.**
+
+          **Nominal:** A little above zero, and flat. Something is always asking for a label that has aged out or cancelling a query it no longer wants, so unlike the 5xx panel beside it, zero is not the expected reading.
+
+          **Unhealthy:** A step. Read it as a change rather than as a level: 4xx is what a *rejected write* looks like from the client's side, so this moves before the discard counters on the Writes tab do — and it moves for the cases those counters never see, where the request was refused before anything was parsed.
+
+          A sustained climb with no deploy behind it is usually a limit the cluster has grown into: per-stream rate limits, a maximum query length, a label budget.
+
+          Deliberately beside the 5xx share rather than folded into it. The two answer different questions — 5xx is the store failing, 4xx is the store refusing — and adding them together produces a number that means neither.
+        id: 1003
+        links: []
+        title: 4xx Rate
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#0077BB'
+                  mode: shades
+                min: 0
+                noValue: No requests in this range
+                unit: percentunit
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
           version: ''
     overview-error-rate:
       kind: Panel
@@ -842,7 +949,7 @@ spec:
           **Unhealthy:** Anything sustained above a fraction of a percent. Read it beside the per-route latency panel: a 5xx rate that tracks a latency spike is saturation, while one that does not is usually storage or configuration.
 
           `status_code` on this metric carries the string `error` as well as numeric codes, for failures that never reached an HTTP status. Those are counted separately by `infra.loki.health.request_failures`; this one is the HTTP-level view.
-        id: 1003
+        id: 1004
         links: []
         title: 5xx Rate
         vizConfig:
@@ -920,7 +1027,7 @@ spec:
           **Nominal:** Zero.
 
           **Unhealthy:** Non-zero. These are the failures no 5xx panel sees — a connection that died, a gRPC call that never completed — so a store can look clean on status codes and be visibly broken here.
-        id: 1007
+        id: 1008
         links: []
         title: Failures Without a Status Code
         vizConfig:
@@ -1083,7 +1190,7 @@ spec:
           **Unhealthy:** A route climbing on its own. Which route it is says where to look next — a push route points at the Writes tab, a query route at Reads.
 
           Tail routes are excluded: a tail is a long-lived streaming connection, so its "latency" is how long someone left a live log view open and swamps every other route on the panel.
-        id: 1006
+        id: 1007
         links: []
         title: Request Latency by Route (p99)
         vizConfig:
@@ -1158,7 +1265,7 @@ spec:
           **Nominal:** Zero.
 
           **Unhealthy:** Any restart that was not a deliberate rollout. An ingester restart is the one worth reading first: it replays its write-ahead log on the way back up, and until that finishes it is not accepting writes.
-        id: 1005
+        id: 1006
         links: []
         title: Container Restarts
         vizConfig:
@@ -1208,9 +1315,9 @@ spec:
                           container=~"$lokiComponent"
                         }
                       )
+                    format: table
                     instant: true
-                    legendFormat: '{{container}} / {{service}}'
-                    qryType: 1
+                    qryType: 2
                     query: |
                       max by (container, service) (
                         up{
@@ -1222,7 +1329,17 @@ spec:
                   version: v0
                 refId: query-0
             queryOptions: {}
-            transformations: []
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                  indexByName:
+                    Value: 2
+                    container: 0
+                    service: 1
         description: |-
           **Whether each Loki target is being scraped successfully, one series per component.**
 
@@ -1233,7 +1350,7 @@ spec:
           Worth reading before anything else on this dashboard. A component at 0 here makes every other panel about that component empty, and an empty panel is indistinguishable from a healthy quiet one.
 
           The canary and the two memcached exporters are collected by a separate ServiceMonitor precisely because they never serve TLS; if those three are the ones at 0, that split is what to check.
-        id: 1004
+        id: 1005
         links: []
         title: Scrape Health
         vizConfig:
@@ -1307,7 +1424,7 @@ spec:
           **Nominal:** Small relative to how much is stored. A well-shaped query narrows by label first, so it reads a fraction of the range it covers.
 
           **Unhealthy:** Large and sustained. Queries are scanning far more than they return, which is what a line filter over a wide label selection does — the cost lands on the queriers and on object-storage egress rather than on the person who wrote the query.
-        id: 1025
+        id: 1026
         links: []
         title: Bytes Scanned
         vizConfig:
@@ -1316,6 +1433,9 @@ spec:
           spec:
             fieldConfig:
               defaults:
+                color:
+                  fixedColor: '#EE7733'
+                  mode: shades
                 min: 0
                 noValue: No queries ran in this range
                 unit: Bps
@@ -1401,7 +1521,7 @@ spec:
           **Nominal:** High for the results cache on a dashboard being refreshed; lower and much more variable for chunks, which depends entirely on whether people are re-reading the same time range.
 
           **Unhealthy:** A collapse to near zero on the chunk cache while query latency climbs. Either the cache is too small for the working set or the memcached pods are unhealthy — the Overview tab's scrape panel says whether they are even up.
-        id: 1029
+        id: 1030
         links: []
         title: Cache Hit Rate
         vizConfig:
@@ -1486,7 +1606,7 @@ spec:
           **Unhealthy:** Far below 1.0 long after a restart, which means the cache is bigger than the working set and the memory could be given back. The alarming direction is not high usage but a rising eviction rate alongside a falling hit rate, which says the cache is too small.
 
           Depends on the memcached exporter sidecar, which serves plaintext and is collected by this chart's separate plaintext ServiceMonitor. If this panel is empty, check the scrape panel on the Overview tab first.
-        id: 1030
+        id: 1031
         links: []
         title: Cache Memory Used
         vizConfig:
@@ -1561,7 +1681,7 @@ spec:
           **Nominal:** Tracks query volume.
 
           **Unhealthy:** Not alarming by itself; it is the denominator for the hit-rate panel beside it.
-        id: 1028
+        id: 1029
         links: []
         title: Cache Lookups
         vizConfig:
@@ -1629,7 +1749,7 @@ spec:
           **Nominal:** A low number that returns to zero between investigations.
 
           **Unhealthy:** A floor that never returns to zero. Something is issuing queries on a loop — most often a dashboard left open on a short refresh over a wide range, which is also the cheapest thing on this list to fix.
-        id: 1023
+        id: 1024
         links: []
         title: Queries In Flight
         vizConfig:
@@ -1808,7 +1928,7 @@ spec:
           **Nominal:** Sub-second at the median. The tail follows the range being queried, so a wide p99 is normal on a cluster where someone is looking at a week.
 
           **Unhealthy:** A median climbing into seconds. That is the reading a person notices as "Grafana is slow", and the queue and cache panels below say which half of the read path to blame.
-        id: 1026
+        id: 1027
         links: []
         title: Query Latency
         vizConfig:
@@ -1927,7 +2047,7 @@ spec:
           **Nominal:** Near zero. A query that waits is a query with no querier free.
 
           **Unhealthy:** Anything sustained. This is the panel that distinguishes "the store is slow" from "the store is busy": queue time means there is not enough querier capacity for the concurrency being asked of it, and adding queriers fixes it. Latency without queue time is the queriers themselves being slow, and adding more will not help.
-        id: 1027
+        id: 1028
         links: []
         title: Scheduler Queue Time
         vizConfig:
@@ -2005,7 +2125,7 @@ spec:
           **Nominal:** Low and bursty on a cluster nobody is actively investigating — the canary and any alerting rules are the floor.
 
           **Unhealthy:** Not an unhealthy signal on its own. It is here as the denominator: every other panel on this tab is only alarming relative to how much was being asked of the store.
-        id: 1024
+        id: 1025
         links: []
         title: Query Rate by Route
         vizConfig:
@@ -2078,7 +2198,7 @@ spec:
           **Nominal:** Under the compaction interval, with the same sawtooth as retention.
 
           **Unhealthy:** Growing without bound. Uncompacted index tables make every query over the affected range slower, and the effect accumulates — this is the usual cause of a store that got gradually slower over weeks with no single change to blame.
-        id: 1032
+        id: 1033
         links: []
         title: Compaction Last Ran
         vizConfig:
@@ -2155,7 +2275,7 @@ spec:
           **Nominal:** A steady count of successes and no failures.
 
           **Unhealthy:** Any failures, or no runs at all. The compactor is a singleton, so "no runs" and "compactor is not running" look identical here — read it beside the scrape panel on the Overview tab.
-        id: 1033
+        id: 1034
         links: []
         title: Compaction Runs by Outcome
         vizConfig:
@@ -2252,7 +2372,7 @@ spec:
           **Nominal:** Zero pending on a cluster where nobody has asked for a deletion.
 
           **Unhealthy:** A request that stays pending. Deletions are processed by the compactor on its own schedule, so a growing age here means the compactor is not running — and on an install where deletion is a compliance obligation, that is the panel that says the obligation is not being met.
-        id: 1039
+        id: 1040
         links: []
         title: Pending Delete Requests
         vizConfig:
@@ -2328,7 +2448,7 @@ spec:
           **Unhealthy:** Anything sustained. Loki retries, so a low failure rate is survivable and a rising one is not: failed uploads back up into ingester memory and then into the write-ahead log, and failed gets are queries that return incomplete results without saying so.
 
           Credentials and bucket policy are the usual causes, and both fail completely rather than intermittently — a rate that starts at zero and jumps to match the operation rate is almost always an expired or rotated credential.
-        id: 1035
+        id: 1036
         links: []
         title: Failures by Kind
         vizConfig:
@@ -2435,7 +2555,7 @@ spec:
           **Nominal:** A low steady rate. The index is written in periodic tables rather than continuously.
 
           **Unhealthy:** Zero while ingest continues. New data is being stored without its index being published, so queries will not find it — the data is not lost, but it is not reachable either.
-        id: 1037
+        id: 1038
         links: []
         title: Index Table Operations
         vizConfig:
@@ -2515,7 +2635,7 @@ spec:
           **Nominal:** Near zero once the tables a query needs are cached locally.
 
           **Unhealthy:** Seconds. Queries over older ranges pay this on the first read, so a sustained value means index tables are being evicted and re-fetched — usually the index gateway's disk being too small for the retention period.
-        id: 1038
+        id: 1039
         links: []
         title: Query Wait for Index (p99)
         vizConfig:
@@ -2595,7 +2715,7 @@ spec:
           **Nominal:** Tens of milliseconds for a bucket in the same region.
 
           **Unhealthy:** Hundreds of milliseconds or seconds. Slow `get` operations surface as slow queries; slow `upload` operations surface as ingester memory growth long before they surface as errors.
-        id: 1036
+        id: 1037
         links: []
         title: Operation Latency (p99)
         vizConfig:
@@ -2669,7 +2789,7 @@ spec:
           **Nominal:** Steady `upload` traffic from the ingesters flushing chunks, and `get` traffic that follows query volume.
 
           **Unhealthy:** A collapse to zero on `upload` while ingest continues — nothing is reaching durable storage. Or `get` traffic far out of proportion to query volume, which means the caches are not doing their job.
-        id: 1034
+        id: 1035
         links: []
         title: Operations by Kind
         vizConfig:
@@ -2744,7 +2864,7 @@ spec:
           **Unhealthy:** Growing without bound. Retention has stopped, so nothing is being deleted and the bucket grows until something else notices. This fails quietly: no query breaks, and the only symptom is the storage bill.
 
           Reads a "last successful run" timestamp, so it counts up between runs and drops to near zero each time one completes. A sawtooth is the healthy shape, not a flat line.
-        id: 1031
+        id: 1032
         links: []
         title: Retention Last Ran
         vizConfig:
@@ -2821,7 +2941,7 @@ spec:
           **Nominal:** Proportional to the line rate beside it. The ratio is the average line length and is usually stable.
 
           **Unhealthy:** Bytes climbing while lines do not. Something started logging much longer lines — a stack trace in a loop, or a payload dumped into a log message — and it will show up in storage cost before it shows up anywhere else.
-        id: 1011
+        id: 1012
         links: []
         title: Bytes Received
         vizConfig:
@@ -2943,7 +3063,7 @@ spec:
           **Nominal:** A median at or a little under the configured maximum chunk age — the default is an hour, so a median around 45 minutes is ordinary.
 
           **Unhealthy:** A median far below the maximum, which means chunks are closing because they filled rather than because they aged; that is fine on its own and only interesting beside the utilization panel. The reading that matters is the reverse — a p99 pinned at the maximum with low utilization, which is the idle-stream case again.
-        id: 1019
+        id: 1020
         links: []
         title: Chunk Age on Flush
         vizConfig:
@@ -3062,7 +3182,7 @@ spec:
           **Nominal:** A median near 1.0. Full chunks are cheap to store and cheap to read.
 
           **Unhealthy:** A median well below 0.5. Chunks are being closed by the idle timeout rather than by filling, which means many low-traffic streams — the same cardinality problem the stream-count panel shows, seen from the storage side. Every such chunk costs a full object-store write and a full index entry for very few lines.
-        id: 1018
+        id: 1019
         links: []
         title: Chunk Utilization on Flush
         vizConfig:
@@ -3137,7 +3257,7 @@ spec:
           **Nominal:** A steady rate that tracks ingest volume.
 
           **Unhealthy:** Zero while lines are still arriving. Nothing is reaching durable storage, so everything ingested since is held only in ingester memory and is lost if they restart.
-        id: 1017
+        id: 1018
         links: []
         title: Chunks Flushed
         vizConfig:
@@ -3205,7 +3325,7 @@ spec:
           **Nominal:** Proportional to the stream count, and flat once the cluster is in a steady state.
 
           **Unhealthy:** Growth while the flush rate is flat. The ingesters are filling chunks faster than they can write them out, which ends in memory pressure — the flush-failure panel says whether storage is the reason.
-        id: 1016
+        id: 1017
         links: []
         title: Chunks in Memory
         vizConfig:
@@ -3279,7 +3399,7 @@ spec:
           **Nominal:** Zero.
 
           **Unhealthy:** Non-zero. Read beside the line count: a large byte rate from few lines is a handful of very large messages being rejected, which is usually a single misbehaving workload rather than a cluster-wide limit.
-        id: 1014
+        id: 1015
         links: []
         title: Discarded Bytes by Reason
         vizConfig:
@@ -3355,7 +3475,7 @@ spec:
           **Unhealthy:** Anything sustained. This is silent data loss — the collector believes the line was delivered. The reason label is the whole diagnosis: `rate_limited` means the tenant limits are below what the cluster produces, `per_stream_rate_limit` means one noisy stream rather than the whole cluster, `greater_than_max_sample_age` means lines arrived too late to be filed, and `out_of_order` means a collector's clock or batching is sending them shuffled.
 
           Deliberately unscoped by component: discards are a distributor-side verdict and splitting them by anything but reason hides the reason.
-        id: 1013
+        id: 1014
         links: []
         title: Discarded Lines by Reason
         vizConfig:
@@ -3429,7 +3549,7 @@ spec:
           **Nominal:** A baseline that tracks how much the cluster is doing. Steps up and down follow deployments and workload changes.
 
           **Unhealthy:** A drop to zero. The collectors stopped, or cannot reach the distributor; either way nothing is being recorded from that moment on and the gap is permanent.
-        id: 1010
+        id: 1011
         links: []
         title: Lines Received
         vizConfig:
@@ -3555,7 +3675,7 @@ spec:
           **Nominal:** Tens of milliseconds. A push is an in-memory append on the ingesters; it does not wait for object storage.
 
           **Unhealthy:** Climbing. The collectors will retry, then buffer, then drop — so a slow push path becomes lost lines at the *collector* rather than an error here.
-        id: 1012
+        id: 1013
         links: []
         title: Push Latency (p99)
         vizConfig:
@@ -3629,7 +3749,7 @@ spec:
           **Unhealthy:** Steady growth that does not level off. That is label cardinality, and it is the failure mode that ends with ingesters out of memory: some label is carrying a value that is different on every line, so every line opens a stream of its own.
 
           The usual culprits are a pod name, a request id or a timestamp promoted to a label. The fix is in the collector's relabel rules, not in Loki.
-        id: 1015
+        id: 1016
         links: []
         title: Active Streams
         vizConfig:
@@ -3697,7 +3817,7 @@ spec:
           **Nominal:** Low and flat. The WAL is a replay buffer, not an archive; it is truncated as chunks are flushed.
 
           **Unhealthy:** Climbing toward 100. The WAL grows when flushes are not keeping up, and at full it stops accepting writes entirely — see the disk-full panel, which counts the times that has already happened.
-        id: 1020
+        id: 1021
         links: []
         title: WAL Disk Usage
         vizConfig:
@@ -3772,7 +3892,7 @@ spec:
           **Nominal:** Zero.
 
           **Unhealthy:** Any occurrence. Writes are being refused, and the ingester cannot replay what it did not record — so a restart after this loses data that was accepted before it.
-        id: 1021
+        id: 1022
         links: []
         title: WAL Disk Full Failures
         vizConfig:
@@ -3840,7 +3960,7 @@ spec:
           **Nominal:** Zero, except for a few minutes after an ingester restarts.
 
           **Unhealthy:** Sustained, or repeated. A replaying ingester is not serving writes, and one that is always replaying is crash-looping — read the restart panel on the Overview tab beside it.
-        id: 1022
+        id: 1023
         links: []
         title: WAL Replay Active
         vizConfig:
@@ -3906,9 +4026,14 @@ spec:
                         spec:
                           element:
                             kind: ElementReference
+                            name: overview-client-error-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
                             name: overview-error-rate
-                      maxColumnCount: 4
-                      rowHeightMode: standard
+                      maxColumnCount: 5
+                      rowHeightMode: short
                   title: End to End
               - kind: RowsLayoutRow
                 spec:

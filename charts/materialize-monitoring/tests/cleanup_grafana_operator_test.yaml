@@ -52,17 +52,57 @@ tests:
           value: before-hook-creation,hook-succeeded
 
   # Scoping. Unscoped, this deletes every grafana-operator resource in the
-  # namespace, including a second release's. kubectl also refuses `--all`
+  # namespace, including another product's. kubectl also refuses `--all`
   # alongside a selector, so the two are not interchangeable.
-  - it: should delete only this release's resources
+  #
+  # The default scope is the *Grafana instance*, not the release, and that is
+  # load-bearing rather than incidental: the dashboards are a release of their
+  # own whose GrafanaManifests carry the operator's finalizer, and nothing in
+  # their teardown runs when this release is the one being removed. Narrow this
+  # to the release and uninstalling leaves them wedged in Terminating.
+  - it: should delete everything pointed at this release's Grafana
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --selector=monitoring.materialize.cloud/grafana-instance=mzmon
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --all
+
+  # Still bounded. The sweep reaches beyond this release but cannot reach a
+  # Grafana this release did not create, which is what `--all` would have done.
+  - it: should follow a narrowed instance selector
+    set:
+      connections.grafana.labels:
+        team: observability
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --selector=monitoring.materialize.cloud/grafana-instance=mzmon,team=observability
+
+  # The escape hatch, and the correct scope when grafana-operator is not ours to
+  # remove: it survives the uninstall and clears the rest itself.
+  - it: should narrow to the release when asked
+    set:
+      cleanup.grafanaOperator.scope: release
     template: cleanup/job-grafana-operator.yaml
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --selector=app.kubernetes.io/instance=mzmon
-      - notContains:
-          path: spec.template.spec.containers[0].args
-          content: --all
+
+  # With the operator unmanaged here there is nothing to race, and the narrow
+  # scope is the conservative default.
+  - it: should fall back to the release when the operator is not managed here
+    set:
+      tags.managed-grafana: false
+      grafana-operator.enabled: false
+    template: cleanup/job-grafana-operator.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
 
   # The wait is what keeps Helm from tearing down the operator underneath a
   # half-finished deletion. kubectl waits by default, so the test is that

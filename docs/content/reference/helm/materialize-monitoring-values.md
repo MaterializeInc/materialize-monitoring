@@ -3042,6 +3042,33 @@ only once the finalizers have been processed, and Helm proceeds from there.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.scope</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"instance"</code></td>
+      <td class="helm-value-desc">Which resources the hook deletes: `instance` or `release`.
+
+**`instance`** (the default) selects everything pointed at the `Grafana`
+this release created, by the labels in `connections.grafana.labels` — the
+same ones the resources carry and their `instanceSelector` matches.
+
+That deliberately reaches beyond this release. The dashboards ship as
+`materialize-monitoring-dashboards`, a release of its own whose
+`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in that
+release's teardown runs when this one is being removed. Take the operator
+away without clearing them and they wedge in `Terminating` with no remover.
+It is still bounded: it cannot reach resources aimed at a Grafana this
+release did not create.
+
+**`release`** is the narrow form — only what this release created. Correct
+when grafana-operator is not ours to remove, since it survives the
+uninstall and clears the rest itself, and the escape hatch if the broader
+sweep ever reaches something it should not.
+
+Only `instance` consults `mzmon.grafanaOperator.enabled`; with the operator
+unmanaged here, both scopes fall back to the release.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.kinds</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>

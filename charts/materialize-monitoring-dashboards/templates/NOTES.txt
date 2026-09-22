@@ -1,0 +1,62 @@
+You have successfully installed the Materialize Monitoring dashboards.
+
+{{- $ns := include "mzmon-dashboards.namespace" $ }}
+{{- $dashboards := include "mzmon-dashboards.dashboards" $ | fromYamlArray }}
+
+{{- if not $.Values.grafana.enabled }}
+
+Dashboards are disabled (`grafana.enabled`), so this release created nothing.
+{{- else if $dashboards }}
+
+Dashboards ({{ len $dashboards }}, resynced every {{ $.Values.grafana.resyncPeriod }}):
+  {{- range $dashboards }}
+  - {{ . }}
+  {{- end }}
+  Schema: {{ $.Values.grafana.apiTarget }} (needs Grafana 12 or later)
+  Namespace: {{ $ns }}
+
+Target instance:
+  Selected by: {{ $.Values.grafana.instanceSelector | toJson }}
+  {{- if $.Values.grafana.allowCrossNamespaceImport }}
+  Cross-namespace import is ON, so the Grafana may live outside {{ $ns }}.
+  {{- else }}
+  Cross-namespace import is OFF, so the Grafana must be in {{ $ns }}.
+  {{- end }}
+
+  These labels must match what the materialize-monitoring release put on its
+  Grafana resource. This chart cannot read that release's values, so nothing here
+  is checked against it — a selector that matches no instance produces no error,
+  just no dashboards.
+
+Folders:
+  {{- $uids := $.Values.grafana.folderUids | default dict }}
+  {{- if $uids }}
+    {{- range $name, $uid := $uids }}
+  - {{ $name }} -> {{ $uid }}
+    {{- end }}
+
+  Each is a UID the materialize-monitoring release created. A dashboard naming a
+  folder absent from this map is filed at the root instead.
+  {{- else }}
+  None configured, so every dashboard is filed at the root of the Grafana.
+  {{- end }}
+
+IMPORTANT: `helm --wait` does not cover any of this. There are no workloads in this
+release — Helm applies the resources and returns, and grafana-operator pushes them
+into Grafana afterwards, on its own schedule and failing on its own. Confirm they
+landed:
+  kubectl --namespace {{ $ns }} get grafanamanifest
+  kubectl --namespace {{ $ns }} get grafanamanifest -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[-1].reason}{"\n"}{end}'
+
+UNINSTALLING: take this release out BEFORE materialize-monitoring. grafana-operator
+holds a finalizer on every GrafanaManifest, and the other chart's pre-delete hook
+clears only what carries its own instance label. Remove the operator first and these
+wedge in Terminating with no remover:
+  helm uninstall {{ $.Release.Name }} --namespace {{ $ns }} --wait
+{{- else }}
+
+`selected` ({{ join ", " $.Values.selected }}) matched no dashboards, so this release
+created nothing.
+{{- end }}
+
+{{- include "mzmon-dashboards.validate.format" $ | nindent 0 }}

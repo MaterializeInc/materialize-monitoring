@@ -45,6 +45,12 @@ metadata:
     {{- include "mzmon.annotations" $ | nindent 4 }}
   labels:
     {{- include "mzmon.labels" $ | nindent 4 }}
+    {{- /*
+      The instance labels go on the resource as well as into its selector, so the
+      pre-delete hook can find everything pointed at *this* Grafana rather than
+      only what this release created. See `cleanup.grafanaOperator.scope`.
+    */}}
+    {{- include "mzmon.grafana.instanceLabels" $ | nindent 4 }}
 spec:
   resyncPeriod: {{ $.Values.dashboards.config.grafana.manifest.resyncPeriod }}
       {{- if ( include "mzmon.grafana.crossNamespace" $ ) }}

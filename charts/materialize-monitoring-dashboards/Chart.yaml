@@ -45,12 +45,18 @@ annotations:
 #
 # Versioning
 # ----------
-# This chart does *not* have a version stream of its own. It is published by the
-# existing `dashboards` component in `packages/components.yaml`, whose stream it
-# joins mid-flight -- hence starting at that component's released version rather
-# than at 0.1.0. The two are coupled totally: this chart carries nothing but the
-# rendered dashboards, so every change to one is a change to the other, and two
-# streams would move in lockstep while pretending to be independent.
+# This chart's version stream is the **`dashboards` component** in
+# `packages/components.yaml`, and this file is that component's only version
+# file. So the stream covers the chart *and* its sources -- `packages/dashboards`
+# and `packages/queries` -- which is the honest shape: the chart carries nothing
+# but what those render, so a change to either is a change to both.
 #
-# The CRDs chart is separate for the opposite reason: it tracks upstream CRDs on
-# a cadence nothing here controls.
+# That component predates the chart and had no version file at all until this one
+# arrived; its stream lived only in `CHANGELOG.md`. The version below therefore
+# starts at the component's released version rather than at 0.1.0 -- it is
+# adopting a stream already in flight, not beginning one.
+#
+# A component of its own was the alternative, and was rejected: two streams
+# tracking one set of contents would move in lockstep while claiming to be
+# independent. The CRDs chart is separate for the opposite reason -- it tracks
+# upstream CRDs on a cadence nothing here controls.

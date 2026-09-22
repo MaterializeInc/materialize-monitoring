@@ -23,11 +23,12 @@
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::generated::stat::BigValueGraphMode;
-use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row};
+use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use super::theme;
 use crate::grafana::queries::Queries;
+use crate::grafana::transform;
 
 const SHADE: &str = theme::OVERVIEW.shade;
 
@@ -38,16 +39,21 @@ pub fn rows(q: &Queries) -> Vec<Row> {
     vec![verdict(q), collection(q), requests(q), canary(q)]
 }
 
-/// The four numbers worth reading before anything else.
+/// The five numbers worth reading before anything else.
 ///
 /// Header hidden: this row is the dashboard's answer, not a section of it.
+/// Half height, because these are read at a glance and at full height they push
+/// the scrape row below the fold — which is the one thing that has to be seen
+/// before any of the rest is believed.
 fn verdict(q: &Queries) -> Row {
     Row::new("End to End").hide_header().grid(
-        AutoGrid::new(4)
+        AutoGrid::new(5)
             .column_width(ColumnWidth::Narrow)
+            .row_height(RowHeight::Short)
             .panel("overview-canary-missing", canary_missing(q))
             .panel("overview-canary-latency", canary_latency_stat(q))
             .panel("overview-ingest", ingest(q))
+            .panel("overview-client-error-rate", client_error_rate(q))
             .panel("overview-error-rate", error_rate(q)),
     )
 }
@@ -121,6 +127,25 @@ fn ingest(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
+/// Not a health number the way 5xx is, which is why it carries the tab shade
+/// rather than sitting beside 5xx as a second alarm.
+///
+/// A little above zero is the resting state — a query for a label that no longer
+/// exists, a client cancelling a slow request. What is worth reading is a
+/// *step*: a rejected write is a 4xx from the client's side, so this moves
+/// before the discard counters on the Writes tab do, and it moves when the
+/// caller is at fault rather than the store.
+fn client_error_rate(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("4xx Rate")
+        .query(q.get("infra.loki.health.client_errors").legend("4xx share"))
+        .graph_mode(BigValueGraphMode::Area)
+        .shade(SHADE)
+        .unit("percentunit")
+        .min(0.0)
+        .no_value(NoValue::Custom("No requests in this range".to_string()))
+        .build(0)
+}
+
 fn error_rate(q: &Queries) -> dashboardv2::PanelKind {
     Panel::stat("5xx Rate")
         .query(
@@ -142,10 +167,17 @@ fn error_rate(q: &Queries) -> dashboardv2::PanelKind {
 /// range each target repeats once per scrape.
 fn scrape_health(q: &Queries) -> dashboardv2::PanelKind {
     Panel::table("Scrape Health")
-        .query(
-            q.get("infra.loki.health.up")
-                .legend("{{container}} / {{service}}"),
-        )
+        // `table_format`, then drop `Time` — which together are the whole of
+        // what this panel was missing. Prometheus returns one *frame* per
+        // series, and a Table handed several frames renders a frame **picker**
+        // rather than a table: eleven one-row tables behind a dropdown, each
+        // keyed by its scrape timestamp. The first frame renders correctly,
+        // which is what makes it easy to ship.
+        .query(q.get("infra.loki.health.up").table_format())
+        .transformations(vec![transform::organize(
+            &["Time"],
+            &["container", "service", "Value"],
+        )])
         .unit("short")
         .no_value(NoValue::Custom(
             "No Loki targets found at all — check the namespace picker".to_string(),
@@ -230,8 +262,22 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 10);
+        assert_eq!(assembled.elements.len(), 11);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
+    }
+
+    #[test]
+    fn the_scrape_panel_renders_as_one_table() {
+        // Without `table_format` Prometheus returns a frame per series and the
+        // Table becomes a dropdown of eleven one-row tables, each keyed by its
+        // scrape timestamp. The first renders correctly, so this is invisible
+        // until someone looks for the target that is actually down.
+        let q = &test_queries();
+        let panel = scrape_health(q);
+        let json = serde_json::to_string(&panel).expect("serialize");
+        assert!(json.contains(r#""format":"table""#), "{json}");
+        assert!(json.contains("organize"), "{json}");
+        assert!(json.contains(r#""Time":true"#), "{json}");
     }
 
     #[test]
