@@ -17,6 +17,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 ## Start here
 
+* [Vision](/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/vision/) — what the project is for, where it is going, and why.
 * [Getting Started](/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/getting-started/overview/) — the installation paths, and how to choose between them.
 * [Installing via Terraform](/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/getting-started/terraform/) — the recommended path: observability comes up with the cluster.
 * [Installing via Helm](/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/getting-started/helm/) — the full-fidelity surface, for when Terraform is not how you deploy.

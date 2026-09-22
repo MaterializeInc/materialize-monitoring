@@ -15,13 +15,30 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.24.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards v0.17.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.23.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.23.0
 
-_Changes Pending_
+* Clean up GrafanaFolder on uninstall
+    * [materialize-monitoring#375](https://github.com/MaterializeInc/materialize-monitoring/pull/375)
+    * Fixed an uninstall hang introduced in v0.22.0: the `pre-delete` cleanup hook did not delete `GrafanaFolder` resources, so their grafana-operator finalizers outlived the operator and left the release namespace stuck in `Terminating`. Installs that already hit this can recover by clearing the finalizers by hand — see [Uninstalling](https://materializeinc.github.io/materialize-monitoring/operating/uninstalling/#recovering-a-stuck-teardown).
+* Upgrade helm-unittest to v1.1.2 and pin it for Renovate
+    * [materialize-monitoring#373](https://github.com/MaterializeInc/materialize-monitoring/pull/373)
+* DEP-211 Add infra-net dashboard, and the CNI collection it needs
+    * [materialize-monitoring#366](https://github.com/MaterializeInc/materialize-monitoring/pull/366)
+
+### Dependencies
+
+* Included Dashboards @ v0.16.0..v0.17.0
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
 ## Container Images v0.6.0 (Unreleased)
 

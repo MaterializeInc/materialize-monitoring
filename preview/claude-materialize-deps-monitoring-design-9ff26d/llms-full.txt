@@ -22,6 +22,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 ## Start here
 
+* [Vision]({{< relref "vision.md" >}}) — what the project is for, where it is going, and why.
 * [Getting Started]({{< relref "getting-started/overview.md" >}}) — the installation paths, and how to choose between them.
 * [Installing via Terraform]({{< relref "getting-started/terraform.md" >}}) — the recommended path: observability comes up with the cluster.
 * [Installing via Helm]({{< relref "getting-started/helm.md" >}}) — the full-fidelity surface, for when Terraform is not how you deploy.
@@ -71,6 +72,351 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 ## Getting help
 
 Please [reach out for Support](https://materialize.com/docs/support/), or open an issue on [GitHub](https://github.com/MaterializeInc/materialize-monitoring/issues).
+
+
+--------------------------------------------------------------------------------
+title: "Vision"
+url: https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/vision/index.md
+--------------------------------------------------------------------------------
+
+# Vision
+
+`materialize-monitoring` exists so that a Materialize deployment somebody else operates is as observable as one Materialize operates itself.
+It packages metrics, logs, events, dashboards, and alerts as a Helm chart and a Terraform module.
+It installs with the cluster by default.
+For a customer who already runs their own observability stack, it reduces to nothing but a documented metric contract.
+
+This page states the direction and the reasoning behind it.
+The [Roadmap](../reference/internal/roadmap/) is the source of truth for status, and it is more current than this page by construction.
+
+<!--
+Agent note: this page is published. Keep forward-looking items framed as proposals under review.
+Statuses go stale here faster than anywhere else in the docsite; prefer deleting a claim to maintaining it.
+-->
+
+## The problem
+
+Materialize used to run in one place, operated by one team, watched by dashboards that team maintained by hand.
+Self-managed changed the shape of the question.
+A deployment now runs in a customer's Kubernetes cluster, on infrastructure the customer owns.
+The operator watching it has often never seen a Materialize incident before.
+Three costs follow from that, and the project exists to pay them down.
+
+| Cost | What it looks like |
+|---|---|
+| **Divergence** | Materialize Cloud and self-managed grew separate dashboards, separate rule sets, separate collection pipelines, and separate metric names for the same measurement |
+| **Invisibility** | A self-managed install is opaque between escalations, so an escalation starts by asking the customer to gather evidence that was never collected |
+| **No default** | The recommended path was a point-in-time dashboard copy and a legacy scrape config, vendored into the installer and maintained by nobody |
+
+The common cause is that observability was a deliverable attached to each deployment rather than a product with a version.
+A customer could not upgrade it, Materialize could not test it, and neither party could say what it guaranteed.
+
+## What the project is
+
+**One stack, consumed several ways, with every component replaceable.**
+That sentence carries three commitments, and most of the design follows from holding all three at once.
+
+### One stack
+
+There is a single set of pipelines, dashboards, scrape configurations, and alert definitions, generated from a single query registry.
+Dashboards are Rust source rendered against the Grafana schemas, not JSON maintained by hand.
+Alert and dashboard expressions come from the same registry, so a metric an alert depends on cannot quietly diverge from the panel that explains it.
+
+### Several ways in
+
+| Path | Audience | Shape |
+|---|---|---|
+| **Helm** | An operator who deploys with Helm, or who wants the full lever set | The umbrella chart, with profiles as sized deltas from a medium default |
+| **Terraform module** | A customer installing Materialize with the published modules | On by default from `materialize-terraform-self-managed` v11, opt out with `enable_observability = false` |
+| **Per-cloud wrappers** | AWS, GCP, and Azure installs | Downstream modules that wrap the common module and supply what only the cloud knows |
+| **The metric contract alone** | A customer with a mature stack of their own | Documented metrics, queries, and scrape configurations, with none of the workloads |
+
+A fourth consumer is proposed rather than built: Materialize Cloud, deploying the same chart through Pulumi.
+
+### Every component replaceable
+
+Loki, Thanos, Grafana, Alertmanager, and the Alloy pipelines are the bundled implementation of an interface, not the interface.
+Each one can be switched off in favour of something a customer already runs.
+The posture has a real cost, and the project pays it deliberately.
+Composability means the project cannot assume any particular backend exists when it designs a feature.
+That is why the read path below counts as a change of posture rather than a routine addition.
+
+## Who this is for
+
+The stack has four audiences, and they ask different questions of it.
+
+| Reader | What they are trying to do |
+|---|---|
+| **A self-managed operator** | Keep a Materialize deployment healthy without a Materialize engineer beside them |
+| **An SRE or platform engineer** | Fit Materialize into an observability practice that already exists, on that practice's terms |
+| **A field engineer** | Answer a question about a deployment they cannot log into |
+| **Materialize support and engineering** | Diagnose an escalation from evidence that was already being collected |
+
+The maintaining team is small, and the audience above is not.
+That asymmetry is the argument for treating this as a collaborative repository rather than one team's internal tooling.
+The people who meet a failure mode are usually not the people who write the dashboard for it.
+A panel, an alert, a query, or a runbook contributed by whoever hit the problem carries context that a metric list cannot supply afterwards.
+Contributions from field engineers, SREs, and customers are encouraged on the same footing as contributions from the maintaining team.
+The [contributor guide](../reference/internal/contributing/) covers the conventions.
+
+The single-registry design is what makes a small contribution worth making.
+A query added to the registry reaches the dashboard, the published documentation, and any alert referencing it.
+One contribution is therefore not one panel.
+
+## Why a deployment turns it on
+
+Nothing here is required to run Materialize, and every component of it can be switched off.
+The case for turning it on therefore has to be made per deployment, and what makes it is the set of moments a deployment produces on its own.
+
+| The moment | The question it poses | Where the answer comes from otherwise |
+|---|---|---|
+| An upgrade has been running longer than expected | Is it progressing, or is it stuck | A version count, and a decision made on nerve |
+| A replica is resized, or a workload is resharded | Has the new replica caught up, and at what cost | A SQL session against the environment, repeated until it looks settled |
+| A source falls behind | Is it the source, the network, or the cluster reading it | Introspection queries against an environment that is already struggling |
+| The deployment stops accepting connections | Is Materialize unhealthy, or is it the network or the balancer in front of it | Logs gathered by hand once the incident is over |
+| An escalation opens | What was happening in the hour before it broke | A request to the customer to collect evidence nobody was collecting |
+| The platform underneath misbehaves | Is it the node, the CNI, the object store, or the metadata database | `kubectl`, and cluster access the person asking may not have |
+| The cloud bill arrives | What does Materialize cost, and which part of it is largest | An estimate |
+
+Every one of these arrives whether or not anyone prepared for it.
+What the stack changes is whether the evidence was being collected before the question was asked, because most of it cannot be gathered afterwards.
+How much of each row is answered today is the roadmap's subject, and several are answered only in part.
+
+## Why Materialize invests in it
+
+The first question is asked by whoever installs the stack.
+This one is asked internally, and it has a different answer.
+
+| Reason | The evidence behind it |
+|---|---|
+| **Adoption decisions turn on operability** | An upgrade no operator could read blocked a production adoption decision, which is the case behind [the upgrade work](#from-displaying-metrics-to-answering-questions) |
+| **Support cost scales with blindness** | An install nobody can see is an install whose every escalation starts by asking the customer to go gather evidence |
+| **The alternative is the same work once per deployment** | The log alerts that detect panics and correctness violations exist as per-region copies, drifted from each other, maintained by clicking |
+| **Two implementations get fixed once between them** | Cloud and self-managed maintain two versions of nearly the same query set, and twenty-six of those queries are identical SQL under identical names |
+| **It has stopped being an accessory** | The console's [read path](#the-read-path-where-this-stops-being-optional) makes a PromQL and a LogQL endpoint load-bearing rather than optional |
+
+One argument sits outside the table.
+An operator evaluating self-managed asks how they will run it, and that answer is part of the product rather than an appendix to it.
+The stack is what makes the answer demonstrable rather than a claim.
+
+## Where it stands today
+
+The platform is built and in use.
+The following is the current surface at altitude, and the [Roadmap](../reference/internal/roadmap/) carries the per-item detail.
+
+| Area | State |
+|---|---|
+| **Collection** | Alloy agent and gateway, node-exporter, kube-state-metrics, kubelet cAdvisor, and self-disabling CNI monitors for the two CNIs that publish anything |
+| **Storage** | Loki and Thanos bundled and sized by profile, with fan-out to OTLP, Datadog, Google Cloud Monitoring, and additional Prometheus remote-write destinations |
+| **Dashboards** | Six shipped: an environment overview, logs, and upgrades for a Materialize user, plus logs, nodes, and networking for whoever runs the cluster underneath |
+| **Packaging** | Chart and CRDs chart published to GHCR, a Terraform module on the same version stream, per-component SemVer, a generated changelog, and a written deprecation policy |
+| **Security** | NetworkPolicy on every workload by default, opt-in in-cluster mTLS with a four-stage rollout, and chart and image scanning in CI |
+| **Qualification** | Terraform render checks, two `kind` end-to-end tiers, and a Rust assertion suite verified against real EKS and GKE clusters |
+
+Two gaps matter more than the rest, and both shape the next phase.
+
+**Nothing is paged.**
+The alert definitions exist and render into the documentation, and no install evaluates them.
+Alertmanager is deployed and receives nothing.
+
+**The four questions a Materialize user asks first are still unanswered.**
+Hydration, freshness, sources, and sinks each need instrumentation that lives upstream in the Materialize repository rather than here.
+
+## Where it is going
+
+Each theme below is a question this stack cannot answer yet.
+The [Roadmap](../reference/internal/roadmap/) tracks the individual items behind each one, with their status and their designs.
+
+### From displaying metrics to answering questions
+
+The shipped overview is organized by subsystem, which suits a reader who already knows which subsystem is at fault.
+The next set is organized by symptom and by operation.
+A troubleshooting dashboard becomes the entry point, and every panel on it links onward into logs or into the matching drilldown.
+Day 2 operations are weighted above Day 1, because a running deployment fails during a change far more often than during an install.
+
+Upgrades is the worked example and the sharpest case.
+An operator watching a long upgrade with no way to tell whether it is progressing has a production adoption decision blocked on that uncertainty.
+The requirement that came out of it is the requirement for the whole family.
+A dashboard has to answer *is it stuck* and *what do I do about it*, rather than display a version count.
+The shipped upgrade dashboard answers the first question from the rollout's own account of itself, and the second is outstanding.
+
+### Alerting: from shipping rules to paging a human
+
+Every component needed to alert is in the chart, and no two of them are connected.
+Closing that is the highest-value work on this page.
+
+Three separate problems share the workstream.
+Nothing evaluates rules, so the rule set is documentation.
+The rule set is Materialize Cloud's rule set, and a third of it names components a stock self-managed install does not run.
+Log-derived alerting has never been code anywhere at Materialize.
+The rules that detect panics and correctness violations exist only as per-region copies clicked into a Grafana instance.
+
+The proposed design takes four positions.
+
+| Position | Why |
+|---|---|
+| Two evaluators, one notifier | PromQL and LogQL need different evaluators, and an operator needs one place where silences and grouping live |
+| Severity belongs to the alert, urgency belongs to the deployment | One rule set cannot otherwise serve both a customer for whom Materialize is critical infrastructure and one who is evaluating it |
+| A rule declares what it requires, not who operates it | A CockroachDB rule is for a deployment running CockroachDB, which a self-managed customer may well be |
+| Customer-specific alerting composes out of values | Alert rules filed under individual customer names are what happens when it does not |
+
+Alert names become a surface the project owes a deprecation cycle on from the first release that ships rules.
+That decision is free only until the alerting path exists, so it is settled as part of the alerting design rather than after it.
+
+### The services Materialize does not run
+
+Every dashboard in the stack stops at the cluster boundary.
+The two services a Materialize deployment cannot run without and does not run itself are the metadata database and the object store.
+Neither has a dashboard, a working alert, or a collection path beyond what its clients happen to publish.
+
+The central claim of the proposed design is that **the client's measurement of a dependency is the service level indicator**.
+The dependency's own telemetry is the diagnosis.
+Materialize, Loki, and Thanos already time and count every call they make to both dependencies, on every cloud, with no credentials.
+That vantage point can ship on by default.
+Everything flavour-specific sits behind a normalized contract.
+That is what keeps seven plausible database flavours and five object stores from multiplying the dashboard and alert set.
+
+The field evidence changed the design more than the analysis did.
+Two observed failures were the metadata database exhausting disk and CPU.
+One was a neighbouring project consuming a shared database instance, which no amount of client-side measurement can attribute.
+The most common class was a day-0 setup failure, which is a different problem with a different answer.
+The alerts that describe the first pair are well calibrated, carry correct remediation text, and could not have fired for two independent reasons.
+
+### What a deployment costs
+
+Every other workstream measures what a deployment is doing.
+This one measures what it costs, which is the question a self-managed operator is asked by whoever owns the cloud bill.
+The proposed shape is an optional cost component, off by default.
+
+Deploying a cost exporter is the easy half.
+Making the number mean something is the feature, and two problems stand in the way.
+The default price for a node is a public list price rather than what the customer was billed, so every figure has to state where it came from.
+A cost exporter attributes spend to namespaces and pods, while a Materialize operator asks about clusters, replicas, and cost centers.
+
+The demand behind it is specific rather than a general appeal to efficiency.
+Five questions drive it:
+
+- Right-sizing a replica.
+- Comparing machine classes across node generations.
+- Deciding whether to shard a workload.
+- Apportioning Materialize across the departments using it.
+- Holding an honest total-cost conversation.
+
+The last one shapes the rest.
+A total that quietly excludes the object store, the metadata database, or the monitoring stack is not a total.
+
+### The read path, where this stops being optional
+
+Every workstream above is about collecting telemetry, and every consumer of it so far is a Grafana the project deploys.
+The [tenant-scoped query API](../reference/internal/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
+The two readers are the Materialize console and a customer's own Grafana.
+
+This is the one place the composability posture is genuinely in tension with the product.
+The console renders environment metrics from SQL against the environment itself.
+That path keeps a short window of history.
+It is also unavailable precisely when the environment is.
+Reading PromQL and LogQL instead makes a deployment without those endpoints a deployment with a broken console.
+
+The design resolves the tension by mandating an interface rather than an implementation.
+A PromQL endpoint and a LogQL endpoint carrying the documented label contract, reachable through a tenant-scoped proxy, is what a deployment owes.
+Thanos and Loki are the bundled implementation of it, and a customer already running an equivalent points the proxy at theirs.
+One consequence reaches the rest of the project.
+The metric and label contract becomes load-bearing for a product surface rather than for dashboards alone.
+
+**Three planned features assume a scheduled reader against the metrics backend, and none of those readers exists.**
+Rule evaluation has to read in order to evaluate, this proxy serves reads to the console, and cost attribution issues queries on a schedule.
+All three were sized against a backend whose only reader is a Grafana with a human in front of it.
+That sizing question is common to all three, and it should be settled once rather than inside whichever lands first.
+
+### Deployments Materialize cannot see
+
+Two workstreams share a channel and differ in what authorizes using it.
+
+**[Bring-your-own-cloud](../reference/internal/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
+They run in the customer's own cloud account, and Materialize needs enough telemetry to operate them.
+A reduced copy of telemetry crosses into the control plane, and the customer's full-fidelity copy always stays with them.
+Metrics cross selected by importance tier, and logs cross as an allowlisted, redacted, level-filtered subset.
+A pair of gateways enforces that boundary rather than ad-hoc network configuration.
+Redaction attaches to the destination, so the reduced copy is a fork of the customer's stream rather than a downgrade of it.
+
+**[Call-home](../reference/internal/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
+A self-managed deployment is invisible between escalations.
+The channel is the same, and the feature is consent.
+A bring-your-own-cloud customer bought an operated service, so telemetry crossing the boundary is what they purchased.
+A self-managed customer bought software they run themselves, and every byte that leaves is a concession.
+The design is therefore a bounded, monotone, locally-visible ladder: `off`, `heartbeat`, `alerts`, `metrics`, `diagnostics`.
+It defaults to off.
+A preview mode and a local egress meter let the customer verify the bound rather than trust it.
+
+Drafting it produced one finding that belongs on this page.
+**Receiving a signal creates an obligation.**
+Collecting alerts nobody is paged on is worse than collecting nothing.
+The customer took a disclosure risk on the assumption that someone is watching.
+A stated response model is a prerequisite for the alerts level rather than a follow-up to it.
+
+### One stack instead of two
+
+The divergence in the table at the top of this page is a cost the project is now in a position to remove.
+Two changes do it from opposite ends, and both are Cloud-side work rather than changes to this chart.
+
+**Cloud becomes the chart's third consumer.**
+Cloud takes the Alloy pipelines and both backends, with Grafana staying external because it is operated outside this project.
+Logs lead rather than metrics.
+The log path already works end to end, which makes it the cheapest way to prove the chart against real traffic.
+The gateway-to-gateway shape it adopts is the same shape bring-your-own-cloud builds redaction on.
+
+**The metric-naming divergence is closed at its source.**
+Cloud and self-managed today maintain two implementations of nearly the same query set.
+Twenty-six of those queries are identical SQL under identical names.
+Every dashboard in this repository threads a prefix parameter for no reason other than to paper over which process served the metric.
+Both paths also run expensive SQL on the scrape path against the replicas they are trying to observe.
+The goal is one path per metric, named consistently, with no SQL on the scrape path, reached over an authenticated connection.
+
+### 1.0, and what the number promises
+
+The project is pre-1.0, and breaking changes can ride a minor release.
+The deprecation policy is written and landed, and stamping the number is not.
+
+At 1.0 the minor-release allowance ends.
+The label and metric contract, the profile semantics, the alert names, and the chart value paths all acquire a deprecation cycle.
+The window for getting that discipline in place closes on its own.
+Once enough customers have dashboards built on these labels, the contract is frozen in practice whether or not it is frozen on paper.
+The discipline should therefore land before broad adoption rather than after.
+
+Surfaces are graded by how much control the project has over them and by how a break presents.
+Alerts fail silently and get the most care.
+Metrics fail visibly and get the least.
+See [Stability Guarantees and Deprecation Policy](../reference/stability/) for what a consumer can rely on today.
+
+## What has to come from elsewhere
+
+The metric and label contract is the public interface for everything on this page.
+Part of it is instrumented upstream in the Materialize repository rather than here.
+That dependency shapes the dashboard roadmap directly.
+
+| Upstream ask | What it unblocks |
+|---|---|
+| Object and `_info` metrics carrying names and parent references | Delivered. Every other metric now has a stable join target for names |
+| Native source and sink status metrics | The sources and sinks drilldowns |
+| Native hydration and frontier signals | The hydration and freshness drilldowns |
+| Label-family harmonization | Queries that do not have to know which of three label forms a deployment emits |
+| `balancerd` and `console` metrics | The two components a user connects *through*, which today are observable only as logs |
+| Operator reconciliation metrics and lifecycle events | Most of the upgrade dashboard, which ships with those panels empty until it lands |
+
+The pattern is worth naming.
+This project can build a collection path, a dashboard, and an alert for any signal that exists.
+It cannot instrument what does not emit, and the gap between those two facts is where most of the blocked work on the roadmap sits.
+
+## Where the detail lives
+
+| Question | Page |
+|---|---|
+| What is built, in flight, and planned next | [Roadmap](../reference/internal/roadmap/) |
+| How the pieces fit together | [Architecture](../architecture/) |
+| What the vocabulary on these pages means | [o11y Glossary](../o11y-glossary/) |
+| What a consumer can rely on | [Stability Guarantees and Deprecation Policy](../reference/stability/) |
+| How to install it | [Getting Started](../getting-started/overview/) |
+| Why a larger piece is shaped the way it is | [Design Docs](../reference/internal/design-docs/overview/) |
 
 
 --------------------------------------------------------------------------------
@@ -6640,12 +6986,13 @@ The chart's Grafana resources are reconciled by an operator that also owns their
 ## The grafana-operator finalizer deadlock
 
 grafana-operator attaches the finalizer `operator.grafana.com/finalizer` to the custom resources it reconciles.
-This chart creates two kinds that carry it:
+This chart creates three kinds that carry it:
 
 | Kind | Created by |
 |---|---|
 | `GrafanaDatasource` | the Loki and Thanos datasources |
 | `GrafanaManifest` | the bundled dashboards |
+| `GrafanaFolder` | the [folders](../../dashboards/grafana/grafana-operator/#folders) those dashboards are filed into |
 
 The `Grafana` instance CR does **not** carry the finalizer (verified against operator v5.24.0), so Helm removes it unaided.
 
@@ -6662,7 +7009,7 @@ Those objects enter `Terminating` with their finalizer still set, Helm moves on 
 `cleanup.grafanaOperator` templates a short-lived Job that runs before Helm deletes anything:
 
 ```bash
-kubectl delete grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org \
+kubectl delete grafanamanifests.grafana.integreatly.org,grafanadatasources.grafana.integreatly.org,grafanafolders.grafana.integreatly.org \
   --namespace=<release namespace> \
   --selector=app.kubernetes.io/instance=<release name> \
   --ignore-not-found=true --timeout=2m
@@ -6694,7 +7041,7 @@ This is what the hook automates. Do it yourself when the hook is unavailable —
 Delete the custom resources **while the operator is still running**, then remove the release:
 
 ```bash
-kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanas --all
+kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanafolders,grafanas --all
 ```
 
 The operator observes the deletions, unregisters each object from the Grafana instance, drops the finalizer, and the objects go away.
@@ -6707,12 +7054,12 @@ helm uninstall mzmon -n monitoring
 With the Terraform module, the same first step applies before the destroy — the module orders its two releases (the main release is destroyed before the CRDs release), but ordering *within* a release is not something Terraform controls:
 
 ```bash
-kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanas --all
+kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanafolders,grafanas --all
 terraform destroy
 ```
 
 > [!TIP]
->   Deleting the `Grafana` instance is what makes the other two finalizable even if their unregistration fails: the operator drops the finalizer once no matching instance exists.
+>   Deleting the `Grafana` instance is what makes the others finalizable even if their unregistration fails: the operator drops the finalizer once no matching instance exists.
 >   That still requires a running operator, so the rule to remember is simply **the operator must outlive its custom resources**.
 
 ## Recovering a stuck teardown
@@ -6721,7 +7068,7 @@ If the operator is already gone and resources are wedged in `Terminating`, the f
 Nothing else will do it.
 
 ```bash
-for kind in grafanadatasource grafanamanifest grafana; do
+for kind in grafanadatasource grafanamanifest grafanafolder grafana; do
   for name in $(kubectl -n monitoring get "$kind" -o name 2>/dev/null); do
     kubectl -n monitoring patch "$name" --type=merge -p '{"metadata":{"finalizers":null}}'
   done
@@ -7131,7 +7478,9 @@ Install the toolchain once:
 | Git LFS | latest | `brew install git-lfs` |
 | [Terraform](https://developer.hashicorp.com/terraform) | 1.3+ | `brew install terraform` — needed for `make terraform-check`; `terraform-docs` (`brew install terraform-docs`) regenerates the module reference |
 
-Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`helm plugin install https://github.com/helm-unittest/helm-unittest`), `yq`, `jq`.
+Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`make helm-unittest-install`), `yq`, `jq`.
+The plugin renders through a Helm library of its own, so `make helm-unittest-install` pins the version CI uses rather than taking the latest.
+A plugin installed by hand at another version can regenerate snapshots that CI then rejects.
 
 Only for the E2E tiers, which are the one part of the suite that needs a cluster:
 
@@ -11096,10 +11445,11 @@ only once the finalizers have been processed, and Helm proceeds from there.
       <td class="helm-value-default"><pre>
 [
   "grafanamanifests.grafana.integreatly.org",
-  "grafanadatasources.grafana.integreatly.org"
+  "grafanadatasources.grafana.integreatly.org",
+  "grafanafolders.grafana.integreatly.org"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaFolder`, `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaAlertRuleGroup`, `GrafanaContactPoint`, and so on) with the chart's instance label.
 </td>
     </tr>
     <tr>
@@ -16313,7 +16663,8 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 - `otelcol.receiver.otlp` on ports **4317** (gRPC) and **4318** (HTTP) — OTLP logs from instrumented applications or forwarders, bridged into the loki pipeline via `otelcol.exporter.loki`.
 - `loki.source.kubernetes_events` — Kubernetes events, processed as log lines.
 
-These ingress components and the `loki.write` sink are not typed in the schema yet, so they are authored via the `raw:` escape (see [Authoring](../authoring/)); the `loki.process` stages themselves are fully typed.
+Every component in these pipelines is typed and schema-validated, including the ingress components and the `loki.write` sink.
+The `raw:` escape (see [Authoring](../authoring/)) remains available and is currently unused.
 
 ### Processing conventions
 
@@ -16322,11 +16673,62 @@ These are the conventions a contributor must preserve when editing the gateway `
 - **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
 - **Drops and limits.** Lines older than the ingestion backlog window or larger than the per-line ceiling are dropped; per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
 - **Label families.** Only a small, stable set is promoted to **Loki labels**: `level`, `app`, `container`, `namespace`, `component`, `job` and `service_name`, plus `unit` on node journal logs (which carry no `namespace`) and `environment_id` for environment namespaces. Everything else identifying — `pod`, `node`, `pod_id`, `container_id`, `region`, `zone`, `nodepool`, `trace_id`, `span_id`, `error`, `msg`, … — is routed to **structured metadata** so it stays queryable without inflating stream cardinality. The `k8s_`-prefixed aliases (`k8s_namespace`, `k8s_app`, `k8s_container`, `k8s_pod`) were **removed**: the first three duplicated the unprefixed labels exactly, and `k8s_pod` was the only stream label a pod name ever had — a pod name is unbounded and changes on every restart, so it belonged in structured metadata from the start. Asserted by `loki::gateway_labels` in the e2e suite, which fails if any of them returns.
+- **Two log formats.** `environmentd` and `clusterd` log tracing JSON. `balancerd` and `materialize-operator` log tracing's plain text layer, `<ts> LEVEL <spans>: <target>: <message>`, which carries no `level=` pair for the heuristic scan to find and so needs a parser of its own. Both families are handled; a new Materialize binary belongs in one of them.
 - **Timestamps.** Parsed from the source line (`ts`/`timestamp`) as `RFC3339`/`RFC3339Nano` where the application provides one.
 
 > [!WARNING]
 >   The label-vs-structured-metadata split is the dominant cost-and-stability lever.
 >   Adding a new Loki label multiplies [cardinality](../../../../o11y-glossary/#observability-foundations) — default to structured metadata and promote to a label only when it is low-cardinality and used as a selector.
+
+### Multi-line records
+
+A Rust panic is written to stderr as a single buffer and split back into one log line per newline by the container runtime.
+Read line by line it arrives as roughly twenty unrelated entries.
+The header naming the thread and the source location is then indistinguishable from the backtrace around it.
+`stage.multiline` reassembles it ahead of every other stage.
+
+The stage is configured by `firstline`, a regular expression matching the **start** of a record.
+A line that matches begins a new entry, and a line that does not is appended to the entry in progress.
+`firstline` must therefore match every ordinary line of the stream it is applied to.
+The continuation lines of a panic are exactly the lines it must not match.
+
+Two log formats appear on the Materialize services, and one expression covers both.
+
+| Stream | An ordinary line starts with | Matched by |
+|---|---|---|
+| `environmentd`, `clusterd` | `{`, being tracing JSON | `^\{` |
+| `balancerd`, `materialize-operator` | an RFC 3339 timestamp, being tracing's plain text format | `^\d{4}-\d{2}-\d{2}T` |
+| a panic on any of them | an RFC 3339 timestamp, then `thread '…' panicked at` | `^\d{4}-\d{2}-\d{2}T` |
+
+The stage is scoped by container rather than by namespace, because `firstline` encodes a log format.
+A stream whose format never matches `firstline` is unaffected, because entries pass through one at a time until the first match.
+A stream whose format matches only intermittently is the case that does damage.
+Every line between two matches is absorbed into the earlier one.
+
+Three ordering constraints hold the placement in the pipeline.
+
+| Constraint | Reason |
+|---|---|
+| Merge ahead of `stage.limit` | The limiter drops entries. A limiter that sheds continuation lines leaves a backtrace with holes in it, which reads as complete and is not |
+| Merge ahead of the per-level rate limits | A merged panic costs the limiter one entry rather than twenty, so a crash stops competing with ordinary logs for the same budget |
+| Keep `longer_than` after the merge | The ceiling then applies to the merged entry. That is what discards the separate pathological panic that emits multi-MiB lines, which this pipeline does not carry |
+
+`max_wait_time` is the mechanism that delivers a panic rather than a timeout that rarely fires.
+While a process is alive, each new `firstline` match flushes its predecessor immediately.
+A panic is the last thing a process writes, so nothing follows it to push it out and the block is held until `max_wait_time` elapses.
+The agent goes on tailing the log file after the container exits, so the wait is safe.
+
+Merging runs on the gateway rather than on the agent because `firstline` depends on the log format, and the agent is deliberately format-agnostic.
+The cost is that the gateway runs two or more replicas behind a service.
+A panic whose lines straddle two of the agent's write batches can reach two replicas and remain two entries.
+The failure mode is a backtrace split in two rather than one lost.
+
+A merged panic is then classified.
+`level` is set to `CRITICAL`, the value the normalization rules already resolve `fatal` and `crit` to.
+That level is exempt from both per-level rate limits.
+`msg` is set to the source location and the panic message, and `panic_thread` and `panic_location` are recorded as structured metadata.
+Classification runs after the per-application blocks, because those set `msg` from JSON that a panic does not contain.
+The regular expression is anchored at the start of the entry, so a log line that merely quotes a panic is not mistaken for one.
 
 ### Destinations
 
@@ -16346,7 +16748,7 @@ Per-component history is captured in the repo `CHANGELOG.md` and the [Releasing]
 Current status (see the [Roadmap](../../roadmap/)):
 
 - **Agent pipeline** — adopted in `packages/alloy-pipelines/agent.yaml`.
-- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml` (processing) + `packages/alloy-pipelines/gateway-dest-stub.yaml` (default egress tail), ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `inputProcessor` block renders line-for-line against the reference. Still deferred: typing the ingress/sink components (currently `raw:`), `loki.write` auth, and the recording-rule remote-write leg.
+- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml` (processing) + `packages/alloy-pipelines/gateway-dest-stub.yaml` (default egress tail), ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `inputProcessor` block renders line-for-line against the reference, apart from the multi-line handling above, which the reference does not have. Still deferred: `loki.write` auth, and the recording-rule remote-write leg.
 
 ## See more
 
@@ -18607,6 +19009,7 @@ The agent and gateway pipelines are in place, the OTLP export path shipped with 
 | Loki (logs) + Thanos (metrics) wiring | FCO-M2 | ✅ |
 | Agent **metrics path** ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — superseded rather than deferred: `prometheus.exporter.cadvisor` was removed from the agent, and the gateway scrapes each kubelet's `/metrics/cadvisor` instead. A per-agent cAdvisor cost ~750Mi against a 200Mi logs-only envelope, so the agent stays logs-only by design | OO-M1 | ✅ |
 | **Multiple Prometheus remote-write destinations** ([DEP-232](https://linear.app/materializeinc/issue/DEP-232)) — Cloud's transition needs Thanos and Amazon Managed Prometheus written simultaneously, each on its own importance tier | OO-M1 | ✅ (`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a map keyed by name, defaulting to one `thanos` entry. Each destination renders its own `prometheus.relabel` tier filter feeding its own `prometheus.remote_write`, rather than one component with several `endpoint` blocks: the filter has to sit *upstream* of the WAL for a tier to reduce disk rather than only egress, and separate WALs keep a stuck backend from holding back truncation for the others. `external_labels`, auth, TLS and the credential env vars are all per destination, derived from the name. The tier filter is new on this path — `GATEWAY_UNFILTERED_PROM_METRICS` was written to the env ConfigMap and read by nothing, so `minMetricImportance` on remote-write had never done anything. A leftover pre-map key fails at render, because Helm would otherwise merge it beside `thanos` and silently apply it to nothing) |
+| **Multi-line Rust panics** ([DEP-255](https://linear.app/materializeinc/issue/DEP-255)) — a panic arrived as ~20 unrelated entries with no level and no message | OO-M2 | ✅ (`inputProcessor` opens with a `stage.multiline` that merges the block, and a later block gives the merged entry `level=CRITICAL`, a `msg` naming the source location, and `panic_thread` / `panic_location` as structured metadata. `stage.multiline` is new to the typed model and the first stage here that carries state across entries. Merging sits ahead of the drops and the rate limit, because `stage.limit` runs with `drop: true` and a backtrace with holes in it reads as complete and is not; the `longer_than: "1MB"` ceiling still applies to the merged entry, which is what discards the separate multi-MiB-line panic variant we deliberately do not carry. `firstline` is inverted from how it reads — it matches the *start* of a record and non-matching lines append — so it must match every ordinary line of the stream, and one expression covers both Materialize log families. Measured rather than assumed: a stream whose format never matches is unaffected, since entries pass through singly until the first match; environmentd's non-JSON startup banner is on stdout while tracing and panics are on stderr, and `stage.cri` makes `stream` a label, so the banner cannot contaminate the JSON; and `max_wait_time` is the delivery mechanism rather than a rare fallback, because a panic is the last thing a process writes. Verified end to end against a real `mz_panic` on a live install, with the false-positive and stdout-banner cases covered too. **Fixed alongside:** `balancerd` and `materialize-operator` log tracing's plain text layer rather than JSON and nothing parsed it — 100% of both services' lines were UNKNOWN, 41,631 of them from the operator in 6h, all in the bucket the rate limiter drops from. **Outstanding:** log-derived alerting on panics, a panel on `env-logs`, and moving the merge to the agent if the two-replica split ever needs to be zero) |
 | Agent → gateway transport over **OTLP/gRPC with a node-local WAL** ([DEP-189](https://linear.app/materializeinc/issue/DEP-189); `hostPath`, compaction-bounded); gateway stays stateless and backend fan-outs are unchanged | OO-M3 | ⬜ |
 | `otelcol.processor.transform` before the log bridge ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) — becomes load-bearing once agent logs arrive as OTLP | OO-M3 | ⬜ |
 | [Backup log collection path](https://linear.app/materializeinc/issue/CLO-180) for alloy-agent failures — today an agent crash loses the logs explaining why | OO-M3 | ⬜ |
