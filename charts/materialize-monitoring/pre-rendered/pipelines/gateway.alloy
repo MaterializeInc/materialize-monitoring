@@ -9,8 +9,15 @@
 //
 // Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
 // 3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
-// otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. These
-// ingress components are not typed yet, so they use `raw:` escapes.
+// otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. The
+// listeners themselves live in gateway-sources-stub.yaml; every component here
+// is typed and schema-validated, and no `raw:` escape remains in any pipeline.
+//
+// A Rust panic is not one log line, so inputProcessor opens with a
+// stage.multiline that reassembles one before any stage can drop or reorder it,
+// and closes with a block that gives the merged entry a level, a message, and
+// the thread and source location as structured metadata. Both are commented
+// where they sit.
 //
 // Metrics: this file also carries a metrics pipeline, processed primarily in
 // otelcol and converted back to Prometheus only on the way out. prometheus
@@ -307,6 +314,16 @@ loki.process "inputProcessor" {
 		loki.process.egress.receiver,
 		loki.process.sampleDebug.receiver,
 	]
+
+	stage.match {
+		selector = "{container=~\"environmentd|clusterd|balancerd|materialize-operator\"}"
+
+		stage.multiline {
+			firstline     = "^(\\{|\\d{4}-\\d{2}-\\d{2}T)"
+			max_lines     = 128
+			max_wait_time = "3s"
+		}
+	}
 
 	stage.drop {
 		older_than          = "2h"
@@ -1595,6 +1612,50 @@ loki.process "inputProcessor" {
 				error                        = "",
 				request_header_host          = "",
 				response_header_content_type = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{container=~\"balancerd|materialize-operator\"}"
+
+		stage.regex {
+			expression = "^(?P<ts>\\S+)\\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR)\\s+(?P<msg>.*)$"
+		}
+
+		stage.regex {
+			expression = "^(?:.*?: )?(?P<target>[a-z_][a-z0-9_]*(?:::[a-z0-9_]+)*): (?P<msg>.*)$"
+			source     = "msg"
+		}
+
+		stage.structured_metadata {
+			values = {
+				target = "",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{container=~\"environmentd|clusterd|balancerd|materialize-operator\"} |= \"panicked at\""
+
+		stage.regex {
+			expression = "^(?:\\d{4}-\\d{2}-\\d{2}T\\S+\\s+)?thread '(?P<panic_thread>[^']*)' panicked at (?P<panic_location>\\S+:\\d+:\\d+):\\n(?P<panic_message>[^\\n]*)"
+		}
+
+		stage.template {
+			source   = "level"
+			template = "{{ if .panic_location }}CRITICAL{{ else }}{{ .Value }}{{ end }}"
+		}
+
+		stage.template {
+			source   = "msg"
+			template = "{{ if .panic_location }}panicked at {{ .panic_location }}: {{ .panic_message }}{{ else }}{{ .Value }}{{ end }}"
+		}
+
+		stage.structured_metadata {
+			values = {
+				panic_thread   = "",
+				panic_location = "",
 			}
 		}
 	}

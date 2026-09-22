@@ -319,6 +319,8 @@ pub enum StageBlock {
     Sampling(StageSamplingBlock),
     #[serde(rename = "stage.cri")]
     Cri(StageCriBlock),
+    #[serde(rename = "stage.multiline")]
+    Multiline(StageMultilineBlock),
     #[serde(rename = "stage.tenant")]
     Tenant(StageTenantBlock),
     #[serde(rename = "raw")]
@@ -341,6 +343,7 @@ impl_to_block_dispatch!(StageBlock {
     StructuredMetadataDrop,
     Sampling,
     Cri,
+    Multiline,
     Tenant,
     Raw
 });
@@ -858,6 +861,55 @@ impl ToBlock for StageCriBlock {
         Ok(Block {
             component: "stage.cri".into(),
             label: None,
+            ..Default::default()
+        })
+    }
+}
+
+// ----- stage.multiline -----
+
+/// `stage.multiline` — merges a run of consecutive lines into one entry.
+///
+/// `firstline` matches the *start* of a record; non-matching lines are appended
+/// to the record in progress. It must therefore match every ordinary line of
+/// the stream it sees, which is why this stage belongs inside a `stage.match`
+/// rather than at the top of a mixed pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageMultilineBlock {
+    /// RE2 expression matching the first line of a record.
+    pub firstline: String,
+    /// Maximum lines in one merged entry (alloy default 128).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lines: Option<Expressable<f64>>,
+    /// How long to hold an unterminated entry before flushing (alloy default `3s`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_wait_time: Option<Expressable<GoDuration>>,
+    /// Strip trailing newlines from the merged entry (alloy default true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trim_newlines: Option<bool>,
+}
+
+impl ToBlock for StageMultilineBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert(
+            "firstline".into(),
+            AttributeValue::String(self.firstline.clone()),
+        );
+        if let Some(v) = &self.max_lines {
+            attributes.insert("max_lines".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.max_wait_time {
+            attributes.insert("max_wait_time".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = self.trim_newlines {
+            attributes.insert("trim_newlines".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "stage.multiline".into(),
+            label: None,
+            attributes,
             ..Default::default()
         })
     }
@@ -1606,6 +1658,50 @@ mod tests {
                 "\t]\n",
                 "\n",
                 "\tstage.cri { }\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_multiline_renders_defaults_and_overrides() {
+        // Two shapes: `firstline` alone (alloy supplies max_lines/max_wait_time),
+        // and every knob set — max_lines as an expression, to prove the
+        // `Expressable` plumbing on a numeric sizing knob.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.multiline:
+                        firstline: '^\{'
+                    - stage.multiline:
+                        firstline: '^\d{4}-\d{2}-\d{2}T'
+                        max_lines: {env: GATEWAY_MULTILINE_MAX_LINES}
+                        max_wait_time: "10s"
+                        trim_newlines: false
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.multiline {\n",
+                "\t\tfirstline = \"^\\\\{\"\n",
+                "\t}\n",
+                "\n",
+                "\tstage.multiline {\n",
+                "\t\tfirstline     = \"^\\\\d{4}-\\\\d{2}-\\\\d{2}T\"\n",
+                "\t\tmax_lines     = sys.env(\"GATEWAY_MULTILINE_MAX_LINES\")\n",
+                "\t\tmax_wait_time = \"10s\"\n",
+                "\t\ttrim_newlines = false\n",
+                "\t}\n",
                 "}\n",
             ),
         );

@@ -405,6 +405,12 @@ $defs:
         additionalProperties: false
       - type: object
         properties:
+          stage.multiline:
+            $ref: "#/$defs/stage.multiline"
+        required: [stage.multiline]
+        additionalProperties: false
+      - type: object
+        properties:
           stage.tenant:
             $ref: "#/$defs/stage.tenant"
         required: [stage.tenant]
@@ -770,6 +776,58 @@ $defs:
 
       See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagecri-block
     type: object
+    additionalProperties: false
+
+  stage.multiline:
+    description: |
+      Merges a run of consecutive lines into one entry, so a log record that the
+      writer emitted across several lines survives as a single entry.
+
+      `firstline` is the regular expression that identifies the *start* of a
+      record. A line that matches begins a new entry; a line that does not is
+      appended to the entry in progress. That inversion is the thing to get
+      right: `firstline` must match every ordinary line of the stream it is
+      applied to, or ordinary lines are glued onto their predecessor. Scope the
+      stage with `stage.match` rather than applying it to a mixed stream.
+
+      State is kept per stream (the entry's label set), so interleaved streams
+      do not contaminate each other — but a stream's lines must arrive in order
+      and at one place. That holds where a single reader tails a single file;
+      it does not hold across replicas of a load-balanced receiver.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagemultiline-block
+    type: object
+    properties:
+      firstline:
+        description: |
+          RE2 regular expression matching the first line of a record.
+          Lines that do not match are appended to the record in progress.
+        type: string
+        examples: ['^\{', '^\d{4}-\d{2}-\d{2}T']
+      max_lines:
+        description: |
+          Maximum number of lines one merged entry may contain (default 128).
+          On overflow the entry is flushed and a new one started, so a runaway
+          record is truncated rather than held forever.
+        $ref: "#/$defs/expressionOrNumber"
+      max_wait_time:
+        description: |
+          How long to hold an unterminated entry before flushing it anyway
+          (default `3s`). This is the latency floor for the *last* line before a
+          quiet period; while lines keep arriving, each new `firstline` match
+          flushes its predecessor immediately.
+        anyOf:
+          - type: string
+            format: go-duration
+          - $ref: "./common/expression.schema.yaml"
+        examples: ["3s", "10s"]
+      trim_newlines:
+        description: |
+          Strip trailing newlines from the merged entry (default true).
+          Only trailing ones — the newlines *between* merged lines are kept,
+          which is what makes the merged entry still readable as a block.
+        type: boolean
+    required: [firstline]
     additionalProperties: false
 
   stage.tenant:
