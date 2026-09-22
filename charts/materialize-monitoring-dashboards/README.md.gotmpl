@@ -64,6 +64,28 @@ values, so **every reference to it is a value you set**. Three matter:
 The umbrella chart's install notes print the folder UIDs it created, which is
 the quickest way to fill in the second.
 
+## Uninstalling
+
+**Uninstall this release before `materialize-monitoring`.**
+
+grafana-operator holds `operator.grafana.com/finalizer` on every
+`GrafanaManifest` it reconciles. The umbrella chart's `pre-delete` hook clears
+only the resources carrying *its own* release label — deliberately, so two
+releases sharing a namespace cannot delete each other's — so nothing in its
+teardown removes these. Take the operator away first and they wedge in
+`Terminating` with no remover:
+
+```bash
+helm uninstall mzmon-dashboards --namespace monitoring --wait
+helm uninstall mzmon            --namespace monitoring --wait
+```
+
+The Terraform module handles this on its own: the dashboards release declares a
+dependency on the main one, and Terraform destroys in reverse dependency order.
+
+If you already hit the wedged state, reinstall or scale up grafana-operator and
+the finalizers clear on their own.
+
 {{ template "chart.requirementsHeader" . }}
 {{ template "chart.kubeVersionLine" . }}
 

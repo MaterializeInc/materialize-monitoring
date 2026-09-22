@@ -15,6 +15,12 @@
 //! dashboard is added, and it goes stale in the direction that passes — the
 //! suite would keep asserting the dashboards it knows about and never notice the
 //! new one failing to land.
+//!
+//! Those resources are **cluster-wide reads**, not scoped to a release, which is
+//! what lets this keep working now that the dashboards ship in a chart of their
+//! own. The Grafana instance and the folders come from `materialize-monitoring`;
+//! the `GrafanaManifest`s come from `materialize-monitoring-dashboards`. The
+//! suite asserts the result rather than which release produced it.
 
 use std::time::Duration;
 
@@ -139,8 +145,17 @@ pub async fn dashboards_provisioned(ctx: &Ctx) -> Result<()> {
 
     if expected.is_empty() {
         bail!(
-            "no dashboard resources exist in {} — the chart declared none",
-            ctx.cluster.namespace()
+            "no dashboard resources exist in {ns} — nothing declared any.\n\
+             \n\
+             The dashboards are a release of their own: `materialize-monitoring` \
+             creates the Grafana instance, its datasources and the folders, and \
+             `materialize-monitoring-dashboards` creates the `GrafanaManifest`s. \
+             An install of the first without the second reaches exactly this \
+             state — every other Grafana assertion passes and there is simply \
+             nothing to provision.\n\
+             \n\
+             Check: helm list -n {ns}",
+            ns = ctx.cluster.namespace()
         );
     }
 
