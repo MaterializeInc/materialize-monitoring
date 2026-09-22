@@ -1,0 +1,20 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: cni-aws-vpc-metrics-0
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: cni-aws-vpc
+spec:
+  selector:
+    matchLabels:
+      k8s-app: aws-node
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    metricRelabeling:
+    - sourceLabels:
+      - __name__
+      regex: awscni_assigned_ip_per_cidr
+      action: drop
