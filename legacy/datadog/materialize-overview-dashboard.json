@@ -261,7 +261,7 @@
         "type": "timeseries",
         "requests": [
           {
-            "q": "avg:materialize.sql_source_statistics{col:offset_known,*} by {source_name} - avg:materialize.sql_source_statistics{col:offset_committed,*} by {source_name}",
+            "q": "max:materialize.sql_source_statistics{col:offset_known,*} by {source_name,replica_id} - max:materialize.sql_source_statistics{col:offset_committed,*} by {source_name,replica_id}",
             "display_type": "line",
             "style": {
               "palette": "warm",
@@ -319,7 +319,7 @@
         "type": "timeseries",
         "requests": [
           {
-            "q": "avg:materialize.sql_sink_statistics{col:messages_staged,*} by {sink_name} - avg:materialize.sql_sink_statistics{col:messages_committed,*} by {sink_name}",
+            "q": "max:materialize.sql_sink_statistics{col:messages_staged,*} by {sink_name,replica_id} - max:materialize.sql_sink_statistics{col:messages_committed,*} by {sink_name,replica_id}",
             "display_type": "line",
             "style": {
               "palette": "orange",

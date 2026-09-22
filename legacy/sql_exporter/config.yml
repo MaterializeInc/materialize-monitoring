@@ -100,62 +100,112 @@ jobs:
       - "total_cpu_nano_cores"
       - "credits_per_hour"
       - "replica_status"
+    # mz_cluster_replica_utilization, mz_cluster_replica_metrics and
+    # mz_cluster_replica_statuses all carry one row per process. Joining them on
+    # replica_id alone is a cross product, so any replica whose size uses more
+    # than one process emitted several rows with the same labels and different
+    # values, which fails the whole /metrics endpoint. The joins now line up on
+    # process_id and the result is aggregated back to one row per replica.
+    #
+    # mz_cluster_replica_sizes reports its allocations per process, so the
+    # total_* values are scaled by the process count. Percentages are the
+    # highest of any process, which is what "close to the limit" means for a
+    # replica. Driving from mz_cluster_replicas rather than from the utilization
+    # view keeps replicas with no metrics yet, so an offline replica still
+    # reports its status.
     query:  |
             SELECT
-              DISTINCT(U.replica_id),
-              R.cluster_id,
-              C.name as cluster_name,
-              R.name as replica_name,
-              RST.status as replica_status_label,
-              COALESCE(RST.reason, '') as not_ready_reason,
-              COALESCE(M.memory_bytes, 0)::float as used_memory_bytes,
-              COALESCE(M.disk_bytes, 0)::float as used_disk_bytes,
-              COALESCE(M.cpu_nano_cores, 0)::float as used_cpu_nano_cores,
-              RS.memory_bytes::float as total_memory_bytes,
-              COALESCE(RS.disk_bytes, 0)::float as total_disk_bytes,
-              RS.cpu_nano_cores::float as total_cpu_nano_cores,
-              COALESCE(U.cpu_percent, 0)::float as cpu_percent,
-              COALESCE(U.memory_percent, 0)::float as memory_percent,
-              COALESCE(U.disk_percent, 0)::float as disk_percent,
-              RS.credits_per_hour::float,
-              CASE RST.status
-                WHEN 'offline' THEN 1
+              R.id::TEXT as replica_id,
+              R.cluster_id::TEXT as cluster_id,
+              C.name::TEXT as cluster_name,
+              R.name::TEXT as replica_name,
+              CASE
+                WHEN bool_or(RST.status = 'offline') THEN 'offline'
+                ELSE 'online'
+              END as replica_status_label,
+              COALESCE(max(RST.reason), '') as not_ready_reason,
+              sum(COALESCE(M.memory_bytes, 0))::float as used_memory_bytes,
+              sum(COALESCE(M.disk_bytes, 0))::float as used_disk_bytes,
+              sum(COALESCE(M.cpu_nano_cores, 0))::float as used_cpu_nano_cores,
+              (RS.memory_bytes * RS.processes)::float as total_memory_bytes,
+              (COALESCE(RS.disk_bytes, 0) * RS.processes)::float as total_disk_bytes,
+              (RS.cpu_nano_cores * RS.processes)::float as total_cpu_nano_cores,
+              max(COALESCE(U.cpu_percent, 0))::float as cpu_percent,
+              max(COALESCE(U.memory_percent, 0))::float as memory_percent,
+              max(COALESCE(U.disk_percent, 0))::float as disk_percent,
+              RS.credits_per_hour::float as credits_per_hour,
+              CASE
+                WHEN bool_or(RST.status = 'offline') THEN 1
                 ELSE 0
-              END AS replica_status,
+              END::float AS replica_status,
               CASE
                 WHEN S.cluster_id IS NOT NULL THEN 'source'
                 WHEN SK.cluster_id IS NOT NULL THEN 'sink'
                 ELSE 'compute'
               END AS cluster_type
-            FROM mz_internal.mz_cluster_replica_utilization U
-            JOIN mz_catalog.mz_cluster_replicas R ON (U.replica_id = R.id)
+            FROM mz_catalog.mz_cluster_replicas R
             JOIN mz_catalog.mz_clusters C ON (R.cluster_id = C.id)
             JOIN mz_catalog.mz_cluster_replica_sizes RS ON (R.size = RS.size)
-            JOIN mz_internal.mz_cluster_replica_metrics M ON (U.replica_id = M.replica_id)
             JOIN mz_internal.mz_cluster_replica_statuses RST ON (RST.replica_id = R.id)
-            LEFT JOIN mz_catalog.mz_sources S ON (C.id = S.cluster_id)
-            LEFT JOIN mz_catalog.mz_sinks SK ON (C.id = SK.cluster_id);
+            LEFT JOIN mz_internal.mz_cluster_replica_utilization U
+              ON (U.replica_id = RST.replica_id AND U.process_id = RST.process_id)
+            LEFT JOIN mz_internal.mz_cluster_replica_metrics M
+              ON (M.replica_id = RST.replica_id AND M.process_id = RST.process_id)
+            LEFT JOIN (
+              SELECT DISTINCT cluster_id FROM mz_catalog.mz_sources WHERE cluster_id IS NOT NULL
+            ) S ON (C.id = S.cluster_id)
+            LEFT JOIN (
+              SELECT DISTINCT cluster_id FROM mz_catalog.mz_sinks WHERE cluster_id IS NOT NULL
+            ) SK ON (C.id = SK.cluster_id)
+            GROUP BY
+              R.id,
+              R.cluster_id,
+              C.name,
+              R.name,
+              RS.memory_bytes,
+              RS.disk_bytes,
+              RS.cpu_nano_cores,
+              RS.processes,
+              RS.credits_per_hour,
+              S.cluster_id,
+              SK.cluster_id;
   - name: "source_statistics"
     help: "Source statistics"
     labels:
       - "source_id"
       - "source_name"
+      - "replica_id"
     values:
       - "updates_committed"
       - "rehydration_latency_seconds"
       - "offset_known"
       - "offset_committed"
+    # mz_source_statistics is keyed on (id, replica_id). A source ingested by
+    # more than one replica reports one row per replica, so replica_id has to be
+    # a label or the scrape emits duplicate series and sql_exporter fails the
+    # whole /metrics endpoint.
+    #
+    # Rows for a dropped replica are retained until
+    # storage_statistics_retention_duration elapses (24h by default), so they
+    # also have to be filtered out. Webhook sources report replica_id IS NULL,
+    # which is why this is an existence check rather than a join.
     query: |
         SELECT
           s.id::TEXT as source_id,
           so.name::TEXT as source_name,
+          COALESCE(s.replica_id, '')::TEXT as replica_id,
           s.updates_committed::FLOAT,
-          COALESCE(extract(seconds from s.rehydration_latency)::FLOAT, 0) as rehydration_latency_seconds,
+          COALESCE(extract(epoch from s.rehydration_latency)::FLOAT, 0) as rehydration_latency_seconds,
           s.offset_known::FLOAT,
           s.offset_committed::FLOAT
         FROM
           mz_internal.mz_source_statistics s
-          JOIN mz_catalog.mz_sources so ON so.id = s.id;
+          JOIN mz_catalog.mz_sources so ON so.id = s.id
+        WHERE
+          s.replica_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM mz_catalog.mz_cluster_replicas r WHERE r.id = s.replica_id
+          );
   - name: "sink_statistics"
     help: "Sink statistics"
     labels:
@@ -164,20 +214,35 @@ jobs:
       - "sink_type"
       - "cluster_name"
       - "sink_status_label"
+      - "replica_id"
     values:
       - "messages_committed"
       - "messages_staged"
+    # mz_sink_statistics is keyed on (id, replica_id) and retains dropped-replica
+    # rows for the same 24h as the source view above, so it needs the same
+    # replica_id label and the same liveness filter.
+    #
+    # cluster_name was declared as a label but never selected; it is now joined
+    # in through the sink's cluster.
     query: |
             SELECT
               S.id::TEXT as sink_id,
               S.name::TEXT as sink_name,
               S.type::TEXT as sink_type,
-              status::TEXT as sink_status_label,
-              messages_committed::FLOAT,
-              messages_staged::FLOAT
+              C.name::TEXT as cluster_name,
+              ST.status::TEXT as sink_status_label,
+              COALESCE(SS.replica_id, '')::TEXT as replica_id,
+              SS.messages_committed::FLOAT,
+              SS.messages_staged::FLOAT
             FROM mz_internal.mz_sink_statistics SS
             JOIN mz_catalog.mz_sinks S ON (SS.id = S.id)
+            JOIN mz_catalog.mz_clusters C ON (S.cluster_id = C.id)
             JOIN mz_internal.mz_sink_statuses ST ON (S.id = ST.id)
+            WHERE
+              SS.replica_id IS NULL
+              OR EXISTS (
+                SELECT 1 FROM mz_catalog.mz_cluster_replicas r WHERE r.id = SS.replica_id
+              );
   - name: "query_latency"
     help: "Query latency"
     labels:
