@@ -241,28 +241,6 @@ Usage:
 {{- end }}
 
 {{- /*
-Names of the dashboards `dashboards.selected` resolves to.
-
-Globs the pre-rendered dashboards once so the resources and the install notes
-cannot disagree about what was installed. Returns a YAML list.
-
-Usage:
-  {{- range $name := include "mzmon.grafana.dashboards" $ | fromYamlArray }}
-*/}}
-{{- define "mzmon.grafana.dashboards" }}
-  {{- $names := list }}
-  {{- range $selectPattern := $.Values.dashboards.selected }}
-    {{- range $path, $_ := $.Files.Glob ( printf "pre-rendered/dashboards/grafana/%s.yaml" $selectPattern ) }}
-      {{- $name := base $path | trimSuffix ".yaml" | lower | replace "_" "-" }}
-      {{- if not ( has $name $names ) }}
-        {{- $names = append $names $name }}
-      {{- end }}
-    {{- end }}
-  {{- end }}
-  {{- $names | toYaml }}
-{{- end }}
-
-{{- /*
 UID of one dashboard folder.
 
 The single place a folder key becomes a UID, so `folders.yaml` (which creates

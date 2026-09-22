@@ -97,7 +97,7 @@ mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
 `--list` enumerates what is available, `--dashboard <stem>` renders one, `--format json` emits the docsite shape, and
 ### Two copies, one review
 
-Every dashboard is written twice: `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
+Every dashboard is written twice: `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
 `docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
 Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
 reading.

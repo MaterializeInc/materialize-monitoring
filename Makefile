@@ -64,14 +64,14 @@ docker-images: alloy-image
 .PHONY: docker-images
 
 # Build all Helm charts
-charts: materialize-monitoring-chart
+charts: materialize-monitoring-chart materialize-monitoring-dashboards-chart
 .PHONY: charts
 
 docs: docs/public
 .PHONY: docs
 
 # Generate grafana dashboards
-grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
+grafana-dashboards: charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
 alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
@@ -123,7 +123,7 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib) $
 
 ### DASHBOARD SYNC ###
 
-charts/materialize-monitoring/pre-rendered/dashboards/grafana: \
+charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana: \
 		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
@@ -263,7 +263,7 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
 
-charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
 	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.
@@ -320,6 +320,36 @@ charts/materialize-monitoring-crds/README.md: \
 		--log-level debug \
 		--ignore-non-descriptions
 
+HELM_DOCS_SOURCES_materialize-monitoring-dashboards = \
+	charts/materialize-monitoring-dashboards/values.yaml \
+	charts/materialize-monitoring-dashboards/Chart.yaml
+
+# Generate the chart-local README.md from values.yaml + the README template.
+charts/materialize-monitoring-dashboards/README.md: \
+		$(HELM_DOCS_SOURCES_materialize-monitoring-dashboards) \
+		tools/chartlib/helm-docs-lib.gotmpl \
+		charts/materialize-monitoring-dashboards/README.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root charts/materialize-monitoring-dashboards \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
+		--template-files README.md.gotmpl \
+		--output-file README.md \
+		--sort-values-order file \
+		--log-level debug \
+		--ignore-non-descriptions
+
+# Do any necessary generation for this chart
+charts/materialize-monitoring-dashboards: charts/materialize-monitoring-dashboards/README.md charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana
+	touch "$@"
+
+HELM_VERSION_materialize-monitoring-dashboards = $(shell yq e '.version' charts/materialize-monitoring-dashboards/Chart.yaml)
+charts/materialize-monitoring-dashboards-$(HELM_VERSION_materialize-monitoring-dashboards).tgz: charts/materialize-monitoring-dashboards
+	helm package charts/materialize-monitoring-dashboards --destination charts/
+	test -f "$@"
+
+materialize-monitoring-dashboards-chart: charts/materialize-monitoring-dashboards-$(HELM_VERSION_materialize-monitoring-dashboards).tgz
+.PHONY: materialize-monitoring-dashboards-chart
+
 HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring
 	helm package charts/materialize-monitoring --destination charts/
@@ -375,6 +405,7 @@ helm-unittest-install:
 helm-tests:
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-crds
+	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-dashboards
 .PHONY: helm-tests
 
 helm-update-snapshots:
@@ -413,6 +444,7 @@ security-report-images:
 helm-docs: \
 	charts/materialize-monitoring/README.md \
 	charts/materialize-monitoring-crds/README.md \
+	charts/materialize-monitoring-dashboards/README.md \
 	docs/content/reference/helm/materialize-monitoring-values.md
 .PHONY: helm-docs
 

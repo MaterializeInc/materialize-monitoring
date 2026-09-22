@@ -1510,33 +1510,52 @@ pipeline:
 #
 # Underlying content is generated into `pre-rendered/`
 # from the sources under `packages/` and embedded via `.Files.Get`.
+# -- (h3) Where the bundled dashboards are filed.
+# @notationType -- (sectionstart) Dashboards
+# @raw
+#
+# **The dashboards themselves are not in this chart.** They ship in
+# `materialize-monitoring-dashboards`, installed as a release of its own, because
+# Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
+# — the rendered set outgrew that and took `helm upgrade` with it.
+#
+# What stays here is what a dashboard is filed *into*: the `Grafana` instance,
+# its datasources, and the folders below. The dashboards chart references the
+# folder UIDs this one creates, spelled out in its own values rather than
+# discovered, since it cannot see this release.
 dashboards:
   config:
     grafana:
-      # -- Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+      # -- Create the Grafana folders the bundled dashboards are filed into.
+      # Requires the Grafana operator.
       enabled: true
       # -- Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).
       mode: "operator"
 
+      # -- (h5) Settings shared by the Grafana resources this chart creates.
+      # @raw
+      # Named `manifest` from when it also covered the dashboard manifests; those
+      # moved to `materialize-monitoring-dashboards`, which carries its own copies
+      # of these under `grafana`. What is left applies to the folders.
       manifest:
-        # -- Time to sync the dashboard from the manifest
+        # -- Time to sync the folder from its resource.
         resyncPeriod: 5m
         # -- Non-default label selector for a Grafana-operator Grafana instance.
         # Defaults to the labels on the `Grafana` instance this chart creates
         # (see `connections.grafana.labels`), so the two cannot drift.
+        # Whatever this resolves to must also be set as `grafana.instanceSelector`
+        # in the dashboards chart, which has no way to read it from here.
         # @default -- `{}`
         instanceSelector: {}
-        # -- Allow dashboards to match a Grafana instance outside their own
+        # -- Allow folders to match a Grafana instance outside their own
         # namespace. Left unset, this is inferred — it turns on only when the
-        # `Grafana` resource lands in a different namespace than the dashboards,
+        # `Grafana` resource lands in a different namespace than the folders,
         # as it does under the `split-namespace` profile. Set it explicitly when
         # pointing `instanceSelector` at an instance this chart does not create.
         # Note that the CRDs forbid turning this back off in place; the resource
         # has to be recreated.
         # @default -- inferred
         allowCrossNamespaceImport: null
-        # -- Dashboard API Version (v2 or v2beta1)
-        apiTarget: "dashboard.grafana.app/v2"
 
       # -- (h5) Grafana folders the dashboards are filed into.
       # @notationType -- (sectionstart) Grafana folders.
@@ -1593,13 +1612,6 @@ dashboards:
             # folderUID: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
           title: "Meta Observability"
 
-    datadog:
-      # -- Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
-      enabled: false
-  # -- List of dashboard patterns to render
-  selected:
-    - env-*
-    - infra-*
 
 config:
   # -- (h4) Configuration for rules

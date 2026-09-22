@@ -111,15 +111,21 @@ from.
 | `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
 | `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
 
-Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
+Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
 prefixed set until the clouds stopped differing in panel content, which left it recording nothing but its own name.
 The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-cloud` annotation went with it.
 
-**`env-upgrade` is installed by default**, because `dashboards.selected` defaults to `["env-*", "infra-*"]` and
-the stem matches. So does every dashboard in the table above — which is now more than a Helm release Secret can
-hold; see [Dashboard delivery is at the 1 MiB
-ceiling](../../../docs/content/reference/internal/roadmap.md#dashboard-delivery-is-at-the-1-mib-ceiling).
+**The dashboards ship in a chart of their own**, `materialize-monitoring-dashboards`, because the rendered set
+outgrew the 1 MiB a Helm release Secret allows. `packages/dashboards` renders into
+`charts/materialize-monitoring-dashboards/pre-rendered/`, and `selected` (no longer `dashboards.selected`) lives
+there too. Folders, datasources and the `Grafana` instance stayed in the umbrella chart — a folder is what a
+dashboard is filed *into* rather than part of it — so the dashboards chart resolves a folder name through an explicit
+`grafana.folderUids` map it cannot derive. See [the roadmap
+note](../../../docs/content/reference/internal/roadmap.md#dashboard-delivery-hit-the-1-mib-ceiling-and-the-dashboards-moved-out).
+
+**`env-upgrade` is installed by default**, because `selected` defaults to `["env-*", "infra-*"]` and the stem
+matches. So does every dashboard in the table above.
 While the operator-side instrumentation is unreleased it degrades unevenly, and the split is worth knowing: **Generations
 works fully** (every panel reads metrics that predate the change, and the blue/green split comes from pod names), Events
 keeps its Kubernetes Activity row, and Reconciliation is empty apart from its two pre-existing gauges. `MIN_MZ_VERSION`

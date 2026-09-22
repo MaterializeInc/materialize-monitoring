@@ -2336,12 +2336,19 @@ otelcol.auth.basic "oteldest" {
   </tbody>
 </table>
 
-### Monitoring configurations
+### Dashboards
 
-Configuration for dashboards, rules, and alerts
+Where the bundled dashboards are filed.
 
-Underlying content is generated into `pre-rendered/`
-from the sources under `packages/` and embedded via `.Files.Get`.
+**The dashboards themselves are not in this chart.** They ship in
+`materialize-monitoring-dashboards`, installed as a release of its own, because
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
+— the rendered set outgrew that and took `helm upgrade` with it.
+
+What stays here is what a dashboard is filed *into*: the `Grafana` instance,
+its datasources, and the folders below. The dashboards chart references the
+folder UIDs this one creates, spelled out in its own values rather than
+discovered, since it cannot see this release.
 
 <table class="helm-values">
   <thead>
@@ -2351,7 +2358,7 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+      <td class="helm-value-desc">Create the Grafana folders the bundled dashboards are filed into. Requires the Grafana operator.
 </td>
     </tr>
     <tr>
@@ -2362,10 +2369,20 @@ from the sources under `packages/` and embedded via `.Files.Get`.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"allowCrossNamespaceImport":null, "instanceSelector":{}, "resyncPeriod":"5m"}</code></td>
+      <td class="helm-value-desc">Settings shared by the Grafana resources this chart creates.
+Named `manifest` from when it also covered the dashboard manifests; those
+moved to `materialize-monitoring-dashboards`, which carries its own copies
+of these under `grafana`. What is left applies to the folders.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.resyncPeriod</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">Time to sync the dashboard from the manifest
+      <td class="helm-value-desc">Time to sync the folder from its resource.
 </td>
     </tr>
     <tr>
@@ -2374,21 +2391,14 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in the dashboards chart, which has no way to read it from here.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.allowCrossNamespaceImport</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>inferred</code></td>
-      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"dashboard.grafana.app/v2"</code></td>
-      <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
+      <td class="helm-value-desc">Allow folders to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the folders, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
 </td>
     </tr>
   </tbody>
@@ -2426,32 +2436,6 @@ no folder resource to create.
 | `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
 | `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
 | `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
-
-<table class="helm-values">
-  <thead>
-    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-  </thead>
-  <tbody>    <tr>
-      <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">dashboards<wbr>.selected</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "env-*",
-  "infra-*"
-]</pre>
-</td>
-      <td class="helm-value-desc">List of dashboard patterns to render
-</td>
-    </tr>
-  </tbody>
-</table>
 
 #### Rule configuration
 

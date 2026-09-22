@@ -52,7 +52,12 @@ components:
       - mzmon-lib
       - repo-common
     artifacts:
-      - charts/materialize-monitoring*.tgz
+      # Anchored on the version digit rather than left open: `materialize-monitoring*`
+      # also matches the `-crds` and `-dashboards` tarballs, which are their own
+      # components. In CI only one chart is packaged per run so the loose form
+      # resolved to one file anyway, but a local `make charts` builds all three and
+      # would attach the other two to this component's release.
+      - charts/materialize-monitoring-[0-9]*.tgz
 
   # Optional CRDs
   materialize-monitoring-crds:
@@ -68,6 +73,29 @@ components:
     artifacts:
       - charts/materialize-monitoring-crds-*.tgz
 
+  # The dashboards chart
+  materialize-monitoring-dashboards:
+    changelog: true
+    # Split out of the umbrella chart because Helm stores a release in a
+    # Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered
+    # dashboard set had grown past. Its own version stream, so a dashboard
+    # change no longer rolls the whole stack's release.
+    title: "materialize-monitoring Dashboards (Helm chart)"
+    version_paths:
+      - charts/materialize-monitoring-dashboards/Chart.yaml
+    content_paths:
+      - charts/materialize-monitoring-dashboards/
+      - tools/chartlib/
+    content_exclude:
+      # Generated output; attributed to the `dashboards` component, exactly as
+      # the umbrella chart excludes its own pre-rendered tree.
+      - charts/materialize-monitoring-dashboards/pre-rendered/
+    dependencies:
+      - dashboards
+      - repo-common
+    artifacts:
+      - charts/materialize-monitoring-dashboards-*.tgz
+
   dashboards:
     changelog: true
     title: "Dashboards"
@@ -79,13 +107,13 @@ components:
     content_paths:
       - packages/queries/
       - packages/dashboards/
-      # Generated dashboard output bundled into the chart.
-      - charts/materialize-monitoring/pre-rendered/dashboards/
+      # Generated dashboard output bundled into the dashboards chart.
+      - charts/materialize-monitoring-dashboards/pre-rendered/dashboards/
     dependencies:
       - mzmon-lib
       - repo-common
     artifacts:
-      - charts/materialize-monitoring/pre-rendered/dashboards/**/*.yaml
+      - charts/materialize-monitoring-dashboards/pre-rendered/dashboards/**/*.yaml
       - docs/assets/dashboards/**/*.json
 
   pipelines:

@@ -1,0 +1,139 @@
+# The Grafana dashboards that used to ship inside the umbrella chart.
+#
+# **Nothing here is auto-detected.** This chart creates `GrafanaManifest`
+# resources and nothing else, so everything a dashboard is filed *into* — the
+# `Grafana` instance, its datasources, the folders — belongs to a
+# `materialize-monitoring` release this chart cannot see. Every reference to one
+# is therefore a value you set, spelled out rather than derived: there is no
+# release name to infer from, and a wrong guess would file dashboards into a
+# folder that does not exist, or into every Grafana in the cluster.
+#
+# The defaults below match a `materialize-monitoring` release named `mzmon`
+# installed with its own defaults, which is the common case. Change the release
+# name and three values move with it — `grafana.instanceSelector` and both
+# entries under `grafana.folderUids` — because each is the literal string the
+# other chart created.
+
+# -- Namespace override for the resources this chart creates.
+# @raw
+# Leave empty to use the release namespace. Set it when installing this chart
+# from a release that lives somewhere other than where the dashboards should
+# land, which is unusual — the common reason to separate them is
+# `grafana.allowCrossNamespaceImport` instead.
+namespaceOverride: ""
+
+# -- Standard Helm name override.
+nameOverride: ""
+# -- Standard Helm full-name override, and the prefix on every resource name.
+# @raw
+# **Deliberately not `mzmon`**, which is what the umbrella chart defaults to.
+# The dashboards used to be created by that release under `mzmon-<stem>-dashboard`;
+# reusing those names here would make Helm refuse the install on any cluster where
+# the umbrella release had not been upgraded first, because the existing resources
+# carry the other release's ownership metadata.
+#
+# A distinct prefix makes the two orderings equivalent: the umbrella upgrade
+# deletes its manifests and this chart creates its own, in either sequence, with
+# no window where both claim one object. The dashboards themselves are unaffected
+# — Grafana keys them by the UID in the dashboard body, which does not change.
+fullnameOverride: "mzmon-dashboards"
+
+# -- (h4) How the dashboards reach Grafana.
+# @notationType -- (sectionstart) Grafana
+grafana:
+  # -- Install the bundled Grafana dashboards.
+  enabled: true
+
+  # -- Grafana deployment mode. Only `operator` is supported here.
+  # @raw
+  # The umbrella chart's `standalone` mode provisions dashboards through the
+  # Grafana chart's own sidecar, which reads ConfigMaps rather than
+  # `GrafanaManifest` resources — and the 1 MiB object ceiling that forced this
+  # split applies to a ConfigMap just as hard. A `standalone` install therefore
+  # does not use this chart at all; the render refuses rather than emitting
+  # resources nothing will read.
+  mode: "operator"
+
+  # -- Labels selecting the Grafana instance these dashboards are pushed into.
+  # @raw
+  # **Must match what the `materialize-monitoring` release put on its `Grafana`
+  # resource**, which is `connections.grafana.labels` merged over a static
+  # `monitoring.materialize.cloud/grafana-instance: mzmon` there. The default
+  # below is that static label, so a stock release needs no change.
+  #
+  # An empty `matchLabels` is not "match none" — grafana-operator reads it as
+  # **every** Grafana instance, in every namespace it watches. The render
+  # refuses an empty selector for that reason.
+  instanceSelector:
+    matchLabels:
+      monitoring.materialize.cloud/grafana-instance: mzmon
+
+  # -- Allow these dashboards to match a Grafana instance outside their own
+  # namespace.
+  # @raw
+  # Required whenever the `Grafana` resource lives in a different namespace than
+  # this release, which includes the umbrella chart's `split-namespace` profile
+  # and any install that puts this chart somewhere of its own.
+  #
+  # Not inferred, unlike in the umbrella chart, which could compare two
+  # namespaces it rendered itself. This chart knows only its own.
+  #
+  # Note that the CRDs forbid turning this back off in place; the resource has
+  # to be recreated.
+  allowCrossNamespaceImport: false
+
+  # -- How often the operator re-applies a dashboard from its manifest.
+  resyncPeriod: 5m
+
+  # -- Dashboard API version the manifests declare (`dashboard.grafana.app/v2`
+  # or `dashboard.grafana.app/v2beta1`).
+  # @raw
+  # Rewritten onto each rendered dashboard, so one value moves the whole set
+  # between API versions without re-rendering them.
+  apiTarget: "dashboard.grafana.app/v2"
+
+  # -- (h5) Folder UIDs, by the folder name a dashboard asks for.
+  # @notationType -- (sectionstart) Folder UIDs
+  # @raw
+  #
+  # **The join between this chart and the folders the umbrella chart creates.**
+  #
+  # Each rendered dashboard carries its placement as a `grafana.app/folder`
+  # annotation naming a folder by *name* — `infra`, `materialize`, `meta-o11y`,
+  # which are the variants of `Folder` in
+  # `packages/mzmon-lib/src/grafana/folder.rs`. A folder's **UID** is not
+  # knowable at render time because it depends on the release, so this map
+  # supplies it and the chart rewrites the annotation on the way to the operator.
+  #
+  # The umbrella chart derives each UID as `<its fullname>-<folder key>`, giving
+  # the defaults below for a release named `mzmon`. Where that release set an
+  # `existingUid` for a folder, put that UID here instead.
+  #
+  # **A name with no entry here has its annotation dropped rather than passed
+  # through.** Grafana would otherwise read the name as a UID, find nothing, and
+  # file the dashboard at the root anyway — dropping it makes a dashboard whose
+  # folder was deliberately removed look deliberate rather than broken. Emptying
+  # this map is therefore a supported way to file everything at the root.
+  folderUids:
+    infra: mzmon-infra
+    materialize: mzmon-materialize
+    meta-o11y: mzmon-meta-o11y
+
+# -- Which dashboards to install, as filename-stem patterns.
+# @raw
+# Matched against the rendered dashboards this chart carries. `env-*` is the
+# Materialize-scoped family and `infra-*` the cluster-scoped one; see the
+# [dashboard reference](https://materializeinc.github.io/materialize-monitoring/dashboards/)
+# for what each stem is.
+#
+# Narrowing this is the supported way to hold a dashboard back — `env-upgrade`
+# depends on operator instrumentation that not every Materialize version has,
+# for instance.
+selected:
+  - env-*
+  - infra-*
+
+# -- Annotations applied to every resource this chart creates.
+commonAnnotations: {}
+# -- Labels applied to every resource this chart creates.
+commonLabels: {}
