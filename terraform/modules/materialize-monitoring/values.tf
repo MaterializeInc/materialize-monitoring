@@ -447,6 +447,14 @@ locals {
     }
   }
 
+  # A document of its own so a null `cluster_name` leaves the chart's default
+  # alone rather than writing an empty string over it. `pipeline.env` feeds both
+  # the agent and the gateway, and the gateway's `cluster` fallback for logs and
+  # its metrics `external_labels` both read it.
+  cluster_name_document = var.cluster_name == null ? [] : [yamlencode({
+    pipeline = { env = { CLUSTER_NAME = var.cluster_name } }
+  })]
+
   # ----------------------------------------------------------------------------
   # Final ordered list
   # ----------------------------------------------------------------------------
@@ -454,6 +462,7 @@ locals {
   # always win over anything a profile happens to set.
   module_documents = concat(
     [yamlencode(local.wiring_values)],
+    local.cluster_name_document,
     local.sizing_profiles,
     # After sizing, because the phase-3 profile restates
     # `thanos.receive.extraArgs` and Helm overwrites lists rather than merging

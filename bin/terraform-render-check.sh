@@ -176,6 +176,26 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
     fi
     echo "    node-exporter enabled=${want_ne}, rendered=${got_ne}"
 
+    # cluster_name has to reach both env ConfigMaps: the agent stamps it on pod
+    # logs, and the gateway uses it as the `cluster` fallback for every other log
+    # source and as the metrics `external_labels`. A value that lands in only one
+    # splits a cluster's data across two label values with nothing said.
+    # Gated on the module call, like the credential check below, so a module
+    # that stops composing the value cannot also switch the check off.
+    expected_cluster="$(jq -r '
+        .configuration.root_module.module_calls.monitoring.expressions
+        .cluster_name.constant_value // empty
+    ' "${plan_json}" 2>/dev/null || true)"
+    if [ -n "${expected_cluster}" ]; then
+        got_cluster="$(grep -cE "^  CLUSTER_NAME: \"?${expected_cluster}\"?$" "${rendered}" || true)"
+        if [ "${got_cluster}" != "2" ]; then
+            echo "  !! ${example}: cluster_name reached ${got_cluster} of 2 Alloy env ConfigMaps" >&2
+            status=1
+            continue
+        fi
+        echo "    cluster_name reached both Alloy env ConfigMaps"
+    fi
+
     # Loki's S3 endpoint, which has no default inside Loki and is not derivable
     # from the bucket or the region: the client rejects an empty one up front
     # ("create bucket: no s3 endpoint in config file") instead of falling through

@@ -125,6 +125,17 @@ the two cannot drift. Set it only to pin a chart version different from the modu
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="cluster_name" href="#cluster_name">cluster_<wbr>name</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
+sample the stack collects.
+
+Set it whenever more than one cluster writes to the same log or metrics store — the label is
+the only thing that tells their data apart. Null leaves the chart's default, `default`.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="crds_chart_version" href="#crds_chart_version">crds_<wbr>chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Version of the materialize-monitoring-crds chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the CRDs chart has a deliberately looser lifecycle.</td>

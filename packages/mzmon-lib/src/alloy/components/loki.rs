@@ -561,21 +561,21 @@ impl ToBlock for StageReplaceBlock {
 // ----- stage.template -----
 
 /// `stage.template` — sets a field via a Go-template expression.
+///
+/// `template` is `Expressable` so the body can splice in a value only known at
+/// deploy time, such as a fallback read from the environment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StageTemplateBlock {
     pub source: String,
-    pub template: String,
+    pub template: Expressable<String>,
 }
 
 impl ToBlock for StageTemplateBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
         attributes.insert("source".into(), AttributeValue::String(self.source.clone()));
-        attributes.insert(
-            "template".into(),
-            AttributeValue::String(self.template.clone()),
-        );
+        attributes.insert("template".into(), self.template.to_attribute_value()?);
         Ok(Block {
             component: "stage.template".into(),
             label: None,
@@ -1630,6 +1630,51 @@ mod tests {
                 "\t\t\tapp     = \"alloy\",\n",
                 "\t\t\tcluster = sys.env(\"CLUSTER_NAME\"),\n",
                 "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_template_accepts_literal_and_expression_bodies() {
+        // A literal body renders as a quoted string; an expression body renders
+        // bare, which is how the gateway splices CLUSTER_NAME into a fallback.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.template:
+                        source: level
+                        template: '{{ .Value }}'
+                    - stage.template:
+                        source: cluster
+                        template:
+                          function: string.format
+                          arguments:
+                            - '{{ if .Value }}{{ .Value }}{{ else }}%s{{ end }}'
+                            - {env: CLUSTER_NAME}
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.template {\n",
+                "\t\tsource   = \"level\"\n",
+                "\t\ttemplate = \"{{ .Value }}\"\n",
+                "\t}\n",
+                "\n",
+                "\tstage.template {\n",
+                "\t\tsource   = \"cluster\"\n",
+                "\t\ttemplate = string.format(\"{{ if .Value }}{{ .Value }}{{ else }}%s{{ end }}\", sys.env(\"CLUSTER_NAME\"))\n",
                 "\t}\n",
                 "}\n",
             ),
