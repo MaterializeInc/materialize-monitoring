@@ -11,8 +11,34 @@ alloy-gateway:
 loki:
   namespaceOverride: loki
 
+  loki:
+    # The base values build these two addresses from `.Release.Namespace`,
+    # because a subchart's own `tpl` context cannot see the umbrella's values
+    # and so cannot know where Alertmanager and the gateway ended up. Moving
+    # them is this profile's whole job, so it restates both. Left unchanged, the
+    # ruler resolves nothing: no alert is notified and every recording-rule
+    # sample is dropped, with the component reporting healthy throughout.
+    rulerConfig:
+      alertmanager_url: 'http://{{ .Release.Name }}-alertmanager.alertmanager.svc.cluster.local:9093'
+      remote_write:
+        clients:
+          gateway:
+            url: http://alloy-gateway.alloy-gateway.svc.cluster.local:9090/api/v1/metrics/write
+
 thanos:
   namespaceOverride: thanos
+
+  ruler:
+    # Same reason as Loki's above. The Ruler's `query.urls` need no override:
+    # Query is a component of this same subchart, so it moves with it.
+    alertmanagers:
+      config: |
+        alertmanagers:
+          - static_configs:
+              - {{ .Release.Name }}-alertmanager.alertmanager.svc.cluster.local:9093
+            scheme: http
+            api_version: v2
+            timeout: 10s
 
 grafana-operator:
   namespaceOverride: grafana-operator
@@ -22,3 +48,42 @@ grafana:
 
 alertmanager:
   namespaceOverride: alertmanager
+
+# ---------------------------------------------------------------------------
+# Cross-namespace allowances for the two rulers
+# ---------------------------------------------------------------------------
+# Both rulers notify Alertmanager and remote-write to the gateway. In a single
+# namespace those are same-namespace hops that every policy here already allows;
+# split apart they are cross-namespace, and a policy that selects its peers by
+# pod label alone matches nothing across a namespace boundary. The render warns
+# about this class of gap generally; these are the two hops the rulers add.
+networkPolicies:
+  alertmanager:
+    ingress:
+      # Both rulers dial 9093. `extra` rather than `allowExternal`, which would
+      # open the API to the whole cluster and to anything off it.
+      extra:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: thanos
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: loki
+          ports:
+            - port: 9093
+              protocol: TCP
+
+# **One hop this profile cannot close from values: Loki's ruler egress.**
+#
+# The Loki subchart renders an `egress-alertmanager` policy, but it selects
+# `app.kubernetes.io/component: backend` — the Simple Scalable target. This chart
+# runs Loki distributed, where the ruler is `component: ruler`, so that policy
+# applies to no pod here. The subchart exposes no general extra-egress hook, and
+# its `namespace-only` policy restricts every Loki pod to same-namespace egress.
+#
+# So under this profile the Loki ruler cannot reach Alertmanager or the gateway,
+# and it fails the way rulers always fail: quietly. Until that is fixed upstream,
+# either apply your own NetworkPolicy for the ruler's egress, or set
+# `loki.networkPolicy.enabled: false` and police Loki from outside the chart.
+# The Thanos ruler is unaffected — the Thanos subchart's egress rule is `{}`.

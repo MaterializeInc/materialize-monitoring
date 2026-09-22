@@ -32,6 +32,13 @@
 #
 # and add an explicit `tag:` here for any image whose string differs.
 #
+# **The Thanos Ruler's rule-import sidecar needs a shell and `curl`.** Its
+# entrypoint is `/bin/sh /scripts/import.sh`, and the script POSTs `/-/reload`
+# with curl — so the `kubectl` named below has to be a variant carrying both,
+# which for Chainguard means a `-dev` tag. A distroless `kubectl` renders,
+# schedules, and then crash-loops, and the Ruler quietly stops picking up rule
+# changes while its main container stays healthy.
+#
 # **Check the UID each image expects.** This is the failure mode that bites,
 # because it renders and schedules cleanly and then crash-loops. Chainguard
 # images run as their own non-root UID, which is generally not the UID the

@@ -167,6 +167,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res = include "mzmon.alertmanager.validate" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- $res = include "mzmon.priorityClass.validate" $ | fromYaml }}
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}

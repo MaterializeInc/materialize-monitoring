@@ -129,6 +129,23 @@ thanos:
         cpu: 250m
         memory: 512Mi
 
+  # -- The Ruler stays pointed at Query, **not** at the query-frontend enabled
+  # above, and that divergence from the datasource below is deliberate.
+  #
+  # The frontend splits and caches. For a dashboard that is the whole point; for
+  # an evaluator it means a rule can fire — or fail to fire — on a cached range
+  # up to a TTL stale, with nothing in either component reporting it. Grafana
+  # follows the cache, the Ruler does not.
+  #
+  # Sized up rather than left at the defaults because rule count, not data
+  # volume, is what the Ruler holds, and a large install carries more of them.
+  # Evaluation itself still happens in Query.
+  ruler:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+
 connections:
   datasources:
     thanos:

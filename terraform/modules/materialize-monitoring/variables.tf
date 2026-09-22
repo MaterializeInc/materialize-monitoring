@@ -822,8 +822,9 @@ variable "storage_class" {
     Four are PVC-backed by default: Alertmanager, the Loki ruler, and the Thanos Store Gateway and
     Compactor. Loki's ingesters and Thanos Receive use node-local `emptyDir` by design — durability
     is the replication factor there, and a volume would pin them to one availability zone. The
-    class is still fanned out to Receive so that re-enabling its persistence picks the class up
-    rather than silently missing it.
+    Thanos ruler runs stateless and holds only a remote-write WAL. The class is still fanned out to
+    Receive and to the ruler so that re-enabling their persistence picks the class up rather than
+    silently missing it.
 
     Required where the default class cannot serve the nodes: GCP's C4 and N4 families take only
     Hyperdisk, and every Persistent Disk class fails to attach with `pd-balanced disk type cannot

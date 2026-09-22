@@ -156,6 +156,22 @@ thanos:
         cpu: 25m
         memory: 128Mi
 
+  ruler:
+    # -- One replica. Two evaluate the same rules and Alertmanager discards the
+    # duplicate, which is availability rather than throughput, and CI has a
+    # single node to lose.
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+    autoImportPrometheusRules:
+      sidecar:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+
 # ---------------------------------------------------------------------------
 # Loki — sized for both deployment shapes, since only one renders at a time.
 # ---------------------------------------------------------------------------

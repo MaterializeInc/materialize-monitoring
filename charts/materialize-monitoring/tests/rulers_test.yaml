@@ -1,0 +1,330 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the two rule evaluators and the wiring that makes them useful.
+#
+# Every failure locked down here is silent at runtime. A ruler with no
+# Alertmanager, a ruler pointed at a Service that does not exist, a ruler that
+# reverted to a local TSDB, and a ruler still carrying the subchart's
+# always-firing example rule all produce a healthy pod. Three of the four also
+# produce a green `helm install`.
+suite: rule evaluators
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+tests:
+  # --- the switch itself ----------------------------------------------------
+
+  # `thanos.ruler.enabled` is what makes PromQL alerting exist at all: the
+  # ruler's import sidecar is the only consumer of a `PrometheusRule` in this
+  # stack, so while this is off, a `PrometheusRule` renders, applies, and does
+  # nothing.
+  - it: deploys the Thanos ruler in a default install
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          name: thanos-ruler
+          namespace: test-monitoring
+
+  - it: deploys the Loki ruler in a default install
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: metadata.name
+          value: loki-ruler
+
+  # --- stateless mode -------------------------------------------------------
+
+  # The subchart models no `remoteWrite` key and passes `--objstore.config-file`
+  # unconditionally, so stateless is reached through `extraArgs`. That makes the
+  # flag load-bearing in a way a reader of `values.yaml` would not assume.
+  - it: runs the Thanos ruler stateless, remote-writing to the gateway
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+      # No block storage means no volumeClaimTemplates and an emptyDir instead.
+      - isNull:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            emptyDir: {}
+
+  - it: mounts the remote-write config the umbrella renders
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: remote-write
+            mountPath: /etc/thanos/remote-write.yaml
+            subPath: remote-write.yaml
+            readOnly: true
+
+  - it: points the ruler's remote-write at the gateway's receive_http listener
+    template: templates/thanos-ruler-remote-write.yaml
+    asserts:
+      - matchRegex:
+          path: data["remote-write.yaml"]
+          pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"'
+
+  # The ConfigMap is the ruler's, so it follows Thanos rather than the release.
+  - it: renders the remote-write ConfigMap into the Thanos namespace
+    set:
+      thanos.namespaceOverride: thanos-ns
+    template: templates/thanos-ruler-remote-write.yaml
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: thanos-ns
+
+  - it: skips the remote-write ConfigMap when the Thanos ruler is off
+    set:
+      thanos.ruler.enabled: false
+    template: templates/thanos-ruler-remote-write.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- evaluation target ----------------------------------------------------
+
+  # Query, not Query Frontend. A cached range served to an evaluator is an alert
+  # firing, or failing to fire, on stale data with nothing reporting it. The
+  # Grafana datasource follows the frontend; the ruler must not.
+  - it: evaluates against Thanos Query
+    template: ../charts/thanos/templates/ruler/configmap-query.yaml
+    asserts:
+      - matchRegex:
+          path: data["query-urls.yaml"]
+          pattern: "- thanos-query:9090"
+
+  - it: keeps the ruler on Query even when the query frontend is enabled
+    set:
+      thanos.queryFrontend.enabled: true
+      connections.datasources.thanos.url: "http://thanos-query-frontend.test-monitoring.svc:9090"
+    template: ../charts/thanos/templates/ruler/configmap-query.yaml
+    asserts:
+      - matchRegex:
+          path: data["query-urls.yaml"]
+          pattern: "- thanos-query:9090"
+      - notMatchRegex:
+          path: data["query-urls.yaml"]
+          pattern: "query-frontend"
+
+  # --- notification ---------------------------------------------------------
+
+  # Alertmanager is the one subchart with no `fullnameOverride`, so its Service
+  # name is derived from the release name. Both rulers have to agree with it.
+  - it: points the Thanos ruler at the release's Alertmanager
+    template: ../charts/thanos/templates/ruler/configmap-alertmanagers.yaml
+    asserts:
+      - matchRegex:
+          path: data["alertmanagers.yaml"]
+          pattern: "- test-mon-alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+      - matchRegex:
+          path: data["alertmanagers.yaml"]
+          pattern: "api_version: v2"
+
+  - it: points the Loki ruler at the same Alertmanager
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager_url: http://test-mon-alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "enable_alertmanager_v2: true"
+
+  - it: remote-writes Loki recording-rule samples to the gateway
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "url: http://alloy-gateway\\.test-monitoring\\.svc\\.cluster\\.local:9090/api/v1/metrics/write"
+
+  # --- the example rule -----------------------------------------------------
+
+  # The subchart ships `ExampleAlwaysFiring` on `vector(1)` and its JSON Schema
+  # requires the key, so the chart empties the file rather than removing it.
+  # Both halves are asserted: that the default is inert, and that undoing it
+  # fails the render rather than paging somebody.
+  - it: ships no firing rule by default
+    template: ../charts/thanos/templates/ruler/configmaprules.yaml
+    asserts:
+      - equal:
+          path: data["example-alerts.yaml"]
+          value: |
+            groups: []
+      - notMatchRegex:
+          path: data["example-alerts.yaml"]
+          pattern: "ExampleAlwaysFiring"
+
+  - it: fails the render if the always-firing example rule comes back
+    set:
+      thanos.ruler.rules:
+        example-alerts.yaml: |
+          groups:
+            - name: thanos-example
+              rules:
+                - alert: ExampleAlwaysFiring
+                  expr: vector(1)
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "still carries the subchart's ExampleAlwaysFiring rule"
+
+  # --- validators -----------------------------------------------------------
+
+  # An error, not a warning: with Query off the ruler cannot evaluate at all,
+  # because there is no local TSDB to fall back on and no Prometheus in this
+  # stack.
+  - it: fails when the ruler is enabled but Thanos Query is not
+    set:
+      thanos.query.enabled: false
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "The ruler evaluates by issuing PromQL to Query over the network"
+
+  # A warning, not an error: `tags.thanos` alone is a legitimate metrics-only
+  # install and the stack still runs. It just cannot tell anyone about it.
+  - it: warns when the rulers are enabled but Alertmanager is not
+    set:
+      tags.default: false
+      tags.thanos: true
+      tags.loki: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.ruler and loki.ruler are enabled but Alertmanager is not"
+
+  - it: warns when the remote-write flag is dropped from extraArgs
+    set:
+      thanos.ruler.extraArgs:
+        - --log.level=debug
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "no longer carries --remote-write.config-file"
+
+  - it: warns when the Loki ruler has no Alertmanager URL
+    set:
+      loki.loki.rulerConfig.alertmanager_url: ""
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alertmanager_url is unset"
+
+  # A Loki rule group is per tenant and the ruler does not evaluate across
+  # them, so under byNamespace the rule set covers whatever namespaces existed
+  # when Helm last ran.
+  - it: warns that byNamespace tenancy cannot have complete log alerting
+    set:
+      pipeline.tenancy.tenantMap.materialize: byNamespace
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "log alerting cannot be complete under this mode"
+
+  - it: stays quiet about tenancy at the static default
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "log alerting cannot be complete"
+
+  # --- rule import ----------------------------------------------------------
+
+  # Deliberately unscoped: an operator's own `PrometheusRule` works with no
+  # chart configuration. The cost is that a co-resident rule owner's alerts also
+  # reach this Alertmanager, which is a documented trade rather than an
+  # oversight.
+  - it: imports PrometheusRule resources with no label selector
+    template: ../charts/thanos/templates/ruler/configmap-auto-import-prometheus-rules.yaml
+    asserts:
+      - matchRegex:
+          path: data["import.sh"]
+          pattern: "No label selector provided, importing ALL PrometheusRules"
+
+  # The sidecar shells out and runs curl, so it cannot be the distroless
+  # `registry.k8s.io/kubectl` the cleanup hook uses. Pinned so a default install
+  # does not track a floating tag.
+  - it: pins the rule-import sidecar to an image with a shell
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: prometheus-rule-importer
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: docker.io/alpine/kubectl:1.35.4
+
+  # --- split-namespace ------------------------------------------------------
+
+  # Both addresses are literals in values.yaml, because a subchart's `tpl`
+  # context cannot see the umbrella's values. Moving Alertmanager is exactly
+  # what makes them wrong, so the profile has to restate them.
+  - it: retargets both rulers when split-namespace moves Alertmanager
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: ../charts/thanos/templates/ruler/configmap-alertmanagers.yaml
+    asserts:
+      - matchRegex:
+          path: data["alertmanagers.yaml"]
+          pattern: "- test-mon-alertmanager\\.alertmanager\\.svc\\.cluster\\.local:9093"
+
+  - it: retargets the Loki ruler under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager_url: http://test-mon-alertmanager\\.alertmanager\\.svc\\.cluster\\.local:9093"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "url: http://alloy-gateway\\.alloy-gateway\\.svc\\.cluster\\.local:9090/api/v1/metrics/write"
+
+  - it: opens Alertmanager to the ruler namespaces under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/networkpolicies.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-alertmanager
+    asserts:
+      - contains:
+          path: spec.ingress
+          content:
+            from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: thanos
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: loki
+            ports:
+              - port: 9093
+                protocol: TCP

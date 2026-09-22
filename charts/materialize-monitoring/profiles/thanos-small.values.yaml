@@ -109,6 +109,19 @@ thanos:
       resolution5m: 30d
       resolution1h: 90d
 
+  ruler:
+    # -- Two replicas at every size, deliberately not trimmed here.
+    #
+    # Every other component in this profile scales with load; the Ruler does not.
+    # Both replicas evaluate the same rules and Alertmanager discards the
+    # duplicate, so the second one buys nothing but the thing that matters most:
+    # a node drain that does not stop alert evaluation. A small install is not a
+    # less important one, and a Ruler that is down reports nothing wrong.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
   # Query Frontend stays off (the chart default). At this size the read path is
   # a handful of dashboards and Query's own queue is sufficient; enabling it
   # would also require repointing `connections.datasources.thanos.url`, or the

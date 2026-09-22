@@ -1705,3 +1705,25 @@ Usage:
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}
+
+{{- /*
+Get the alloy-gateway remote-write endpoint.
+
+This is `prometheus.receive_http`'s listener — the same port the agent pushes to
+and the one every metric in this stack already arrives on. A ruler writing here
+rather than straight to Thanos is what puts rule results in front of the
+gateway's destination fan-out instead of only in Thanos.
+
+Only usable from umbrella templates: it reads `alloy-gateway` out of the
+umbrella's values, which a subchart's own `tpl` context cannot see. Values that
+are consumed inside a subchart (`loki.loki.rulerConfig`) spell the URL out
+instead.
+
+Usage:
+  {{- include "mzmon.alloyGateway.remoteWriteUrl" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.remoteWriteUrl" }}
+  {{- $tls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+  {{- $scheme := ternary "https" "http" ( $tls.enabled | default false ) }}
+  {{- printf "%s://alloy-gateway.%s.svc.cluster.local:9090/api/v1/metrics/write" $scheme ( include "mzmon.alloyGateway.namespace" $ ) }}
+{{- end }}
