@@ -88,11 +88,20 @@ components:
   # their own cadence, which is why that one is genuinely separate.
   dashboards:
     changelog: true
-    # **Not retitled** when the chart folded in. The title is the component's
-    # identity in `CHANGELOG.md` — `latest_released` looks the component up by
-    # it — so changing it orphans thirteen released sections and the release
-    # tooling reports the component as having no prior release.
-    title: "Dashboards"
+    # Retitled when the chart folded in, the same way `materialize-monitoring`
+    # was when the Terraform module joined it.
+    #
+    # The title is the component's identity in `CHANGELOG.md` —
+    # `latest_released` looks the component up by it — so a rename on its own
+    # would orphan the released sections and the tooling would report the
+    # component as brand new. What makes it safe is a paired edit in
+    # `CHANGELOG.md`: the latest *released* heading is rewritten to the new
+    # title, which re-establishes the baseline, and the open `(Unreleased)` one
+    # with it so the section in flight is not duplicated. Older headings keep
+    # the old title as the historical record.
+    #
+    # See `reference/internal/releasing.md` for the procedure.
+    title: "Dashboards (Helm chart)"
     # The chart's version is the component's. `packages/dashboards` is a
     # workspace crate inheriting `version.workspace`, so it contributes no
     # version file of its own — the chart is the only one here.

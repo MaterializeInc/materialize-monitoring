@@ -30,8 +30,11 @@ They are not a generated output routed *out* of a chart — they are a chart, `m
 So there is no `content_exclude` on its `pre-rendered/` tree, and the umbrella chart does **not** list `dashboards` among its `dependencies`: nothing it ships comes from them any more, and a dashboard change that cascaded into it would publish an umbrella release identical to its predecessor except the version.
 
 **The `title` is the component's identity in `CHANGELOG.md`.**
-`latest_released` looks a component up by its title, so renaming one orphans every section it has already released and the tooling reports it as having no prior release.
-A component may be re-scoped — `dashboards` absorbed a Helm chart without changing its title, and kept its stream — but it may not be renamed in place.
+`latest_released` looks a component up by its title, so renaming one in `components.yaml` alone makes the tooling report it as having no prior release.
+Renaming is supported, and takes a paired edit to the latest released heading in `CHANGELOG.md` to re-establish the baseline — see [Renaming a component]({{< relref "releasing.md#renaming-a-component" >}}).
+Both components that have grown a second artifact went through it: `materialize-monitoring` when the Terraform module joined it, and `dashboards` when the Helm chart did.
+
+The component **key** is a different matter: it is the release tag prefix and the version-update branch name, so it cannot be rewritten after the fact.
 
 A component may have an empty `version_paths` (its version lives only in `CHANGELOG.md`) or `changelog: false` (it is rebuilt on dependency changes but keeps no changelog of its own, like `docs`).
 

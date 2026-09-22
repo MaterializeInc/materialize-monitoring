@@ -124,12 +124,13 @@ dashboard is filed *into* rather than part of it — so the dashboards chart res
 `grafana.folderUids` map it cannot derive. See [the roadmap
 note](../../../docs/content/reference/internal/roadmap.md#dashboard-delivery-hit-the-1-mib-ceiling-and-the-dashboards-moved-out).
 
-**The chart is not a component of its own.** It belongs to the existing `dashboards` component, whose version stream
-it joined — so `packages/dashboards/`, `packages/queries/` and the chart all bump together, which is honest, because
-the chart carries nothing but their output. Two consequences worth knowing before editing
-`packages/components.yaml`: the umbrella chart no longer lists `dashboards` among its `dependencies` (nothing it
-ships comes from them), and a component's `title` is its identity in `CHANGELOG.md` — renaming one orphans its
-released sections.
+**The chart is not a component of its own.** It belongs to the existing `dashboards` component — retitled
+*Dashboards (Helm chart)* — whose version stream it joined, so `packages/dashboards/`, `packages/queries/` and the
+chart all bump together. That is honest: the chart carries nothing but their output. Two things to know before
+editing `packages/components.yaml`: the umbrella chart no longer lists `dashboards` among its `dependencies` (nothing
+it ships comes from them), and a component's `title` is its identity in `CHANGELOG.md`, so renaming one takes a
+paired edit to the latest released heading — the procedure is in
+[releasing.md](../../../docs/content/reference/internal/releasing.md#renaming-a-component).
 
 **`env-upgrade` is installed by default**, because `selected` defaults to `["env-*", "infra-*"]` and the stem
 matches. So does every dashboard in the table above.
