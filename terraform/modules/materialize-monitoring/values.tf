@@ -27,15 +27,17 @@ locals {
   # on its own, leaving `charts/` behind. `helm_release.monitoring` carries a
   # precondition for that case, because silently dropping the sizing profile
   # is a far worse failure than refusing to plan.
-  chart_dir      = "${path.module}/../../../charts/materialize-monitoring"
-  crds_chart_dir = "${path.module}/../../../charts/materialize-monitoring-crds"
-  profile_dir    = "${local.chart_dir}/profiles"
+  chart_dir            = "${path.module}/../../../charts/materialize-monitoring"
+  crds_chart_dir       = "${path.module}/../../../charts/materialize-monitoring-crds"
+  dashboards_chart_dir = "${path.module}/../../../charts/materialize-monitoring-dashboards"
+  profile_dir          = "${local.chart_dir}/profiles"
 
   # Version comes from the chart itself unless the caller pins one. This is what
   # makes "the module ref names the chart version" structurally true rather than
   # a convention someone has to remember on every bump.
-  chart_version      = coalesce(var.chart_version, yamldecode(file("${local.chart_dir}/Chart.yaml")).version)
-  crds_chart_version = coalesce(var.crds_chart_version, yamldecode(file("${local.crds_chart_dir}/Chart.yaml")).version)
+  chart_version            = coalesce(var.chart_version, yamldecode(file("${local.chart_dir}/Chart.yaml")).version)
+  crds_chart_version       = coalesce(var.crds_chart_version, yamldecode(file("${local.crds_chart_dir}/Chart.yaml")).version)
+  dashboards_chart_version = coalesce(var.dashboards_chart_version, yamldecode(file("${local.dashboards_chart_dir}/Chart.yaml")).version)
 
   # The tier's Loki profile is the sentinel: it ships with every version of the
   # chart, so its absence means the chart directory is unreachable rather than
@@ -484,4 +486,57 @@ locals {
     [local.config_hash_document],
     var.additional_values,
   )
+}
+
+# ==============================================================================
+# Dashboards chart
+# ==============================================================================
+# The dashboards ship as a release of their own, so everything that used to be
+# resolved inside one chart is now a value one chart hands the other. None of it
+# is discoverable at apply time -- a `GrafanaManifest` names its folder by UID
+# and its instance by label, and both belong to the main release -- so the module
+# derives them here from the same `values.yaml` the main release renders from.
+#
+# That derivation is the point. Written out as literals, these would be three
+# strings that agree with the other chart today and silently stop agreeing the
+# first time someone sets `fullnameOverride`.
+locals {
+  # The main release's resource-name prefix, which is what its folder UIDs are
+  # built from. `mzmon` at the chart's default.
+  monitoring_fullname = try(local.chart_values.fullnameOverride, "mzmon")
+
+  # Folder name -> UID, mirroring `mzmon.grafana.folderUid`: the key prefixed by
+  # the release's fullname, unless that folder adopted an existing UID.
+  #
+  # Only folders the main chart actually creates are included. A dashboard
+  # naming one that is absent has its annotation dropped by the dashboards chart
+  # and lands at the root, which is what Grafana would do with it anyway.
+  dashboard_folder_uids = {
+    for key, folder in try(local.chart_values.dashboards.config.grafana.folders, {}) :
+    key => coalesce(
+      try(folder.existingUid, "") != "" ? folder.existingUid : null,
+      "${local.monitoring_fullname}-${key}",
+    )
+    if try(folder.create, true)
+  }
+
+  # The label the main chart puts on its `Grafana` resource and selects with.
+  # Static in `mzmon.grafana.instanceLabels` rather than a value, so it is
+  # written out here too; `dashboards_instance_selector` overrides it for an
+  # install that narrowed the selector through `connections.grafana.labels`.
+  dashboards_instance_selector = coalesce(
+    var.dashboards_instance_selector,
+    { "monitoring.materialize.cloud/grafana-instance" = "mzmon" },
+  )
+
+  dashboards_values = yamlencode(merge(
+    {
+      grafana = {
+        instanceSelector          = { matchLabels = local.dashboards_instance_selector }
+        allowCrossNamespaceImport = var.dashboards_allow_cross_namespace_import
+        folderUids                = local.dashboard_folder_uids
+      }
+    },
+    var.dashboards_selected == null ? {} : { selected = var.dashboards_selected },
+  ))
 }

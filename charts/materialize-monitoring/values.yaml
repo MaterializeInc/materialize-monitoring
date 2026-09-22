@@ -1510,33 +1510,52 @@ pipeline:
 #
 # Underlying content is generated into `pre-rendered/`
 # from the sources under `packages/` and embedded via `.Files.Get`.
+# -- (h3) Where the bundled dashboards are filed.
+# @notationType -- (sectionstart) Dashboards
+# @raw
+#
+# **The dashboards themselves are not in this chart.** They ship in
+# `materialize-monitoring-dashboards`, installed as a release of its own, because
+# Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
+# — the rendered set outgrew that and took `helm upgrade` with it.
+#
+# What stays here is what a dashboard is filed *into*: the `Grafana` instance,
+# its datasources, and the folders below. The dashboards chart references the
+# folder UIDs this one creates, spelled out in its own values rather than
+# discovered, since it cannot see this release.
 dashboards:
   config:
     grafana:
-      # -- Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+      # -- Create the Grafana folders the bundled dashboards are filed into.
+      # Requires the Grafana operator.
       enabled: true
       # -- Grafana deployment mode, either "standalone" (the bundled Grafana chart) or "operator" (a separate Grafana Operator instance).
       mode: "operator"
 
+      # -- (h5) Settings shared by the Grafana resources this chart creates.
+      # @raw
+      # Named `manifest` from when it also covered the dashboard manifests; those
+      # moved to `materialize-monitoring-dashboards`, which carries its own copies
+      # of these under `grafana`. What is left applies to the folders.
       manifest:
-        # -- Time to sync the dashboard from the manifest
+        # -- Time to sync the folder from its resource.
         resyncPeriod: 5m
         # -- Non-default label selector for a Grafana-operator Grafana instance.
         # Defaults to the labels on the `Grafana` instance this chart creates
         # (see `connections.grafana.labels`), so the two cannot drift.
+        # Whatever this resolves to must also be set as `grafana.instanceSelector`
+        # in the dashboards chart, which has no way to read it from here.
         # @default -- `{}`
         instanceSelector: {}
-        # -- Allow dashboards to match a Grafana instance outside their own
+        # -- Allow folders to match a Grafana instance outside their own
         # namespace. Left unset, this is inferred — it turns on only when the
-        # `Grafana` resource lands in a different namespace than the dashboards,
+        # `Grafana` resource lands in a different namespace than the folders,
         # as it does under the `split-namespace` profile. Set it explicitly when
         # pointing `instanceSelector` at an instance this chart does not create.
         # Note that the CRDs forbid turning this back off in place; the resource
         # has to be recreated.
         # @default -- inferred
         allowCrossNamespaceImport: null
-        # -- Dashboard API Version (v2 or v2beta1)
-        apiTarget: "dashboard.grafana.app/v2"
 
       # -- (h5) Grafana folders the dashboards are filed into.
       # @notationType -- (sectionstart) Grafana folders.
@@ -1593,13 +1612,6 @@ dashboards:
             # folderUID: "3e7b4fe1-ca90-4125-a8ab-06567c1971b5"
           title: "Meta Observability"
 
-    datadog:
-      # -- Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
-      enabled: false
-  # -- List of dashboard patterns to render
-  selected:
-    - env-*
-    - infra-*
 
 config:
   # -- (h4) Configuration for rules
@@ -1974,6 +1986,30 @@ cleanup:
     # to delete the resources yourself before `helm uninstall`, or to clear the
     # finalizers by hand afterwards.
     enabled: true
+
+    # -- Which resources the hook deletes: `instance` or `release`.
+    # @raw
+    #
+    # **`instance`** (the default) selects everything pointed at the `Grafana`
+    # this release created, by the labels in `connections.grafana.labels` — the
+    # same ones the resources carry and their `instanceSelector` matches.
+    #
+    # That deliberately reaches beyond this release. The dashboards ship as
+    # `materialize-monitoring-dashboards`, a release of its own whose
+    # `GrafanaManifest`s carry grafana-operator's finalizer, and nothing in that
+    # release's teardown runs when this one is being removed. Take the operator
+    # away without clearing them and they wedge in `Terminating` with no remover.
+    # It is still bounded: it cannot reach resources aimed at a Grafana this
+    # release did not create.
+    #
+    # **`release`** is the narrow form — only what this release created. Correct
+    # when grafana-operator is not ours to remove, since it survives the
+    # uninstall and clears the rest itself, and the escape hatch if the broader
+    # sweep ever reaches something it should not.
+    #
+    # Only `instance` consults `mzmon.grafanaOperator.enabled`; with the operator
+    # unmanaged here, both scopes fall back to the release.
+    scope: instance
 
     # -- Resource types to delete, as `<resource>.<group>`.
     # Fully qualified on purpose: a bare `grafanamanifests` resolves through
@@ -3151,14 +3187,43 @@ loki:
   chunksCache:
     allocatedMemory: 2048
     priorityClassName: monitoring-scalable
+    service:
+      # -- Keep the cache out of the subchart's ServiceMonitor and into this
+      # chart's plaintext one. See the `plaintext exporters` note under
+      # `monitoring.serviceMonitor` below.
+      labels:
+        prometheus.io/service-monitor: "false"
+        monitoring.materialize.cloud/scrape-scheme: plaintext
 
   # -- (h5) Query results cache (memcached).
   resultsCache:
     priorityClassName: monitoring-scalable
+    service:
+      # -- Keep the cache out of the subchart's ServiceMonitor, as above.
+      labels:
+        prometheus.io/service-monitor: "false"
+        monitoring.materialize.cloud/scrape-scheme: plaintext
 
   monitoring:
     serviceMonitor:
       # -- Enable a ServiceMonitor for the loki microservices.
+      # @raw
+      #
+      # **Plaintext exporters are excluded from it.** The subchart renders a
+      # single ServiceMonitor covering everything it labels, with one `scheme`
+      # shared by every target. Three of those targets never speak TLS whatever
+      # Loki is configured to do — the canary's own `/metrics` server, and the
+      # two memcached exporters — so under `profiles/mtls`, which sets
+      # `scheme: https` here, all three fail the scrape and their series vanish.
+      # For the canary that means the end-to-end write→read check goes quiet
+      # rather than red, which is the worst way for a canary to fail.
+      #
+      # Each of the three therefore carries
+      # `prometheus.io/service-monitor: "false"`, which the subchart's selector
+      # excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
+      # opt-in that this chart's own monitor selects on
+      # (`templates/scrapers/monitor-loki-plaintext.yaml`). The split is
+      # unconditional so the two modes share one code path.
       enabled: true
       jobPrefix: loki/
 
@@ -3170,6 +3235,14 @@ loki:
     kind: Deployment
     lokiurl: loki-query-frontend:3100
     push: false
+    service:
+      # -- Keep the canary out of the subchart's ServiceMonitor and into this
+      # chart's plaintext one. Its `/metrics` server is plaintext even when
+      # `-tls` is set, since that flag configures the client it uses to reach
+      # Loki. See `monitoring.serviceMonitor` above.
+      labels:
+        prometheus.io/service-monitor: "false"
+        monitoring.materialize.cloud/scrape-scheme: plaintext
     # -- Scheduling priority. See the Priority classes section.
     # @raw
     # Set explicitly because the canary reaches neither of the two keys that

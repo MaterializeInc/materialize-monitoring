@@ -1,0 +1,1571 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Meta-monitoring queries for the log store itself.
+
+description: |
+  Is the log store healthy — and if not, which half of it broke.
+
+  Every other logs query in this repository *reads* Loki. These watch it. That
+  makes this file the one place where the monitoring stack is the subject rather
+  than the instrument, and it changes what a reading means: a blank panel here is
+  itself a finding, because the thing that would have reported the problem is the
+  thing that is down.
+
+  The audience is whoever operates the monitoring stack. Loki's vocabulary is not
+  assumed — a *stream* is one label-set's worth of lines, a *chunk* is a stream's
+  lines batched up for storage, and the write path turns the first into the
+  second before handing it to object storage. Where a panel needs one of those to
+  be legible, its description says so.
+
+  ## Two unrelated `loki_` metric families
+
+  The prefix is shared and the producers are not. Reading one for the other is
+  the single easiest mistake to make here, and nothing about the metric name
+  warns you.
+
+  * **The log store.** `job=~"loki/.*"`, and everything this file's panels draw.
+    391 metric names on a reference install.
+  * **Alloy's `loki.*` components.** `job=~"alloy-.*"`, 43 names, all under
+    `loki_write_*`, `loki_source_{file,api,journal}_*`, `loki_process_*` and
+    `loki_relabel_*`. These describe the *collector* — what Alloy read off disk
+    and shipped — not the store that received it.
+
+  Only `loki_experimental_features_in_use_total` is emitted by both.
+
+  The two are kept apart by `app_instance="loki"`, which both of this chart's
+  Loki ServiceMonitors stamp on every target they collect and nothing else sets.
+  A `job=~"loki/.*"` matcher would work too, but it hardcodes the subchart's
+  `jobPrefix`, which is a value an operator may change.
+
+  The Alloy-side family gets `infra.loki.pipeline.*` below — queries with no
+  dashboard behind them. That is deliberate; see "Queries with no panel".
+
+  ## Scoping
+
+  Two variables, both written literally rather than reaching through a render
+  parameter, on the same precedent as `$nodeList` in `node-health.yaml` and
+  `$namespaceList` in `infra-networking.yaml`: a meta-monitoring dashboard's
+  scope is the monitoring stack's own, which no Materialize-shaped parameter
+  describes.
+
+  * **`$lokiNamespace`** — where Loki runs. Every metric query here carries it,
+    so two `materialize-monitoring` releases sharing a cluster do not read as
+    one store.
+  * **`$lokiComponent`** — which Loki process. Discovered from the *metrics*
+    side, off the `container` label, and applied to the log queries as
+    `component=~"$lokiComponent"` as well.
+
+  One picker across both engines is a deliberate call, because the two label sets
+  agree by construction: `container` on a metric and `component` on a log line
+  are both the Kubernetes container name. The one value that exists on the
+  metrics side and not the logs side is `exporter`, the memcached sidecar, which
+  produces no log lines at all — so selecting it empties the log feeds, which is
+  the honest answer rather than a bug.
+
+  ## Plaintext exporters
+
+  Three of Loki's targets never serve TLS, whatever Loki itself is configured to
+  do: the canary's own `/metrics`, and the two memcached exporters. They are
+  collected by a separate ServiceMonitor for that reason
+  (`templates/scrapers/monitor-loki-plaintext.yaml`), and `infra.loki.health.up`
+  is the panel that says whether that split is working. It was not, before this
+  file existed: under `profiles/mtls` all three were scraped over HTTPS, failed,
+  and vanished — taking the end-to-end canary with them.
+
+  ## Queries with no panel
+
+  `infra.loki.pipeline.*` is referenced by no dashboard. The registry is not only
+  a dashboard source — it is also what `gen-metric-tiers` reads to decide which
+  metrics survive the gateway's per-destination allowlist, and a metric no query
+  names is in no tier and reaches no metered backend.
+
+  Metric *overrides* cannot stand in for this. An override re-weights a metric
+  some query already references; it cannot introduce one. So a family worth
+  keeping has to be named by a query even when nothing draws it, and these are
+  written with the descriptions a reader of the metrics reference would want.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- overview: is the store healthy end to end ------------------------------
+  - id: infra.loki.health.canary.missing
+    stability: experimental
+    description:
+      summary: |
+        Log lines the canary wrote to Loki and then could not read back, per
+        second.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. This is the one signal here that is end-to-end: the
+        canary writes a line on a loop and reads it back, so a non-zero rate
+        means the write path, the read path or the storage between them is
+        losing data — regardless of what every other panel reports.
+      notes: |
+        A burst at startup is not a finding: entries written before the canary's
+        own scrape target existed are counted missing once and never recovered.
+        Read the sustained level, not the first few minutes after a rollout.
+    promQL: |
+      sum(
+        rate(
+          loki_canary_missing_entries_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.health.canary.entries
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second the canary has written and successfully read back.
+      nominal: |
+        A flat, non-zero line. The canary writes at a fixed interval, so this is
+        a constant when the store is working.
+      unhealthy: |
+        Zero, or absent. Absent is the worse reading of the two: it means the
+        canary is not being collected, so the missing-entry panel beside it is
+        reporting zero because it has nothing to report rather than because
+        nothing is wrong.
+    promQL: |
+      sum(
+        rate(
+          loki_canary_entries_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.health.canary.latency
+    stability: experimental
+    description:
+      summary: |
+        How long the canary waited between writing a line and reading it back,
+        at the median and the 99th percentile.
+      nominal: |
+        Under a second at p99. The canary queries a tiny time range for a single
+        stream, so this is close to the floor of what the read path can do.
+      unhealthy: |
+        Seconds, or a p99 pulling away from the median. Both point at the read
+        path rather than the write path — a line that arrived slowly would show
+        up as missing first.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              loki_canary_response_latency_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.99,
+          sum by (le) (
+            rate(
+              loki_canary_response_latency_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  - id: infra.loki.health.canary.losses
+    stability: experimental
+    description:
+      summary: |
+        Canary lines that went missing, split by *when* they went missing.
+      nominal: Zero on both series.
+      unhealthy: |
+        Either series non-zero — and which one is the diagnosis rather than the
+        total.
+
+        **Missing on write** means a line was written and never became readable:
+        the write path, or the store losing it before it was durable.
+
+        **Missing on re-read** means a line was readable once and no longer is.
+        Nothing in the write path can cause that, so it is retention, compaction
+        or object storage — and it is the only signal here that notices data
+        disappearing hours after it landed.
+      notes: |
+        A burst on the first series at startup is not a finding: entries written
+        before the canary's own scrape target existed are counted missing once
+        and never recovered. Read the sustained level, not the first few minutes
+        after a rollout.
+
+        The re-read series comes from the canary re-querying a sample of its own
+        older lines on a schedule, which is what makes it independent of the
+        ingest-time check rather than a lagging copy of it.
+    promQL:
+      - |
+        sum(
+          rate(
+            loki_canary_missing_entries_total{
+              app_instance="loki",
+              namespace=~"$lokiNamespace"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            loki_canary_spot_check_missing_entries_total{
+              app_instance="loki",
+              namespace=~"$lokiNamespace"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.loki.health.up
+    stability: experimental
+    description:
+      summary: |
+        Whether each Loki target is being scraped successfully, one series per
+        component.
+      nominal: 1 for every component.
+      unhealthy: |
+        0 for any of them. A target at 0 is reachable but failing — most often a
+        scheme mismatch, where the scrape speaks HTTPS to a plaintext listener or
+        the reverse.
+      notes: |
+        Worth reading before anything else on this dashboard. A component at 0
+        here makes every other panel about that component empty, and an empty
+        panel is indistinguishable from a healthy quiet one.
+
+        The canary and the two memcached exporters are collected by a separate
+        ServiceMonitor precisely because they never serve TLS; if those three are
+        the ones at 0, that split is what to check.
+    instant: true
+    promQL: |
+      max by (container, service) (
+        up{
+          app_instance="loki",
+          namespace=~"$lokiNamespace",
+          container=~"$lokiComponent"
+        }
+      )
+
+  - id: infra.loki.health.request_errors
+    stability: experimental
+    description:
+      summary: |
+        The share of Loki API requests returning a 5xx, as a proportion of all
+        requests.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained above a fraction of a percent. Read it beside the
+        per-route latency panel: a 5xx rate that tracks a latency spike is
+        saturation, while one that does not is usually storage or configuration.
+      notes: |
+        `status_code` on this metric carries the string `error` as well as
+        numeric codes, for failures that never reached an HTTP status. Those are
+        counted separately by `infra.loki.health.request_failures`; this one is
+        the HTTP-level view.
+    promQL: |
+      sum(
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent",
+            status_code=~"5.."
+          }
+          %%{interval}
+        )
+      )
+      /
+      sum(
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.health.client_errors
+    stability: experimental
+    description:
+      summary: |
+        The share of Loki API requests rejected as the caller's fault — a 4xx —
+        as a proportion of all requests.
+      nominal: |
+        A little above zero, and flat. Something is always asking for a label
+        that has aged out or cancelling a query it no longer wants, so unlike the
+        5xx panel beside it, zero is not the expected reading.
+      unhealthy: |
+        A step. Read it as a change rather than as a level: 4xx is what a
+        *rejected write* looks like from the client's side, so this moves before
+        the discard counters on the Writes tab do — and it moves for the cases
+        those counters never see, where the request was refused before anything
+        was parsed.
+
+        A sustained climb with no deploy behind it is usually a limit the cluster
+        has grown into: per-stream rate limits, a maximum query length, a label
+        budget.
+      notes: |
+        Deliberately beside the 5xx share rather than folded into it. The two
+        answer different questions — 5xx is the store failing, 4xx is the store
+        refusing — and adding them together produces a number that means neither.
+    promQL: |
+      sum(
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent",
+            status_code=~"4.."
+          }
+          %%{interval}
+        )
+      )
+      /
+      sum(
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.health.request_failures
+    stability: experimental
+    description:
+      summary: |
+        Requests per second that failed without producing an HTTP status, split
+        by component.
+      nominal: Zero.
+      unhealthy: |
+        Non-zero. These are the failures no 5xx panel sees — a connection that
+        died, a gRPC call that never completed — so a store can look clean on
+        status codes and be visibly broken here.
+    promQL: |
+      sum by (container) (
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container=~"$lokiComponent",
+            status_code="error"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.health.request_latency
+    stability: experimental
+    description:
+      summary: |
+        99th-percentile Loki API latency, split by route.
+      nominal: |
+        Push routes in the low tens of milliseconds; query routes higher and much
+        more variable, since their cost follows the range being asked for.
+      unhealthy: |
+        A route climbing on its own. Which route it is says where to look next —
+        a push route points at the Writes tab, a query route at Reads.
+      notes: |
+        Tail routes are excluded: a tail is a long-lived streaming connection, so
+        its "latency" is how long someone left a live log view open and swamps
+        every other route on the panel.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, route) (
+          rate(
+            loki_request_duration_seconds_bucket{
+              app_instance="loki",
+              namespace=~"$lokiNamespace",
+              container=~"$lokiComponent",
+              route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.loki.health.restarts
+    stability: experimental
+    description:
+      summary: |
+        Container restarts across the Loki components over the dashboard's time
+        range.
+      nominal: Zero.
+      unhealthy: |
+        Any restart that was not a deliberate rollout. An ingester restart is the
+        one worth reading first: it replays its write-ahead log on the way back
+        up, and until that finishes it is not accepting writes.
+    instant: true
+    promQL: |
+      sum by (pod) (
+        increase(
+          kube_pod_container_status_restarts_total{
+            namespace=~"$lokiNamespace",
+            pod=~"loki-.*"
+          }
+          %%{range}
+        )
+      ) > 0
+
+  # --- writes: distributor -> ingester -> storage ------------------------------
+  - id: infra.loki.write.lines
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second arriving at the distributor — everything the cluster
+        is sending Loki.
+      nominal: |
+        A baseline that tracks how much the cluster is doing. Steps up and down
+        follow deployments and workload changes.
+      unhealthy: |
+        A drop to zero. The collectors stopped, or cannot reach the distributor;
+        either way nothing is being recorded from that moment on and the gap is
+        permanent.
+    promQL: |
+      sum(
+        rate(
+          loki_distributor_lines_received_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.write.bytes
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second arriving at the distributor, before compression.
+      nominal: |
+        Proportional to the line rate beside it. The ratio is the average line
+        length and is usually stable.
+      unhealthy: |
+        Bytes climbing while lines do not. Something started logging much longer
+        lines — a stack trace in a loop, or a payload dumped into a log message —
+        and it will show up in storage cost before it shows up anywhere else.
+    promQL: |
+      sum(
+        rate(
+          loki_distributor_bytes_received_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.write.discarded
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second Loki accepted the connection for and then threw
+        away, split by the reason it gave.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. This is silent data loss — the collector believes the
+        line was delivered. The reason label is the whole diagnosis:
+        `rate_limited` means the tenant limits are below what the cluster
+        produces, `per_stream_rate_limit` means one noisy stream rather than the
+        whole cluster, `greater_than_max_sample_age` means lines arrived too late
+        to be filed, and `out_of_order` means a collector's clock or batching is
+        sending them shuffled.
+      notes: |
+        Deliberately unscoped by component: discards are a distributor-side
+        verdict and splitting them by anything but reason hides the reason.
+    promQL: |
+      sum by (reason) (
+        rate(
+          loki_discarded_samples_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.write.discarded_bytes
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second discarded, split by reason — the same losses as the line
+        panel, weighted by how much was lost.
+      nominal: Zero.
+      unhealthy: |
+        Non-zero. Read beside the line count: a large byte rate from few lines is
+        a handful of very large messages being rejected, which is usually a
+        single misbehaving workload rather than a cluster-wide limit.
+    promQL: |
+      sum by (reason) (
+        rate(
+          loki_discarded_bytes_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.write.streams
+    stability: experimental
+    description:
+      summary: |
+        Active streams held in memory by the ingesters. A stream is one distinct
+        label-set — one container's lines at one level, say.
+      nominal: |
+        Stable, and proportional to how many workloads the cluster runs.
+      unhealthy: |
+        Steady growth that does not level off. That is label cardinality, and it
+        is the failure mode that ends with ingesters out of memory: some label is
+        carrying a value that is different on every line, so every line opens a
+        stream of its own.
+      notes: |
+        The usual culprits are a pod name, a request id or a timestamp promoted
+        to a label. The fix is in the collector's relabel rules, not in Loki.
+    promQL: |
+      sum by (pod) (
+        loki_ingester_memory_streams{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.write.chunks_in_memory
+    stability: experimental
+    description:
+      summary: |
+        Chunks each ingester is holding before flushing them to object storage.
+      nominal: |
+        Proportional to the stream count, and flat once the cluster is in a
+        steady state.
+      unhealthy: |
+        Growth while the flush rate is flat. The ingesters are filling chunks
+        faster than they can write them out, which ends in memory pressure — the
+        flush-failure panel says whether storage is the reason.
+    promQL: |
+      sum by (pod) (
+        loki_ingester_memory_chunks{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.write.chunks_flushed
+    stability: experimental
+    description:
+      summary: |
+        Chunks per second the ingesters have written out to object storage.
+      nominal: |
+        A steady rate that tracks ingest volume.
+      unhealthy: |
+        Zero while lines are still arriving. Nothing is reaching durable storage,
+        so everything ingested since is held only in ingester memory and is lost
+        if they restart.
+    promQL: |
+      sum(
+        rate(
+          loki_ingester_chunks_flushed_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.write.chunk_utilization
+    stability: experimental
+    description:
+      summary: |
+        How full a chunk was when it was flushed, at the median and 10th
+        percentile. 1.0 is a chunk closed because it filled up.
+      nominal: |
+        A median near 1.0. Full chunks are cheap to store and cheap to read.
+      unhealthy: |
+        A median well below 0.5. Chunks are being closed by the idle timeout
+        rather than by filling, which means many low-traffic streams — the same
+        cardinality problem the stream-count panel shows, seen from the storage
+        side. Every such chunk costs a full object-store write and a full index
+        entry for very few lines.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              loki_ingester_chunk_utilization_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.10,
+          sum by (le) (
+            rate(
+              loki_ingester_chunk_utilization_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  - id: infra.loki.write.chunk_age
+    stability: experimental
+    description:
+      summary: |
+        How old a chunk was when it was flushed, at the median and 99th
+        percentile.
+      nominal: |
+        A median at or a little under the configured maximum chunk age — the
+        default is an hour, so a median around 45 minutes is ordinary.
+      unhealthy: |
+        A median far below the maximum, which means chunks are closing because
+        they filled rather than because they aged; that is fine on its own and
+        only interesting beside the utilization panel. The reading that matters
+        is the reverse — a p99 pinned at the maximum with low utilization, which
+        is the idle-stream case again.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              loki_ingester_chunk_age_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.99,
+          sum by (le) (
+            rate(
+              loki_ingester_chunk_age_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  - id: infra.loki.write.wal_disk
+    stability: experimental
+    description:
+      summary: |
+        How much of its write-ahead log volume each ingester has used, as a
+        percentage.
+      nominal: |
+        Low and flat. The WAL is a replay buffer, not an archive; it is truncated
+        as chunks are flushed.
+      unhealthy: |
+        Climbing toward 100. The WAL grows when flushes are not keeping up, and
+        at full it stops accepting writes entirely — see the disk-full panel,
+        which counts the times that has already happened.
+    promQL: |
+      max by (pod) (
+        loki_ingester_wal_disk_usage_percent{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.write.wal_disk_full
+    stability: experimental
+    description:
+      summary: |
+        Times an ingester could not write to its write-ahead log because the
+        volume was full.
+      nominal: Zero.
+      unhealthy: |
+        Any occurrence. Writes are being refused, and the ingester cannot replay
+        what it did not record — so a restart after this loses data that was
+        accepted before it.
+    promQL: |
+      sum by (pod) (
+        increase(
+          loki_ingester_wal_disk_full_failures_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{range}
+        )
+      )
+
+  - id: infra.loki.write.wal_replay
+    stability: experimental
+    description:
+      summary: |
+        Whether an ingester is currently replaying its write-ahead log. 1 means
+        replaying.
+      nominal: |
+        Zero, except for a few minutes after an ingester restarts.
+      unhealthy: |
+        Sustained, or repeated. A replaying ingester is not serving writes, and
+        one that is always replaying is crash-looping — read the restart panel on
+        the Overview tab beside it.
+    promQL: |
+      max by (pod) (
+        loki_ingester_wal_replay_active{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.write.push_latency
+    stability: experimental
+    description:
+      summary: |
+        How long a push request took, at the median and 99th percentile.
+      nominal: |
+        Tens of milliseconds. A push is an in-memory append on the ingesters; it
+        does not wait for object storage.
+      unhealthy: |
+        Climbing. The collectors will retry, then buffer, then drop — so a slow
+        push path becomes lost lines at the *collector* rather than an error
+        here.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              loki_request_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace",
+                route=~"loki_api_v1_push|api_prom_push|/logproto.Pusher/Push"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.99,
+          sum by (le) (
+            rate(
+              loki_request_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace",
+                route=~"loki_api_v1_push|api_prom_push|/logproto.Pusher/Push"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  # --- reads: query path -------------------------------------------------------
+  - id: infra.loki.read.query_rate
+    stability: experimental
+    description:
+      summary: |
+        Queries per second reaching the query frontend, split by the kind of
+        request.
+      nominal: |
+        Low and bursty on a cluster nobody is actively investigating — the canary
+        and any alerting rules are the floor.
+      unhealthy: |
+        Not an unhealthy signal on its own. It is here as the denominator: every
+        other panel on this tab is only alarming relative to how much was being
+        asked of the store.
+    promQL: |
+      sum by (route) (
+        rate(
+          loki_request_duration_seconds_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace",
+            container="query-frontend",
+            route=~"loki_api_v1_.*"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.read.query_latency
+    stability: experimental
+    description:
+      summary: |
+        End-to-end query latency at the query frontend, at the median, 90th and
+        99th percentile.
+      nominal: |
+        Sub-second at the median. The tail follows the range being queried, so a
+        wide p99 is normal on a cluster where someone is looking at a week.
+      unhealthy: |
+        A median climbing into seconds. That is the reading a person notices as
+        "Grafana is slow", and the queue and cache panels below say which half of
+        the read path to blame.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              loki_request_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace",
+                container="query-frontend",
+                route=~"loki_api_v1_.*",
+                route!~"(?i).*tail.*"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.90,
+          sum by (le) (
+            rate(
+              loki_request_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace",
+                container="query-frontend",
+                route=~"loki_api_v1_.*",
+                route!~"(?i).*tail.*"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.99,
+          sum by (le) (
+            rate(
+              loki_request_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace",
+                container="query-frontend",
+                route=~"loki_api_v1_.*",
+                route!~"(?i).*tail.*"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  - id: infra.loki.read.queue_duration
+    stability: experimental
+    description:
+      summary: |
+        How long a query sub-request waited in the scheduler's queue before a
+        querier picked it up, at the median and 99th percentile.
+      nominal: |
+        Near zero. A query that waits is a query with no querier free.
+      unhealthy: |
+        Anything sustained. This is the panel that distinguishes "the store is
+        slow" from "the store is busy": queue time means there is not enough
+        querier capacity for the concurrency being asked of it, and adding
+        queriers fixes it. Latency without queue time is the queriers themselves
+        being slow, and adding more will not help.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              loki_query_scheduler_queue_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.99,
+          sum by (le) (
+            rate(
+              loki_query_scheduler_queue_duration_seconds_bucket{
+                app_instance="loki",
+                namespace=~"$lokiNamespace"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  - id: infra.loki.read.queries_in_flight
+    stability: experimental
+    description:
+      summary: |
+        Queries the frontend is currently working on.
+      nominal: |
+        A low number that returns to zero between investigations.
+      unhealthy: |
+        A floor that never returns to zero. Something is issuing queries on a
+        loop — most often a dashboard left open on a short refresh over a wide
+        range, which is also the cheapest thing on this list to fix.
+    promQL: |
+      sum(
+        loki_query_frontend_queries_in_progress{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.read.bytes_processed
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second of stored log data the queriers had to decompress and
+        scan to answer the queries being asked.
+      nominal: |
+        Small relative to how much is stored. A well-shaped query narrows by
+        label first, so it reads a fraction of the range it covers.
+      unhealthy: |
+        Large and sustained. Queries are scanning far more than they return,
+        which is what a line filter over a wide label selection does — the cost
+        lands on the queriers and on object-storage egress rather than on the
+        person who wrote the query.
+    promQL: |
+      sum(
+        rate(
+          loki_logql_querystats_bytes_processed_per_seconds_sum{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.read.cache_requests
+    stability: experimental
+    description:
+      summary: |
+        Cache lookups per second, split by which cache — chunks, query results
+        and the index each have their own.
+      nominal: |
+        Tracks query volume.
+      unhealthy: |
+        Not alarming by itself; it is the denominator for the hit-rate panel
+        beside it.
+    promQL: |
+      sum by (name) (
+        rate(
+          loki_cache_fetched_keys{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.read.cache_hit_rate
+    stability: experimental
+    description:
+      summary: |
+        The share of cache lookups that were served from cache, split by which
+        cache.
+      nominal: |
+        High for the results cache on a dashboard being refreshed; lower and much
+        more variable for chunks, which depends entirely on whether people are
+        re-reading the same time range.
+      unhealthy: |
+        A collapse to near zero on the chunk cache while query latency climbs.
+        Either the cache is too small for the working set or the memcached pods
+        are unhealthy — the Overview tab's scrape panel says whether they are
+        even up.
+    promQL: |
+      sum by (name) (
+        rate(
+          loki_cache_hits{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+      /
+      sum by (name) (
+        rate(
+          loki_cache_fetched_keys{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.read.memcached_memory
+    stability: experimental
+    description:
+      summary: |
+        How much of its allotted memory each memcached cache is holding, as a
+        proportion of its limit.
+      nominal: |
+        Close to 1.0 once the cache has warmed. A cache at its limit is a cache
+        doing its job — memcached evicts the oldest entries and keeps going.
+      unhealthy: |
+        Far below 1.0 long after a restart, which means the cache is bigger than
+        the working set and the memory could be given back. The alarming
+        direction is not high usage but a rising eviction rate alongside a
+        falling hit rate, which says the cache is too small.
+      notes: |
+        Depends on the memcached exporter sidecar, which serves plaintext and is
+        collected by this chart's separate plaintext ServiceMonitor. If this
+        panel is empty, check the scrape panel on the Overview tab first.
+    promQL: |
+      sum by (service) (
+        memcached_current_bytes{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+      /
+      sum by (service) (
+        memcached_limit_bytes{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  # --- storage: object store, index, compaction, retention ---------------------
+  - id: infra.loki.store.operations
+    stability: experimental
+    description:
+      summary: |
+        Object-storage operations per second, split by kind.
+      nominal: |
+        Steady `upload` traffic from the ingesters flushing chunks, and `get`
+        traffic that follows query volume.
+      unhealthy: |
+        A collapse to zero on `upload` while ingest continues — nothing is
+        reaching durable storage. Or `get` traffic far out of proportion to
+        query volume, which means the caches are not doing their job.
+    promQL: |
+      sum by (operation) (
+        rate(
+          loki_objstore_bucket_operations_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.store.failures
+    stability: experimental
+    description:
+      summary: |
+        Object-storage operations per second that failed, split by kind.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. Loki retries, so a low failure rate is survivable and
+        a rising one is not: failed uploads back up into ingester memory and then
+        into the write-ahead log, and failed gets are queries that return
+        incomplete results without saying so.
+      notes: |
+        Credentials and bucket policy are the usual causes, and both fail
+        completely rather than intermittently — a rate that starts at zero and
+        jumps to match the operation rate is almost always an expired or rotated
+        credential.
+    promQL: |
+      sum by (operation) (
+        rate(
+          loki_objstore_bucket_operation_failures_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.store.latency
+    stability: experimental
+    description:
+      summary: |
+        99th-percentile object-storage operation latency, split by kind.
+      nominal: |
+        Tens of milliseconds for a bucket in the same region.
+      unhealthy: |
+        Hundreds of milliseconds or seconds. Slow `get` operations surface as
+        slow queries; slow `upload` operations surface as ingester memory growth
+        long before they surface as errors.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, operation) (
+          rate(
+            loki_objstore_bucket_operation_duration_seconds_bucket{
+              app_instance="loki",
+              namespace=~"$lokiNamespace"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.loki.store.index_sync
+    stability: experimental
+    description:
+      summary: |
+        Index table sync and upload operations per second between the shippers
+        and object storage.
+      nominal: |
+        A low steady rate. The index is written in periodic tables rather than
+        continuously.
+      unhealthy: |
+        Zero while ingest continues. New data is being stored without its index
+        being published, so queries will not find it — the data is not lost, but
+        it is not reachable either.
+    promQL:
+      - |
+        sum(
+          rate(
+            loki_tsdb_shipper_tables_sync_operation_total{
+              app_instance="loki",
+              namespace=~"$lokiNamespace"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            loki_tsdb_shipper_tables_upload_operation_total{
+              app_instance="loki",
+              namespace=~"$lokiNamespace"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.loki.store.index_wait
+    stability: experimental
+    description:
+      summary: |
+        How long a query waited for an index table to be downloaded before it
+        could run, at the 99th percentile.
+      nominal: |
+        Near zero once the tables a query needs are cached locally.
+      unhealthy: |
+        Seconds. Queries over older ranges pay this on the first read, so a
+        sustained value means index tables are being evicted and re-fetched —
+        usually the index gateway's disk being too small for the retention
+        period.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le) (
+          rate(
+            loki_tsdb_shipper_query_wait_time_seconds_bucket{
+              app_instance="loki",
+              namespace=~"$lokiNamespace"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.loki.store.retention_age
+    stability: experimental
+    description:
+      summary: |
+        How long ago the compactor last finished applying retention
+        successfully.
+      nominal: |
+        Under the configured retention interval — a couple of hours on the
+        default schedule.
+      unhealthy: |
+        Growing without bound. Retention has stopped, so nothing is being
+        deleted and the bucket grows until something else notices. This fails
+        quietly: no query breaks, and the only symptom is the storage bill.
+      notes: |
+        Reads a "last successful run" timestamp, so it counts up between runs and
+        drops to near zero each time one completes. A sawtooth is the healthy
+        shape, not a flat line.
+    instant: true
+    promQL: |
+      time()
+      -
+      max(
+        loki_compactor_apply_retention_last_successful_run_timestamp_seconds{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.store.compaction_age
+    stability: experimental
+    description:
+      summary: |
+        How long ago the compactor last finished compacting index tables
+        successfully.
+      nominal: |
+        Under the compaction interval, with the same sawtooth as retention.
+      unhealthy: |
+        Growing without bound. Uncompacted index tables make every query over the
+        affected range slower, and the effect accumulates — this is the usual
+        cause of a store that got gradually slower over weeks with no single
+        change to blame.
+    instant: true
+    promQL: |
+      time()
+      -
+      max(
+        loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{
+          app_instance="loki",
+          namespace=~"$lokiNamespace"
+        }
+      )
+
+  - id: infra.loki.store.compaction_runs
+    stability: experimental
+    description:
+      summary: |
+        Compactor runs over the dashboard's time range, split by outcome.
+      nominal: |
+        A steady count of successes and no failures.
+      unhealthy: |
+        Any failures, or no runs at all. The compactor is a singleton, so "no
+        runs" and "compactor is not running" look identical here — read it beside
+        the scrape panel on the Overview tab.
+    promQL: |
+      sum by (status) (
+        increase(
+          loki_boltdb_shipper_compact_tables_operation_total{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+          %%{range}
+        )
+      )
+
+  - id: infra.loki.store.deletes_pending
+    stability: experimental
+    description:
+      summary: |
+        Delete requests waiting to be processed, and how old the oldest one is.
+      nominal: |
+        Zero pending on a cluster where nobody has asked for a deletion.
+      unhealthy: |
+        A request that stays pending. Deletions are processed by the compactor on
+        its own schedule, so a growing age here means the compactor is not
+        running — and on an install where deletion is a compliance obligation,
+        that is the panel that says the obligation is not being met.
+    instant: true
+    promQL:
+      - |
+        sum(
+          loki_compactor_pending_delete_requests_count{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+        )
+      - |
+        max(
+          loki_compactor_oldest_pending_delete_request_age_seconds{
+            app_instance="loki",
+            namespace=~"$lokiNamespace"
+          }
+        )
+
+  # --- logs: what Loki itself said ---------------------------------------------
+  - id: infra.loki.logs.stream
+    stability: experimental
+    description:
+      summary: |
+        Loki's own log feed, newest first, for the selected components and
+        levels.
+      notes: |
+        Reading Loki's logs out of Loki works right up until the moment it
+        matters most. If the store is broken badly enough, this panel is empty
+        for the same reason everything else is — and that is the point at which
+        `kubectl logs` is the tool, not this dashboard.
+
+        An empty search matches every line rather than none, so the panel is
+        useful before anything is typed.
+    logQL: |
+      {
+        app="loki",
+        namespace=~"$lokiNamespace",
+        component=~"$lokiComponent",
+        %%{mzLogLevelFilter}
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.loki.logs.warnings.stream
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines from Loki, newest first.
+      nominal: |
+        Quiet. Loki is talkative at INFO and reticent above it.
+      unhealthy: |
+        A steady stream. Read the component: an ingester complaining is a write
+        path problem, a querier complaining is usually a query someone ran, and
+        a compactor complaining is the storage tab's business.
+      notes: |
+        Independent of the level picker, like the other warning feeds in this
+        repository: this panel answers "is anything wrong", and narrowing the
+        selection to INFO would silently zero it.
+    logQL: |
+      {
+        app="loki",
+        namespace=~"$lokiNamespace",
+        component=~"$lokiComponent",
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.loki.logs.rate.by_component
+    stability: experimental
+    description:
+      summary: |
+        Loki's own log lines per second, split by component.
+      nominal: |
+        A steady baseline dominated by the canary, which is expected — it exists
+        to write and read a line on a loop, and says so each time.
+      unhealthy: |
+        A sharp step up confined to one component. That is a single process in a
+        retry loop, and it is the shape that precedes most of the failures the
+        other tabs measure.
+    logQL: |
+      sum by (component) (
+        rate(
+          {
+            app="loki",
+            namespace=~"$lokiNamespace",
+            component=~"$lokiComponent",
+            %%{mzLogLevelFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: infra.loki.logs.warnings.rate
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines per minute from Loki, across the selected
+        components.
+      nominal: Zero, or close to it.
+      unhealthy: |
+        A sustained non-zero rate. The feed below says which component and why.
+    logQL: |
+      sum(
+        rate(
+          {
+            app="loki",
+            namespace=~"$lokiNamespace",
+            component=~"$lokiComponent",
+            level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+          }
+            %%{mzLogSearchFilter}
+          [1m]
+        )
+      ) * 60
+
+  # --- the collector side: no panels, see "Queries with no panel" --------------
+  - id: infra.loki.pipeline.sent
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second Alloy successfully delivered to a Loki endpoint.
+      nominal: |
+        Close to the distributor's received-line rate. A persistent gap between
+        the two means lines are being lost between the collector and the store.
+      unhealthy: |
+        Zero while the collectors are running. Alloy is reading logs and cannot
+        deliver them; whatever it has buffered will be dropped when the buffer
+        fills.
+      notes: |
+        Alloy-side, not Loki-side — `job=~"alloy-.*"`. See the two-families note
+        at the top of this file. No dashboard draws this today; it is here so the
+        family reaches the metric tiers and the metrics reference.
+    promQL: |
+      sum by (job) (
+        rate(
+          loki_write_sent_entries_total%%{interval}
+        )
+      )
+
+  - id: infra.loki.pipeline.dropped
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second Alloy gave up on delivering, split by reason.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. This is the collector-side twin of Loki's discard
+        counter, and between them they account for every line that was collected
+        and never stored. A `reason` of `rate_limited` here and a matching
+        discard there are the same event seen from both ends.
+      notes: |
+        Alloy-side. No dashboard draws it; see the note on
+        `infra.loki.pipeline.sent`.
+    promQL: |
+      sum by (job, reason) (
+        rate(
+          loki_write_dropped_entries_total%%{interval}
+        )
+      )
+
+  - id: infra.loki.pipeline.retries
+    stability: experimental
+    description:
+      summary: |
+        Delivery batches per second Alloy had to retry.
+      nominal: Zero, or a background trickle.
+      unhealthy: |
+        A sustained rate. Retries precede drops: the collector is buffering
+        because the store is refusing or slow, and it will start discarding when
+        the buffer fills. This is the earliest warning of a write path in
+        trouble, and it fires on the collector rather than on the store.
+      notes: |
+        Alloy-side. No dashboard draws it; see the note on
+        `infra.loki.pipeline.sent`.
+    promQL: |
+      sum by (job) (
+        rate(
+          loki_write_batch_retries_total%%{interval}
+        )
+      )
+
+  - id: infra.loki.pipeline.propagation
+    stability: experimental
+    description:
+      summary: |
+        How long a line took to get from Alloy reading it to Loki acknowledging
+        it, at the 99th percentile.
+      nominal: |
+        A few seconds. The collector batches before sending, so the floor is the
+        batch interval rather than zero.
+      unhealthy: |
+        Tens of seconds and climbing. Logs are arriving late, which matters most
+        during an incident — the lines explaining what happened show up after the
+        person looking for them has moved on.
+      notes: |
+        Alloy-side. No dashboard draws it; see the note on
+        `infra.loki.pipeline.sent`.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, job) (
+          rate(
+            loki_write_entry_propagation_latency_seconds_bucket%%{interval}
+          )
+        )
+      )
+
+  - id: infra.loki.pipeline.source_files
+    stability: experimental
+    description:
+      summary: |
+        Log files Alloy currently has open, and the bytes per second it is
+        reading from them.
+      nominal: |
+        A file count that tracks how many containers are running on the node.
+      unhealthy: |
+        A file count of zero on a node running workloads, which means discovery
+        broke and that node's logs are not being collected at all. Nothing
+        downstream reports this — Loki cannot miss what it was never sent.
+      notes: |
+        Alloy-side. No dashboard draws it; see the note on
+        `infra.loki.pipeline.sent`.
+    promQL:
+      - |
+        sum by (job) (
+          loki_source_file_files_active_total
+        )
+      - |
+        sum by (job) (
+          rate(
+            loki_source_file_read_bytes_total%%{interval}
+          )
+        )
+
+  - id: infra.loki.pipeline.dropped_lines
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second dropped by Alloy's own processing stages, before
+        anything was sent.
+      nominal: |
+        Non-zero and deliberate. The pipelines drop noise on purpose, so a steady
+        rate here is the configuration working.
+      unhealthy: |
+        A step change nobody made. A relabel or drop stage started matching more
+        than it was written to match, and the lines it is now discarding are gone
+        before any other counter sees them.
+      notes: |
+        Alloy-side. No dashboard draws it; see the note on
+        `infra.loki.pipeline.sent`.
+    promQL: |
+      sum by (job, reason) (
+        rate(
+          loki_process_dropped_lines_total%%{interval}
+        )
+      )
+
+metricOverrides:
+  # The end-to-end check outranks everything else here. A deployment trimmed to
+  # `essential` keeps almost nothing about Loki, and what it should keep is the
+  # one family that answers "is the log store working" without needing any of the
+  # others to interpret it.
+  #
+  # This deliberately takes the canary's latency histogram with it, against the
+  # rule below that holds histograms back to `extended`. The canary is a single
+  # replica querying a single stream, so its buckets are a few dozen series —
+  # the cardinality argument that justifies the rule does not apply to it.
+  - metricPattern: "loki_canary_.*"
+    importance: essential
+    priority: 10
+
+  # Same argument, one metric: `up` for the Loki targets is what says a blank
+  # panel is a collection failure rather than a healthy quiet. It is already
+  # essential for other reasons; stated here so the intent survives a change to
+  # whatever put it there.
+  - metricPattern: "up"
+    importance: essential
+    priority: 10
+
+  # Object-storage failures are the other family worth keeping at any tier: they
+  # are the failure that loses data rather than degrading a query, and they have
+  # no proxy anywhere else.
+  - metricPattern: "loki_objstore_bucket_operation_failures_total"
+    importance: essential
+    priority: 10
+
+  # The histogram families are the bulk of the cardinality on this dashboard —
+  # `loki_request_duration_seconds_bucket` alone carries a series per route, per
+  # status code, per component, per bucket. Worth having, not worth paying for on
+  # a metered backend at the default tier.
+  - metricPattern: "loki_request_duration_seconds_(bucket|sum)"
+    importance: extended
+    priority: 5
+  - metricPattern: "loki_(objstore_bucket_operation_duration_seconds|ingester_chunk_(age_seconds|utilization)|query_scheduler_queue_duration_seconds|tsdb_shipper_query_wait_time_seconds|write_entry_propagation_latency_seconds)_(bucket|sum)"
+    importance: extended
+    priority: 5
+
+  # The memcached exporter publishes a large generic surface, of which two
+  # metrics are load-bearing for the cache-sizing panel. The rest is diagnostic.
+  - metricPattern: "memcached_(current|limit)_bytes"
+    importance: recommended
+    priority: 5

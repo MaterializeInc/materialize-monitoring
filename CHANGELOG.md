@@ -12,7 +12,7 @@ reference/internal/releasing.md.
 
 _Changes Pending_
 
-## Dashboards v0.17.0 (Unreleased)
+## Dashboards (Helm chart) v0.17.0 (Unreleased)
 
 _Changes Pending_
 
@@ -93,7 +93,7 @@ _Changes Pending_
         * [materialize-monitoring#328](https://github.com/MaterializeInc/materialize-monitoring/pull/328)
         * [`v2.14.2`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2142-2026-09-04)
 
-## Dashboards v0.16.0
+## Dashboards (Helm chart) v0.16.0
 
 * DEP-211 Add infra-net dashboard, and the CNI collection it needs
     * [materialize-monitoring#366](https://github.com/MaterializeInc/materialize-monitoring/pull/366)

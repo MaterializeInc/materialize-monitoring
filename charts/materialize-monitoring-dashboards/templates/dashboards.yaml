@@ -1,0 +1,70 @@
+{{/*
+Grafana Dashboards (operator format)
+
+One `GrafanaManifest` per dashboard `selected` resolves to. This is the whole of
+what the chart creates — the `Grafana` instance, the datasources and the folders
+belong to a `materialize-monitoring` release, which this chart references by
+value rather than discovers.
+*/}}
+{{- if ( include "mzmon-dashboards.enabled" $ ) }}
+  {{- range $dashboardName := include "mzmon-dashboards.dashboards" $ | fromYamlArray }}
+    {{- $fullname := printf "%s-%s-dashboard" ( include "mzmon-dashboards.fullname" $ ) $dashboardName }}
+    {{- $dashboardYaml := $.Files.Get ( printf "pre-rendered/dashboards/grafana/%s.yaml" $dashboardName ) | fromYaml }}
+    {{- $dashboardYaml = set $dashboardYaml "apiVersion" $.Values.grafana.apiTarget }}
+    {{- /*
+    The render names its folder by *name* — `materialize`, `infra` — because a
+    folder UID depends on the release that created the folder and so is not
+    knowable when the dashboard is rendered. Resolve it here from `folderUids`,
+    the same way `apiVersion` is resolved above.
+
+    A name with no entry there has its annotation dropped rather than passed
+    through: Grafana would read the name as a UID, find nothing, and file the
+    dashboard at the root anyway. Removing it says that outright, and leaves a
+    dashboard whose folder was deliberately deleted looking deliberate.
+    */}}
+    {{- $metadata := get $dashboardYaml "metadata" | default dict }}
+    {{- $annotations := get $metadata "annotations" | default dict }}
+    {{- with get $annotations "grafana.app/folder" }}
+      {{- $uid := get ( $.Values.grafana.folderUids | default dict ) . }}
+      {{- if $uid }}
+        {{- $annotations = set $annotations "grafana.app/folder" $uid }}
+      {{- else }}
+        {{- $annotations = unset $annotations "grafana.app/folder" }}
+      {{- end }}
+      {{- $dashboardYaml = set $dashboardYaml "metadata" ( set $metadata "annotations" $annotations ) }}
+    {{- end }}
+---
+kind: GrafanaManifest
+apiVersion: grafana.integreatly.org/v1beta1
+metadata:
+  name: {{ $fullname | quote }}
+  namespace: {{ include "mzmon-dashboards.namespace" $ | quote }}
+  annotations:
+    {{- include "mzmon-dashboards.annotations" $ | nindent 4 }}
+  labels:
+    {{- include "mzmon-dashboards.labels" $ | nindent 4 }}
+    {{- /*
+      The configured instance labels, on the resource as well as in its selector.
+      That is what lets the umbrella chart's pre-delete hook sweep these up on
+      uninstall: it selects resources pointed at its own Grafana, and these are
+      only pointed there when this chart was configured to be.
+
+      `matchExpressions` has no equivalent -- a resource cannot carry an
+      expression -- so a selector written that way opts out of the sweep and has
+      to be uninstalled before the operator goes away.
+    */}}
+    {{- with $.Values.grafana.instanceSelector.matchLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  resyncPeriod: {{ $.Values.grafana.resyncPeriod }}
+  {{- if $.Values.grafana.allowCrossNamespaceImport }}
+  allowCrossNamespaceImport: true
+  {{- end }}
+  instanceSelector:
+    {{- toYaml $.Values.grafana.instanceSelector | nindent 4 }}
+  template:
+    {{- $dashboardYaml | toYaml | nindent 4 }}
+  {{- end }}
+  {{- /* </range> */}}
+{{- end }}

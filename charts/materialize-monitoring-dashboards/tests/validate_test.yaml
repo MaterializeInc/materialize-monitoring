@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: render-time validation
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+templates:
+  - templates/validate.yaml
+tests:
+  - it: should accept the defaults
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # grafana-operator reads an empty `matchLabels` as *every* Grafana instance,
+  # not none — so this is the difference between installing the dashboards and
+  # installing them into every Grafana in the cluster.
+  - it: should refuse an empty instance selector
+    set:
+      # Null removes the key on merge; `instanceSelector: {}` would be merged
+      # *into* the defaults and leave the labels in place.
+      grafana.instanceSelector.matchLabels: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "grafana.instanceSelector is empty"
+
+  - it: should accept a selector expressed as matchExpressions
+    set:
+      grafana.instanceSelector:
+        matchExpressions:
+          - key: monitoring.materialize.cloud/grafana-instance
+            operator: In
+            values: ["mzmon"]
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # A standalone Grafana provisions dashboards through its own ConfigMap
+  # sidecar, which this chart does not render — GrafanaManifests would apply
+  # cleanly and be read by nothing.
+  - it: should refuse a standalone Grafana
+    set:
+      grafana.mode: standalone
+    asserts:
+      - failedTemplate:
+          errorPattern: "only supports \"operator\""
+
+  - it: should stay quiet when disabled outright
+    set:
+      grafana.enabled: false
+      grafana.mode: standalone
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # An empty selection installs nothing while reporting success, which is far
+  # more often a mistyped pattern than an intent.
+  - it: should refuse a selection that matches nothing
+    set:
+      selected:
+        - nope-*
+    asserts:
+      - failedTemplate:
+          errorPattern: "matches none of the dashboards"

@@ -48,6 +48,8 @@ Frequently needed deep links into the Style Guidelines:
   — the paired show/hide rows that keep volume panels off a month-wide range
 - [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable)
   — how `infra-net` shows a cluster its own CNI, and why the negated fallback row is not optional
+- [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines)
+  — when a metrics filter and a log filter may be the same variable, and the two conditions that have to hold
 - [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
   — labels vs structured metadata, and why an event's namespace is the involved object's
 - [Deployment generations (blue/green)](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-generations-bluegreen)
@@ -107,13 +109,25 @@ from.
 | `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
 | `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
 | `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
+| `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
 
-Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
+Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
 prefixed set until the clouds stopped differing in panel content, which left it recording nothing but its own name.
 The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-cloud` annotation went with it.
 
-**`env-upgrade` is installed by default**, because `dashboards.selected` defaults to `["env-*"]` and the stem matches.
+**The dashboards ship in a chart of their own**, `materialize-monitoring-dashboards`, and render into
+`charts/materialize-monitoring-dashboards/pre-rendered/`. `selected` lives there too — it is no longer
+`dashboards.selected`. Folders, datasources and the `Grafana` instance stayed in the umbrella chart, so a folder name
+resolves through an explicit `grafana.folderUids` map the dashboards chart cannot derive.
+Why, and what it costs: [the size ceiling on dashboard
+delivery](../../../docs/content/reference/internal/dashboard/generating.md#the-size-ceiling-on-dashboard-delivery).
+
+The chart is **not** a component of its own — it belongs to the existing `dashboards` component, so
+`packages/dashboards/`, `packages/queries/` and the chart bump together.
+
+**`env-upgrade` is installed by default**, because `selected` defaults to `["env-*", "infra-*"]` and the stem
+matches. So does every dashboard in the table above.
 While the operator-side instrumentation is unreleased it degrades unevenly, and the split is worth knowing: **Generations
 works fully** (every panel reads metrics that predate the change, and the blue/green split comes from pod names), Events
 keeps its Kubernetes Activity row, and Reconciliation is empty apart from its two pre-existing gauges. `MIN_MZ_VERSION`
@@ -352,6 +366,34 @@ Three things about it are not re-derivable by reading the modules:
   cluster-wide sum over-counts by an order of magnitude — see the header of `packages/queries/infra-networking.yaml`.
 
 Cloud Networking is half-stubbed on purpose; the two text rows name the provider metrics that would fill them.
+
+## `infra-loki` tabs
+
+The fourth of the `infra-*` family, and the only dashboard here whose **subject is the monitoring stack** rather than
+something the stack watches.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Writes | `writes.rs` |
+| 3 | Reads | `reads.rs` |
+| 4 | Storage | `storage.rs` |
+| 5 | Logs | `logs.rs` |
+
+Filed under **`Folder::MetaO11y`**, which it is the first occupant of, and the first to carry `tags::content::META`.
+
+Three things about it are not re-derivable by reading the modules:
+
+- **An empty panel here is ambiguous in a way it is not elsewhere**, because the instrument can go down with its
+  subject. So Overview leads with scrape health *before* any measurement, and every panel writes its own `no_value`
+  text — a test enforces the second.
+- **`$lokiComponent` scopes both engines**, matched against `container` on a metric and `component` on a log line. The
+  rule for when that is allowed is in the style guide under
+  [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines).
+- **The upstream Loki mixin dashboards were evaluated and rejected**, so this does not need re-litigating: they read
+  `cluster_job_route:*` recording rules that nothing in this stack evaluates (no Prometheus, no Thanos Ruler, and
+  Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name. Bloom
+  panels are excluded as experimental.
 
 ## Notes on the trickier panels
 

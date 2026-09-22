@@ -101,7 +101,9 @@
   - infra.egress_gateway.high_traffic
   - infra.egress_gateway.low_traffic
   - infra.egress_gateway.traffic_missing_metrics
+  - infra.net.k8s.errors.by_namespace
   - infra.net.k8s.throughput.by_namespace
+  - infra.net.overview.errors
   - infra.net.overview.throughput
   - infra.net.overview.top_talkers
   - materialize.kubernetes.pods.network_rx
@@ -424,6 +426,7 @@
   labels:
   - container
   - namespace
+  - pod
   name: kube_pod_container_status_restarts_total
   usage:
   - infra.kubernetes.oomkill_core_systems
@@ -431,6 +434,7 @@
   - infra.kubernetes.oomkill_nonessential_systems
   - infra.kubernetes.pod_restart_rate_high
   - infra.kubernetes.pod_restart_rate_high_nonessential
+  - infra.loki.health.restarts
   - infra.nodes.pods.restarts
   - materialize.clusterd.error_kill
   - materialize.clusterd.new_restarts_during_release
@@ -511,10 +515,47 @@
   - infra.kubernetes.volume_usage
 - importance: essential
   labels:
+  - app_instance
+  - namespace
+  name: loki_canary_entries_total
+  usage:
+  - infra.loki.health.canary.entries
+- importance: essential
+  labels:
+  - app_instance
+  - namespace
+  name: loki_canary_missing_entries_total
+  usage:
+  - infra.loki.health.canary.missing
+- importance: essential
+  labels:
+  - app_instance
+  - namespace
+  name: loki_canary_response_latency_seconds_bucket
+  usage:
+  - infra.loki.health.canary.latency
+- importance: essential
+  labels:
+  - app_instance
+  - namespace
+  name: loki_canary_spot_check_missing_entries_total
+  usage:
+  - infra.loki.health.canary.spot_check
+- importance: essential
+  labels:
+  - app_instance
   - namespace
   name: loki_distributor_bytes_received_total
   usage:
+  - infra.loki.write.bytes
   - infra.monitoring.logging_collection_down
+- importance: essential
+  labels:
+  - app_instance
+  - namespace
+  name: loki_objstore_bucket_operation_failures_total
+  usage:
+  - infra.loki.store.failures
 - importance: essential
   labels: []
   name: loki_panic_total
@@ -522,17 +563,17 @@
   - infra.loki.panics
 - importance: essential
   labels:
-  - route
-  name: loki_request_duration_seconds_bucket
-  usage:
-  - infra.loki.req_duration_high
-- importance: essential
-  labels:
+  - app_instance
+  - container
+  - namespace
   - route
   - status_code
   name: loki_request_duration_seconds_count
   usage:
+  - infra.loki.health.request_errors
+  - infra.loki.health.request_failures
   - infra.loki.push_err_high
+  - infra.loki.read.query_rate
   - infra.loki.req_err_high
   - infra.loki.writer_err_high
 - importance: essential
@@ -540,6 +581,7 @@
   name: loki_write_dropped_entries_total
   usage:
   - infra.loki.alloy_log_drops
+  - infra.loki.pipeline.dropped
 - importance: essential
   labels:
   - application_name
@@ -896,12 +938,15 @@
   - node.swap.activity
 - importance: essential
   labels:
+  - app_instance
   - cluster_environmentd_materialize_cloud_cluster_id
+  - container
   - job
   - namespace
   - network_component
   name: up
   usage:
+  - infra.loki.health.up
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
   - infra.net.overview.dataplane
@@ -1043,6 +1088,193 @@
   name: kubeproxy_sync_proxy_rules_duration_seconds_bucket
   usage:
   - infra.net.k8s.proxy.sync_latency
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds
+  usage:
+  - infra.loki.store.compaction_age
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_boltdb_shipper_compact_tables_operation_total
+  usage:
+  - infra.loki.store.compaction_runs
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_cache_fetched_keys
+  usage:
+  - infra.loki.read.cache_hit_rate
+  - infra.loki.read.cache_requests
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_cache_hits
+  usage:
+  - infra.loki.read.cache_hit_rate
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_compactor_apply_retention_last_successful_run_timestamp_seconds
+  usage:
+  - infra.loki.store.retention_age
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_compactor_oldest_pending_delete_request_age_seconds
+  usage:
+  - infra.loki.store.deletes_pending
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_compactor_pending_delete_requests_count
+  usage:
+  - infra.loki.store.deletes_pending
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_discarded_bytes_total
+  usage:
+  - infra.loki.write.discarded_bytes
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_discarded_samples_total
+  usage:
+  - infra.loki.write.discarded
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_distributor_lines_received_total
+  usage:
+  - infra.loki.write.lines
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_chunks_flushed_total
+  usage:
+  - infra.loki.write.chunks_flushed
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_memory_chunks
+  usage:
+  - infra.loki.write.chunks_in_memory
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_memory_streams
+  usage:
+  - infra.loki.write.streams
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_wal_disk_full_failures_total
+  usage:
+  - infra.loki.write.wal_disk_full
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_wal_disk_usage_percent
+  usage:
+  - infra.loki.write.wal_disk
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_wal_replay_active
+  usage:
+  - infra.loki.write.wal_replay
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_logql_querystats_bytes_processed_per_seconds_sum
+  usage:
+  - infra.loki.read.bytes_processed
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_objstore_bucket_operations_total
+  usage:
+  - infra.loki.store.operations
+- importance: recommended
+  labels: []
+  name: loki_process_dropped_lines_total
+  usage:
+  - infra.loki.pipeline.dropped_lines
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_query_frontend_queries_in_progress
+  usage:
+  - infra.loki.read.queries_in_flight
+- importance: recommended
+  labels: []
+  name: loki_source_file_files_active_total
+  usage:
+  - infra.loki.pipeline.source_files
+- importance: recommended
+  labels: []
+  name: loki_source_file_read_bytes_total
+  usage:
+  - infra.loki.pipeline.source_files
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_tsdb_shipper_tables_sync_operation_total
+  usage:
+  - infra.loki.store.index_sync
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_tsdb_shipper_tables_upload_operation_total
+  usage:
+  - infra.loki.store.index_sync
+- importance: recommended
+  labels: []
+  name: loki_write_batch_retries_total
+  usage:
+  - infra.loki.pipeline.retries
+- importance: recommended
+  labels: []
+  name: loki_write_sent_entries_total
+  usage:
+  - infra.loki.pipeline.sent
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: memcached_current_bytes
+  usage:
+  - infra.loki.read.memcached_memory
+- importance: recommended
+  labels:
+  - app_instance
+  - namespace
+  name: memcached_limit_bytes
+  usage:
+  - infra.loki.read.memcached_memory
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
@@ -1726,3 +1958,55 @@
   - materialize.operator.reconciliation.failures.total
   - materialize.operator.reconciliation.outcomes
   - materialize.operator.reconciliation.rate
+- importance: extended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_chunk_age_seconds_bucket
+  usage:
+  - infra.loki.write.chunk_age
+- importance: extended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_ingester_chunk_utilization_bucket
+  usage:
+  - infra.loki.write.chunk_utilization
+- importance: extended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_objstore_bucket_operation_duration_seconds_bucket
+  usage:
+  - infra.loki.store.latency
+- importance: extended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_query_scheduler_queue_duration_seconds_bucket
+  usage:
+  - infra.loki.read.queue_duration
+- importance: extended
+  labels:
+  - app_instance
+  - container
+  - namespace
+  - route
+  name: loki_request_duration_seconds_bucket
+  usage:
+  - infra.loki.health.request_latency
+  - infra.loki.read.query_latency
+  - infra.loki.req_duration_high
+  - infra.loki.write.push_latency
+- importance: extended
+  labels:
+  - app_instance
+  - namespace
+  name: loki_tsdb_shipper_query_wait_time_seconds_bucket
+  usage:
+  - infra.loki.store.index_wait
+- importance: extended
+  labels: []
+  name: loki_write_entry_propagation_latency_seconds_bucket
+  usage:
+  - infra.loki.pipeline.propagation

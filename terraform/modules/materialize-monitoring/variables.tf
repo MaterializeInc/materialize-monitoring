@@ -27,6 +27,67 @@ variable "crds_chart_version" {
   default     = null
 }
 
+variable "dashboards_chart_version" {
+  description = "Version of the materialize-monitoring-dashboards chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own."
+  type        = string
+  default     = null
+}
+
+variable "enable_dashboards" {
+  description = <<-EOT
+    Install the materialize-monitoring-dashboards chart.
+
+    The dashboards are a Helm release of their own because Helm stores a release in a Kubernetes
+    Secret and a Secret may not exceed 1 MiB, which the rendered set had grown past. The module
+    installs it against the folders and Grafana instance the main release creates, so the two stay
+    in step without either having to discover the other.
+
+    Set false when dashboards are managed elsewhere — a platform team's own Grafana provisioning,
+    or a GitOps pipeline that owns them.
+  EOT
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
+variable "dashboards_selected" {
+  description = <<-EOT
+    Dashboard filename-stem patterns to install, matched against the set the chart carries.
+
+    Null leaves the chart's own default, which is every dashboard. Narrow it to hold one back —
+    `env-upgrade` depends on operator instrumentation that not every Materialize version has.
+  EOT
+  type        = list(string)
+  default     = null
+}
+
+variable "dashboards_instance_selector" {
+  description = <<-EOT
+    Labels selecting the Grafana instance the dashboards are pushed into.
+
+    Null derives the label the main chart puts on its own `Grafana` resource, which is correct
+    unless that release narrowed the selector through `connections.grafana.labels` in
+    `additional_values` — the dashboards chart cannot read that, so set the same map here.
+  EOT
+  type        = map(string)
+  default     = null
+}
+
+variable "dashboards_allow_cross_namespace_import" {
+  description = <<-EOT
+    Allow the dashboards to match a Grafana instance outside their own namespace.
+
+    Required when the `Grafana` resource lives somewhere other than `namespace`, which is what the
+    chart's `split-namespace` profile does. Not inferred: the module cannot see where an
+    `additional_values` override put the instance.
+
+    Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
 variable "install_timeout" {
   description = "Timeout for each Helm release, in seconds. Well above Helm's 300s default: a first install brings up Loki, Thanos, Grafana, and both Alloy roles together."
   type        = number

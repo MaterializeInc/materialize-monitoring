@@ -241,28 +241,6 @@ Usage:
 {{- end }}
 
 {{- /*
-Names of the dashboards `dashboards.selected` resolves to.
-
-Globs the pre-rendered dashboards once so the resources and the install notes
-cannot disagree about what was installed. Returns a YAML list.
-
-Usage:
-  {{- range $name := include "mzmon.grafana.dashboards" $ | fromYamlArray }}
-*/}}
-{{- define "mzmon.grafana.dashboards" }}
-  {{- $names := list }}
-  {{- range $selectPattern := $.Values.dashboards.selected }}
-    {{- range $path, $_ := $.Files.Glob ( printf "pre-rendered/dashboards/grafana/%s.yaml" $selectPattern ) }}
-      {{- $name := base $path | trimSuffix ".yaml" | lower | replace "_" "-" }}
-      {{- if not ( has $name $names ) }}
-        {{- $names = append $names $name }}
-      {{- end }}
-    {{- end }}
-  {{- end }}
-  {{- $names | toYaml }}
-{{- end }}
-
-{{- /*
 UID of one dashboard folder.
 
 The single place a folder key becomes a UID, so `folders.yaml` (which creates
@@ -286,6 +264,44 @@ Usage:
     {{- $folder.existingUid }}
   {{- else if $folder }}
     {{- printf "%s-%s" ( include "mzmon.fullname" $root ) .key }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Label selector for the pre-delete cleanup hook, as `k=v,k=v`.
+
+Two scopes, because the safe one depends on what this release owns.
+
+**`instance`** (the default) selects everything pointed at *this* Grafana, by the
+same labels the resources carry and their `instanceSelector` matches. That
+deliberately reaches beyond this release: `materialize-monitoring-dashboards` is
+a release of its own whose `GrafanaManifest`s carry the operator's finalizer, and
+nothing in its own teardown runs when this chart is the one being removed. Take
+grafana-operator away without clearing them and they wedge in `Terminating` with
+no remover.
+
+It is still bounded. It cannot touch resources aimed at a Grafana this release
+did not create, which is the case `release` exists to protect and the reason
+`--all` was never an option.
+
+**`release`** is the narrow form: only what this release created. Correct when
+grafana-operator is *not* ours to remove — the operator survives the uninstall
+and clears any other release's finalizers itself — and the escape hatch if the
+broader sweep ever reaches something it should not.
+
+Usage:
+  - --selector={{ include "mzmon.grafana.cleanupSelector" $ }}
+*/}}
+{{- define "mzmon.grafana.cleanupSelector" }}
+  {{- $scope := $.Values.cleanup.grafanaOperator.scope | default "instance" }}
+  {{- if and ( eq $scope "instance" ) ( include "mzmon.grafanaOperator.enabled" $ ) }}
+    {{- $pairs := list }}
+    {{- range $k, $v := ( include "mzmon.grafana.instanceLabels" $ | fromYaml ) }}
+      {{- $pairs = append $pairs ( printf "%s=%s" $k $v ) }}
+    {{- end }}
+    {{- join "," $pairs }}
+  {{- else }}
+    {{- printf "app.kubernetes.io/instance=%s" $.Release.Name }}
   {{- end }}
 {{- end }}
 

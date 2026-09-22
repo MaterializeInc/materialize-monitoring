@@ -1,0 +1,62 @@
+apiVersion: v2
+name: materialize-monitoring-dashboards
+description: |
+  Grafana dashboards for Materialize Monitoring.
+  Installs the bundled dashboard set into a Grafana provisioned by the
+  materialize-monitoring chart. Installs nothing else.
+type: application
+version: 0.16.0
+appVersion: "0.0.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/MaterializeInc/materialize-monitoring
+sources:
+  - https://github.com/MaterializeInc/materialize-monitoring
+maintainers:
+  - name: Materialize
+    email: support@materialize.com
+    url: https://materialize.com
+keywords:
+  - materialize
+  - observability
+  - monitoring
+  - grafana
+  - dashboards
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: Split the Grafana dashboards out of the umbrella chart.
+
+# Why this is a chart of its own
+# -----------------------------
+# Helm stores each release as a Kubernetes Secret, and a Secret may not exceed
+# 1 MiB. The rendered dashboards are the largest thing the umbrella chart ships
+# by an order of magnitude -- the set is over a megabyte of YAML before Helm's
+# own encoding -- and adding a seventh crossed the limit, so `helm upgrade`
+# began failing outright on the default `dashboards.selected`.
+#
+# Splitting them out gives the dashboards a budget of their own, and gives the
+# umbrella chart back the headroom it had before dashboards grew into it. It
+# also means a dashboard change no longer rolls the whole stack's release.
+#
+# This chart has **no dependencies**, by design. It creates `GrafanaManifest`
+# resources and nothing else; the `Grafana` instance, the datasources and the
+# folders stay in the umbrella chart, because those are the things a dashboard
+# is filed *into* rather than part of the dashboards themselves.
+#
+# Versioning
+# ----------
+# This chart's version stream is the **`dashboards` component** in
+# `packages/components.yaml`, and this file is that component's only version
+# file. So the stream covers the chart *and* its sources -- `packages/dashboards`
+# and `packages/queries` -- which is the honest shape: the chart carries nothing
+# but what those render, so a change to either is a change to both.
+#
+# That component predates the chart and had no version file at all until this one
+# arrived; its stream lived only in `CHANGELOG.md`. The version below therefore
+# starts at the component's released version rather than at 0.1.0 -- it is
+# adopting a stream already in flight, not beginning one.
+#
+# A component of its own was the alternative, and was rejected: two streams
+# tracking one set of contents would move in lockstep while claiming to be
+# independent. The CRDs chart is separate for the opposite reason -- it tracks
+# upstream CRDs on a cadence nothing here controls.

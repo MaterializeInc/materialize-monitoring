@@ -35,7 +35,7 @@ jobs:
       # not just modifications to already-tracked files.
       - name: rendered dashboards are up to date
         run: |
-          chart_dir=charts/materialize-monitoring/pre-rendered/dashboards/grafana
+          chart_dir=charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana
           docs_dir=docs/assets/dashboards/grafana
           if [ -n "$(git status --porcelain -- "$chart_dir" "$docs_dir")" ]; then
             echo "::error::Rendered dashboards are stale or uncommitted. Run 'make dashboards' locally and commit."

@@ -129,14 +129,23 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
     {{- end }}
     Selected by: {{ include "mzmon.grafana.instanceLabels" $ | fromYaml | toJson }}
   {{- end }}
-  {{- $dashboards := include "mzmon.grafana.dashboards" $ | fromYamlArray }}
-  {{- if and $.Values.dashboards.config.grafana.enabled ( eq $.Values.dashboards.config.grafana.mode "operator" ) $dashboards }}
+  {{- $folders := list }}
+  {{- range $key, $folder := $.Values.dashboards.config.grafana.folders }}
+    {{- if and ( kindIs "map" $folder ) ( dig "create" true $folder ) }}
+      {{- $folders = append $folders ( printf "%s (uid %s)" $key ( include "mzmon.grafana.folderUid" ( dict "root" $ "key" $key ) ) ) }}
+    {{- end }}
+  {{- end }}
+  {{- if and $.Values.dashboards.config.grafana.enabled ( eq $.Values.dashboards.config.grafana.mode "operator" ) $folders }}
 
-  Dashboards ({{ len $dashboards }}, resynced every {{ $.Values.dashboards.config.grafana.manifest.resyncPeriod }}):
-    {{- range $dashboards }}
+  Dashboard folders ({{ len $folders }}):
+    {{- range $folders }}
     - {{ . }}
     {{- end }}
-    Schema: {{ $.Values.dashboards.config.grafana.manifest.apiTarget }} (needs Grafana 12 or later)
+
+  The dashboards themselves ship in a chart of their own. Install it against the
+  folder UIDs above:
+    helm install {{ $.Release.Name }}-dashboards <repo>/materialize-monitoring-dashboards \
+      --namespace {{ include "mzmon.namespace" $ }}
   {{- end }}
   {{- $thanosDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) }}
   {{- $lokiDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) }}

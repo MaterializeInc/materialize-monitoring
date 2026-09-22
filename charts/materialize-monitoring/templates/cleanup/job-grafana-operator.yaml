@@ -97,13 +97,16 @@ spec:
             - {{ $cleanup.kinds | join "," | quote }}
             - --namespace={{ $namespace }}
             {{- /*
-              Scoped to this release, so two releases sharing a namespace do not
-              delete each other's resources. `--all` is NOT an alternative here:
-              kubectl refuses it alongside a selector ("setting 'all' parameter
-              but found a non empty selector"), and unscoped it would take out
-              every operator resource in the namespace.
+              Scoped, never `--all`: kubectl refuses `--all` alongside a selector
+              ("setting 'all' parameter but found a non empty selector"), and
+              unscoped it would take out every operator resource in the namespace
+              including another product's.
+
+              What the scope *is* depends on `cleanup.grafanaOperator.scope`; see
+              `mzmon.grafana.cleanupSelector` for why the default reaches beyond
+              this release.
             */}}
-            - --selector=app.kubernetes.io/instance={{ .Release.Name }}
+            - --selector={{ include "mzmon.grafana.cleanupSelector" $ }}
             - --ignore-not-found=true
             - --timeout={{ $cleanup.timeout }}
           securityContext:

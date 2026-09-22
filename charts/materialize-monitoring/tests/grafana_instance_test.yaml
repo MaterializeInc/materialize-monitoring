@@ -108,8 +108,11 @@ tests:
           path: metadata.labels["monitoring.materialize.cloud/grafana-instance"]
           value: mzmon
 
+  # Asserted on the folders, which are what this chart still pushes into
+  # Grafana; the dashboards carry the same selector from their own chart's
+  # `grafana.instanceSelector`, which has to be set to match.
   - it: should select the instance it creates, and not every instance
-    template: templates/dashboards/grafana-operator/dashboards.yaml
+    template: templates/grafana-folders.yaml
     asserts:
       - equal:
           path: spec.instanceSelector.matchLabels
@@ -122,7 +125,7 @@ tests:
       - notExists:
           path: spec.allowCrossNamespaceImport
 
-  - it: should merge connections.grafana.labels into both sides
+  - it: should merge connections.grafana.labels into the instance and its folders
     set:
       connections.grafana.labels:
         team: observability
@@ -131,7 +134,7 @@ tests:
         equal:
           path: metadata.labels.team
           value: observability
-      - template: templates/dashboards/grafana-operator/dashboards.yaml
+      - template: templates/grafana-folders.yaml
         equal:
           path: spec.instanceSelector.matchLabels
           value:
@@ -160,7 +163,7 @@ tests:
   - it: should allow cross-namespace import when the instance moves away
     values:
       - ../profiles/split-namespace.values.yaml
-    template: templates/dashboards/grafana-operator/dashboards.yaml
+    template: templates/grafana-folders.yaml
     asserts:
       - equal:
           path: metadata.namespace
@@ -172,7 +175,7 @@ tests:
   - it: should honor an explicit allowCrossNamespaceImport over the inference
     set:
       dashboards.config.grafana.manifest.allowCrossNamespaceImport: true
-    template: templates/dashboards/grafana-operator/dashboards.yaml
+    template: templates/grafana-folders.yaml
     asserts:
       - equal:
           path: spec.allowCrossNamespaceImport

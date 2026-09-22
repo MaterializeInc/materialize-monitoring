@@ -64,14 +64,14 @@ docker-images: alloy-image
 .PHONY: docker-images
 
 # Build all Helm charts
-charts: materialize-monitoring-chart
+charts: materialize-monitoring-chart materialize-monitoring-dashboards-chart
 .PHONY: charts
 
 docs: docs/public
 .PHONY: docs
 
 # Generate grafana dashboards
-grafana-dashboards: charts/materialize-monitoring/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
+grafana-dashboards: charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
 alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
@@ -123,7 +123,7 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib) $
 
 ### DASHBOARD SYNC ###
 
-charts/materialize-monitoring/pre-rendered/dashboards/grafana: \
+charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana: \
 		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
@@ -263,7 +263,7 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
 
-charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/dashboards/grafana charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
 	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.
@@ -320,6 +320,36 @@ charts/materialize-monitoring-crds/README.md: \
 		--log-level debug \
 		--ignore-non-descriptions
 
+HELM_DOCS_SOURCES_materialize-monitoring-dashboards = \
+	charts/materialize-monitoring-dashboards/values.yaml \
+	charts/materialize-monitoring-dashboards/Chart.yaml
+
+# Generate the chart-local README.md from values.yaml + the README template.
+charts/materialize-monitoring-dashboards/README.md: \
+		$(HELM_DOCS_SOURCES_materialize-monitoring-dashboards) \
+		tools/chartlib/helm-docs-lib.gotmpl \
+		charts/materialize-monitoring-dashboards/README.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root charts/materialize-monitoring-dashboards \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
+		--template-files README.md.gotmpl \
+		--output-file README.md \
+		--sort-values-order file \
+		--log-level debug \
+		--ignore-non-descriptions
+
+# Do any necessary generation for this chart
+charts/materialize-monitoring-dashboards: charts/materialize-monitoring-dashboards/README.md charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana
+	touch "$@"
+
+HELM_VERSION_materialize-monitoring-dashboards = $(shell yq e '.version' charts/materialize-monitoring-dashboards/Chart.yaml)
+charts/materialize-monitoring-dashboards-$(HELM_VERSION_materialize-monitoring-dashboards).tgz: charts/materialize-monitoring-dashboards
+	helm package charts/materialize-monitoring-dashboards --destination charts/
+	test -f "$@"
+
+materialize-monitoring-dashboards-chart: charts/materialize-monitoring-dashboards-$(HELM_VERSION_materialize-monitoring-dashboards).tgz
+.PHONY: materialize-monitoring-dashboards-chart
+
 HELM_VERSION_materialize-monitoring = $(shell yq e '.version' charts/materialize-monitoring/Chart.yaml)
 charts/materialize-monitoring-$(HELM_VERSION_materialize-monitoring).tgz: charts/materialize-monitoring
 	helm package charts/materialize-monitoring --destination charts/
@@ -375,6 +405,7 @@ helm-unittest-install:
 helm-tests:
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring
 	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-crds
+	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-dashboards
 .PHONY: helm-tests
 
 helm-update-snapshots:
@@ -413,6 +444,7 @@ security-report-images:
 helm-docs: \
 	charts/materialize-monitoring/README.md \
 	charts/materialize-monitoring-crds/README.md \
+	charts/materialize-monitoring-dashboards/README.md \
 	docs/content/reference/helm/materialize-monitoring-values.md
 .PHONY: helm-docs
 
@@ -503,6 +535,21 @@ e2e-tier1:
 		-f charts/materialize-monitoring/profiles/loki-test.values.yaml \
 		-f charts/materialize-monitoring/profiles/kind-tier1.values.yaml \
 		--timeout 10m
+	# The dashboards, which are a release of their own. Second, because everything
+	# it is pointed at -- the Grafana instance, the folder UIDs -- belongs to the
+	# release above; a dashboard that lands before its folder is filed at the root
+	# until the operator's next resync rather than failing, which is the quiet kind
+	# of wrong.
+	#
+	# No values: the chart's defaults already name a `materialize-monitoring`
+	# release called `mzmon` installed with its own defaults, which is exactly what
+	# the line above is. A tier that renames either has to pass
+	# `grafana.instanceSelector` and `grafana.folderUids` to match.
+	#
+	# Tier 2 needs no equivalent -- the Terraform module installs this chart itself
+	# and derives those values from the chart's own values.yaml.
+	helm upgrade --install mzmon-dashboards charts/materialize-monitoring-dashboards $(HELM_KUBE) \
+		--namespace monitoring --timeout 5m
 	# Alloy's config arrives through envFrom ConfigMaps, so a config change needs a
 	# restart — Helm does not roll these. The Terraform path stamps a values hash
 	# for exactly this; a raw `helm upgrade` has to do it by hand.
@@ -580,14 +627,31 @@ e2e-generic-cloud-down:
 # so a tier-2 apply against a tier-1 cluster fails on the first release it tries
 # to create. Recreating the cluster also works and takes minutes longer.
 #
-# Order is load-bearing. The main release goes first because its `pre-delete`
-# hook removes the Grafana custom resources; take the CRDs out from under it and
-# their finalizers have no remover, leaving the CRDs wedged in Terminating.
+# Order is load-bearing, in three steps rather than two.
+#
+# The **dashboards** go first. grafana-operator holds a finalizer on every
+# `GrafanaManifest` it reconciles, and the main release's `pre-delete` hook
+# clears only the resources carrying *its own* release label — two releases
+# sharing a namespace must not delete each other's. So nothing in the main
+# release's teardown removes these, and taking the operator away first leaves
+# them wedged in Terminating with no remover. Uninstalled while it is still
+# running, they clear normally; `--wait` is what makes that ordering real.
+#
+# The **main release** second, because its `pre-delete` hook removes the Grafana
+# custom resources it does own.
+#
+# The **CRDs** last: take them out from under either of the above and those
+# finalizers have no remover either.
+#
+# The Terraform path gets this for free — `helm_release.dashboards` declares
+# `depends_on = [helm_release.monitoring]`, and Terraform destroys in reverse
+# dependency order.
 #
 # PVCs outlive their StatefulSets by design, and a tier-2 Loki that adopts a
 # tier-1 filesystem volume is a confusing failure — so they go too. Scoped to the
 # release namespace: the substrate keeps its own in `mzmon-cloud`.
 e2e-tier1-down:
+	-helm uninstall mzmon-dashboards $(HELM_KUBE) --namespace monitoring --wait --timeout 5m
 	-helm uninstall mzmon $(HELM_KUBE) --namespace monitoring --wait --timeout 5m
 	-helm uninstall mzmon-crds $(HELM_KUBE) --namespace monitoring --wait --timeout 5m
 	$(KUBECTL) delete pvc -n monitoring --all --ignore-not-found

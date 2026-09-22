@@ -118,6 +118,54 @@ resource "helm_release" "crds" {
   depends_on = [kubernetes_namespace.monitoring]
 }
 
+# The dashboards, as a release of their own.
+#
+# Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB;
+# the rendered dashboard set had grown past that, which made `helm upgrade` on the
+# main release fail outright rather than degrade. Splitting them gives each a
+# budget of its own.
+#
+# After the main release, because every value it is given -- the folder UIDs, the
+# instance selector -- names a resource that release creates. Helm will not order
+# them for us across releases, and a dashboard that lands before its folder is
+# filed at the root until the operator's next resync rather than failing, which is
+# the quiet kind of wrong.
+resource "helm_release" "dashboards" {
+  count = var.enable_dashboards ? 1 : 0
+
+  name      = "mzmon-dashboards"
+  namespace = local.namespace
+  chart     = "${var.chart_registry}/materialize-monitoring-dashboards"
+  version   = local.dashboards_chart_version
+  timeout   = var.install_timeout
+
+  create_namespace = false
+
+  # No subcharts, so nothing to bury this chart's own notes -- set for symmetry
+  # with the other two releases rather than because it bites here.
+  render_subchart_notes = false
+
+  # The chart's validators `fail` at render time, so a bad selector or an empty
+  # selection is a plan-time error rather than a release that installs nothing.
+  values = [local.dashboards_values]
+
+  depends_on = [helm_release.monitoring]
+
+  lifecycle {
+    precondition {
+      condition     = can(yamldecode(file("${local.dashboards_chart_dir}/Chart.yaml")).version)
+      error_message = <<-EOT
+        The dashboards chart's Chart.yaml is not readable from the module, so its version cannot be
+        resolved.
+
+        Same cause as the main chart's: the repository is not present alongside the module, usually
+        from an absolute local path `source`. Use a git source or a "./"-relative path, or pin
+        dashboards_chart_version explicitly.
+      EOT
+    }
+  }
+}
+
 resource "helm_release" "monitoring" {
   name      = "mzmon"
   namespace = local.namespace

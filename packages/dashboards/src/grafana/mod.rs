@@ -20,6 +20,7 @@ pub mod env_top;
 pub mod env_upgrade;
 pub mod field_override;
 pub mod infra_logs;
+pub mod infra_loki;
 pub mod infra_networking;
 pub mod infra_nodes;
 pub mod queries;
@@ -72,6 +73,11 @@ pub const ALL: &[Renderable] = &[
         name: infra_logs::NAME_STEM,
         summary: "Logs and Kubernetes events for the platform underneath Materialize",
         render: infra_logs::render,
+    },
+    Renderable {
+        name: infra_loki::NAME_STEM,
+        summary: "Meta monitoring for the log store the other dashboards read",
+        render: infra_loki::render,
     },
     Renderable {
         name: infra_networking::NAME_STEM,

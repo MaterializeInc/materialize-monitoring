@@ -1,0 +1,4646 @@
+{
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "annotations": {
+      "grafana.app/folder": "meta-o11y",
+      "monitoring.materialize.cloud/min-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/rec-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/sql-metric-prefix": "mz_",
+      "monitoring.materialize.cloud/target-export": "generic"
+    },
+    "name": "mz-mon-infra-loki"
+  },
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "builtIn": true,
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "query": {
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "group": "grafana",
+            "kind": "DataQuery",
+            "spec": {},
+            "version": "v0"
+          }
+        }
+      }
+    ],
+    "cursorSync": "Crosshair",
+    "description": "Is the log store healthy — and if not, which half of it broke.\n\nThe monitoring stack watching itself: ingest, queries, object storage, and Loki's own logs. Start at Scrape Health and the canary; an empty panel here can mean the instrument is down rather than that nothing happened.",
+    "editable": true,
+    "elements": {
+      "logs-feed": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{\n  app=\"loki\",\n  namespace=~\"$lokiNamespace\",\n  component=~\"$lokiComponent\",\n  level=~\"$logLevelList\"\n}\n  |~ \"(?i)$logSearch\"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Loki's own log feed, newest first, for the selected components and levels.**\n\nReading Loki's logs out of Loki works right up until the moment it matters most. If the store is broken badly enough, this panel is empty for the same reason everything else is — and that is the point at which `kubectl logs` is the tool, not this dashboard.\n\nAn empty search matches every line rather than none, so the panel is useful before anything is typed.",
+          "id": 1045,
+          "links": [],
+          "title": "All Logs",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No lines match the current filters — or Loki cannot serve its own logs"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "logs-rate-by-component": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (component) (\n  rate(\n    {\n      app=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      component=~\"$lokiComponent\",\n      level=~\"$logLevelList\"\n    }\n      |~ \"(?i)$logSearch\"\n    [$__auto]\n  )\n)\n",
+                        "legendFormat": "{{component}}"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Loki's own log lines per second, split by component.**\n\n**Nominal:** A steady baseline dominated by the canary, which is expected — it exists to write and read a line on a loop, and says so each time.\n\n**Unhealthy:** A sharp step up confined to one component. That is a single process in a retry loop, and it is the shape that precedes most of the failures the other tabs measure.",
+          "id": 1041,
+          "links": [],
+          "title": "Log Rate by Component",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No lines match the current filters — or Loki cannot serve its own logs",
+                  "unit": "suffix:logs/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "logs-warning-feed": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{\n  app=\"loki\",\n  namespace=~\"$lokiNamespace\",\n  component=~\"$lokiComponent\",\n  level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\"\n}\n  |~ \"(?i)$logSearch\"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Warning-and-worse lines from Loki, newest first.**\n\n**Nominal:** Quiet. Loki is talkative at INFO and reticent above it.\n\n**Unhealthy:** A steady stream. Read the component: an ingester complaining is a write path problem, a querier complaining is usually a query someone ran, and a compactor complaining is the storage tab's business.\n\nIndependent of the level picker, like the other warning feeds in this repository: this panel answers \"is anything wrong\", and narrowing the selection to INFO would silently zero it.",
+          "id": 1044,
+          "links": [],
+          "title": "Warnings and Errors",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No warnings in this time range"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "logs-warning-rate": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    {\n      app=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      component=~\"$lokiComponent\",\n      level=~\"WARN|WARNING|ERROR|CRITICAL|FATAL\"\n    }\n      |~ \"(?i)$logSearch\"\n    [1m]\n  )\n) * 60\n",
+                        "legendFormat": "warnings/min"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Warning-and-worse lines per minute from Loki, across the selected components.**\n\n**Nominal:** Zero, or close to it.\n\n**Unhealthy:** A sustained non-zero rate. The feed below says which component and why.",
+          "id": 1042,
+          "links": [],
+          "title": "Warning Rate",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#33BBEE",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No warnings in this time range",
+                  "unit": "suffix:logs/min"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "loki-volume-hidden-note": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why the volume panels are not drawn over long ranges.",
+          "id": 1043,
+          "links": [],
+          "title": "Volume (skipped)",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Volume panels are hidden for ranges longer than 7 days.**\n\nCounting log lines means reading every one of them — Loki indexes labels, not counts — so these panels scan the whole selection rather than an index.\n\nShorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-canary-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long the canary waited between writing a line and reading it back, at the median and the 99th percentile.**\n\n**Nominal:** Under a second at p99. The canary queries a tiny time range for a single stream, so this is close to the floor of what the read path can do.\n\n**Unhealthy:** Seconds, or a p99 pulling away from the median. Both point at the read path rather than the write path — a line that arrived slowly would show up as missing first.",
+          "id": 1001,
+          "links": [],
+          "title": "Canary Round Trip (p99)",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Canary not collected — check Collection Health below",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "fields": "/p99/",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-canary-losses": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_canary_missing_entries_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "missing on write",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_canary_missing_entries_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_canary_spot_check_missing_entries_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "missing on re-read",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_canary_spot_check_missing_entries_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Canary lines that went missing, split by *when* they went missing.**\n\n**Nominal:** Zero on both series.\n\n**Unhealthy:** Either series non-zero — and which one is the diagnosis rather than the total.\n\n**Missing on write** means a line was written and never became readable: the write path, or the store losing it before it was durable.\n\n**Missing on re-read** means a line was readable once and no longer is. Nothing in the write path can cause that, so it is retention, compaction or object storage — and it is the only signal here that notices data disappearing hours after it landed.\n\nA burst on the first series at startup is not a finding: entries written before the canary's own scrape target existed are counted missing once and never recovered. Read the sustained level, not the first few minutes after a rollout.\n\nThe re-read series comes from the canary re-querying a sample of its own older lines on a schedule, which is what makes it independent of the ingest-time check rather than a lagging copy of it.",
+          "id": 1010,
+          "links": [],
+          "title": "Canary Losses",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No canary losses in this range",
+                  "unit": "suffix:lines/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-canary-missing": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_canary_missing_entries_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "lost/s",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_canary_missing_entries_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Log lines the canary wrote to Loki and then could not read back, per second.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Anything sustained. This is the one signal here that is end-to-end: the canary writes a line on a loop and reads it back, so a non-zero rate means the write path, the read path or the storage between them is losing data — regardless of what every other panel reports.\n\nA burst at startup is not a finding: entries written before the canary's own scrape target existed are counted missing once and never recovered. Read the sustained level, not the first few minutes after a rollout.",
+          "id": 1000,
+          "links": [],
+          "title": "Canary Lines Lost",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Canary not collected — check Collection Health below",
+                  "unit": "suffix:lines/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-canary-roundtrip": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_canary_response_latency_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long the canary waited between writing a line and reading it back, at the median and the 99th percentile.**\n\n**Nominal:** Under a second at p99. The canary queries a tiny time range for a single stream, so this is close to the floor of what the read path can do.\n\n**Unhealthy:** Seconds, or a p99 pulling away from the median. Both point at the read path rather than the write path — a line that arrived slowly would show up as missing first.",
+          "id": 1009,
+          "links": [],
+          "title": "Canary Round Trip",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Canary not collected",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-client-error-rate": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\",\n      status_code=~\"4..\"\n    }\n    [$__rate_interval]\n  )\n)\n/\nsum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "4xx share",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\",\n      status_code=~\"4..\"\n    }\n    [$__rate_interval]\n  )\n)\n/\nsum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The share of Loki API requests rejected as the caller's fault — a 4xx — as a proportion of all requests.**\n\n**Nominal:** A little above zero, and flat. Something is always asking for a label that has aged out or cancelling a query it no longer wants, so unlike the 5xx panel beside it, zero is not the expected reading.\n\n**Unhealthy:** A step. Read it as a change rather than as a level: 4xx is what a *rejected write* looks like from the client's side, so this moves before the discard counters on the Writes tab do — and it moves for the cases those counters never see, where the request was refused before anything was parsed.\n\nA sustained climb with no deploy behind it is usually a limit the cluster has grown into: per-stream rate limits, a maximum query length, a label budget.\n\nDeliberately beside the 5xx share rather than folded into it. The two answer different questions — 5xx is the store failing, 4xx is the store refusing — and adding them together produces a number that means neither.",
+          "id": 1003,
+          "links": [],
+          "title": "4xx Rate",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No requests in this range",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-error-rate": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\",\n      status_code=~\"5..\"\n    }\n    [$__rate_interval]\n  )\n)\n/\nsum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "5xx share",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\",\n      status_code=~\"5..\"\n    }\n    [$__rate_interval]\n  )\n)\n/\nsum(\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The share of Loki API requests returning a 5xx, as a proportion of all requests.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Anything sustained above a fraction of a percent. Read it beside the per-route latency panel: a 5xx rate that tracks a latency spike is saturation, while one that does not is usually storage or configuration.\n\n`status_code` on this metric carries the string `error` as well as numeric codes, for failures that never reached an HTTP status. Those are counted separately by `infra.loki.health.request_failures`; this one is the HTTP-level view.",
+          "id": 1004,
+          "links": [],
+          "title": "5xx Rate",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No requests in this range",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-failures": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (container) (\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\",\n      status_code=\"error\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{container}}",
+                        "qryType": 1,
+                        "query": "sum by (container) (\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=~\"$lokiComponent\",\n      status_code=\"error\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Requests per second that failed without producing an HTTP status, split by component.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Non-zero. These are the failures no 5xx panel sees — a connection that died, a gRPC call that never completed — so a store can look clean on status codes and be visibly broken here.",
+          "id": 1008,
+          "links": [],
+          "title": "Failures Without a Status Code",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No requests failed without an HTTP status.",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-ingest": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_distributor_lines_received_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "lines/s",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_distributor_lines_received_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Log lines per second arriving at the distributor — everything the cluster is sending Loki.**\n\n**Nominal:** A baseline that tracks how much the cluster is doing. Steps up and down follow deployments and workload changes.\n\n**Unhealthy:** A drop to zero. The collectors stopped, or cannot reach the distributor; either way nothing is being recorded from that moment on and the gap is permanent.",
+          "id": 1002,
+          "links": [],
+          "title": "Lines Ingested",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Nothing is reaching the distributor",
+                  "unit": "suffix:lines/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-latency-by-route": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le, route) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=~\"$lokiComponent\",\n        route!~\"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "{{route}}",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le, route) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=~\"$lokiComponent\",\n        route!~\"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**99th-percentile Loki API latency, split by route.**\n\n**Nominal:** Push routes in the low tens of milliseconds; query routes higher and much more variable, since their cost follows the range being asked for.\n\n**Unhealthy:** A route climbing on its own. Which route it is says where to look next — a push route points at the Writes tab, a query route at Reads.\n\nTail routes are excluded: a tail is a long-lived streaming connection, so its \"latency\" is how long someone left a live log view open and swamps every other route on the panel.",
+          "id": 1007,
+          "links": [],
+          "title": "Request Latency by Route (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No matches for the current filters",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-restarts": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (pod) (\n  increase(\n    kube_pod_container_status_restarts_total{\n      namespace=~\"$lokiNamespace\",\n      pod=~\"loki-.*\"\n    }\n    [$__range]\n  )\n) > 0\n",
+                        "instant": true,
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "sum by (pod) (\n  increase(\n    kube_pod_container_status_restarts_total{\n      namespace=~\"$lokiNamespace\",\n      pod=~\"loki-.*\"\n    }\n    [$__range]\n  )\n) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Container restarts across the Loki components over the dashboard's time range.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any restart that was not a deliberate rollout. An ingester restart is the one worth reading first: it replays its write-ahead log on the way back up, and until that finishes it is not accepting writes.",
+          "id": 1006,
+          "links": [],
+          "title": "Container Restarts",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "No Loki container has restarted in this range",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-scrape": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (container, service) (\n  up{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\",\n    container=~\"$lokiComponent\"\n  }\n)\n",
+                        "format": "table",
+                        "instant": true,
+                        "qryType": 2,
+                        "query": "max by (container, service) (\n  up{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\",\n    container=~\"$lokiComponent\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "organize",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true
+                      },
+                      "indexByName": {
+                        "Value": 2,
+                        "container": 0,
+                        "service": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**Whether each Loki target is being scraped successfully, one series per component.**\n\n**Nominal:** 1 for every component.\n\n**Unhealthy:** 0 for any of them. A target at 0 is reachable but failing — most often a scheme mismatch, where the scrape speaks HTTPS to a plaintext listener or the reverse.\n\nWorth reading before anything else on this dashboard. A component at 0 here makes every other panel about that component empty, and an empty panel is indistinguishable from a healthy quiet one.\n\nThe canary and the two memcached exporters are collected by a separate ServiceMonitor precisely because they never serve TLS; if those three are the ones at 0, that split is what to check.",
+          "id": 1005,
+          "links": [],
+          "title": "Scrape Health",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "No Loki targets found at all — check the namespace picker",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-bytes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_logql_querystats_bytes_processed_per_seconds_sum{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "scanned/s",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_logql_querystats_bytes_processed_per_seconds_sum{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes per second of stored log data the queriers had to decompress and scan to answer the queries being asked.**\n\n**Nominal:** Small relative to how much is stored. A well-shaped query narrows by label first, so it reads a fraction of the range it covers.\n\n**Unhealthy:** Large and sustained. Queries are scanning far more than they return, which is what a line filter over a wide label selection does — the cost lands on the queriers and on object-storage egress rather than on the person who wrote the query.",
+          "id": 1026,
+          "links": [],
+          "title": "Bytes Scanned",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE7733",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No queries ran in this range",
+                  "unit": "Bps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-cache-hit-rate": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (name) (\n  rate(\n    loki_cache_hits{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n/\nsum by (name) (\n  rate(\n    loki_cache_fetched_keys{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{name}}",
+                        "qryType": 1,
+                        "query": "sum by (name) (\n  rate(\n    loki_cache_hits{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n/\nsum by (name) (\n  rate(\n    loki_cache_fetched_keys{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The share of cache lookups that were served from cache, split by which cache.**\n\n**Nominal:** High for the results cache on a dashboard being refreshed; lower and much more variable for chunks, which depends entirely on whether people are re-reading the same time range.\n\n**Unhealthy:** A collapse to near zero on the chunk cache while query latency climbs. Either the cache is too small for the working set or the memcached pods are unhealthy — the Overview tab's scrape panel says whether they are even up.",
+          "id": 1030,
+          "links": [],
+          "title": "Cache Hit Rate",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "No cache lookups in this range",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-cache-memory": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (service) (\n  memcached_current_bytes{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n/\nsum by (service) (\n  memcached_limit_bytes{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "legendFormat": "{{service}}",
+                        "qryType": 1,
+                        "query": "sum by (service) (\n  memcached_current_bytes{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n/\nsum by (service) (\n  memcached_limit_bytes{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How much of its allotted memory each memcached cache is holding, as a proportion of its limit.**\n\n**Nominal:** Close to 1.0 once the cache has warmed. A cache at its limit is a cache doing its job — memcached evicts the oldest entries and keeps going.\n\n**Unhealthy:** Far below 1.0 long after a restart, which means the cache is bigger than the working set and the memory could be given back. The alarming direction is not high usage but a rising eviction rate alongside a falling hit rate, which says the cache is too small.\n\nDepends on the memcached exporter sidecar, which serves plaintext and is collected by this chart's separate plaintext ServiceMonitor. If this panel is empty, check the scrape panel on the Overview tab first.",
+          "id": 1031,
+          "links": [],
+          "title": "Cache Memory Used",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "No memcached exporter is being scraped — see Scrape Health on the Overview tab",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-cache-requests": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (name) (\n  rate(\n    loki_cache_fetched_keys{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{name}}",
+                        "qryType": 1,
+                        "query": "sum by (name) (\n  rate(\n    loki_cache_fetched_keys{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Cache lookups per second, split by which cache — chunks, query results and the index each have their own.**\n\n**Nominal:** Tracks query volume.\n\n**Unhealthy:** Not alarming by itself; it is the denominator for the hit-rate panel beside it.",
+          "id": 1029,
+          "links": [],
+          "title": "Cache Lookups",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No cache lookups in this range",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-in-flight": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  loki_query_frontend_queries_in_progress{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "legendFormat": "queries",
+                        "qryType": 1,
+                        "query": "sum(\n  loki_query_frontend_queries_in_progress{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Queries the frontend is currently working on.**\n\n**Nominal:** A low number that returns to zero between investigations.\n\n**Unhealthy:** A floor that never returns to zero. Something is issuing queries on a loop — most often a dashboard left open on a short refresh over a wide range, which is also the cheapest thing on this list to fix.",
+          "id": 1024,
+          "links": [],
+          "title": "Queries In Flight",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE7733",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Nothing is querying the store",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=\"query-frontend\",\n        route=~\"loki_api_v1_.*\",\n        route!~\"(?i).*tail.*\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=\"query-frontend\",\n        route=~\"loki_api_v1_.*\",\n        route!~\"(?i).*tail.*\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.90,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=\"query-frontend\",\n        route=~\"loki_api_v1_.*\",\n        route!~\"(?i).*tail.*\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p90",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.90,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=\"query-frontend\",\n        route=~\"loki_api_v1_.*\",\n        route!~\"(?i).*tail.*\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=\"query-frontend\",\n        route=~\"loki_api_v1_.*\",\n        route!~\"(?i).*tail.*\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        container=\"query-frontend\",\n        route=~\"loki_api_v1_.*\",\n        route!~\"(?i).*tail.*\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**End-to-end query latency at the query frontend, at the median, 90th and 99th percentile.**\n\n**Nominal:** Sub-second at the median. The tail follows the range being queried, so a wide p99 is normal on a cluster where someone is looking at a week.\n\n**Unhealthy:** A median climbing into seconds. That is the reading a person notices as \"Grafana is slow\", and the queue and cache panels below say which half of the read path to blame.",
+          "id": 1027,
+          "links": [],
+          "title": "Query Latency",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No queries ran in this range",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-queue": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_query_scheduler_queue_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_query_scheduler_queue_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_query_scheduler_queue_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_query_scheduler_queue_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long a query sub-request waited in the scheduler's queue before a querier picked it up, at the median and 99th percentile.**\n\n**Nominal:** Near zero. A query that waits is a query with no querier free.\n\n**Unhealthy:** Anything sustained. This is the panel that distinguishes \"the store is slow\" from \"the store is busy\": queue time means there is not enough querier capacity for the concurrency being asked of it, and adding queriers fixes it. Latency without queue time is the queriers themselves being slow, and adding more will not help.",
+          "id": 1028,
+          "links": [],
+          "title": "Scheduler Queue Time",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No query waited for a querier.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "reads-rate": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (route) (\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=\"query-frontend\",\n      route=~\"loki_api_v1_.*\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{route}}",
+                        "qryType": 1,
+                        "query": "sum by (route) (\n  rate(\n    loki_request_duration_seconds_count{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\",\n      container=\"query-frontend\",\n      route=~\"loki_api_v1_.*\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Queries per second reaching the query frontend, split by the kind of request.**\n\n**Nominal:** Low and bursty on a cluster nobody is actively investigating — the canary and any alerting rules are the floor.\n\n**Unhealthy:** Not an unhealthy signal on its own. It is here as the denominator: every other panel on this tab is only alarming relative to how much was being asked of the store.",
+          "id": 1025,
+          "links": [],
+          "title": "Query Rate by Route",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Nothing is querying the store",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-compaction-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "time()\n-\nmax(\n  loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "instant": true,
+                        "legendFormat": "ago",
+                        "qryType": 1,
+                        "query": "time()\n-\nmax(\n  loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long ago the compactor last finished compacting index tables successfully.**\n\n**Nominal:** Under the compaction interval, with the same sawtooth as retention.\n\n**Unhealthy:** Growing without bound. Uncompacted index tables make every query over the affected range slower, and the effect accumulates — this is the usual cause of a store that got gradually slower over weeks with no single change to blame.",
+          "id": 1033,
+          "links": [],
+          "title": "Compaction Last Ran",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#CCBB44",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Compaction has never completed — expected on a new install, a finding on an old one",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-compaction-runs": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (status) (\n  increase(\n    loki_boltdb_shipper_compact_tables_operation_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__range]\n  )\n)\n",
+                        "legendFormat": "{{status}}",
+                        "qryType": 1,
+                        "query": "sum by (status) (\n  increase(\n    loki_boltdb_shipper_compact_tables_operation_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__range]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Compactor runs over the dashboard's time range, split by outcome.**\n\n**Nominal:** A steady count of successes and no failures.\n\n**Unhealthy:** Any failures, or no runs at all. The compactor is a singleton, so \"no runs\" and \"compactor is not running\" look identical here — read it beside the scrape panel on the Overview tab.",
+          "id": 1034,
+          "links": [],
+          "title": "Compaction Runs by Outcome",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No compaction ran in this range — check Scrape Health if that is unexpected",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-deletes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  loki_compactor_pending_delete_requests_count{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "instant": true,
+                        "legendFormat": "pending requests",
+                        "qryType": 1,
+                        "query": "sum(\n  loki_compactor_pending_delete_requests_count{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(\n  loki_compactor_oldest_pending_delete_request_age_seconds{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "instant": true,
+                        "legendFormat": "oldest request age",
+                        "qryType": 1,
+                        "query": "max(\n  loki_compactor_oldest_pending_delete_request_age_seconds{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Delete requests waiting to be processed, and how old the oldest one is.**\n\n**Nominal:** Zero pending on a cluster where nobody has asked for a deletion.\n\n**Unhealthy:** A request that stays pending. Deletions are processed by the compactor on its own schedule, so a growing age here means the compactor is not running — and on an install where deletion is a compliance obligation, that is the panel that says the obligation is not being met.",
+          "id": 1040,
+          "links": [],
+          "title": "Pending Delete Requests",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No delete requests are pending.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-failures": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (operation) (\n  rate(\n    loki_objstore_bucket_operation_failures_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{operation}}",
+                        "qryType": 1,
+                        "query": "sum by (operation) (\n  rate(\n    loki_objstore_bucket_operation_failures_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Object-storage operations per second that failed, split by kind.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Anything sustained. Loki retries, so a low failure rate is survivable and a rising one is not: failed uploads back up into ingester memory and then into the write-ahead log, and failed gets are queries that return incomplete results without saying so.\n\nCredentials and bucket policy are the usual causes, and both fail completely rather than intermittently — a rate that starts at zero and jumps to match the operation rate is almost always an expired or rotated credential.",
+          "id": 1036,
+          "links": [],
+          "title": "Failures by Kind",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No object-storage operation failed.",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-index-sync": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_tsdb_shipper_tables_sync_operation_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "sync",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_tsdb_shipper_tables_sync_operation_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_tsdb_shipper_tables_upload_operation_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "upload",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_tsdb_shipper_tables_upload_operation_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Index table sync and upload operations per second between the shippers and object storage.**\n\n**Nominal:** A low steady rate. The index is written in periodic tables rather than continuously.\n\n**Unhealthy:** Zero while ingest continues. New data is being stored without its index being published, so queries will not find it — the data is not lost, but it is not reachable either.",
+          "id": 1038,
+          "links": [],
+          "title": "Index Table Operations",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No index tables were synced or uploaded in this range",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-index-wait": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_tsdb_shipper_query_wait_time_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "wait",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_tsdb_shipper_query_wait_time_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long a query waited for an index table to be downloaded before it could run, at the 99th percentile.**\n\n**Nominal:** Near zero once the tables a query needs are cached locally.\n\n**Unhealthy:** Seconds. Queries over older ranges pay this on the first read, so a sustained value means index tables are being evicted and re-fetched — usually the index gateway's disk being too small for the retention period.",
+          "id": 1039,
+          "links": [],
+          "title": "Query Wait for Index (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No query waited on an index table.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le, operation) (\n    rate(\n      loki_objstore_bucket_operation_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "{{operation}}",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le, operation) (\n    rate(\n      loki_objstore_bucket_operation_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**99th-percentile object-storage operation latency, split by kind.**\n\n**Nominal:** Tens of milliseconds for a bucket in the same region.\n\n**Unhealthy:** Hundreds of milliseconds or seconds. Slow `get` operations surface as slow queries; slow `upload` operations surface as ingester memory growth long before they surface as errors.",
+          "id": 1037,
+          "links": [],
+          "title": "Operation Latency (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No object-storage traffic in this range",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-operations": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (operation) (\n  rate(\n    loki_objstore_bucket_operations_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{operation}}",
+                        "qryType": 1,
+                        "query": "sum by (operation) (\n  rate(\n    loki_objstore_bucket_operations_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Object-storage operations per second, split by kind.**\n\n**Nominal:** Steady `upload` traffic from the ingesters flushing chunks, and `get` traffic that follows query volume.\n\n**Unhealthy:** A collapse to zero on `upload` while ingest continues — nothing is reaching durable storage. Or `get` traffic far out of proportion to query volume, which means the caches are not doing their job.",
+          "id": 1035,
+          "links": [],
+          "title": "Operations by Kind",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No object-storage traffic in this range",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "storage-retention-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "time()\n-\nmax(\n  loki_compactor_apply_retention_last_successful_run_timestamp_seconds{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "instant": true,
+                        "legendFormat": "ago",
+                        "qryType": 1,
+                        "query": "time()\n-\nmax(\n  loki_compactor_apply_retention_last_successful_run_timestamp_seconds{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long ago the compactor last finished applying retention successfully.**\n\n**Nominal:** Under the configured retention interval — a couple of hours on the default schedule.\n\n**Unhealthy:** Growing without bound. Retention has stopped, so nothing is being deleted and the bucket grows until something else notices. This fails quietly: no query breaks, and the only symptom is the storage bill.\n\nReads a \"last successful run\" timestamp, so it counts up between runs and drops to near zero each time one completes. A sawtooth is the healthy shape, not a flat line.",
+          "id": 1032,
+          "links": [],
+          "title": "Retention Last Ran",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#CCBB44",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Retention has never completed — expected on a new install, a finding on an old one",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-bytes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_distributor_bytes_received_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "bytes/s",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_distributor_bytes_received_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes per second arriving at the distributor, before compression.**\n\n**Nominal:** Proportional to the line rate beside it. The ratio is the average line length and is usually stable.\n\n**Unhealthy:** Bytes climbing while lines do not. Something started logging much longer lines — a stack trace in a loop, or a payload dumped into a log message — and it will show up in storage cost before it shows up anywhere else.",
+          "id": 1012,
+          "links": [],
+          "title": "Bytes Received",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Nothing is reaching the distributor",
+                  "unit": "Bps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-chunk-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_age_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_age_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_age_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_age_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How old a chunk was when it was flushed, at the median and 99th percentile.**\n\n**Nominal:** A median at or a little under the configured maximum chunk age — the default is an hour, so a median around 45 minutes is ordinary.\n\n**Unhealthy:** A median far below the maximum, which means chunks are closing because they filled rather than because they aged; that is fine on its own and only interesting beside the utilization panel. The reading that matters is the reverse — a p99 pinned at the maximum with low utilization, which is the idle-stream case again.",
+          "id": 1020,
+          "links": [],
+          "title": "Chunk Age on Flush",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No chunks were flushed in this range",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-chunk-utilization": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_utilization_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_utilization_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.10,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_utilization_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p10",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.10,\n  sum by (le) (\n    rate(\n      loki_ingester_chunk_utilization_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How full a chunk was when it was flushed, at the median and 10th percentile. 1.0 is a chunk closed because it filled up.**\n\n**Nominal:** A median near 1.0. Full chunks are cheap to store and cheap to read.\n\n**Unhealthy:** A median well below 0.5. Chunks are being closed by the idle timeout rather than by filling, which means many low-traffic streams — the same cardinality problem the stream-count panel shows, seen from the storage side. Every such chunk costs a full object-store write and a full index entry for very few lines.",
+          "id": 1019,
+          "links": [],
+          "title": "Chunk Utilization on Flush",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "No chunks were flushed in this range",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-chunks-flushed": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_ingester_chunks_flushed_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "chunks/s",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_ingester_chunks_flushed_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Chunks per second the ingesters have written out to object storage.**\n\n**Nominal:** A steady rate that tracks ingest volume.\n\n**Unhealthy:** Zero while lines are still arriving. Nothing is reaching durable storage, so everything ingested since is held only in ingester memory and is lost if they restart.",
+          "id": 1018,
+          "links": [],
+          "title": "Chunks Flushed",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Nothing has been flushed to object storage in this range",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-chunks-memory": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (pod) (\n  loki_ingester_memory_chunks{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "sum by (pod) (\n  loki_ingester_memory_chunks{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Chunks each ingester is holding before flushing them to object storage.**\n\n**Nominal:** Proportional to the stream count, and flat once the cluster is in a steady state.\n\n**Unhealthy:** Growth while the flush rate is flat. The ingesters are filling chunks faster than they can write them out, which ends in memory pressure — the flush-failure panel says whether storage is the reason.",
+          "id": 1017,
+          "links": [],
+          "title": "Chunks in Memory",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No matches for the current filters",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-discarded-bytes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (reason) (\n  rate(\n    loki_discarded_bytes_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{reason}}",
+                        "qryType": 1,
+                        "query": "sum by (reason) (\n  rate(\n    loki_discarded_bytes_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes per second discarded, split by reason — the same losses as the line panel, weighted by how much was lost.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Non-zero. Read beside the line count: a large byte rate from few lines is a handful of very large messages being rejected, which is usually a single misbehaving workload rather than a cluster-wide limit.",
+          "id": 1015,
+          "links": [],
+          "title": "Discarded Bytes by Reason",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Nothing is being discarded.",
+                  "unit": "Bps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-discarded-lines": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (reason) (\n  rate(\n    loki_discarded_samples_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{reason}}",
+                        "qryType": 1,
+                        "query": "sum by (reason) (\n  rate(\n    loki_discarded_samples_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Log lines per second Loki accepted the connection for and then threw away, split by the reason it gave.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Anything sustained. This is silent data loss — the collector believes the line was delivered. The reason label is the whole diagnosis: `rate_limited` means the tenant limits are below what the cluster produces, `per_stream_rate_limit` means one noisy stream rather than the whole cluster, `greater_than_max_sample_age` means lines arrived too late to be filed, and `out_of_order` means a collector's clock or batching is sending them shuffled.\n\nDeliberately unscoped by component: discards are a distributor-side verdict and splitting them by anything but reason hides the reason.",
+          "id": 1014,
+          "links": [],
+          "title": "Discarded Lines by Reason",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Nothing is being discarded.",
+                  "unit": "suffix:lines/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-lines": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  rate(\n    loki_distributor_lines_received_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "lines/s",
+                        "qryType": 1,
+                        "query": "sum(\n  rate(\n    loki_distributor_lines_received_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Log lines per second arriving at the distributor — everything the cluster is sending Loki.**\n\n**Nominal:** A baseline that tracks how much the cluster is doing. Steps up and down follow deployments and workload changes.\n\n**Unhealthy:** A drop to zero. The collectors stopped, or cannot reach the distributor; either way nothing is being recorded from that moment on and the gap is permanent.",
+          "id": 1011,
+          "links": [],
+          "title": "Lines Received",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "Nothing is reaching the distributor",
+                  "unit": "suffix:lines/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-push-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        route=~\"loki_api_v1_push|api_prom_push|/logproto.Pusher/Push\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        route=~\"loki_api_v1_push|api_prom_push|/logproto.Pusher/Push\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        route=~\"loki_api_v1_push|api_prom_push|/logproto.Pusher/Push\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(\n      loki_request_duration_seconds_bucket{\n        app_instance=\"loki\",\n        namespace=~\"$lokiNamespace\",\n        route=~\"loki_api_v1_push|api_prom_push|/logproto.Pusher/Push\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long a push request took, at the median and 99th percentile.**\n\n**Nominal:** Tens of milliseconds. A push is an in-memory append on the ingesters; it does not wait for object storage.\n\n**Unhealthy:** Climbing. The collectors will retry, then buffer, then drop — so a slow push path becomes lost lines at the *collector* rather than an error here.",
+          "id": 1013,
+          "links": [],
+          "title": "Push Latency (p99)",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No pushes in this range",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "fields": "/p99/",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-streams": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (pod) (\n  loki_ingester_memory_streams{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "sum by (pod) (\n  loki_ingester_memory_streams{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Active streams held in memory by the ingesters. A stream is one distinct label-set — one container's lines at one level, say.**\n\n**Nominal:** Stable, and proportional to how many workloads the cluster runs.\n\n**Unhealthy:** Steady growth that does not level off. That is label cardinality, and it is the failure mode that ends with ingesters out of memory: some label is carrying a value that is different on every line, so every line opens a stream of its own.\n\nThe usual culprits are a pod name, a request id or a timestamp promoted to a label. The fix is in the collector's relabel rules, not in Loki.",
+          "id": 1016,
+          "links": [],
+          "title": "Active Streams",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No matches for the current filters",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-wal-disk": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (\n  loki_ingester_wal_disk_usage_percent{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "max by (pod) (\n  loki_ingester_wal_disk_usage_percent{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How much of its write-ahead log volume each ingester has used, as a percentage.**\n\n**Nominal:** Low and flat. The WAL is a replay buffer, not an archive; it is truncated as chunks are flushed.\n\n**Unhealthy:** Climbing toward 100. The WAL grows when flushes are not keeping up, and at full it stops accepting writes entirely — see the disk-full panel, which counts the times that has already happened.",
+          "id": 1021,
+          "links": [],
+          "title": "WAL Disk Usage",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 100,
+                  "min": 0,
+                  "noValue": "No matches for the current filters",
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-wal-full": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (pod) (\n  increase(\n    loki_ingester_wal_disk_full_failures_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__range]\n  )\n)\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "sum by (pod) (\n  increase(\n    loki_ingester_wal_disk_full_failures_total{\n      app_instance=\"loki\",\n      namespace=~\"$lokiNamespace\"\n    }\n    [$__range]\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Times an ingester could not write to its write-ahead log because the volume was full.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any occurrence. Writes are being refused, and the ingester cannot replay what it did not record — so a restart after this loses data that was accepted before it.",
+          "id": 1022,
+          "links": [],
+          "title": "WAL Disk Full Failures",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No ingester has run out of write-ahead log space.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "writes-wal-replay": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (\n  loki_ingester_wal_replay_active{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "max by (pod) (\n  loki_ingester_wal_replay_active{\n    app_instance=\"loki\",\n    namespace=~\"$lokiNamespace\"\n  }\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Whether an ingester is currently replaying its write-ahead log. 1 means replaying.**\n\n**Nominal:** Zero, except for a few minutes after an ingester restarts.\n\n**Unhealthy:** Sustained, or repeated. A replaying ingester is not serving writes, and one that is always replaying is crash-looping — read the restart panel on the Overview tab beside it.",
+          "id": 1023,
+          "links": [],
+          "title": "WAL Replay Active",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "No ingester is replaying.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "TabsLayout",
+      "spec": {
+        "tabs": [
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-canary-missing"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-canary-latency"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-ingest"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-client-error-rate"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-error-rate"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 5,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "End to End"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-scrape"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-restarts"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Collection Health"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-latency-by-route"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-failures"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Requests"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-canary-roundtrip"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-canary-losses"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Canary"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Overview"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-lines"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-bytes"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-push-latency"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Ingest"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-discarded-lines"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-discarded-bytes"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Rejected"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-streams"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-chunks-memory"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-chunks-flushed"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Ingesters"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-chunk-utilization"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-chunk-age"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Chunks"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-wal-disk"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-wal-full"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "writes-wal-replay"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Write-Ahead Log"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Writes"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-in-flight"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-rate"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-bytes"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Query Load"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-latency"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-queue"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Latency"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-cache-requests"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-cache-hit-rate"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "reads-cache-memory"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Caches"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Reads"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-retention-age"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-compaction-age"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-compaction-runs"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Maintenance"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-operations"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-failures"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-latency"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Object Storage"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-index-sync"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-index-wait"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Index"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "storage-deletes"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Deletion Requests"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Storage"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingTimeRangeSize",
+                                "spec": {
+                                  "value": "7d"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "logs-rate-by-component"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "logs-warning-rate"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Volume"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingTimeRangeSize",
+                                "spec": {
+                                  "value": "7d"
+                                }
+                              }
+                            ],
+                            "visibility": "hide"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "loki-volume-hidden-note"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "Volume"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "logs-warning-feed"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Warnings"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "logs-feed"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "All Logs"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Logs"
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [
+      "infrastructure",
+      "mzmon",
+      "meta-monitoring",
+      "logs"
+    ],
+    "timeSettings": {
+      "autoRefresh": "",
+      "autoRefreshIntervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "fiscalYearStartMonth": 0,
+      "from": "now-6h",
+      "hideTimepicker": false,
+      "timezone": "browser",
+      "to": "now"
+    },
+    "title": "Loki Meta Monitoring",
+    "variables": [
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "allowCustomValue": false,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Datasource for metrics queries",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Metrics Datasource",
+          "multi": false,
+          "name": "metricsDatasource",
+          "options": [],
+          "pluginId": "prometheus",
+          "refresh": "never",
+          "regex": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "allowCustomValue": false,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Datasource for log and event queries",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Logs Datasource",
+          "multi": false,
+          "name": "logsDatasource",
+          "options": [],
+          "pluginId": "loki",
+          "refresh": "never",
+          "regex": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".+",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(up{app_instance=\"loki\"}, namespace)",
+          "description": "Namespace(s) the log store runs in",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "Loki Namespace",
+          "multi": true,
+          "name": "lokiNamespace",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(up{app_instance=\"loki\"}, namespace)",
+              "qryType": 1,
+              "query": "label_values(up{app_instance=\"loki\"}, namespace)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".+",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(up{app_instance=\"loki\"}, container)",
+          "description": "Which of the log store's processes to read",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "Component",
+          "multi": true,
+          "name": "lokiComponent",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(up{app_instance=\"loki\"}, container)",
+              "qryType": 1,
+              "query": "label_values(up{app_instance=\"loki\"}, container)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".*",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(level)",
+          "description": "The severity level(s) to include",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "Level",
+          "multi": true,
+          "name": "logLevelList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${logsDatasource}"
+            },
+            "group": "loki",
+            "kind": "DataQuery",
+            "spec": {
+              "label": "level",
+              "refId": "LokiVariableQueryEditor-VariableQuery",
+              "stream": "{namespace=~\"$logNamespaceList\"}",
+              "type": 1
+            },
+            "version": "v0"
+          },
+          "refresh": "onTimeRangeChanged",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "TextVariable",
+        "spec": {
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Case-insensitive text to match anywhere in the log line",
+          "hide": "dontHide",
+          "label": "Search",
+          "name": "logSearch",
+          "query": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "datasource": {
+          "name": "$metricsDatasource"
+        },
+        "group": "",
+        "kind": "AdhocVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "baseFilters": [
+            {
+              "key": "namespace",
+              "operator": "=~",
+              "origin": "dashboard",
+              "value": "$mzNamespaceList"
+            }
+          ],
+          "defaultKeys": [],
+          "description": "Adhoc filters to apply to all metrics queries",
+          "enableGroupBy": false,
+          "filters": [],
+          "hide": "inControlsMenu",
+          "label": "Advanced Metric Filter",
+          "name": "metricAdhoc",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "datasource": {
+          "name": "$logsDatasource"
+        },
+        "group": "",
+        "kind": "AdhocVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "baseFilters": [],
+          "defaultKeys": [],
+          "description": "Adhoc filters to apply to all logs queries",
+          "enableGroupBy": false,
+          "filters": [],
+          "hide": "inControlsMenu",
+          "label": "Advanced Log Filter",
+          "name": "logsAdhoc",
+          "skipUrlSync": false
+        }
+      }
+    ]
+  }
+}

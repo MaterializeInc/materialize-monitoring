@@ -173,6 +173,13 @@ loki:
   # and Loki's own metrics disappear — and because the target errors rather than
   # returns zero, `up` goes *absent* rather than 0, so an alert on `up == 0` does
   # not fire either. The one failure here that hides itself twice.
+  #
+  # `scheme` here reaches **every** target the subchart's single ServiceMonitor
+  # selects, which is why the base values take the canary and the two memcached
+  # exporters out of it: none of the three ever serves TLS, so an `https` scheme
+  # would break them the moment this profile is composed in. Nothing to set for
+  # that here — the split is unconditional, and this chart's own plaintext
+  # monitor collects them in both modes.
   monitoring:
     serviceMonitor:
       scheme: https

@@ -45,14 +45,23 @@ components:
       - charts/materialize-monitoring/pre-rendered/
     dependencies:
       # Main content ones need to go first (to avoid ties in dependencies)
-      - dashboards
+      #
+      # **Not `dashboards`.** They moved to a chart of their own, so nothing this
+      # chart ships comes from them and a dashboard change has no reason to bump
+      # it. Left in, every dashboard edit would publish an umbrella release
+      # identical to its predecessor except the version.
       - pipelines
       - scrapers
       # Common goes later
       - mzmon-lib
       - repo-common
     artifacts:
-      - charts/materialize-monitoring*.tgz
+      # Anchored on the version digit rather than left open: `materialize-monitoring*`
+      # also matches the `-crds` and `-dashboards` tarballs, which belong to other
+      # components. In CI only one chart is packaged per run so the loose form
+      # resolved to one file anyway, but a local `make charts` builds all three and
+      # would attach the other two to this component's release.
+      - charts/materialize-monitoring-[0-9]*.tgz
 
   # Optional CRDs
   materialize-monitoring-crds:
@@ -68,24 +77,53 @@ components:
     artifacts:
       - charts/materialize-monitoring-crds-*.tgz
 
+  # The dashboards: their sources, their rendered output, and the chart that
+  # ships them — one component, because they are one thing.
+  #
+  # The chart could have had a component of its own, like the CRDs chart does.
+  # It does not, because the coupling is total in a way the CRDs chart's is not:
+  # this chart carries nothing *but* the rendered dashboards, so every change to
+  # one is a change to the other and two version streams would move in lockstep
+  # while pretending to be independent. The CRDs chart tracks upstream CRDs on
+  # their own cadence, which is why that one is genuinely separate.
   dashboards:
     changelog: true
-    title: "Dashboards"
-    # No independent version: `packages/dashboards` is a workspace crate that
-    # inherits `version.workspace`, so the workspace `Cargo.toml` the `mzmon-lib`
-    # component bumps is the only version file involved. The generated-artifact
-    # components (pipelines, scrapers) are the same shape.
-    version_paths: []
+    # Retitled when the chart folded in, the same way `materialize-monitoring`
+    # was when the Terraform module joined it.
+    #
+    # The title is the component's identity in `CHANGELOG.md` —
+    # `latest_released` looks the component up by it — so a rename on its own
+    # would orphan the released sections and the tooling would report the
+    # component as brand new. What makes it safe is a paired edit in
+    # `CHANGELOG.md`: the latest *released* heading is rewritten to the new
+    # title, which re-establishes the baseline, and the open `(Unreleased)` one
+    # with it so the section in flight is not duplicated. Older headings keep
+    # the old title as the historical record.
+    #
+    # See `reference/internal/releasing.md` for the procedure.
+    title: "Dashboards (Helm chart)"
+    # The chart's version is the component's. `packages/dashboards` is a
+    # workspace crate inheriting `version.workspace`, so it contributes no
+    # version file of its own — the chart is the only one here.
+    version_paths:
+      - charts/materialize-monitoring-dashboards/Chart.yaml
+    # The chart this component publishes. Read by the release workflow, which
+    # would otherwise assume `charts/<component name>` and find nothing.
+    chart: charts/materialize-monitoring-dashboards
     content_paths:
       - packages/queries/
       - packages/dashboards/
-      # Generated dashboard output bundled into the chart.
-      - charts/materialize-monitoring/pre-rendered/dashboards/
+      # The chart, including the generated output under its `pre-rendered/`.
+      # Not excluded the way the umbrella chart excludes its own: there the
+      # generated tree belongs to another component, here it belongs to this one.
+      - charts/materialize-monitoring-dashboards/
+      - tools/chartlib/
     dependencies:
       - mzmon-lib
       - repo-common
     artifacts:
-      - charts/materialize-monitoring/pre-rendered/dashboards/**/*.yaml
+      - charts/materialize-monitoring-dashboards-*.tgz
+      - charts/materialize-monitoring-dashboards/pre-rendered/dashboards/**/*.yaml
       - docs/assets/dashboards/**/*.json
 
   pipelines:

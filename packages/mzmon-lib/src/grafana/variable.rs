@@ -100,6 +100,10 @@ pub mod extra {
     pub const NETWORK_COMPONENT_LIST: &str = "networkComponentList";
     /// Kubernetes namespaces, for an infrastructure view that scopes by them.
     pub const NAMESPACE_LIST: &str = "namespaceList";
+    /// Namespaces the log store runs in, for the meta-monitoring dashboard.
+    pub const LOKI_NAMESPACE: &str = "lokiNamespace";
+    /// Which of the log store's processes a meta-monitoring panel reads.
+    pub const LOKI_COMPONENT: &str = "lokiComponent";
 }
 
 /// An empty current selection.
@@ -797,6 +801,76 @@ pub fn network_components() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Namespaces the log store runs in.
+///
+/// Discovered from `up{app_instance="loki"}` rather than from a `loki_*` metric,
+/// because that is the one selector covering *every* Loki target — including the
+/// canary and the two memcached exporters, which publish no `loki_build_info` and
+/// are collected by a different ServiceMonitor than the rest.
+///
+/// `app_instance` rather than `job=~"loki/.*"`: both of this chart's Loki
+/// monitors stamp the former on every target, while the latter hardcodes the
+/// subchart's `jobPrefix`, which an operator may change.
+///
+/// Multi-select with an `.+` "All", so a cluster running two
+/// `materialize-monitoring` releases can look at one store at a time without the
+/// picker having to be narrowed first.
+pub fn loki_namespaces() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::LOKI_NAMESPACE,
+        label: "Loki Namespace",
+        description: "Namespace(s) the log store runs in",
+        expr: r#"label_values(up{app_instance="loki"}, namespace)"#.to_string(),
+        multi: true,
+        include_all: true,
+        // Stated rather than expanded, like every other picker here: an
+        // expansion is empty whenever discovery has not run, and an empty
+        // `namespace=~""` matches the series *missing* the label rather than all
+        // of them.
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Which of the log store's processes to read.
+///
+/// **One picker across both engines**, which is the unusual part. It is
+/// discovered from the metrics side, off `container`, and the log queries apply
+/// it to Loki's `component` label. That is sound because the two are the same
+/// string by construction — both are the Kubernetes container name — and it
+/// spares the dashboard a second, near-identical control that would differ from
+/// this one only in which panels it moved.
+///
+/// The value sets are not quite identical, and the difference is benign in the
+/// one direction it goes: `exporter`, the memcached sidecar, exists on the
+/// metrics side and emits no log lines, so selecting it empties the log feeds.
+/// That is the truthful answer rather than a bug. Nothing goes the other way —
+/// every process that logs is also scraped.
+///
+/// `.+` rather than `.*` for "All": every Loki target carries a container name
+/// and every Loki line carries a component, so the stricter form drops nothing
+/// and keeps the log stream selectors parseable.
+pub fn loki_components() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::LOKI_COMPONENT,
+        label: "Component",
+        description: "Which of the log store's processes to read",
+        expr: r#"label_values(up{app_instance="loki"}, container)"#.to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Kubernetes namespaces, for an infrastructure view that scopes by them.
 ///
 /// Discovered from `kube_pod_info`, so it offers every namespace that runs
@@ -1147,6 +1221,32 @@ pub fn network_scoped() -> Vec<dashboardv2::VariableKind> {
         all_namespaces(),
         node_instances(),
         metric_adhoc(),
+    ]
+}
+
+/// Controls for the log-store meta-monitoring dashboard.
+///
+/// **Both datasources**, unlike the other `infra-*` dashboards, which pick one.
+/// The metrics say whether Loki is healthy and the logs say why, and keeping
+/// them on one dashboard is the whole point — the alternative is reading a
+/// symptom here and going somewhere else for the cause.
+///
+/// The level and search controls come from the shared logs set and mean exactly
+/// what they mean there, so an operator arriving from `infra-logs` does not have
+/// to relearn them. There is deliberately no namespace picker for *logs*: a
+/// meta-monitoring dashboard reads Loki's own namespace, which
+/// [`loki_namespaces`] already selects, and a second namespace control that had
+/// to agree with the first would be a way to make them disagree.
+pub fn loki_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        logs_datasource(),
+        loki_namespaces(),
+        loki_components(),
+        log_levels(),
+        log_search(),
+        metric_adhoc(),
+        logs_adhoc(),
     ]
 }
 
