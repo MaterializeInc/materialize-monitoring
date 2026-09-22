@@ -113,6 +113,26 @@ variable "create_namespace" {
   nullable    = false
 }
 
+variable "cluster_name" {
+  description = <<-EOT
+    Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
+    sample the stack collects.
+
+    Set it whenever more than one cluster writes to the same log or metrics store — the label is
+    the only thing that tells their data apart. Null leaves the chart's default, `default`.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    # The value is rendered through Helm's `tpl` and spliced into an Alloy Go template, so
+    # template delimiters and quoting characters would break both. Every managed Kubernetes
+    # service's cluster naming rules fit inside this.
+    condition     = var.cluster_name == null || can(regex("^[A-Za-z0-9][A-Za-z0-9._-]*$", var.cluster_name))
+    error_message = "cluster_name must start with a letter or digit and contain only letters, digits, '.', '_', and '-'."
+  }
+}
+
 variable "enable_monitoring_crds" {
   description = <<-EOT
     Install the materialize-monitoring-crds chart (prometheus-operator and grafana-operator CRDs).

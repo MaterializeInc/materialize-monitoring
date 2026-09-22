@@ -50,6 +50,9 @@ module "monitoring" {
   materialize_instance_namespace = "materialize-environment"
   materialize_operator_namespace = "materialize"
 
+  # Set so the render check can assert it reaches both Alloy env ConfigMaps.
+  cluster_name = "example-gke"
+
   # Grafana's own state in PostgreSQL rather than SQLite on an emptyDir. Set here
   # so the render check has something to assert against: the observable proof is
   # a `[database]` block in grafana.ini plus the Secret mount the password is read

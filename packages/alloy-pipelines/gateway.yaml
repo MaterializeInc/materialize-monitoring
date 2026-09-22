@@ -56,9 +56,10 @@ description: |
   anchors are expanded at parse time, so the rendered .alloy is fully explicit.
   global-api-server additionally parses prehook/frontegg webhook metadata.
 
-  NOTE: the reference defaults the `cluster` fallback to a staging-specific
-  environment name; we keep the generic `example_cluster` here since this chart
-  is deployed across environments (see CLAUDE.md "keep examples generic").
+  NOTE: the `cluster` fallback is the gateway's own CLUSTER_NAME, the same
+  variable the agent stamps on pod logs. Journal lines, Kubernetes events, the
+  agent sidechannel and OTLP logs arrive without a `cluster` label, so without
+  the fallback they would not carry the value the operator configured.
 
 logging:
   level:
@@ -515,9 +516,19 @@ blocks:
         - stage.template:
             source: level
             template: '{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}'
+        # Lines from sources that never saw the agent's pod_logs stage fall
+        # back to this cluster's name. The `default` matches the chart's own
+        # default for CLUSTER_NAME.
         - stage.template:
             source: cluster
-            template: '{{ if .Value }}{{ .Value }}{{ else }}example_cluster{{ end }}'
+            template:
+              function: string.format
+              arguments:
+                - '{{ if .Value }}{{ .Value }}{{ else }}%s{{ end }}'
+                - function: coalesce
+                  arguments:
+                    - env: CLUSTER_NAME
+                    - "default"
 
         # --- kubernetes events ----------------------------------------------
         - stage.match:

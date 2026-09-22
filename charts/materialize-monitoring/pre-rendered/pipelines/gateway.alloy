@@ -51,9 +51,10 @@
 // anchors are expanded at parse time, so the rendered .alloy is fully explicit.
 // global-api-server additionally parses prehook/frontegg webhook metadata.
 //
-// NOTE: the reference defaults the `cluster` fallback to a staging-specific
-// environment name; we keep the generic `example_cluster` here since this chart
-// is deployed across environments (see CLAUDE.md "keep examples generic").
+// NOTE: the `cluster` fallback is the gateway's own CLUSTER_NAME, the same
+// variable the agent stamps on pod logs. Journal lines, Kubernetes events, the
+// agent sidechannel and OTLP logs arrive without a `cluster` label, so without
+// the fallback they would not carry the value the operator configured.
 
 logging {
 	level  = coalesce(sys.env("GATEWAY_LOG_LEVEL"), "info")
@@ -372,7 +373,7 @@ loki.process "inputProcessor" {
 
 	stage.template {
 		source   = "cluster"
-		template = "{{ if .Value }}{{ .Value }}{{ else }}example_cluster{{ end }}"
+		template = string.format("{{ if .Value }}{{ .Value }}{{ else }}%s{{ end }}", coalesce(sys.env("CLUSTER_NAME"), "default"))
 	}
 
 	stage.match {

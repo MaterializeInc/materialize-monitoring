@@ -587,9 +587,10 @@ $defs:
         type: string
       template:
         description: |
-          Go template body.
+          Go template body (can be an expression).
           `{{ .Value }}` refers to the current source value.
-        type: string
+          Build the body with an expression such as `string.format` to splice in a deploy-time value.
+        $ref: "#/$defs/expressionOrString"
         examples:
           - '{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}'
     required: [source, template]

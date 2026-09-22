@@ -159,7 +159,7 @@ The conversion was verified by rendering before and after: `agent.alloy`, `gatew
 
 <a id="expressablelist"></a>**`ExpressableList`** (`ast.rs`) is the list analog of `Expressable`, which stays sealed to scalars. The sealing exists because a literal *map* is shape-indistinguishable from the expression object; a literal *list* is not (array vs object are disjoint), so the untagged dispatch is unambiguous with `Literal` first. Used by cAdvisor's collector allowlists, which are wired to env vars via `encoding.from_json`.
 
-Fields widened to accept expressions during the raw-block conversion: `RelabelRule.replacement` (stamping `node` from `HOSTNAME`), `remoteWriteEndpoint.url` and `lokiWriteEndpoint.url` (env-coalesced destinations), `prometheus.scrape.scrape_interval`/`scrape_timeout`, `loki.source.api`'s `listen_port`, and the otelcol `client.endpoint` / `server.endpoint`.
+Fields widened to accept expressions during the raw-block conversion: `RelabelRule.replacement` (stamping `node` from `HOSTNAME`), `remoteWriteEndpoint.url` and `lokiWriteEndpoint.url` (env-coalesced destinations), `prometheus.scrape.scrape_interval`/`scrape_timeout`, `loki.source.api`'s `listen_port`, the otelcol `client.endpoint` / `server.endpoint`, and `stage.template`'s `template` (the gateway's `cluster` fallback splices `CLUSTER_NAME` in with `string.format`).
 
 **Every sub-block `oneOf` ends with a `raw:` branch** — the escape hatch is non-negotiable in the design.
 
