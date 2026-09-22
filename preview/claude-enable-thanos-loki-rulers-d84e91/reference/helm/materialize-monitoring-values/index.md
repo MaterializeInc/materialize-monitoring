@@ -4122,7 +4122,7 @@ Upstream reference:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "alertmanager_url": "http://{{ .Release.Name }}-alertmanager.{{ .Release.Namespace }}.svc.cluster.local:9093",
+  "alertmanager_url": "http://{{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093",
   "enable_alertmanager_v2": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
@@ -4137,7 +4137,7 @@ Upstream reference:
           "min_shards": 1
         },
         "remote_timeout": "30s",
-        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.cluster.local:9090/api/v1/metrics/write"
+        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
       }
     },
     "enabled": true
@@ -4179,7 +4179,7 @@ side uses — and why `split-namespace` overrides both of them.
         "min_shards": 1
       },
       "remote_timeout": "30s",
-      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.cluster.local:9090/api/v1/metrics/write"
+      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
     }
   },
   "enabled": true
@@ -5597,7 +5597,7 @@ validator warns when the two disagree.
       <td class="helm-value-default"><pre>
 {
   "alertmanagers": {
-    "config": "alertmanagers:\n  - static_configs:\n      - {{ .Release.Name }}-alertmanager.{{ .Release.Namespace }}.svc.cluster.local:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+    "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
   },
   "autoImportPrometheusRules": {
     "enabled": true,
@@ -5736,7 +5736,7 @@ correct under `split-namespace`.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "config": "alertmanagers:\n  - static_configs:\n      - {{ .Release.Name }}-alertmanager.{{ .Release.Namespace }}.svc.cluster.local:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+  "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager routing, in Thanos's own format.

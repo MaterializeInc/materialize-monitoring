@@ -13,6 +13,16 @@ Thanos Ruler evaluates PromQL, Loki Ruler evaluates LogQL, and both send what th
 What this page describes is the path an alert will travel, and the parts of it an operator configures now.
 The remaining work is tracked in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal).
 
+<!-- more -->
+
+<blockquote class="book-hint note">
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in
+<a href="https://datatracker.ietf.org/doc/html/rfc2119" rel="external" class="external-link">RFC 2119</a>.
+</blockquote>
+
+
 ## Two evaluators, one notifier
 
 No component evaluates both PromQL and LogQL, which is why there are two.
@@ -35,7 +45,7 @@ Thanos Ruler evaluates by issuing PromQL to Thanos Query over the network, and L
 Neither keeps a local copy of the data it evaluates against.
 
 An outage in either query path therefore stops alert evaluation, and stopped evaluation is indistinguishable from nothing being wrong.
-Size Thanos Query and the Loki read path with that dependency in mind, and treat an external heartbeat as the only reliable check that evaluation is still happening.
+Thanos Query and the Loki read path SHOULD be sized with that dependency in mind, and an external heartbeat is the only reliable check that evaluation is still happening.
 
 ## The Thanos Ruler runs stateless
 
@@ -49,7 +59,7 @@ And forwarding alert state off-cluster becomes possible at all, because that for
 
 Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream subchart models no `remoteWrite` key.
 **That argument is load-bearing.**
-Replacing `extraArgs` without carrying `--remote-write.config-file` forward reverts the ruler to a local TSDB, which is a change the render warns about but cannot prevent.
+A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
 
 ## Rules reach the Thanos Ruler as `PrometheusRule` resources
 
@@ -62,7 +72,7 @@ Alloy reads `ServiceMonitor` and `PodMonitor` and has no rule evaluator, and no 
 **The sidecar imports every `PrometheusRule` in the cluster.**
 That is deliberate: a `PrometheusRule` applied by an operator or by another chart works with no configuration here.
 The cost is that a co-resident rule owner — a kube-prometheus-stack, for instance — has its alerts evaluated by this ruler and notified through this Alertmanager.
-Set `thanos.ruler.autoImportPrometheusRules.labelSelector` to narrow the set where that is not wanted.
+Where that is not wanted, `thanos.ruler.autoImportPrometheusRules.labelSelector` SHOULD be set to narrow the imported set.
 
 ## Loki rules come from object storage
 
@@ -85,7 +95,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `loki.loki.rulerConfig.alertmanager_url` | The bundled Alertmanager | Clearing it leaves the ruler evaluating recording rules and discarding alerts |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
 
-Point either ruler at an Alertmanager you already run by overriding its URL.
+Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
 The bundled Alertmanager can then be excluded with `tags.alertmanager: false`, or `alertmanager.enabled: false`.
 
 ## The rulers do not follow the query frontend
@@ -103,7 +113,7 @@ The profile opens Alertmanager to the ruler namespaces and retargets both rulers
 
 One hop it cannot close is the Loki ruler's egress.
 The Loki subchart's Alertmanager egress policy selects a pod label that no pod carries in Distributed mode, and the subchart exposes no general egress hook, so the ruler is confined to same-namespace egress.
-Deployments using `split-namespace` MUST either supply their own NetworkPolicy for the Loki ruler's egress or set `loki.networkPolicy.enabled: false` and police Loki from outside the chart.
+A deployment using `split-namespace` MUST either supply its own NetworkPolicy for the Loki ruler's egress or set `loki.networkPolicy.enabled: false` and police Loki from outside the chart.
 
 ## What is not built yet
 
