@@ -204,7 +204,7 @@ Two consumers, one command:
 
 | Output | Consumer | Make target |
 | --- | --- | --- |
-| `--format yaml` into `charts/…/pre-rendered/dashboards/grafana/` | the Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
+| `--format yaml` into `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/` | the dashboards Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
 
 Both trees are checked in, which makes byte-stability the property that matters most.

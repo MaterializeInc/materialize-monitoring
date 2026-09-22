@@ -8,7 +8,7 @@
 Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
 Each one below has its own download links and its own compatibility annotations.
 
-If you are installing the `materialize-monitoring` chart, you do not need to download anything — `dashboards.selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
+If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
 Download them when you are putting them into a Grafana you run yourself; [Importing Dashboards](/materialize-monitoring/dashboards/grafana/importing/) covers the ways to do that.
 
 ## Formats

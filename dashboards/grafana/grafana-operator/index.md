@@ -118,20 +118,36 @@ A healthy instance shows the resolved URL and no error conditions.
 
 ## Importing Dashboards via Grafana Operator
 
-With the operator connected, dashboard installation is just a values setting:
+The dashboards are a **separate chart**, `materialize-monitoring-dashboards`, installed as its own release beside
+`materialize-monitoring`.
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
 
-```yaml
-dashboards:
-  selected:
-    - env-*
-  config:
-    grafana:
-      enabled: true
-      mode: operator
+```bash
+helm install mzmon-dashboards materialize/materialize-monitoring-dashboards \
+  --namespace monitoring
 ```
 
-Each pattern in `dashboards.selected` is globbed against the pre-rendered dashboards in the chart, and each match
-becomes a `GrafanaManifest` resource.
+Its defaults match a `materialize-monitoring` release named `mzmon` installed with *its* defaults.
+Where either differs, three values move with it — the chart cannot read the other release's values, so each is
+spelled out:
+
+```yaml
+selected:
+  - env-*
+grafana:
+  enabled: true
+  mode: operator
+  instanceSelector:
+    matchLabels:
+      monitoring.materialize.cloud/grafana-instance: mzmon
+  folderUids:
+    infra: mzmon-infra
+    materialize: mzmon-materialize
+    meta-o11y: mzmon-meta-o11y
+```
+
+Each pattern in `selected` is globbed against the pre-rendered dashboards in the chart, and each match becomes a
+`GrafanaManifest` resource.
 
 Inspect what was created:
 
@@ -161,7 +177,9 @@ dashboards:
 ### Folders
 
 The dashboards are filed into folders rather than dropped at the root of the Grafana.
-The chart creates three, as `GrafanaFolder` resources, from `dashboards.config.grafana.folders`:
+The **`materialize-monitoring` chart** creates three, as `GrafanaFolder` resources, from
+`dashboards.config.grafana.folders` — they stay there rather than moving with the dashboards, because a folder is what
+a dashboard is filed into rather than part of it:
 
 | Folder | Holds |
 |---|---|
@@ -219,9 +237,13 @@ Folders are an operator-mode feature — the standalone Grafana chart has no res
 something outside this chart owns it; removing the entry outright (`materialize: null`) is what drops those dashboards
 to the root.
 
+Whatever UIDs come out of that map have to be repeated in the dashboards chart's `grafana.folderUids`, which is the
+only way that chart learns them.
+The `materialize-monitoring` install notes print them for exactly this reason.
+
 ### Dashboard schema version
 
-`dashboards.config.grafana.manifest.apiTarget` selects the dashboard API the manifests declare.
+The dashboards chart's `grafana.apiTarget` selects the dashboard API the manifests declare.
 It defaults to `dashboard.grafana.app/v2`, which needs **Grafana 12 or later**.
 Against an older Grafana, the operator pushes an object the server does not understand and the dashboard never appears.
 No schema v1 render is published yet for Grafana 10 and 11 — see [Available Dashboards](../../all/#formats).
