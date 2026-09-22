@@ -256,6 +256,9 @@ All metrics are prefixed with `materialize.`:
 
 The current configuration exposes approximately 24 base metrics with various labels, resulting in 200-500 total time series - **well within Datadog's 2000 metric limit per agent**.
 
+`source_statistics` and `sink_statistics` carry a `replica_id` label, because `mz_source_statistics` and `mz_sink_statistics` report one row per replica.
+A source or sink served by more than one replica therefore contributes one series per replica.
+
 ---
 
 ## Production Deployment
