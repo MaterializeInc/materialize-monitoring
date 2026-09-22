@@ -387,6 +387,41 @@ requests.
 </span></span></code></pre></div>
   </div>
 </div>
+<h4 id="infra.loki.health.client_errors">infra.loki.health.client_errors
+  <a class="anchor" href="#infra.loki.health.client_errors">#</a>
+</h4>
+The share of Loki API requests rejected as the caller&rsquo;s fault — a 4xx —
+as a proportion of all requests.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.client_errors-tabs" id="infra.loki.health.client_errors-tab-0" checked>
+  <label for="infra.loki.health.client_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>      status_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">4..</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
 <h4 id="infra.loki.health.request_failures">infra.loki.health.request_failures
   <a class="anchor" href="#infra.loki.health.request_failures">#</a>
 </h4>
