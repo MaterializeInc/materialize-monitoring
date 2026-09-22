@@ -43,4 +43,9 @@ pub mod content {
 
     /// Covers the cluster's networking: pods, Services, the CNI, and policy.
     pub const NETWORK: &str = "network";
+
+    /// The monitoring stack watching itself, rather than watching something
+    /// else. A dashboard carrying this is one whose subject can take its own
+    /// instrumentation down with it.
+    pub const META: &str = "meta-monitoring";
 }

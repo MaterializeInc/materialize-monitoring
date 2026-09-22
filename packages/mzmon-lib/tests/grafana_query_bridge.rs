@@ -166,8 +166,8 @@ fn log_queries_bridge_to_loki() {
 #[test]
 fn every_query_renders_through_the_dashboard_context() {
     use mzmon_lib::grafana::context::{
-        DashboardScope, GENERATION_VARIABLES, INFRA_VARIABLES, NODE_VARIABLES, OPERATOR_VARIABLES,
-        REQUIRED_VARIABLES, dashboard_context,
+        DashboardScope, GENERATION_VARIABLES, INFRA_VARIABLES, LOKI_VARIABLES, NODE_VARIABLES,
+        OPERATOR_VARIABLES, REQUIRED_VARIABLES, dashboard_context,
     };
 
     let registry = registry();
@@ -210,6 +210,7 @@ fn every_query_renders_through_the_dashboard_context() {
                     && !OPERATOR_VARIABLES.contains(&reference.as_str())
                     && !GENERATION_VARIABLES.contains(&reference.as_str())
                     && !INFRA_VARIABLES.contains(&reference.as_str())
+                    && !LOKI_VARIABLES.contains(&reference.as_str())
                 {
                     failures.push(format!("{}: references unknown ${reference}", query.id));
                 }

@@ -48,6 +48,8 @@ Frequently needed deep links into the Style Guidelines:
   — the paired show/hide rows that keep volume panels off a month-wide range
 - [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable)
   — how `infra-net` shows a cluster its own CNI, and why the negated fallback row is not optional
+- [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines)
+  — when a metrics filter and a log filter may be the same variable, and the two conditions that have to hold
 - [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
   — labels vs structured metadata, and why an event's namespace is the involved object's
 - [Deployment generations (blue/green)](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-generations-bluegreen)
@@ -107,13 +109,17 @@ from.
 | `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
 | `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
 | `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
+| `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
 
 Each is rendered to `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
 prefixed set until the clouds stopped differing in panel content, which left it recording nothing but its own name.
 The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-cloud` annotation went with it.
 
-**`env-upgrade` is installed by default**, because `dashboards.selected` defaults to `["env-*"]` and the stem matches.
+**`env-upgrade` is installed by default**, because `dashboards.selected` defaults to `["env-*", "infra-*"]` and
+the stem matches. So does every dashboard in the table above — which is now more than a Helm release Secret can
+hold; see [Dashboard delivery is at the 1 MiB
+ceiling](../../../docs/content/reference/internal/roadmap.md#dashboard-delivery-is-at-the-1-mib-ceiling).
 While the operator-side instrumentation is unreleased it degrades unevenly, and the split is worth knowing: **Generations
 works fully** (every panel reads metrics that predate the change, and the blue/green split comes from pod names), Events
 keeps its Kubernetes Activity row, and Reconciliation is empty apart from its two pre-existing gauges. `MIN_MZ_VERSION`
@@ -352,6 +358,72 @@ Three things about it are not re-derivable by reading the modules:
   cluster-wide sum over-counts by an order of magnitude — see the header of `packages/queries/infra-networking.yaml`.
 
 Cloud Networking is half-stubbed on purpose; the two text rows name the provider metrics that would fill them.
+
+## `infra-loki` tabs
+
+The fourth of the `infra-*` family, and the only dashboard here whose **subject is the monitoring stack** rather than
+something the stack watches.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Writes | `writes.rs` |
+| 3 | Reads | `reads.rs` |
+| 4 | Storage | `storage.rs` |
+| 5 | Logs | `logs.rs` |
+
+Filed under **`Folder::MetaO11y`**, which it is the first occupant of — `values.yaml` has carried the "Meta
+Observability" folder, nested under Infrastructure, since folders existed.
+It is also the first dashboard to carry `tags::content::META`.
+
+Four things about it are not re-derivable by reading the modules:
+
+- **The instrument is the subject, and that changes what an empty panel means.** Everywhere else a blank panel means
+  nothing happened; here it may mean the thing that would have told you is down. So the Overview tab leads with scrape
+  health *before* any measurement, every panel writes its own `no_value` text rather than taking the default, and a
+  test (`no_panel_leaves_its_empty_state_to_the_default`) keeps it that way.
+- **`$lokiComponent` is one picker across both engines.** It is discovered from the metrics side off `container`, and
+  the log queries apply it to Loki's `component` label. Sound because both are the Kubernetes container name; the only
+  divergence is `exporter`, the memcached sidecar, which emits no log lines, so selecting it empties the log feeds —
+  the truthful answer rather than a bug. Both `$lokiNamespace` and `$lokiComponent` are written **literally** in
+  `infra-loki.yaml`, on the `$nodeList` / `$namespaceList` precedent, and are listed in
+  `context::LOKI_VARIABLES` so the bridge test can check them.
+- **Three Loki targets never serve TLS** — the canary's own `/metrics` and both memcached exporters — and the
+  subchart's single ServiceMonitor shares one `scheme` across everything it selects. Under `profiles/mtls` that made
+  all three fail, silently taking the end-to-end canary with them. They are now split onto
+  `templates/scrapers/monitor-loki-plaintext.yaml` by an opt-in service label, unconditionally rather than per
+  profile, and **Scrape Health is the panel that says the split is working**.
+- **Both datasources**, unlike the other `infra-*` dashboards. The metrics say whether Loki is healthy; its own logs
+  say why, and sending a reader elsewhere for the second half is the wrong trade on the one subject where the second
+  dashboard might not load.
+
+### Why not the upstream mixin dashboards
+
+The Loki chart vendors `loki-reads`, `loki-writes`, `loki-operational` and the rest, and they were evaluated rather
+than assumed unsuitable.
+They read `cluster_job_route:loki_request_duration_seconds_*:sum_rate` recording rules, and **this stack evaluates no
+PromQL rules at all** — there is no Prometheus, no Thanos Ruler, and Loki's own ruler evaluates LogQL.
+They also scope on a `cluster` variable, where the `cluster` label on these metrics is Loki's own ring name
+(`default`), so the scoping would be silently wrong rather than absent.
+Bloom panels are excluded for the simpler reason that the feature is experimental and unused here.
+
+### Metric overrides cannot introduce a metric
+
+Worth knowing before reaching for one: `metricOverrides` re-weights a metric **some query already references**.
+The tier file is built by `extract_metric_docs`, which walks queries, so a metric no query names is in no tier and
+reaches no metered destination however many overrides match it.
+That is why `infra.loki.pipeline.*` exists — six queries with no dashboard behind them, carrying the Alloy-side
+`loki_write_*` / `loki_source_*` / `loki_process_*` families into `recommended`.
+
+### The two `loki_` families
+
+The prefix is shared and the producers are not, and nothing in a metric name warns you.
+`job=~"loki/.*"` is the log store (391 names on a reference install); `job=~"alloy-.*"` is Alloy's own `loki.*`
+components (43 names, all `loki_write_*`, `loki_source_{file,api,journal}_*`, `loki_process_*`, `loki_relabel_*`).
+Only `loki_experimental_features_in_use_total` is emitted by both.
+Every query on this dashboard separates them with `app_instance="loki"`, which both of the chart's Loki
+ServiceMonitors stamp and nothing else sets — `job=~"loki/.*"` would work too but hardcodes the subchart's
+configurable `jobPrefix`.
 
 ## Notes on the trickier panels
 

@@ -991,6 +991,31 @@ panel is drawn against the range that matters and a flat-healthy line stays flat
 Unbounded rates (errors and drops per second) keep autoscaling, since there is no
 honest ceiling to pin them to and a spike is the thing worth seeing.
 
+## One picker across two engines
+
+Normally a metrics filter and a log filter are separate variables, because the label spaces are separate: the metrics
+side has `container`, the logs side has `component`, and a dashboard that conflated them would empty half its panels
+without saying why.
+
+`infra-loki` does conflate them, deliberately, and the conditions under which that is allowed are narrow enough to
+state.
+Both labels there hold the **same Kubernetes container name** — `container` because that is what a ServiceMonitor
+stamps, `component` because that is what the log pipeline relabels a Loki pod to — so one `$lokiComponent` discovered
+from `label_values(up{app_instance="loki"}, container)` scopes the metric panels and the log panels alike.
+
+Two conditions, both of which have to hold:
+
+- **The value sets have to agree by construction**, not by coincidence. A shared *origin* is the test — here, the
+  container name — because two lists that merely happen to match today will drift the first time either side is
+  relabelled.
+- **Any divergence has to be benign in the direction it goes.** `exporter`, the memcached sidecar, exists on the
+  metrics side and emits no log lines, so selecting it empties the log feeds. That is the honest answer to "show me
+  the exporter's logs" rather than a bug. Nothing goes the other way: every process that logs is also scraped.
+
+Where either condition fails, define two variables.
+The cost of the second picker is that a reader has to set both; the cost of wrongly sharing one is a panel that is
+empty and looks fine, which is the failure this whole guide keeps coming back to.
+
 ## Node identifiers across three families
 
 The dashboard's one real trick. kube-state-metrics calls a node `node="<name>"`; node-exporter calls the same machine

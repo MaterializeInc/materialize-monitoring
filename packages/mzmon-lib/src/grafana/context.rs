@@ -118,6 +118,18 @@ pub mod variables {
     /// supplies it. Distinct from [`MZ_NAMESPACE_LIST`], which is derived from
     /// the environment picker and offers only the deployment's own namespaces.
     pub const NAMESPACE_LIST: &str = "namespaceList";
+
+    /// Namespaces the log store runs in, for the meta-monitoring dashboard.
+    ///
+    /// Written literally by `infra-loki.yaml`, like [`NAMESPACE_LIST`] and
+    /// [`NODE_LIST`]. Distinct from both: this one is the monitoring stack's own
+    /// namespace rather than the cluster's or the deployment's.
+    pub const LOKI_NAMESPACE: &str = "lokiNamespace";
+    /// Which of the log store's processes a meta-monitoring panel reads.
+    ///
+    /// Matched against `container` on a metric and `component` on a log line,
+    /// which are the same Kubernetes container name.
+    pub const LOKI_COMPONENT: &str = "lokiComponent";
 }
 
 /// Drops pods sharing the node's network namespace from a cAdvisor rollup.
@@ -176,6 +188,19 @@ pub const NODE_VARIABLES: &[&str] = &[variables::NODE_LIST, "node"];
 /// queries. What it must *not* do is scope a `node` label by it: that variable
 /// holds addresses and every `node` label holds a Kubernetes name.
 pub const INFRA_VARIABLES: &[&str] = &[variables::NAMESPACE_LIST];
+
+/// Variables required only by the log-store meta-monitoring dashboard.
+///
+/// Written literally by `infra-loki.yaml`, on the same precedent as
+/// [`INFRA_VARIABLES`] and [`NODE_VARIABLES`]: the scope of a dashboard whose
+/// subject is the monitoring stack is not something a Materialize-shaped render
+/// parameter can describe, so the queries name the variables directly and this is
+/// the list that keeps them honest.
+///
+/// `lokiComponent` reaches **both** engines — the metrics side matches it against
+/// `container` and the log side against `component`, which are the same
+/// Kubernetes container name. One entry, therefore, rather than one per engine.
+pub const LOKI_VARIABLES: &[&str] = &[variables::LOKI_NAMESPACE, variables::LOKI_COMPONENT];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
 /// [`DashboardScope::operator_variable`].

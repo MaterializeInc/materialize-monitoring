@@ -10,6 +10,8 @@ large services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
         helm.sh/chart: loki-1.2.3
+        monitoring.materialize.cloud/scrape-scheme: plaintext
+        prometheus.io/service-monitor: "false"
       name: loki-chunks-cache
       namespace: loki
     spec:
@@ -312,6 +314,8 @@ large services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
         helm.sh/chart: loki-1.2.3
+        monitoring.materialize.cloud/scrape-scheme: plaintext
+        prometheus.io/service-monitor: "false"
       name: loki-canary
       namespace: loki
     spec:
@@ -543,6 +547,8 @@ large services:
         app.kubernetes.io/name: loki
         app.kubernetes.io/version: 3.7.6
         helm.sh/chart: loki-1.2.3
+        monitoring.materialize.cloud/scrape-scheme: plaintext
+        prometheus.io/service-monitor: "false"
       name: loki-results-cache
       namespace: loki
     spec:

@@ -4610,15 +4610,39 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.chunksCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.chunksCache<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the cache out of the subchart's ServiceMonitor and into this chart's plaintext one. See the `plaintext exporters` note under `monitoring.serviceMonitor` below.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.resultsCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">Query results cache (memcached).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.resultsCache<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the cache out of the subchart's ServiceMonitor, as above.
 </td>
     </tr>
     <tr>
@@ -4626,13 +4650,41 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
       <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.
+
+**Plaintext exporters are excluded from it.** The subchart renders a
+single ServiceMonitor covering everything it labels, with one `scheme`
+shared by every target. Three of those targets never speak TLS whatever
+Loki is configured to do — the canary's own `/metrics` server, and the
+two memcached exporters — so under `profiles/mtls`, which sets
+`scheme: https` here, all three fail the scrape and their series vanish.
+For the canary that means the end-to-end write→read check goes quiet
+rather than red, which is the worst way for a canary to fail.
+
+Each of the three therefore carries
+`prometheus.io/service-monitor: "false"`, which the subchart's selector
+excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
+opt-in that this chart's own monitor selects on
+(`templates/scrapers/monitor-loki-plaintext.yaml`). The split is
+unconditional so the two modes share one code path.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the canary out of the subchart's ServiceMonitor and into this chart's plaintext one. Its `/metrics` server is plaintext even when `-tls` is set, since that flag configures the client it uses to reach Loki. See `monitoring.serviceMonitor` above.
 </td>
     </tr>
     <tr>

@@ -3151,14 +3151,43 @@ loki:
   chunksCache:
     allocatedMemory: 2048
     priorityClassName: monitoring-scalable
+    service:
+      # -- Keep the cache out of the subchart's ServiceMonitor and into this
+      # chart's plaintext one. See the `plaintext exporters` note under
+      # `monitoring.serviceMonitor` below.
+      labels:
+        prometheus.io/service-monitor: "false"
+        monitoring.materialize.cloud/scrape-scheme: plaintext
 
   # -- (h5) Query results cache (memcached).
   resultsCache:
     priorityClassName: monitoring-scalable
+    service:
+      # -- Keep the cache out of the subchart's ServiceMonitor, as above.
+      labels:
+        prometheus.io/service-monitor: "false"
+        monitoring.materialize.cloud/scrape-scheme: plaintext
 
   monitoring:
     serviceMonitor:
       # -- Enable a ServiceMonitor for the loki microservices.
+      # @raw
+      #
+      # **Plaintext exporters are excluded from it.** The subchart renders a
+      # single ServiceMonitor covering everything it labels, with one `scheme`
+      # shared by every target. Three of those targets never speak TLS whatever
+      # Loki is configured to do — the canary's own `/metrics` server, and the
+      # two memcached exporters — so under `profiles/mtls`, which sets
+      # `scheme: https` here, all three fail the scrape and their series vanish.
+      # For the canary that means the end-to-end write→read check goes quiet
+      # rather than red, which is the worst way for a canary to fail.
+      #
+      # Each of the three therefore carries
+      # `prometheus.io/service-monitor: "false"`, which the subchart's selector
+      # excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
+      # opt-in that this chart's own monitor selects on
+      # (`templates/scrapers/monitor-loki-plaintext.yaml`). The split is
+      # unconditional so the two modes share one code path.
       enabled: true
       jobPrefix: loki/
 
@@ -3170,6 +3199,14 @@ loki:
     kind: Deployment
     lokiurl: loki-query-frontend:3100
     push: false
+    service:
+      # -- Keep the canary out of the subchart's ServiceMonitor and into this
+      # chart's plaintext one. Its `/metrics` server is plaintext even when
+      # `-tls` is set, since that flag configures the client it uses to reach
+      # Loki. See `monitoring.serviceMonitor` above.
+      labels:
+        prometheus.io/service-monitor: "false"
+        monitoring.materialize.cloud/scrape-scheme: plaintext
     # -- Scheduling priority. See the Priority classes section.
     # @raw
     # Set explicitly because the canary reaches neither of the two keys that

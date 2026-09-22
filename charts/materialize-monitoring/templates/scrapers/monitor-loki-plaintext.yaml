@@ -1,0 +1,37 @@
+{{- /*
+  The three Loki services that always serve their metrics in the clear.
+
+  The subchart emits one ServiceMonitor for everything it labels, sharing a
+  single `scheme`. `profiles/mtls` sets that to `https` because the Loki
+  processes move to TLS — but the canary and the two memcached exporters never
+  do, so they fail the scrape and disappear. See the source manifest for why
+  each one is plaintext.
+
+  Rendered whenever Loki is bundled, not only under mTLS: these services are
+  excluded from the subchart's monitor unconditionally, so this is what collects
+  them in either mode. Conditioning it on the profile instead would leave the
+  canary uncollected on every plaintext install.
+*/ -}}
+{{- if and .Values.config.scrapers.enabled ( include "mzmon.loki.enabled" . ) }}
+  {{- $monitor := $.Files.Get "pre-rendered/scrapers/prometheus-operator/servicemonitor-loki-plaintext.yaml" | fromYaml }}
+
+  {{- $fullname := printf "%s-loki-plaintext" ( include "mzmon.fullname" . ) -}}
+  {{- $newMetadata := ( dict
+    "namespace" ( include "mzmon.loki.namespace" $ )
+    "name" $fullname
+    "labels" ( include "mzmon.labels" $ | fromYaml )
+    "annotations" ( include "mzmon.annotations" $ | fromYaml )
+  ) }}
+  {{- $_ := mergeOverwrite $monitor.metadata $newMetadata }}
+
+  {{- /* Scope the selector to this release, so two `materialize-monitoring`
+       installs sharing a cluster do not each collect the other's canary. The
+       subchart writes `app.kubernetes.io/instance` onto every Service it owns;
+       the opt-in label from the source manifest is merged rather than replaced. */ -}}
+  {{- $_ := set $monitor.spec.selector "matchLabels" ( merge
+    ( dict "app.kubernetes.io/instance" $.Release.Name )
+    $monitor.spec.selector.matchLabels
+  ) }}
+
+  {{- toYaml $monitor | nindent 0 }}
+{{- end }}
