@@ -20,9 +20,15 @@ Two consequences of getting there this way, both recorded rather than hidden:
 The target is the alloy-gateway's `prometheus.receive_http` listener, the same
 one the agent pushes to, so rule results take the path every other series in this
 stack takes.
+
+**Rendered whenever the Ruler is enabled, including when the gateway is not.**
+`thanos.ruler.extraVolumes` mounts this unconditionally, so gating it on the
+gateway would leave every Ruler pod in `FailedMount` on a metrics-only install —
+turning a lost remote-write into lost alert evaluation, which is the opposite of
+what the validator promises. With no gateway the samples go nowhere and the
+alerts still fire; `mzmon.thanos.validate.ruler` says so.
 */}}
 {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
-{{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -48,5 +54,4 @@ data:
           min_shards: 1
           max_samples_per_send: 500
           batch_send_deadline: 5s
-{{- end }}
 {{- end }}

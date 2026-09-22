@@ -1725,5 +1725,5 @@ Usage:
 {{- define "mzmon.alloyGateway.remoteWriteUrl" }}
   {{- $tls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
   {{- $scheme := ternary "https" "http" ( $tls.enabled | default false ) }}
-  {{- printf "%s://alloy-gateway.%s.svc.cluster.local:9090/api/v1/metrics/write" $scheme ( include "mzmon.alloyGateway.namespace" $ ) }}
+  {{- printf "%s://alloy-gateway.%s.svc.%s:9090/api/v1/metrics/write" $scheme ( include "mzmon.alloyGateway.namespace" $ ) ( include "mzmon.clusterDomain" $ ) }}
 {{- end }}

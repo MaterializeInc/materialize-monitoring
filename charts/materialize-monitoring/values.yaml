@@ -2882,8 +2882,11 @@ loki:
     rulerConfig:
       # Alertmanager is the one subchart with no `fullnameOverride`, so its
       # Service name is derived from the release name. See the `alertmanager`
-      # section for why that is worth knowing.
-      alertmanager_url: 'http://{{ .Release.Name }}-alertmanager.{{ .Release.Namespace }}.svc.cluster.local:9093'
+      # section for why that is worth knowing. The helper is used rather than
+      # `{{ .Release.Name }}-alertmanager` because the subchart collapses the two
+      # segments when the release name already contains `alertmanager`, and
+      # spelling it out by hand is wrong for exactly that release name.
+      alertmanager_url: 'http://{{ include "mzmon.alertmanager.releaseFullname" . }}.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}:9093'
       # v1 is the Alertmanager API Loki defaults to and it has been deprecated
       # upstream for years. The Thanos ruler is on v2; matching them means one
       # API surface to reason about rather than two.
@@ -2904,7 +2907,13 @@ loki:
         enabled: true
         clients:
           gateway:
-            url: 'http://alloy-gateway.{{ .Release.Namespace }}.svc.cluster.local:9090/api/v1/metrics/write'
+            # `http` is hardcoded where the Thanos ruler's equivalent follows
+            # `pipeline.metrics.gateway.server.tls`. Neither ruler works against
+            # a TLS gateway today — no CA is mounted into either pod — so the
+            # scheme is left at the one that is right for the default, and the
+            # render warns when the listener is secured. See the note on
+            # `thanos.ruler.extraArgs`.
+            url: 'http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}:9090/api/v1/metrics/write'
             remote_timeout: 30s
             queue_config:
               capacity: 2500
@@ -3906,7 +3915,7 @@ thanos:
       config: |
         alertmanagers:
           - static_configs:
-              - {{ .Release.Name }}-alertmanager.{{ .Release.Namespace }}.svc.cluster.local:9093
+              - {{ include "mzmon.alertmanager.releaseFullname" . }}.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}:9093
             scheme: http
             api_version: v2
             timeout: 10s

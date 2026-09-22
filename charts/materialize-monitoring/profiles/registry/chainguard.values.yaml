@@ -123,6 +123,13 @@ thanos:
         image:
           registry: "cgr.dev"
           repository: "<ORG>/kubectl"
+          # -dev, because this sidecar runs a shell script and curls the Ruler's
+          # reload endpoint. The default image is distroless and would
+          # crash-loop. This is the one place in this file that overrides a tag,
+          # and it overrides the base chart's pinned version rather than the
+          # upstream default -- so it floats where everything else here is
+          # pinned. Pin it to a versioned `-dev` tag if your catalog carries one.
+          tag: "latest-dev"
 
 # --- Grafana -----------------------------------------------------------------
 grafana:

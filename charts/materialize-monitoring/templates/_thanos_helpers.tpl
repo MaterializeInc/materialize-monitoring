@@ -554,7 +554,12 @@ Usage:
     {{- if not ( include "mzmon.alloyGateway.enabled" $ ) }}
       {{- $warnings = append $warnings "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled. Rule results are written to a Service that does not exist, so they accumulate in the WAL and are eventually dropped. Alerting itself still works — this costs the recording rules and the ALERTS series, not the notifications." }}
     {{- else if ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) }}
-      {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, and the chart does not yet mount a CA into the Thanos ruler pods. Add a tls_config to the ruler's remote-write ConfigMap, or the WAL fills and rule results are dropped." }}
+      {{- /* The `mtls` profile family turns this listener on, so the broken
+             composition is reachable rather than hypothetical. A warning rather
+             than an error because only the remote-write half breaks — the ruler
+             still evaluates and still notifies Alertmanager. The Loki ruler has
+             the same gap and warns separately. */}}
+      {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, and the chart mounts no CA into the Thanos ruler pods. The remote-write URL follows the scheme, so every write fails the handshake: the ALERTS series and any recording-rule results fill the WAL and are dropped. Alert evaluation and notification are unaffected. Drop --remote-write.config-file from thanos.ruler.extraArgs, or leave the gateway's metrics listener plaintext, until the ruler carries certificate material." }}
     {{- end }}
   {{- end }}
 

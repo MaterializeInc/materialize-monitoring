@@ -109,6 +109,37 @@ tests:
       - hasDocuments:
           count: 0
 
+  # `thanos.ruler.extraVolumes` mounts this ConfigMap unconditionally, so gating
+  # the ConfigMap on the gateway would leave every Ruler pod in FailedMount on a
+  # metrics-only install — losing alert evaluation, not just remote-write, which
+  # is the opposite of what the validator promises for this shape.
+  - it: still renders the remote-write ConfigMap when the gateway is disabled
+    set:
+      tags.default: false
+      tags.thanos: true
+      tags.alertmanager: true
+    template: templates/thanos-ruler-remote-write.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: thanos-ruler-remote-write
+
+  - it: leaves the ruler's mount satisfiable when the gateway is disabled
+    set:
+      tags.default: false
+      tags.thanos: true
+      tags.alertmanager: true
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: remote-write
+            configMap:
+              name: thanos-ruler-remote-write
+
   # --- evaluation target ----------------------------------------------------
 
   # Query, not Query Frontend. A cached range served to an evaluator is an alert
@@ -280,6 +311,72 @@ tests:
       - equal:
           path: spec.template.spec.containers[1].image
           value: docker.io/alpine/kubectl:1.35.4
+
+  # --- addressing edge cases ------------------------------------------------
+
+  # The subchart collapses `<release>-alertmanager` to `<release>` when the
+  # release name already contains the chart name, so spelling the Service name
+  # `printf "%s-alertmanager"` is wrong for exactly this release — and wrong in a
+  # way nothing catches until an alert is not delivered.
+  - it: addresses Alertmanager correctly when the release name contains its name
+    release:
+      name: alertmanager-prod
+      namespace: test-monitoring
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager_url: http://alertmanager-prod\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager-prod-alertmanager"
+
+  - it: addresses Alertmanager correctly from the Thanos ruler under that release
+    release:
+      name: alertmanager-prod
+      namespace: test-monitoring
+    template: ../charts/thanos/templates/ruler/configmap-alertmanagers.yaml
+    asserts:
+      - matchRegex:
+          path: data["alertmanagers.yaml"]
+          pattern: "- alertmanager-prod\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+
+  # `global.clusterDomain` is a supported setting, so every address this PR adds
+  # has to follow it rather than hardcoding `cluster.local`.
+  - it: follows global.clusterDomain in both rulers and the remote-write config
+    set:
+      global.clusterDomain: k8s.internal
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager_url: http://test-mon-alertmanager\\.test-monitoring\\.svc\\.k8s\\.internal:9093"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "url: http://alloy-gateway\\.test-monitoring\\.svc\\.k8s\\.internal:9090/api/v1/metrics/write"
+
+  - it: follows global.clusterDomain in the Thanos remote-write ConfigMap
+    set:
+      global.clusterDomain: k8s.internal
+    template: templates/thanos-ruler-remote-write.yaml
+    asserts:
+      - matchRegex:
+          path: data["remote-write.yaml"]
+          pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.k8s\.internal:9090/api/v1/metrics/write"'
+
+  # The upstream StatefulSet hardcodes --alert.label-drop and ranges extraArgs
+  # after it, so setting extraArgs appends rather than replaces. Asserted because
+  # a reader cannot tell which from values.yaml, and losing it would make
+  # Alertmanager treat each replica's copy as a distinct alert.
+  - it: keeps the replica label-drop that the two-replica default relies on
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--alert.label-drop=ruler_replica"
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--remote-write.config-file=/etc/thanos/remote-write.yaml"
 
   # --- split-namespace ------------------------------------------------------
 

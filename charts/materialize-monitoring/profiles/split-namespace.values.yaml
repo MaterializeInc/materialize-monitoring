@@ -19,11 +19,11 @@ loki:
     # ruler resolves nothing: no alert is notified and every recording-rule
     # sample is dropped, with the component reporting healthy throughout.
     rulerConfig:
-      alertmanager_url: 'http://{{ .Release.Name }}-alertmanager.alertmanager.svc.cluster.local:9093'
+      alertmanager_url: 'http://{{ include "mzmon.alertmanager.releaseFullname" . }}.alertmanager.svc.{{ include "mzmon.clusterDomain" . }}:9093'
       remote_write:
         clients:
           gateway:
-            url: http://alloy-gateway.alloy-gateway.svc.cluster.local:9090/api/v1/metrics/write
+            url: 'http://alloy-gateway.alloy-gateway.svc.{{ include "mzmon.clusterDomain" . }}:9090/api/v1/metrics/write'
 
 thanos:
   namespaceOverride: thanos
@@ -35,7 +35,7 @@ thanos:
       config: |
         alertmanagers:
           - static_configs:
-              - {{ .Release.Name }}-alertmanager.alertmanager.svc.cluster.local:9093
+              - {{ include "mzmon.alertmanager.releaseFullname" . }}.alertmanager.svc.{{ include "mzmon.clusterDomain" . }}:9093
             scheme: http
             api_version: v2
             timeout: 10s

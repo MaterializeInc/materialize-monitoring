@@ -55,14 +55,45 @@ Usage:
   {{- $values := index $.Values "alertmanager" | default dict }}
   {{- if $values.fullnameOverride }}
     {{- $values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+  {{- else if $values.nameOverride }}
+    {{- include "mzmon.alertmanager.releaseFullname" ( dict "Release" $.Release "name" $values.nameOverride ) }}
   {{- else }}
-    {{- $name := $values.nameOverride | default "alertmanager" }}
-    {{- if contains $name $.Release.Name }}
-      {{- $.Release.Name | trunc 63 | trimSuffix "-" }}
-    {{- else }}
-      {{- printf "%s-%s" $.Release.Name $name | trunc 63 | trimSuffix "-" }}
-    {{- end }}
+    {{- include "mzmon.alertmanager.releaseFullname" $ }}
   {{- end }}
+{{- end }}
+
+{{- /*
+Get the alertmanager resource name **from the release alone**.
+
+Exists because `loki.loki.rulerConfig` and `thanos.ruler.alertmanagers.config`
+are consumed inside their subcharts' own `tpl`, where `.Values` is that
+subchart's — so the helper above cannot run there. `.Release` is shared across
+the whole chart tree, so this one can, and it is the only part of the naming a
+subchart context can see.
+
+The `contains` branch is the part worth having: the subchart collapses
+`<release>-alertmanager` to `<release>` whenever the release name already
+contains the chart name, so a release called `alertmanager-prod` is served by a
+Service named `alertmanager-prod`, not `alertmanager-prod-alertmanager`. Spelling
+it `printf "%s-alertmanager"` is right for every ordinary release name and wrong
+for that one, in a way nothing catches until an alert is not delivered.
+
+Does not see `fullnameOverride` or `nameOverride`; a deployment setting either
+overrides the two ruler values directly, the way `split-namespace` overrides them
+for the namespace.
+
+Usage, from an umbrella template:
+  {{- include "mzmon.alertmanager.releaseFullname" $ }}
+and from within a subchart's `tpl`:
+  {{ include "mzmon.alertmanager.releaseFullname" . }}
+*/}}
+{{- define "mzmon.alertmanager.releaseFullname" -}}
+  {{- $name := .name | default "alertmanager" -}}
+  {{- if contains $name .Release.Name -}}
+    {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+  {{- else -}}
+    {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+  {{- end -}}
 {{- end }}
 
 {{- /*
@@ -78,7 +109,7 @@ Usage:
 {{- define "mzmon.alertmanager.hostPort" }}
   {{- $values := index $.Values "alertmanager" | default dict }}
   {{- $port := dig "service" "port" 9093 $values }}
-  {{- printf "%s.%s.svc.cluster.local:%v" ( include "mzmon.alertmanager.fullname" $ ) ( include "mzmon.alertmanager.namespace" $ ) $port }}
+  {{- printf "%s.%s.svc.%s:%v" ( include "mzmon.alertmanager.fullname" $ ) ( include "mzmon.alertmanager.namespace" $ ) ( include "mzmon.clusterDomain" $ ) $port }}
 {{- end }}
 
 {{- /*
