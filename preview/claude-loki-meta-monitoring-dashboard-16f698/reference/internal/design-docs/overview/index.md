@@ -56,23 +56,9 @@ Marking an existing draft pull request ready for review posts the same notificat
       </ul>
     </li>
     <li>
-      <a href="/materialize-monitoring/preview/claude-loki-meta-monitoring-dashboard-16f698/reference/internal/design-docs/20260917-alerting-self-managed/">Alerting in Self-Managed: Evaluation, Routing, and Customer Extension</a>
-      <ul>
-            <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
-            <li><strong>status:</strong> Draft</li>
-      </ul>
-    </li>
-    <li>
       <a href="/materialize-monitoring/preview/claude-loki-meta-monitoring-dashboard-16f698/reference/internal/design-docs/20260917-call-home-self-managed/">Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane</a>
       <ul>
             <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
-            <li><strong>status:</strong> Draft</li>
-      </ul>
-    </li>
-    <li>
-      <a href="/materialize-monitoring/preview/claude-loki-meta-monitoring-dashboard-16f698/reference/internal/design-docs/20260920-external-dependency-monitoring/">Monitoring Materialize&#39;s External Dependencies</a>
-      <ul>
-            <li><strong>lastmod:</strong> 2026-09-20 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Draft</li>
       </ul>
     </li>
