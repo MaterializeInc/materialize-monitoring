@@ -150,6 +150,20 @@ pub(crate) struct Component {
     /// assets when this component is published.
     #[serde(default)]
     pub(crate) artifacts: Vec<String>,
+    /// Helm chart directory this component publishes, when it is not
+    /// `charts/<component name>`.
+    ///
+    /// Read by the release workflow rather than by this binary, and declared
+    /// here so the field is part of the manifest's schema rather than a key
+    /// serde would silently discard. `dashboards` is the case that needs it: it
+    /// ships `charts/materialize-monitoring-dashboards` under a component name
+    /// that predates the chart.
+    #[serde(default)]
+    #[allow(
+        dead_code,
+        reason = "read by .github/workflows/publish-release.yaml, not by this binary"
+    )]
+    pub(crate) chart: Option<String>,
 }
 
 /// A semantic version `vMAJOR.MINOR.PATCH`. Field order makes the derived `Ord`
@@ -1075,6 +1089,7 @@ mod tests {
             content_exclude: strs(content_exclude),
             dependencies: strs(dependencies),
             artifacts: Vec::new(),
+            chart: None,
         }
     }
 
