@@ -465,6 +465,58 @@ The `console` row under [Materialize components beyond the environment](#materia
 That row tracks Console as a component we cannot monitor; this section tracks Console as a consumer.
 Neither blocks the other.
 
+### Cost visibility
+
+Every workstream above measures what a deployment is *doing*.
+This one measures what it *costs*, which is the question a self-managed operator is asked by whoever owns the cloud bill.
+
+The design and the one item that stands on its own are ticketed.
+The rest is deliberately not, pending the proposal.
+
+| Item | Milestone | Status |
+|---|---|---|
+| [Cost visibility design doc plus review](https://linear.app/materializeinc/issue/DEP-252) | OO-M2 | 🔨 ([design doc](../design-docs/20260919-cost-visibility-opencost/) drafted; review outstanding) |
+| [`metricLabelsAllowlist` on kube-state-metrics](https://linear.app/materializeinc/issue/DEP-253), naming the Materialize pod labels | OO-M2 | ⬜ |
+| The OpenCost subchart, its `cost` tag and its values block — UI off, Thanos Query as the read endpoint | — | ⬜ |
+| `EMIT_KSM_V1_METRICS=false`, asserted — OpenCost emits its own kube-state-metrics families by default | — | ⬜ |
+| A `cost` query-registry family at `metricImportanceHint: recommended` | — | ⬜ |
+| The `cost.pricing.source` surface — `listPrice`, `cloudBilling`, `custom` — with render-time validation | — | ⬜ |
+| A tag contract in the downstream wrappers, so out-of-cluster spend is attributable | — | ⬜ |
+| A denominator for cost per unit of work, for machine-class comparison and sharding | — | ⬜ |
+| Cost panels on `infra-nodes`, `env-top`, and the planned Resizing dashboard | — | ⬜ |
+
+**Deploying OpenCost is the easy half; making the number mean something is the feature.**
+The design is organized around two problems the deployment does not solve.
+**Provenance:** the default price is a public list price, which is not what the customer was billed and must never be presented as though it were.
+**Attribution:** OpenCost attributes cost to namespaces and pods, and a Materialize operator asks about clusters, replicas and cost centers.
+
+The demand is more specific than a generic appeal to efficiency, and the specifics decide what gets built: right-sizing a replica, comparing machine classes across node generations, deciding whether to shard a workload, apportioning Materialize across the departments using it, and having an honest total-cost conversation.
+The last one shapes the rest, because a total that quietly excludes the object store, the metadata database or the monitoring stack is not a total.
+
+Three findings from drafting it belong on this page rather than only in the design doc.
+
+**`kube_pod_labels` carries no Materialize identity today**, and this is an existing parity gap rather than a requirement cost invents.
+The vendored subchart defaults `metricLabelsAllowlist: []` and this chart sets no override, so the join that attributes anything to a Materialize cluster or replica does not exist.
+The equivalent Cloud setup (internal) already carries these labels, and carries more of them than it needs — which is the argument for a named list rather than the wildcard form.
+Worth landing on its own schedule: several planned dashboards want the same join for reasons unrelated to price.
+
+**Cost is not the first design to read from Thanos, and none of the readers is implemented.**
+Rule evaluation has to read to evaluate, the [tenant-scoped query proxy](#tenant-scoped-read-path) serves reads to Console and customer Grafana, and cost issues PromQL on a schedule.
+All three were sized against a Thanos whose only reader is a Grafana with a human in front of it, which is the assumption the sizing profiles encode.
+The question is common to all three and should be settled once rather than inside whichever lands first.
+
+**OpenCost emits its own kube-state-metrics families by default, and the existing de-duplication convention absorbs most of the risk.**
+Every aggregating query in this repository keeps `instance` in the inner step and collapses it with an outer `max`, because the recommended shape runs several kube-state-metrics replicas for availability.
+A second producer therefore looks like another replica and does not immediately double any answer.
+It is still wrong to ship: a different implementation emitting v1-shaped copies is not a replica, and `max` over two producers is idempotent only while they agree.
+
+Two positions the design takes that are worth recording here.
+**Cost families sit in the `recommended` tier**, since they power dashboards rather than alerts, and the registry rolls a metric up to `essential` on its own if an alert comes to reference it.
+**The monitoring stack's cost rolls up into infrastructure rather than into a line of its own** — everything supporting Materialize is part of what Materialize costs, and an itemized observability figure invites a saving measured in tens of dollars and paid for during the next incident.
+
+In [BYOC](#byoc) the party structure inverts: Materialize operates the infrastructure, so right-sizing is our decision taken on the customer's bill.
+That makes cost an operational signal there rather than a courtesy, and it travels on the channel that already exists, at the same tier.
+
 ## Metrics contract (upstream dependency)
 
 Several dashboards depend on metric instrumentation that lives **upstream in the `materialize` repo, not in this repository**.
@@ -544,3 +596,7 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   It proposes an opt-in consent ladder over the BYOC channel, with alerts as the lowest useful level and the bound made verifiable by a preview mode and a local egress meter.
   The [Call-home from self-managed](#call-home-from-self-managed) section above is the roadmap position it establishes, including that the alerts level is blocked on rule evaluation rather than on the pipeline.
 - A **customer-facing** call-home page — the levels, the generated schedule for each, how to preview before enabling, how to read the local meter, and the retention, access and deletion commitments — is owed alongside it. ⬜
+- [Cost Visibility: Optional OpenCost for Self-Managed and BYOC](../design-docs/20260919-cost-visibility-opencost/) is written and in review as a draft. 🔨
+  It proposes an optional, off-by-default OpenCost component whose defaults differ from upstream on almost every key, organized around stating where a price came from and attributing cost to Materialize clusters, replicas and cost centers rather than to namespaces.
+  The [Cost visibility](#cost-visibility) section above is the roadmap position it establishes, including that the `kube_pod_labels` gap is an existing parity gap against Cloud (internal) and that Thanos read-path sizing is now common to three unimplemented designs.
+- A **customer-facing** cost page — what the number includes and excludes, the three pricing sources, and the explicit statement that a list-price figure is not an invoice — is owed alongside it. ⬜
