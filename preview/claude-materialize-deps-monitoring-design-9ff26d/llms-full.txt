@@ -2429,6 +2429,8 @@ env:
   CLUSTER_NAME: prod-us-east-1
 ```
 
+The Terraform module sets it from its `cluster_name` input.
+
 `cluster` is applied to every destination.
 Add labels for one destination only with its `externalLabels` map, which is useful where one backend needs a tenant or account key the others do not:
 
@@ -3602,7 +3604,7 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 ## Tuning collection
 
 - **Per-node rate limit.** The agent caps pod-log throughput per node to protect the pipeline from a single noisy node. The rate (lines/sec) and short-term burst are set with the `AGENT_POD_LOG_RATE_LIMIT` (default `5000`) and `AGENT_POD_LOG_BURST` (default `20000`) environment variables on the agent.
-- **Cluster label.** Set `CLUSTER_NAME` in the agent's environment so every collected line carries a stable `cluster` value — important when several clusters write to the same log store.
+- **Cluster label.** Set `CLUSTER_NAME` in `pipeline.env`, or `cluster_name` on the Terraform module, so every collected line carries a stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
 - **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
@@ -3998,7 +4000,7 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/claude-mate
 Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
 Each one below has its own download links and its own compatibility annotations.
 
-If you are installing the `materialize-monitoring` chart, you do not need to download anything — `dashboards.selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
+If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
 Download them when you are putting them into a Grafana you run yourself; [Importing Dashboards]({{< relref "grafana/importing.md" >}}) covers the ways to do that.
 
 ## Formats
@@ -4340,27 +4342,45 @@ and cross-namespace NetworkPolicy has to permit the operator to reach Grafana an
 
 ## Dashboards
 
-Dashboards are **pre-rendered** into the chart, not generated at template time.
+**The dashboards are a chart of their own**, `materialize-monitoring-dashboards`, installed as a separate release
+beside `materialize-monitoring`.
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB; the rendered set outgrew that, which
+made `helm upgrade` on the umbrella chart fail outright rather than degrade.
+What stays in the umbrella chart is everything a dashboard is filed *into* — the `Grafana` instance, its datasources,
+and the folders.
+
+Dashboards are **pre-rendered** into that chart, not generated at template time.
 Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
-`charts/materialize-monitoring/pre-rendered/dashboards/grafana/*.yaml`.
+`charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
 See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
 
-Which dashboards get installed is controlled by glob patterns:
+Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
 
 ```yaml
-dashboards:
-  selected:
-    - env-*
-  config:
-    grafana:
-      enabled: true
-      mode: operator
-      manifest:
-        resyncPeriod: 5m
-        instanceSelector: {}
-        apiTarget: dashboard.grafana.app/v2
+selected:
+  - env-*
+grafana:
+  enabled: true
+  mode: operator
+  resyncPeriod: 5m
+  apiTarget: dashboard.grafana.app/v2
+  # Must match what the materialize-monitoring release put on its Grafana.
+  instanceSelector:
+    matchLabels:
+      monitoring.materialize.cloud/grafana-instance: mzmon
+  # The UIDs that release created for its folders.
+  folderUids:
+    infra: mzmon-infra
+    materialize: mzmon-materialize
+    meta-o11y: mzmon-meta-o11y
 ```
+
+**Nothing in that block is auto-detected.**
+The dashboards chart has no dependency on the umbrella chart and cannot read its values, so each reference to one of
+its resources is a value you set.
+The umbrella chart's install notes print the folder UIDs it created, which is the quickest way to fill in the last of
+them.
 
 Each match becomes one `GrafanaManifest` resource wrapping the dashboard body in `spec.template`.
 
@@ -4373,12 +4393,14 @@ instead of being reinterpreted by the operator.
 Treat operator-managed dashboards as read-only: copy to a new dashboard rather than editing in place.
 
 Folder placement is part of the dashboard body rather than of the manifest around it.
-Each render carries a `grafana.app/folder` annotation naming a folder, and the chart rewrites that name to the UID of
-the `GrafanaFolder` it creates from `dashboards.config.grafana.folders` — the same rewrite `apiVersion` gets, and for
-the same reason: neither is knowable when the dashboard is rendered.
+Each render carries a `grafana.app/folder` annotation naming a folder, and the dashboards chart rewrites that name to
+a UID from its `grafana.folderUids` map — the same rewrite `apiVersion` gets, and for the same reason: neither is
+knowable when the dashboard is rendered.
+The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart creates from
+`dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Five dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
+Seven dashboards are rendered, and `selected` decides which of them a release installs:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -4416,12 +4438,12 @@ Five dashboards are rendered, and `dashboards.selected` decides which of them a 
   Thanos.
   Both halves need a Materialize operator new enough to emit them — see the `min-mz-version` annotation on the
   rendered dashboard — and render empty against an older one.
-  Narrow `dashboards.selected` to `["env-top"]` to leave it out.
+  Narrow the dashboards chart's `selected` to `["env-top"]` to leave it out.
 
 ### Instance selection
 
 `instanceSelector` decides which `Grafana` resources a dashboard is pushed to.
-When `dashboards.config.grafana.manifest.instanceSelector` is unset, it falls back to the labels on the `Grafana`
+In the umbrella chart, when `dashboards.config.grafana.manifest.instanceSelector` is unset it falls back to the labels on the `Grafana`
 resource this chart creates, so the two sides are rendered from one source and cannot drift.
 
 That label set is a static `monitoring.materialize.cloud/grafana-instance: mzmon`, plus anything in `connections.grafana.labels` merged over it.
@@ -4446,7 +4468,7 @@ Both the `Grafana` resource and the selector pick the addition up.
 A `GrafanaManifest` only matches a `Grafana` in its **own namespace** unless `allowCrossNamespaceImport` is set.
 The chart infers it: the flag is emitted only when the `Grafana` resource lands somewhere other than the release
 namespace, which is what happens under `split-namespace`.
-Set `dashboards.config.grafana.manifest.allowCrossNamespaceImport` explicitly when pointing `instanceSelector` at an
+Set `allowCrossNamespaceImport` explicitly — in both charts — when pointing `instanceSelector` at an
 instance the chart did not create.
 
 > [!WARNING]
@@ -4838,7 +4860,7 @@ Tracked under [CLO-111](https://linear.app/materializeinc/issue/CLO-111/establis
 | Gap | Impact |
 |---|---|
 | `mode: operator` is modelled only as a raw spec | `connections.grafana.operator.spec` is passed through unvalidated; nothing the chart knows about Grafana applies inside it. Prefer `mode: bundled` |
-| `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
+| `grafana.mode` documents a `standalone` value, but only `operator` is implemented | The dashboards chart now refuses `standalone` at render time rather than silently emitting nothing |
 | Bundled Grafana defaults to `emptyDir` storage | All UI-created state is lost on restart unless you apply the `grafana-postgres` or `grafana-pvc` profile — see [State and persistence](#state-and-persistence) |
 | The Grafana subchart's NetworkPolicy takes one port | Its template emits a single ingress rule, on `service.targetPort`, so anything else the pod needs has to come from a policy this chart renders alongside — which is what `networkPolicies.grafanaGossip` is for. Ingress also defaults to `allowExternal: true`, because every way a human reaches Grafana is unselectable by pod label; narrow it with `explicitNamespacesSelector` / `explicitIpBlocks` |
 | Grafana-managed unified alerting is not HA | Each replica evaluates every rule independently, so alerts notify once per replica unless gossip is configured — see the note in the `grafana-postgres` profile |
@@ -5106,20 +5128,36 @@ A healthy instance shows the resolved URL and no error conditions.
 
 ## Importing Dashboards via Grafana Operator
 
-With the operator connected, dashboard installation is just a values setting:
+The dashboards are a **separate chart**, `materialize-monitoring-dashboards`, installed as its own release beside
+`materialize-monitoring`.
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
 
-```yaml
-dashboards:
-  selected:
-    - env-*
-  config:
-    grafana:
-      enabled: true
-      mode: operator
+```bash
+helm install mzmon-dashboards materialize/materialize-monitoring-dashboards \
+  --namespace monitoring
 ```
 
-Each pattern in `dashboards.selected` is globbed against the pre-rendered dashboards in the chart, and each match
-becomes a `GrafanaManifest` resource.
+Its defaults match a `materialize-monitoring` release named `mzmon` installed with *its* defaults.
+Where either differs, three values move with it — the chart cannot read the other release's values, so each is
+spelled out:
+
+```yaml
+selected:
+  - env-*
+grafana:
+  enabled: true
+  mode: operator
+  instanceSelector:
+    matchLabels:
+      monitoring.materialize.cloud/grafana-instance: mzmon
+  folderUids:
+    infra: mzmon-infra
+    materialize: mzmon-materialize
+    meta-o11y: mzmon-meta-o11y
+```
+
+Each pattern in `selected` is globbed against the pre-rendered dashboards in the chart, and each match becomes a
+`GrafanaManifest` resource.
 
 Inspect what was created:
 
@@ -5149,7 +5187,9 @@ dashboards:
 ### Folders
 
 The dashboards are filed into folders rather than dropped at the root of the Grafana.
-The chart creates three, as `GrafanaFolder` resources, from `dashboards.config.grafana.folders`:
+The **`materialize-monitoring` chart** creates three, as `GrafanaFolder` resources, from
+`dashboards.config.grafana.folders` — they stay there rather than moving with the dashboards, because a folder is what
+a dashboard is filed into rather than part of it:
 
 | Folder | Holds |
 |---|---|
@@ -5207,9 +5247,13 @@ Folders are an operator-mode feature — the standalone Grafana chart has no res
 something outside this chart owns it; removing the entry outright (`materialize: null`) is what drops those dashboards
 to the root.
 
+Whatever UIDs come out of that map have to be repeated in the dashboards chart's `grafana.folderUids`, which is the
+only way that chart learns them.
+The `materialize-monitoring` install notes print them for exactly this reason.
+
 ### Dashboard schema version
 
-`dashboards.config.grafana.manifest.apiTarget` selects the dashboard API the manifests declare.
+The dashboards chart's `grafana.apiTarget` selects the dashboard API the manifests declare.
 It defaults to `dashboard.grafana.app/v2`, which needs **Grafana 12 or later**.
 Against an older Grafana, the operator pushes an object the server does not understand and the dashboard never appears.
 No schema v1 render is published yet for Grafana 10 and 11 — see [Available Dashboards](../../all/#formats).
@@ -7879,6 +7923,12 @@ Adding or changing a query has effects beyond the query itself:
 - **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
   This is why a new query can change what a deployment ships to a metered backend.
+
+  **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
+  `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
+  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it;
+  `infra.loki.pipeline.*` in `infra-loki.yaml` is a set of six written for exactly that reason, and describes the
+  Alloy-side `loki_*` components rather than the log store.
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}) from it.
   There is no generated intermediate to refresh.
@@ -10711,12 +10761,19 @@ otelcol.auth.basic "oteldest" {
   </tbody>
 </table>
 
-### Monitoring configurations
+### Dashboards
 
-Configuration for dashboards, rules, and alerts
+Where the bundled dashboards are filed.
 
-Underlying content is generated into `pre-rendered/`
-from the sources under `packages/` and embedded via `.Files.Get`.
+**The dashboards themselves are not in this chart.** They ship in
+`materialize-monitoring-dashboards`, installed as a release of its own, because
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
+— the rendered set outgrew that and took `helm upgrade` with it.
+
+What stays here is what a dashboard is filed *into*: the `Grafana` instance,
+its datasources, and the folders below. The dashboards chart references the
+folder UIDs this one creates, spelled out in its own values rather than
+discovered, since it cannot see this release.
 
 <table class="helm-values">
   <thead>
@@ -10726,7 +10783,7 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+      <td class="helm-value-desc">Create the Grafana folders the bundled dashboards are filed into. Requires the Grafana operator.
 </td>
     </tr>
     <tr>
@@ -10737,10 +10794,20 @@ from the sources under `packages/` and embedded via `.Files.Get`.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"allowCrossNamespaceImport":null, "instanceSelector":{}, "resyncPeriod":"5m"}</code></td>
+      <td class="helm-value-desc">Settings shared by the Grafana resources this chart creates.
+Named `manifest` from when it also covered the dashboard manifests; those
+moved to `materialize-monitoring-dashboards`, which carries its own copies
+of these under `grafana`. What is left applies to the folders.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.resyncPeriod</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">Time to sync the dashboard from the manifest
+      <td class="helm-value-desc">Time to sync the folder from its resource.
 </td>
     </tr>
     <tr>
@@ -10749,21 +10816,14 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in the dashboards chart, which has no way to read it from here.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.allowCrossNamespaceImport</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>inferred</code></td>
-      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"dashboard.grafana.app/v2"</code></td>
-      <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
+      <td class="helm-value-desc">Allow folders to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the folders, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
 </td>
     </tr>
   </tbody>
@@ -10801,32 +10861,6 @@ no folder resource to create.
 | `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
 | `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
 | `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
-
-<table class="helm-values">
-  <thead>
-    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-  </thead>
-  <tbody>    <tr>
-      <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">dashboards<wbr>.selected</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "env-*",
-  "infra-*"
-]</pre>
-</td>
-      <td class="helm-value-desc">List of dashboard patterns to render
-</td>
-    </tr>
-  </tbody>
-</table>
 
 #### Rule configuration
 
@@ -11437,6 +11471,33 @@ only once the finalizers have been processed, and Helm proceeds from there.
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
       <td class="helm-value-desc">Run the pre-delete cleanup hook. Turning this off restores the hang described above; the manual recovery is to delete the resources yourself before `helm uninstall`, or to clear the finalizers by hand afterwards.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.scope</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"instance"</code></td>
+      <td class="helm-value-desc">Which resources the hook deletes: `instance` or `release`.
+
+**`instance`** (the default) selects everything pointed at the `Grafana`
+this release created, by the labels in `connections.grafana.labels` — the
+same ones the resources carry and their `instanceSelector` matches.
+
+That deliberately reaches beyond this release. The dashboards ship as
+`materialize-monitoring-dashboards`, a release of its own whose
+`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in that
+release's teardown runs when this one is being removed. Take the operator
+away without clearing them and they wedge in `Terminating` with no remover.
+It is still bounded: it cannot reach resources aimed at a Grafana this
+release did not create.
+
+**`release`** is the narrow form — only what this release created. Correct
+when grafana-operator is not ours to remove, since it survives the
+uninstall and clears the rest itself, and the escape hatch if the broader
+sweep ever reaches something it should not.
+
+Only `instance` consults `mzmon.grafanaOperator.enabled`; with the operator
+unmanaged here, both scopes fall back to the release.
 </td>
     </tr>
     <tr>
@@ -12992,15 +13053,39 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.chunksCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.chunksCache<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the cache out of the subchart's ServiceMonitor and into this chart's plaintext one. See the `plaintext exporters` note under `monitoring.serviceMonitor` below.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.resultsCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">Query results cache (memcached).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.resultsCache<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the cache out of the subchart's ServiceMonitor, as above.
 </td>
     </tr>
     <tr>
@@ -13008,13 +13093,41 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
       <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.
+
+**Plaintext exporters are excluded from it.** The subchart renders a
+single ServiceMonitor covering everything it labels, with one `scheme`
+shared by every target. Three of those targets never speak TLS whatever
+Loki is configured to do — the canary's own `/metrics` server, and the
+two memcached exporters — so under `profiles/mtls`, which sets
+`scheme: https` here, all three fail the scrape and their series vanish.
+For the canary that means the end-to-end write→read check goes quiet
+rather than red, which is the worst way for a canary to fail.
+
+Each of the three therefore carries
+`prometheus.io/service-monitor: "false"`, which the subchart's selector
+excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
+opt-in that this chart's own monitor selects on
+(`templates/scrapers/monitor-loki-plaintext.yaml`). The split is
+unconditional so the two modes share one code path.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the canary out of the subchart's ServiceMonitor and into this chart's plaintext one. Its `/metrics` server is plaintext even when `-tls` is set, since that flag configures the client it uses to reach Loki. See `monitoring.serviceMonitor` above.
 </td>
     </tr>
     <tr>
@@ -15082,9 +15195,9 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment, `infra-*.yaml` for the platform, `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment, `infra-*.yaml` for the platform — including `infra-loki.yaml`, the log store watching itself — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
-    * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
+    * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
     * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
@@ -15096,7 +15209,6 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       * `values.yaml` / `README.md` / `README.md.gotmpl`: profile-driven defaults; README generated from the template via `helm-docs`
       * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`
       * `pre-rendered/`: generated artifacts loaded via `{{ .Files.Get }}`; never hand-edited
-        * `dashboards/`: `grafana/` and `datadog/`
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`, `gateway-metrics.alloy`, `gateway-dest-stub.alloy`)
         * `scrapers/`: `classic/` (raw scrape config), `prometheus-operator/` (PodMonitors + ScrapeConfig), `gmp/` (GCP `PodMonitoring`)
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
@@ -15105,6 +15217,10 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`)
+    * `materialize-monitoring-dashboards/`: the Grafana dashboards, as a chart and release of their own — though not a *component* of their own: it belongs to the existing `dashboards` component, whose version stream it shares with `packages/dashboards/` and `packages/queries/`. Split out because Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew — the umbrella chart's `helm upgrade` began failing outright. It creates `GrafanaManifest` resources and nothing else; the `Grafana` instance, the datasources and the folders stay in the umbrella chart, and this one references them through values it cannot discover (`grafana.instanceSelector`, `grafana.folderUids`)
+      * `pre-rendered/dashboards/`: `grafana/` and `datadog/`, written by `mz-monitoring-build gen-dashboards`
+      * `templates/`: `dashboards.yaml` (the manifests) and `validate.yaml`
+      * `values.yaml` / `README.md` / `README.md.gotmpl` / `tests/`
     * `materialize-monitoring-crds/`: CRDs chart (`Chart.yaml`, `Chart.lock`, `values.yaml`, `README.md`, `README.md.gotmpl`, `tests/`)
       * `charts/`: the vendored `prometheus-operator-crds` tarball, plus `grafana-operator-crds/` deflated from the upstream operator chart, which publishes no CRDs chart of its own — generated by `bin/extract-grafana-operator-crds.sh` (`make grafana-operator-crds`)
   * `terraform/` (see [Terraform Modules](../design-docs/20260803-terraform-modules/)): the cloud-agnostic module that installs the released charts. Versioned as part of the `materialize-monitoring` component rather than on a stream of its own; per-cloud wrappers live in `materialize-terraform-self-managed`
@@ -15335,7 +15451,7 @@ Two consumers, one command:
 
 | Output | Consumer | Make target |
 | --- | --- | --- |
-| `--format yaml` into `charts/…/pre-rendered/dashboards/grafana/` | the Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
+| `--format yaml` into `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/` | the dashboards Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
 
 Both trees are checked in, which makes byte-stability the property that matters most.
@@ -15836,6 +15952,17 @@ the two cannot drift. Set it only to pin a chart version different from the modu
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="cluster_name" href="#cluster_name">cluster_<wbr>name</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
+sample the stack collects.
+
+Set it whenever more than one cluster writes to the same log or metrics store — the label is
+the only thing that tells their data apart. Null leaves the chart's default, `default`.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="crds_chart_version" href="#crds_chart_version">crds_<wbr>chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Version of the materialize-monitoring-crds chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the CRDs chart has a deliberately looser lifecycle.</td>
@@ -15846,6 +15973,46 @@ the two cannot drift. Set it only to pin a chart version different from the modu
         <td class="tf-var-type"><code>bool</code></td>
       <td class="tf-var-desc">Whether this module creates the namespace. Defaults to false because the Materialize operator module already creates `monitoring` in the supported topology.</td>
         <td class="tf-var-default"><code>false</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="dashboards_allow_cross_namespace_import" href="#dashboards_allow_cross_namespace_import">dashboards_<wbr>allow_<wbr>cross_<wbr>namespace_<wbr>import</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Allow the dashboards to match a Grafana instance outside their own namespace.
+
+Required when the `Grafana` resource lives somewhere other than `namespace`, which is what the
+chart's `split-namespace` profile does. Not inferred: the module cannot see where an
+`additional_values` override put the instance.
+
+Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
+</td>
+        <td class="tf-var-default"><code>false</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="dashboards_chart_version" href="#dashboards_chart_version">dashboards_<wbr>chart_<wbr>version</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Version of the materialize-monitoring-dashboards chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own.</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="dashboards_instance_selector" href="#dashboards_instance_selector">dashboards_<wbr>instance_<wbr>selector</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">Labels selecting the Grafana instance the dashboards are pushed into.
+
+Null derives the label the main chart puts on its own `Grafana` resource, which is correct
+unless that release narrowed the selector through `connections.grafana.labels` in
+`additional_values` — the dashboards chart cannot read that, so set the same map here.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="dashboards_selected" href="#dashboards_selected">dashboards_<wbr>selected</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Dashboard filename-stem patterns to install, matched against the set the chart carries.
+
+Null leaves the chart's own default, which is every dashboard. Narrow it to hold one back —
+`env-upgrade` depends on operator instrumentation that not every Materialize version has.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="datadog_api_key" href="#datadog_api_key">datadog_<wbr>api_<wbr>key</a></td>
@@ -15884,6 +16051,21 @@ that disagrees with `site` fails at the intake rather than at plan time.
     metric_endpoint = optional(string)
     logs_endpoint   = optional(string)
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="enable_dashboards" href="#enable_dashboards">enable_<wbr>dashboards</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Install the materialize-monitoring-dashboards chart.
+
+The dashboards are a Helm release of their own because Helm stores a release in a Kubernetes
+Secret and a Secret may not exceed 1 MiB, which the rendered set had grown past. The module
+installs it against the folders and Grafana instance the main release creates, so the two stay
+in step without either having to discover the other.
+
+Set false when dashboards are managed elsewhere — a platform team's own Grafana provisioning,
+or a GitOps pipeline that owns them.
+</td>
+        <td class="tf-var-default"><code>true</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="enable_monitoring_crds" href="#enable_monitoring_crds">enable_<wbr>monitoring_<wbr>crds</a></td>
@@ -16738,7 +16920,7 @@ The regular expression is anchored at the start of the entry, so a log line that
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
 
 ## Attribution and adoption status
 
@@ -17840,6 +18022,31 @@ panel is drawn against the range that matters and a flat-healthy line stays flat
 Unbounded rates (errors and drops per second) keep autoscaling, since there is no
 honest ceiling to pin them to and a spike is the thing worth seeing.
 
+## One picker across two engines
+
+Normally a metrics filter and a log filter are separate variables, because the label spaces are separate: the metrics
+side has `container`, the logs side has `component`, and a dashboard that conflated them would empty half its panels
+without saying why.
+
+`infra-loki` does conflate them, deliberately, and the conditions under which that is allowed are narrow enough to
+state.
+Both labels there hold the **same Kubernetes container name** — `container` because that is what a ServiceMonitor
+stamps, `component` because that is what the log pipeline relabels a Loki pod to — so one `$lokiComponent` discovered
+from `label_values(up{app_instance="loki"}, container)` scopes the metric panels and the log panels alike.
+
+Two conditions, both of which have to hold:
+
+- **The value sets have to agree by construction**, not by coincidence. A shared *origin* is the test — here, the
+  container name — because two lists that merely happen to match today will drift the first time either side is
+  relabelled.
+- **Any divergence has to be benign in the direction it goes.** `exporter`, the memcached sidecar, exists on the
+  metrics side and emits no log lines, so selecting it empties the log feeds. That is the honest answer to "show me
+  the exporter's logs" rather than a bug. Nothing goes the other way: every process that logs is also scraped.
+
+Where either condition fails, define two variables.
+The cost of the second picker is that a reader has to set both; the cost of wrongly sharing one is a panel that is
+empty and looks fine, which is the failure this whole guide keeps coming back to.
+
 ## Node identifiers across three families
 
 The dashboard's one real trick. kube-state-metrics calls a node `node="<name>"`; node-exporter calls the same machine
@@ -18243,7 +18450,7 @@ mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
 `--list` enumerates what is available, `--dashboard <stem>` renders one, `--format json` emits the docsite shape, and
 ### Two copies, one review
 
-Every dashboard is written twice: `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
+Every dashboard is written twice: `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
 `docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
 Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
 reading.
@@ -18264,6 +18471,39 @@ metric-to-usage index rather than a second one, so its diff is the only place a 
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
 `make dashboards` wires the two shipped output trees; see
 [SDKs and Schemas]({{< relref "sdks.md" >}}#rendering) for the determinism guarantees.
+
+## The size ceiling on dashboard delivery
+
+**The dashboards ship in a chart of their own, and this is why.**
+
+Helm stores each release as a Kubernetes Secret, and a Secret's data may not exceed 1 MiB.
+The rendered dashboards are the largest thing this repository produces by an order of magnitude — over a megabyte of
+YAML before Helm's own encoding — and a seventh crossed the limit.
+`helm upgrade` then failed with `Secret "sh.helm.release.v1.<release>.vN" is invalid: data: Too long`, raised before
+anything was applied: safe and loud, and completely blocking.
+
+Measured on a reference install, where the umbrella release had 36,202 bytes of headroom left:
+
+| | one release | after the split |
+|---|---|---|
+| `materialize-monitoring` | 1,012,374 (97%) | **648,594** (62%) |
+| `materialize-monitoring-dashboards` | — | **440,100** (42%) |
+
+It is the same 1 MiB object ceiling the Terraform design doc
+[flagged for the ConfigMap sidecar path]({{< relref "../design-docs/20260803-terraform-modules.md" >}}); that note
+assumed the grafana-operator path had room, which stopped being true.
+A `standalone` Grafana provisions dashboards through that sidecar, which is why the dashboards chart refuses that mode
+rather than emitting resources nothing can carry.
+
+**What the split does not fix is the trajectory.**
+Each release now has roughly 400 KB of headroom, and the rendered dashboards remain the fastest-growing artifact here —
+so this buys a generation of dashboards rather than solving delivery.
+Shrinking the rendered output is the next lever, and the one that would stop the problem recurring is moving dashboards
+out of the release payload altogether.
+
+A dashboard's own size is worth knowing when adding one: `env-top` is 335 KB, `infra-nodes` 246 KB, `infra-loki`
+162 KB, `env-logs` 37 KB.
+`selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
 
@@ -18528,7 +18768,7 @@ For broader code-quality tooling see
 | `mzmon-lib/tests/grafana_golden.rs` | that the generated models round-trip a real Dashboard v2 document |
 | `mzmon-lib/tests/grafana_end_to_end.rs` | a complete dashboard built through every layer, then deserialized back through the models |
 | `mzmon-lib/tests/grafana_query_bridge.rs` | the query bridge against the real registry under `packages/queries/` |
-| `charts/materialize-monitoring/tests/dashboards_test.yaml` | that the chart ships what `dashboards.selected` selects — the patterns are globbed against the pre-rendered tree, so a dashboard joins or leaves the release silently otherwise |
+| `charts/materialize-monitoring-dashboards/tests/dashboards_test.yaml` | that the chart ships what `selected` selects — the patterns are globbed against the pre-rendered tree, so a dashboard joins or leaves the release silently otherwise — and that its resource names do not collide with the ones the umbrella chart used to create |
 | in-module tests | per-tab structure, selector shapes, threshold ladders, panel presets |
 
 The models carry `deny_unknown_fields`, so anything invented along the way fails at deserialization rather than at push
@@ -18697,7 +18937,7 @@ See [Grafana Operator]({{< relref "../dashboards/grafana/grafana-operator.md" >}
 ### Dashboards arrive as `GrafanaManifest`, not `GrafanaDashboard`
 
 This surprises people, so it is worth stating plainly.
-The chart wraps each pre-rendered dashboard in a `GrafanaManifest`, whose `spec.template` carries the dashboard object verbatim with its `apiVersion` set from `dashboards.config.grafana.manifest.apiTarget` (`dashboard.grafana.app/v2` by default).
+The `materialize-monitoring-dashboards` chart wraps each pre-rendered dashboard in a `GrafanaManifest`, whose `spec.template` carries the dashboard object verbatim with its `apiVersion` set from that chart's `grafana.apiTarget` (`dashboard.grafana.app/v2` by default).
 
 `GrafanaManifest` is the generic carrier for a Grafana API object, which is what lets the same chart ship dashboard schema v2 without the operator needing a v2-aware spec of its own.
 `GrafanaDashboard` still works and is the natural choice for dashboards you author yourself — it simply is not how the bundled set travels.
@@ -18871,7 +19111,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Logs & events** — the platform's own logs, the node journal, cluster-wide events | **Yes, shipped.** `infra-logs` (`mz-mon-infra-logs`) exists with **Logs**, **Nodes** and **Events** tabs. Adds the two axes `env-logs` structurally cannot offer: `component`, which splits `loki` into eight processes and `thanos` into three, and the **node journal**, whose lines carry no namespace and so are excluded from every `env-*` selector by construction. Shares its event queries and variable names with `env-logs`; differs in where the namespace picker opens and in carrying an **Exclude Materialize** switch, on by default — the Materialize namespaces are about half of a week's log volume and `materialize-environment` alone out-logs every other namespace, so left in they make the volume panels a picture of Materialize rather than of the platform underneath it. Verified against a live install | OO-M3 | ✅ |
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M3 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
-| **Meta-monitoring** — every component of this stack | **Yes, and then some.** Grafana 523 families, Loki 439, Thanos 220, Alloy 35. **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | ⬜ |
+| **Meta-monitoring** — every component of this stack | **Loki shipped; the rest outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (no Prometheus, no Thanos Ruler, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Outstanding:** Grafana (523 families), Thanos (220) and Alloy (35); **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | 🔨 |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M3 | ✅ |
 | **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents), and **nothing in the registry reads any of them**. **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics. Now designed rather than only scoped: see [External dependencies](#external-dependencies) | OO-M3 | 🔨 |
@@ -19056,6 +19296,7 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | **Grafana persistence** ([DEP-202](https://linear.app/materializeinc/issue/DEP-202)) — chart side done: `grafana-postgres` and `grafana-pvc` profiles, plus render-time checks that refuse multi-replica SQLite and RWO-with-rolling-update. Terraform provisioning the database per cloud is the remaining half | OO-M1 | 🔨 |
 | **Grafana production shape** ([CLO-111](https://linear.app/materializeinc/issue/CLO-111)) — pinned image so Renovate bumps the server independently, resource requests, PDB, HPA, Image Renderer refused, unpinned-plugin and leaked-secret guards, `grafana.ini` documented as an arbitrary-config passthrough for SSO, and a `grafanaSpec` break-glass for `mode: operator` | OO-M1 | ✅ |
 | **Pre-delete hook finalizing the Grafana custom resources** before grafana-operator is deleted, so teardown does not deadlock on finalizers with no remover ([DEP-197](https://linear.app/materializeinc/issue/DEP-197)). `cleanup.grafanaOperator` runs one `kubectl delete` at `pre-delete` and blocks until the finalizers clear, on upstream's distroless kubectl image | OO-M1 | ✅ |
+| **Dashboards split into `materialize-monitoring-dashboards`** — their own chart and release, because the rendered set outgrew what a Helm release can carry ([why, and what it cost](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Not their own component:** the chart joined the existing `dashboards` stream, since it carries nothing but that component's output and two streams would move in lockstep while claiming independence. The umbrella chart dropped `dashboards` from its `dependencies` with it — nothing it ships comes from them any more. Folders, datasources and the `Grafana` instance stay in the umbrella chart; the new one references them through explicit values, and the Terraform module derives those from the same `values.yaml` the main release renders from. Verified on a live install: the full seven-dashboard default set installs and each lands in its folder | OO-M3 | ✅ |
 | **cert-manager integration (opt-in)** ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)) — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | OO-M1 | 🔨 (issuance shipped and off by default: `certificates.enabled` renders per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root, and a separate external issuer for a Grafana behind an L4 LB. `global.clusterDomain` lands with it and propagates into Loki and Thanos. Material is mounted, not env-injected, and the `tls.*File` carriers plus scheme derivation are wired on the gateway's own destinations — `alloy validate` passes on the TLS-enabled render. Server halves shipped for both: `profiles/mtls.values.yaml` assembles Loki's six coupled settings and Thanos Receive's two, and a validator refuses every half-applied combination — `alloy validate` passes on the rendered result. All four gateway ingress listeners — 3100, 4317, 4318, 9090 — now render from Helm and take TLS from values; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker, so **agent→gateway is shipped**. Phases 2 and 3 ship as `mtls-phase2` / `mtls-phase3`, and at phase 3 five listeners refuse a client presenting no certificate. Terraform exposes the whole rollout as `internal_tls` (`off`/`encrypt`/`present`/`authenticate`) and `materialize-terraform-self-managed` defaults to certificates on and `authenticate`. Tier 2 runs phase 3 by default at chart-default lifetimes — the earlier 1h/55m livelocked cert-manager, so renewal is **forced** by deleting the Secret instead. The E2E suite has its own TLS client and asserts issuance, expiry, plaintext refusal, client-certificate enforcement and delivery across a forced renewal; verified on kind and on real EKS and GKE. **Outstanding:** the trust bundle ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)); intra-Loki and intra-Thanos hops; and Loki's HTTP port, which cannot pass phase 2 because the kubelet probes it) |
 
 Grafana reachability and persistence are paired deliberately.
@@ -19573,7 +19814,11 @@ When there are assets the release is created as a **draft**, the assets are uplo
 ## Chart publishing (OCI, GHCR)
 
 Chart components are additionally published to GitHub Packages as **OCI artifacts**, after the GitHub Release.
-The same `helm package` output is pushed with `helm push charts/<component>-<version>.tgz oci://ghcr.io/materializeinc/helm-charts`, landing at `ghcr.io/materializeinc/helm-charts/<component>` (the chart name becomes the repository, the chart version the OCI tag).
+The same `helm package` output is pushed with `helm push charts/<chart>-<version>.tgz oci://ghcr.io/materializeinc/helm-charts`, landing at `ghcr.io/materializeinc/helm-charts/<chart>` (the chart name becomes the repository, the chart version the OCI tag).
+
+**`<chart>` is not always `<component>`.**
+A component's chart directory comes from its `chart` key in `packages/components.yaml`, falling back to `charts/<component>`, and the tarball is named after the chart's own `name` rather than the component.
+`dashboards` is the case that needs both: it ships `charts/materialize-monitoring-dashboards` under a component name that predates the chart.
 GitHub Packages speaks **only** the OCI distribution protocol — there is no classic HTTP (`index.yaml`) Helm repository — which is consistent with how this chart already sources its own subcharts over `oci://ghcr.io/...`.
 
 Consumers install directly from the registry, no `helm repo add` needed:
@@ -19586,6 +19831,26 @@ Login uses the workflow's default `GITHUB_TOKEN` (the `publish-release` workflow
 The push runs *after* the release so a registry hiccup never blocks it; re-running the job retries the push while the release step no-ops on the existing tag.
 The push overwrites an existing version tag, so a retry is safe.
 Newly created GHCR packages are **private** by default — set the package visibility to public (once) so external consumers can pull.
+
+## Renaming a component {#renaming-a-component}
+
+A component's `title` is its identity in `CHANGELOG.md`: `latest_released` finds a component's baseline by matching section titles, so renaming one in `packages/components.yaml` alone makes the tooling report it as having no prior release and refuse to bump it.
+
+The rename is still supported, and takes one paired edit:
+
+1. Change `title` in `packages/components.yaml`.
+2. In `CHANGELOG.md`, rewrite the **latest released** heading to the new title.
+   That is the one `latest_released` reads, and rewriting it re-establishes the baseline.
+3. Rewrite the open `(Unreleased)` heading too, if there is one, so the section in flight is not duplicated under the new title on the next run.
+
+Older headings keep the old title.
+They are the historical record, and rewriting them would claim a component shipped under a name it did not.
+
+Verify with `CI=true cargo run -p mz-monitoring-build -- propose-bumps --dry-run`: the component should appear with its next version rather than as `skip <name>: no prior release`.
+
+Done twice so far — `materialize-monitoring` when the Terraform module joined it, and `dashboards` when the Helm chart did.
+
+Renaming the component **key** is a different and larger change: the key is the release tag prefix (`<component>/vX.Y.Z`) and the version-update branch name, neither of which can be rewritten after the fact.
 
 ## Auto-format
 
@@ -19677,9 +19942,21 @@ Each component declares:
 - `content_exclude` — paths to subtract from `content_paths`, typically generated outputs that belong to a dependency.
 - `dependencies` — other components whose bumps cascade into this one.
 - `artifacts` — glob patterns (repo-root-relative) for files attached as GitHub Release assets when the component is published; resolved file names must be unique.
+- `chart` — the Helm chart directory a component publishes, when it is not `charts/<component name>`. Read by the release workflow rather than by the Rust tooling. Only `dashboards` needs it, because it ships `charts/materialize-monitoring-dashboards` under a component name that predates the chart.
 
 Each changed file is attributed to the component with the longest matching `content_paths` entry, after dropping any component that excludes it.
-Generated outputs route to their source: the chart excludes its `pre-rendered/` tree, and `pre-rendered/dashboards` and `pre-rendered/pipelines` are claimed by the `dashboards` and `pipelines` components, so a dashboard change appears under Dashboards (and rolls up into the chart via cascade) rather than as a first-class chart change.
+Generated outputs route to their source: the umbrella chart excludes its `pre-rendered/` tree, and `pre-rendered/pipelines` and `pre-rendered/metrics` are claimed by the `pipelines` component, so a pipeline change appears under Pipelines (and rolls up into the chart via cascade) rather than as a first-class chart change.
+
+The dashboards are the exception, and deliberately.
+They are not a generated output routed *out* of a chart — they are a chart, `materialize-monitoring-dashboards`, which the `dashboards` component owns outright along with its sources under `packages/dashboards/` and `packages/queries/`.
+So there is no `content_exclude` on its `pre-rendered/` tree, and the umbrella chart does **not** list `dashboards` among its `dependencies`: nothing it ships comes from them any more, and a dashboard change that cascaded into it would publish an umbrella release identical to its predecessor except the version.
+
+**The `title` is the component's identity in `CHANGELOG.md`.**
+`latest_released` looks a component up by its title, so renaming one in `components.yaml` alone makes the tooling report it as having no prior release.
+Renaming is supported, and takes a paired edit to the latest released heading in `CHANGELOG.md` to re-establish the baseline — see [Renaming a component]({{< relref "releasing.md#renaming-a-component" >}}).
+Both components that have grown a second artifact went through it: `materialize-monitoring` when the Terraform module joined it, and `dashboards` when the Helm chart did.
+
+The component **key** is a different matter: it is the release tag prefix and the version-update branch name, so it cannot be rewritten after the fact.
 
 A component may have an empty `version_paths` (its version lives only in `CHANGELOG.md`) or `changelog: false` (it is rebuilt on dependency changes but keeps no changelog of its own, like `docs`).
 

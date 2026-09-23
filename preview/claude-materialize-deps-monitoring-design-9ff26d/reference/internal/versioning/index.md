@@ -20,9 +20,21 @@ Each component declares:
 - `content_exclude` — paths to subtract from `content_paths`, typically generated outputs that belong to a dependency.
 - `dependencies` — other components whose bumps cascade into this one.
 - `artifacts` — glob patterns (repo-root-relative) for files attached as GitHub Release assets when the component is published; resolved file names must be unique.
+- `chart` — the Helm chart directory a component publishes, when it is not `charts/<component name>`. Read by the release workflow rather than by the Rust tooling. Only `dashboards` needs it, because it ships `charts/materialize-monitoring-dashboards` under a component name that predates the chart.
 
 Each changed file is attributed to the component with the longest matching `content_paths` entry, after dropping any component that excludes it.
-Generated outputs route to their source: the chart excludes its `pre-rendered/` tree, and `pre-rendered/dashboards` and `pre-rendered/pipelines` are claimed by the `dashboards` and `pipelines` components, so a dashboard change appears under Dashboards (and rolls up into the chart via cascade) rather than as a first-class chart change.
+Generated outputs route to their source: the umbrella chart excludes its `pre-rendered/` tree, and `pre-rendered/pipelines` and `pre-rendered/metrics` are claimed by the `pipelines` component, so a pipeline change appears under Pipelines (and rolls up into the chart via cascade) rather than as a first-class chart change.
+
+The dashboards are the exception, and deliberately.
+They are not a generated output routed *out* of a chart — they are a chart, `materialize-monitoring-dashboards`, which the `dashboards` component owns outright along with its sources under `packages/dashboards/` and `packages/queries/`.
+So there is no `content_exclude` on its `pre-rendered/` tree, and the umbrella chart does **not** list `dashboards` among its `dependencies`: nothing it ships comes from them any more, and a dashboard change that cascaded into it would publish an umbrella release identical to its predecessor except the version.
+
+**The `title` is the component's identity in `CHANGELOG.md`.**
+`latest_released` looks a component up by its title, so renaming one in `components.yaml` alone makes the tooling report it as having no prior release.
+Renaming is supported, and takes a paired edit to the latest released heading in `CHANGELOG.md` to re-establish the baseline — see [Renaming a component](/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/reference/internal/releasing/#renaming-a-component).
+Both components that have grown a second artifact went through it: `materialize-monitoring` when the Terraform module joined it, and `dashboards` when the Helm chart did.
+
+The component **key** is a different matter: it is the release tag prefix and the version-update branch name, so it cannot be rewritten after the fact.
 
 A component may have an empty `version_paths` (its version lives only in `CHANGELOG.md`) or `changelog: false` (it is rebuilt on dependency changes but keeps no changelog of its own, like `docs`).
 

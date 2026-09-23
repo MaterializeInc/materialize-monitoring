@@ -85,6 +85,12 @@ Adding or changing a query has effects beyond the query itself:
 - **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
   This is why a new query can change what a deployment ships to a metered backend.
+
+  **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
+  `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
+  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it;
+  `infra.loki.pipeline.*` in `infra-loki.yaml` is a set of six written for exactly that reason, and describes the
+  Alloy-side `loki_*` components rather than the log store.
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries](/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/reference/stable-metrics/common-queries/) from it.
   There is no generated intermediate to refresh.

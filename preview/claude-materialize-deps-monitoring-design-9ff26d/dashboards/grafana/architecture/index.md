@@ -204,27 +204,45 @@ and cross-namespace NetworkPolicy has to permit the operator to reach Grafana an
 
 ## Dashboards
 
-Dashboards are **pre-rendered** into the chart, not generated at template time.
+**The dashboards are a chart of their own**, `materialize-monitoring-dashboards`, installed as a separate release
+beside `materialize-monitoring`.
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB; the rendered set outgrew that, which
+made `helm upgrade` on the umbrella chart fail outright rather than degrade.
+What stays in the umbrella chart is everything a dashboard is filed *into* — the `Grafana` instance, its datasources,
+and the folders.
+
+Dashboards are **pre-rendered** into that chart, not generated at template time.
 Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
-`charts/materialize-monitoring/pre-rendered/dashboards/grafana/*.yaml`.
+`charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
 See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
 
-Which dashboards get installed is controlled by glob patterns:
+Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
 
 ```yaml
-dashboards:
-  selected:
-    - env-*
-  config:
-    grafana:
-      enabled: true
-      mode: operator
-      manifest:
-        resyncPeriod: 5m
-        instanceSelector: {}
-        apiTarget: dashboard.grafana.app/v2
+selected:
+  - env-*
+grafana:
+  enabled: true
+  mode: operator
+  resyncPeriod: 5m
+  apiTarget: dashboard.grafana.app/v2
+  # Must match what the materialize-monitoring release put on its Grafana.
+  instanceSelector:
+    matchLabels:
+      monitoring.materialize.cloud/grafana-instance: mzmon
+  # The UIDs that release created for its folders.
+  folderUids:
+    infra: mzmon-infra
+    materialize: mzmon-materialize
+    meta-o11y: mzmon-meta-o11y
 ```
+
+**Nothing in that block is auto-detected.**
+The dashboards chart has no dependency on the umbrella chart and cannot read its values, so each reference to one of
+its resources is a value you set.
+The umbrella chart's install notes print the folder UIDs it created, which is the quickest way to fill in the last of
+them.
 
 Each match becomes one `GrafanaManifest` resource wrapping the dashboard body in `spec.template`.
 
@@ -237,12 +255,14 @@ instead of being reinterpreted by the operator.
 Treat operator-managed dashboards as read-only: copy to a new dashboard rather than editing in place.
 
 Folder placement is part of the dashboard body rather than of the manifest around it.
-Each render carries a `grafana.app/folder` annotation naming a folder, and the chart rewrites that name to the UID of
-the `GrafanaFolder` it creates from `dashboards.config.grafana.folders` — the same rewrite `apiVersion` gets, and for
-the same reason: neither is knowable when the dashboard is rendered.
+Each render carries a `grafana.app/folder` annotation naming a folder, and the dashboards chart rewrites that name to
+a UID from its `grafana.folderUids` map — the same rewrite `apiVersion` gets, and for the same reason: neither is
+knowable when the dashboard is rendered.
+The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart creates from
+`dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Five dashboards are rendered, and `dashboards.selected` decides which of them a release installs:
+Seven dashboards are rendered, and `selected` decides which of them a release installs:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -280,12 +300,12 @@ Five dashboards are rendered, and `dashboards.selected` decides which of them a 
   Thanos.
   Both halves need a Materialize operator new enough to emit them — see the `min-mz-version` annotation on the
   rendered dashboard — and render empty against an older one.
-  Narrow `dashboards.selected` to `["env-top"]` to leave it out.
+  Narrow the dashboards chart's `selected` to `["env-top"]` to leave it out.
 
 ### Instance selection
 
 `instanceSelector` decides which `Grafana` resources a dashboard is pushed to.
-When `dashboards.config.grafana.manifest.instanceSelector` is unset, it falls back to the labels on the `Grafana`
+In the umbrella chart, when `dashboards.config.grafana.manifest.instanceSelector` is unset it falls back to the labels on the `Grafana`
 resource this chart creates, so the two sides are rendered from one source and cannot drift.
 
 That label set is a static `monitoring.materialize.cloud/grafana-instance: mzmon`, plus anything in `connections.grafana.labels` merged over it.
@@ -310,7 +330,7 @@ Both the `Grafana` resource and the selector pick the addition up.
 A `GrafanaManifest` only matches a `Grafana` in its **own namespace** unless `allowCrossNamespaceImport` is set.
 The chart infers it: the flag is emitted only when the `Grafana` resource lands somewhere other than the release
 namespace, which is what happens under `split-namespace`.
-Set `dashboards.config.grafana.manifest.allowCrossNamespaceImport` explicitly when pointing `instanceSelector` at an
+Set `allowCrossNamespaceImport` explicitly — in both charts — when pointing `instanceSelector` at an
 instance the chart did not create.
 
 > [!WARNING]
@@ -702,7 +722,7 @@ Tracked under [CLO-111](https://linear.app/materializeinc/issue/CLO-111/establis
 | Gap | Impact |
 |---|---|
 | `mode: operator` is modelled only as a raw spec | `connections.grafana.operator.spec` is passed through unvalidated; nothing the chart knows about Grafana applies inside it. Prefer `mode: bundled` |
-| `dashboards.config.grafana.mode` documents a `standalone` value, but only `operator` is implemented | Setting `standalone` silently renders no dashboards |
+| `grafana.mode` documents a `standalone` value, but only `operator` is implemented | The dashboards chart now refuses `standalone` at render time rather than silently emitting nothing |
 | Bundled Grafana defaults to `emptyDir` storage | All UI-created state is lost on restart unless you apply the `grafana-postgres` or `grafana-pvc` profile — see [State and persistence](#state-and-persistence) |
 | The Grafana subchart's NetworkPolicy takes one port | Its template emits a single ingress rule, on `service.targetPort`, so anything else the pod needs has to come from a policy this chart renders alongside — which is what `networkPolicies.grafanaGossip` is for. Ingress also defaults to `allowExternal: true`, because every way a human reaches Grafana is unselectable by pod label; narrow it with `explicitNamespacesSelector` / `explicitIpBlocks` |
 | Grafana-managed unified alerting is not HA | Each replica evaluates every rule independently, so alerts notify once per replica unless gossip is configured — see the note in the `grafana-postgres` profile |

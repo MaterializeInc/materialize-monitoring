@@ -245,6 +245,12 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
       <td>monitoring.coreos.com/v1alpha1/ScrapeConfig</td>
       <td><a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/prometheus-scrapers/prometheus-operator/scrapeconfig-kube-proxy.yaml?xxhash=bd37b8ebf6d0dbb6" download="kube-proxy-bd37b8ebf6d0dbb6.yaml"><code>scrapeconfig-kube-proxy.yaml</code></a></td>
     </tr>
+      
+    <tr>
+      <td>loki-plaintext</td>
+      <td>monitoring.coreos.com/v1/ServiceMonitor</td>
+      <td><a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/prometheus-scrapers/prometheus-operator/servicemonitor-loki-plaintext.yaml?xxhash=3327948ce6ff1609" download="loki-plaintext-3327948ce6ff1609.yaml"><code>servicemonitor-loki-plaintext.yaml</code></a></td>
+    </tr>
   </tbody>
 </table>
 
@@ -284,7 +290,7 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/prometheus-scrapers/classic/scrape_config.yaml?xxhash=8159614b4f8eaeb8" download="scrape_config-8159614b4f8eaeb8.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-materialize-deps-monitoring-design-9ff26d/prometheus-scrapers/classic/scrape_config.yaml?xxhash=5a3d8f41cde598cb" download="scrape_config-5a3d8f41cde598cb.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
