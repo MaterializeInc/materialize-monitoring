@@ -820,9 +820,9 @@ Work in this repository, roughly in dependency order.
 | `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | Nothing renders rules today; every item below consumes the output |
 | Capability tags (`requires`) on rules, and the schema change behind them | Replaces `deploymentMode: cloud-only` with what it was standing for |
 | Build-time applicability check against the extracted metric set | Decides the default-enabled set, and catches an untagged rule that cannot fire |
-| `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | The switch that makes PromQL alerting exist |
-| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | Required for `ALERTS` on the gateway; `extraArgs` reaches it and leaves the rest inconsistent |
-| `loki.rulerConfig` with `alertmanager_url` and the rule store | The Loki ruler runs today and notifies nothing |
+| `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
+| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
+| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | The routing half of the feature |
 | `amtool check-config` over the rendered configuration | The chart validates a passthrough it does not model |
 | `alerting.secrets` mounting, and the `_file` credential convention | Credentials are referenced, never inlined |
@@ -868,7 +868,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 
 ## Documentation to update
 
-- **`alerting/configuring.md`** — currently the word `TODO`. The severity table, the criticality matrix, and the receiver map. This is the page an operator reads once and configures from.
+- **`alerting/configuring.md`** — 🔨 written, covering the two evaluators, what each is wired to, and what an operator sets today. Still owed once routing exists: the severity table, the criticality matrix, and the receiver map. This is the page an operator reads once and configures from.
 - **`alerting/channels.md`** — currently a heading. The `class` concept, the Secret-mounting and `_file` convention, one worked example, and a link to Alertmanager's own receiver reference for everything else. This page documents a pattern rather than a schema, deliberately.
 - **`alerting/maintenance.md`** — currently a heading. Inhibition on the rollout signal first, mute timings second, and why that order.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.

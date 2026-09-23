@@ -4129,6 +4129,83 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "alertmanager_url": "http://{{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093",
+  "enable_alertmanager_v2": true,
+  "evaluation_interval": "1m",
+  "poll_interval": "1m",
+  "remote_write": {
+    "clients": {
+      "gateway": {
+        "queue_config": {
+          "batch_send_deadline": "5s",
+          "capacity": 2500,
+          "max_samples_per_send": 500,
+          "max_shards": 10,
+          "min_shards": 1
+        },
+        "remote_timeout": "30s",
+        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+      }
+    },
+    "enabled": true
+  },
+  "rule_path": "/var/loki/ruler-rules"
+}</pre>
+</td>
+      <td class="helm-value-desc">Ruler *configuration* (distinct from the ruler deployment below).
+
+The ruler deployment has been on since this chart had one. What it has
+never had is somewhere to send an alert: without `alertmanager_url` it
+evaluates its rules correctly and drops every alert on the floor, which is
+indistinguishable from nothing being wrong. That is what this block fixes.
+
+**Rule storage is already configured and is not here.** With
+`loki.storage.use_thanos_objstore` on, the subchart renders a top-level
+`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
+writes rules into that bucket yet — the chart's own log-alert definitions
+do not exist, and how they get delivered is decided with them.
+
+Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
+resolves. It does **not** see the umbrella's values, which is why these
+addresses are spelled out rather than built from the helpers the Thanos
+side uses — and why `split-namespace` overrides both of them.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "clients": {
+    "gateway": {
+      "queue_config": {
+        "batch_send_deadline": "5s",
+        "capacity": 2500,
+        "max_samples_per_send": 500,
+        "max_shards": 10,
+        "min_shards": 1
+      },
+      "remote_timeout": "30s",
+      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+    }
+  },
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Remote-write for recording-rule samples.
+
+This is what the ruler's PVC exists for: the WAL buffers derived samples
+when the metric store is unreachable, which is exactly the run-up to an
+incident. Same destination as the Thanos ruler — the alloy-gateway's
+`prometheus.receive_http` listener — so both rulers' results reach the
+destination fan-out rather than only the bundled metric store.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.gateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
@@ -4580,7 +4657,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store.
+      <td class="helm-value-desc">Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store. The evaluation and notification wiring lives in `loki.loki.rulerConfig`; this switch only decides whether the component is deployed.
 </td>
     </tr>
     <tr>
@@ -5582,10 +5659,343 @@ validator warns when the two disagree.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "enabled": false
+  "alertmanagers": {
+    "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+  },
+  "autoImportPrometheusRules": {
+    "enabled": true,
+    "sidecar": {
+      "image": {
+        "registry": "docker.io",
+        "repository": "alpine/kubectl",
+        "tag": "1.35.4"
+      },
+      "resources": {
+        "requests": {
+          "cpu": "25m",
+          "memory": "64Mi"
+        }
+      }
+    }
+  },
+  "enabled": true,
+  "extraArgs": [
+    "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+  ],
+  "extraVolumeMounts": [
+    {
+      "mountPath": "/etc/thanos/remote-write.yaml",
+      "name": "remote-write",
+      "readOnly": true,
+      "subPath": "remote-write.yaml"
+    }
+  ],
+  "extraVolumes": [
+    {
+      "configMap": {
+        "name": "thanos-ruler-remote-write"
+      },
+      "name": "remote-write"
+    }
+  ],
+  "persistence": {
+    "enabled": false
+  },
+  "query": {
+    "urls": [
+      "http://thanos-query:9090"
+    ]
+  },
+  "replicaCount": 2,
+  "resources": {
+    "requests": {
+      "cpu": "100m",
+      "memory": "256Mi"
+    }
+  },
+  "rules": {
+    "example-alerts.yaml": "groups: []\n"
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "ruler",
+          "app.kubernetes.io/name": "thanos"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "ruler",
+          "app.kubernetes.io/name": "thanos"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.
+
+**This is the switch that makes PromQL alerting exist.** The chart installs
+the Prometheus Operator CRDs but runs no Prometheus and no operator, and
+Alloy — the one component that consumes `ServiceMonitor` and `PodMonitor` —
+is a collector with no rule evaluator. So the single consumer of a
+`PrometheusRule` in this stack is the Ruler's import sidecar, and until the
+Ruler is on, a `PrometheusRule` renders, applies, passes every check, and
+does nothing.
+
+Evaluation is a PromQL query over the network to Thanos Query. There is no
+local TSDB to fall back on, which means **an outage in the query path stops
+alert evaluation**, and stopped evaluation looks exactly like nothing being
+wrong. Size Query with that in mind.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.replicaCount</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replica count. Both replicas evaluate every rule; Alertmanager deduplicates the resulting notifications, and `--alert.label-drop` strips the `ruler_replica` label that would otherwise make them distinct alerts.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.query</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "urls": [
+    "http://thanos-query:9090"
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">Query endpoints the Ruler evaluates against.
+
+**Query, not Query Frontend, deliberately.** The frontend splits and caches,
+which is right for a dashboard and wrong for an evaluator: a cached range
+served to a rule is an alert firing — or failing to fire — on data up to a
+cache TTL stale, with nothing in either component saying so. Grafana's
+datasource follows the frontend when it is enabled; this does not.
+
+The name is bare rather than fully qualified because Ruler and Query are
+components of one subchart and always land in one namespace, so it stays
+correct under `split-namespace`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.alertmanagers</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+}</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager routing, in Thanos's own format.
+
+`tpl`-evaluated by the subchart, so `.Release.*` resolves. Alertmanager is
+the one subchart with no `fullnameOverride`, so its Service name is derived
+from the release name — see the `alertmanager` section. `split-namespace`
+overrides this because it moves Alertmanager out of the release namespace.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.rules</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "example-alerts.yaml": "groups: []\n"
+}</pre>
+</td>
+      <td class="helm-value-desc">Inline rule files, keyed by filename.
+
+**This empties the subchart's `example-alerts.yaml`**, which ships an
+`ExampleAlwaysFiring` rule built on `vector(1)`. Left in place it notifies
+on every evaluation, forever, through whatever receiver an operator has
+configured.
+
+It is emptied rather than removed because **the subchart's JSON Schema
+lists `example-alerts.yaml` as a required property**, so neither
+`rules: {}` (which would not clear a subchart default anyway) nor
+`example-alerts.yaml: null` renders — the second fails schema validation
+before any template runs. A rule file declaring no groups is the only
+spelling that both satisfies the schema and evaluates nothing. Fixing that
+upstream is on the same list as the missing `remoteWrite` key.
+
+The render fails if the example rule comes back.
+
+The chart's own rules do not arrive here. They arrive as `PrometheusRule`
+resources, through the import sidecar below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.autoImportPrometheusRules</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "sidecar": {
+    "image": {
+      "registry": "docker.io",
+      "repository": "alpine/kubectl",
+      "tag": "1.35.4"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "25m",
+        "memory": "64Mi"
+      }
+    }
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Import `PrometheusRule` resources from the cluster into the Ruler.
+
+A `kubectl` sidecar lists `PrometheusRule` resources every 60s, writes each
+one's `.spec` into the Ruler's rule directory, and POSTs `/-/reload` when
+the set changes. No Prometheus Operator controller is involved.
+
+**`labelSelector` is empty, so this imports every `PrometheusRule` in the
+cluster**, including any belonging to a co-resident kube-prometheus-stack.
+That is the upstream default and it is kept deliberately: it is also what
+makes a customer's own `PrometheusRule` work with no chart configuration.
+Set a selector here if this cluster runs another rule owner whose alerts
+should not reach this Alertmanager.
+
+The image is pinned rather than left on the upstream `latest`, so a default
+install does not track a floating tag. It is the only Docker Hub image the
+Thanos subchart pulls, which is why the registry profiles each carry a line
+for it.
+
+**It cannot be the distroless `registry.k8s.io/kubectl` this chart uses for
+the cleanup hook**, tempting as sharing one image is. The sidecar's
+entrypoint is `/bin/sh /scripts/import.sh`, and the script shells out to
+`curl` to POST `/-/reload`. `alpine/kubectl` is Alpine plus `curl` plus
+`kubectl`; the distroless build has neither a shell nor curl, so it
+crash-loops immediately. The same applies to any hardened `kubectl` image —
+see the note in `profiles/registry/`.
+
+The minor tracks the cleanup hook's kubectl, and the same version-skew
+advice applies: keep it within one minor of your API server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+]</pre>
+</td>
+      <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
+
+**The subchart models no `remoteWrite` key**, and its StatefulSet passes
+`--objstore.config-file` unconditionally, so stateless is reached by
+pointing `extraArgs` at a ConfigMap the umbrella renders
+(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
+tracked; until it lands, **this flag is load-bearing** — drop it and the
+Ruler silently reverts to a local TSDB.
+
+Three reasons stateless is the right mode here, in ascending order of how
+much they matter. It removes a stateful workload. It puts rule results on
+the same path as every other series in this stack, rather than making the
+Ruler a second writer into object storage with its own compaction
+interaction. And it is what makes alert state forwardable: a Ruler shipping
+blocks puts `ALERTS` in Thanos and out of reach of every gateway
+destination except Thanos.
+
+The residue is that the Ruler still starts a block shipper against the
+object store. With an agent WAL and no blocks in the data directory it
+scans every 30s and uploads nothing.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">No PVC. The data directory holds the remote-write WAL and nothing else.
+
+The Loki ruler keeps a volume for the same WAL, on the argument that
+buffering derived samples through a metric-store outage is worth a disk.
+That argument applies here too and is deliberately not taken yet: this
+Ruler evaluates no recording rules, so there is nothing to buffer, and a
+10Gi PVC per replica for an empty WAL is not a default worth shipping.
+Revisit when recording rules land.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "100m",
+    "memory": "256Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for the Ruler. Evaluation is a fan-out of PromQL to Query, so the work happens there; the Ruler holds rule state and a WAL.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "ruler",
+        "app.kubernetes.io/name": "thanos"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "ruler",
+        "app.kubernetes.io/name": "thanos"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for the Ruler: soft on both axes.
+
+Soft rather than `DoNotSchedule`, unlike Receive: both replicas evaluate
+every rule and Alertmanager deduplicates, so co-locating them costs a
+simultaneous loss rather than a quorum. A Ruler that cannot schedule is a
+Ruler that is not evaluating, which is the worse outcome.
+
+`controller-revision-hash` because this is a StatefulSet; Deployments in
+this file use `pod-template-hash`.
 </td>
     </tr>
   </tbody>

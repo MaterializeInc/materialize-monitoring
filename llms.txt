@@ -52,8 +52,7 @@ In the bundled stack, Grafana ships with …
 ## Alerting
 - [Alerting](https://materializeinc.github.io/materialize-monitoring/alerting/index.md)
 
-- [Configuring](https://materializeinc.github.io/materialize-monitoring/alerting/configuring/index.md): TODO
-
+- [Configuring](https://materializeinc.github.io/materialize-monitoring/alerting/configuring/index.md): Configuring Alerting# A default install runs two rule evaluators and one notifier. Thanos Ruler evaluates PromQL, Loki …
 - [Alert Channels](https://materializeinc.github.io/materialize-monitoring/alerting/channels/index.md): Alert Channels#
 - [Maintenance Windows](https://materializeinc.github.io/materialize-monitoring/alerting/maintenance/index.md): Maintenance Windows#
 
