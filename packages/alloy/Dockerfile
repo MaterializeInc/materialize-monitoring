@@ -6,7 +6,7 @@
 # This can be used as a drop-in replacement for the upstream alloy image
 
 ## Supporting libraries
-FROM debian:13@sha256:f324c7ff54321e8d9c588493a20244965938ce0aa50bbd1022d38010e9ffc4b1 AS deb-support
+FROM debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c AS deb-support
 
 # Standard alloy uid/username
 ARG UID="473"
