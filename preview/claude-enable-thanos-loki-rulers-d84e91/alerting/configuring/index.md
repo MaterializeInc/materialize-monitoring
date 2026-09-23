@@ -11,7 +11,7 @@ Thanos Ruler evaluates PromQL, Loki Ruler evaluates LogQL, and both send what th
 **The evaluators are wired; the rules and the routing are not built yet.**
 `pre-rendered/rules/` ships empty, and the bundled Alertmanager carries no routing tree, so an alert that fires today reaches a null receiver.
 What this page describes is the path an alert will travel, and the parts of it an operator configures now.
-The remaining work is tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
+The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
 <!-- more -->
 
