@@ -1,0 +1,57 @@
+{{- /*
+Remote-write configuration for a stateless Thanos Ruler.
+
+**This ConfigMap exists because the subchart does not model stateless mode.**
+`thanos.ruler` exposes no `remoteWrite` key, and its StatefulSet passes
+`--objstore.config-file` unconditionally, so the only way to reach
+`--remote-write.config-file` is `extraArgs` pointing at a volume the umbrella
+mounts. That is what this is.
+
+Two consequences of getting there this way, both recorded rather than hidden:
+
+  * The ruler still starts a block shipper against the object store. In stateless
+    mode the data directory holds an agent WAL and no blocks, so it scans every
+    30s and uploads nothing — inert, and one more reason to fix this upstream.
+  * `thanos.ruler.extraArgs` is load-bearing. Clearing it reverts the ruler to a
+    local TSDB, which puts `ALERTS` in Thanos and out of reach of the gateway's
+    destination fan-out. `mzmon.thanos.validate.ruler` warns when the flag goes
+    missing.
+
+The target is the alloy-gateway's `prometheus.receive_http` listener, the same
+one the agent pushes to, so rule results take the path every other series in this
+stack takes.
+
+**Rendered whenever the Ruler is enabled, including when the gateway is not.**
+`thanos.ruler.extraVolumes` mounts this unconditionally, so gating it on the
+gateway would leave every Ruler pod in `FailedMount` on a metrics-only install —
+turning a lost remote-write into lost alert evaluation, which is the opposite of
+what the validator promises. With no gateway the samples go nowhere and the
+alerts still fire; `mzmon.thanos.validate.ruler` says so.
+*/}}
+{{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-ruler-remote-write
+  namespace: {{ include "mzmon.thanos.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: ruler
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  remote-write.yaml: |
+    remote_write:
+      - name: alloy-gateway
+        url: {{ include "mzmon.alloyGateway.remoteWriteUrl" $ | quote }}
+        remote_timeout: 30s
+        {{- /* The ruler writes ALERTS, ALERTS_FOR_STATE and every recording-rule
+               result. That is a small, steady stream rather than a scrape-shaped
+               burst, so the queue stays well under the Prometheus defaults. */}}
+        queue_config:
+          capacity: 2500
+          max_shards: 10
+          min_shards: 1
+          max_samples_per_send: 500
+          batch_send_deadline: 5s
+{{- end }}

@@ -32,21 +32,6 @@ metrics-server:
 {{- end }}
 
 {{- /*
-Namespace the bundled Alertmanager runs in.
-
-Mirrors the subchart's own `alertmanager.namespace` helper. There is no
-`mzmon.alertmanager.*` helper file, and this is the only thing that needs one.
-
-Usage:
-  {{ include "mzmon.alertmanager.namespace" $ }}
-*/}}
-{{- define "mzmon.alertmanager.namespace" }}
-  {{- $values := $.Values.alertmanager | default dict }}
-  {{- $ns := $values.namespaceOverride | default ( include "mzmon.namespace" $ ) }}
-  {{- printf "%s" $ns }}
-{{- end }}
-
-{{- /*
 Whether this chart should render its own NetworkPolicy for a given subchart.
 
 Three things all have to hold, and they are checked in this order:

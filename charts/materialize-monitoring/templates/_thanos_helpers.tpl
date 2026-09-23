@@ -100,6 +100,12 @@ Usage:
     {{- $res := include "mzmon.thanos.validate.networkPolicy" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+      {{- $res := include "mzmon.thanos.validate.ruler" $ | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
   {{- end }}
 
   {{- /* Reachability runs whether or not Thanos is enabled: the point is to
@@ -452,6 +458,109 @@ Usage:
   {{- $global := $.Values.thanos.global | default dict }}
   {{- if not $global.networkPolicies }}
     {{- $warnings = append $warnings "thanos.global.networkPolicies is recommended in production. It is the subchart's only switch, and it closes every port on the Thanos pods that is not a declared service port." }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Check if the Thanos ruler is enabled.
+
+Returns a truthy string if enabled and a falsy string (empty) if not. The ruler
+is a component of the Thanos subchart, so it needs Thanos itself enabled *and*
+its own switch on.
+
+Usage:
+  {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+*/}}
+{{- define "mzmon.thanos.ruler.enabled" }}
+  {{- if ( include "mzmon.thanos.enabled" $ ) }}
+    {{- if ( dig "ruler" "enabled" false ( $.Values.thanos | default dict ) ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Get the Thanos Query base URL.
+
+**Deliberately Query rather than Query Frontend**, and that is the whole reason
+this helper exists instead of a literal in `values.yaml`. Query Frontend splits
+and caches, which is right for a dashboard and wrong for rule evaluation: a
+cached range served to an evaluator is an alert firing — or not firing — on data
+that is up to a cache TTL stale, with nothing in either component saying so.
+Grafana's datasource points at the frontend when it is enabled; the ruler does
+not follow it there.
+
+Usage:
+  {{- include "mzmon.thanos.query.url" $ }}
+*/}}
+{{- define "mzmon.thanos.query.url" }}
+  {{- $values := $.Values.thanos | default dict }}
+  {{- $port := dig "query" "service" "httpPort" 9090 $values }}
+  {{- printf "http://thanos-query.%s.svc.cluster.local:%v" ( include "mzmon.thanos.namespace" $ ) $port }}
+{{- end }}
+
+{{- /*
+Validate the Thanos ruler.
+
+The ruler is the component that turns this chart from one that ships rules into
+one that evaluates them, and three of its failure modes are silent.
+
+Usage:
+  {{- $res := include "mzmon.thanos.validate.ruler" $ | fromYaml }}
+*/}}
+{{- define "mzmon.thanos.validate.ruler" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.thanos | required "thanos is missing from values." }}
+  {{- $ruler := dig "ruler" dict $values }}
+
+  {{- /* Evaluation is a PromQL query over the network. There is no local TSDB
+         to fall back on, because there is no Prometheus in this stack. */}}
+  {{- if not ( dig "query" "enabled" false $values ) }}
+    {{- $errors = append $errors "thanos.ruler.enabled is true but thanos.query.enabled is false. The ruler evaluates by issuing PromQL to Query over the network and has nothing to fall back on, so every rule fails to evaluate." }}
+  {{- end }}
+
+  {{- /* Stateless mode is reached through `extraArgs` because the subchart
+         models no `remoteWrite` key. Someone clearing `extraArgs` to add their
+         own flag silently reverts the ruler to a local TSDB, which puts ALERTS
+         in Thanos and out of reach of the gateway's destination fan-out. */}}
+  {{- $stateless := false }}
+  {{- range ( dig "extraArgs" list $ruler ) }}
+    {{- if hasPrefix "--remote-write.config" ( . | toString ) }}
+      {{- $stateless = true }}
+    {{- end }}
+  {{- end }}
+  {{- if not $stateless }}
+    {{- $warnings = append $warnings "thanos.ruler.extraArgs no longer carries --remote-write.config-file, so the ruler runs with its own TSDB rather than stateless. Rule results stop traversing the alloy-gateway, which is the path every other series in this stack takes and the one the destination fan-out can see." }}
+  {{- else if dig "persistence" "enabled" false $ruler }}
+    {{- $warnings = append $warnings "thanos.ruler runs stateless but thanos.ruler.persistence.enabled is true. The PVC holds only the remote-write WAL; that is defensible durability, but it is not the block storage the subchart sizes this volume for." }}
+  {{- end }}
+
+  {{- /* The subchart ships an `ExampleAlwaysFiring` rule under `ruler.rules`,
+         and its JSON Schema requires the key, so the chart empties the file
+         rather than removing it. This catches the emptying being undone —
+         exactly the kind of default that reaches an on-call rotation. */}}
+  {{- range $file, $content := ( dig "rules" dict $ruler ) }}
+    {{- if contains "ExampleAlwaysFiring" ( $content | toString ) }}
+      {{- $errors = append $errors ( printf "thanos.ruler.rules[%q] still carries the subchart's ExampleAlwaysFiring rule, which fires on vector(1) and notifies on every evaluation. Replace its contents with `groups: []`." $file ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The gateway's metrics listener is the ruler's remote-write target. */}}
+  {{- if $stateless }}
+    {{- if not ( include "mzmon.alloyGateway.enabled" $ ) }}
+      {{- $warnings = append $warnings "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled. Rule results are written to a Service that does not exist, so they accumulate in the WAL and are eventually dropped. Alerting itself still works — this costs the recording rules and the ALERTS series, not the notifications." }}
+    {{- else if ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) }}
+      {{- /* The `mtls` profile family turns this listener on, so the broken
+             composition is reachable rather than hypothetical. A warning rather
+             than an error because only the remote-write half breaks — the ruler
+             still evaluates and still notifies Alertmanager. The Loki ruler has
+             the same gap and warns separately. */}}
+      {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, and the chart mounts no CA into the Thanos ruler pods. The remote-write URL follows the scheme, so every write fails the handshake: the ALERTS series and any recording-rule results fill the WAL and are dropped. Alert evaluation and notification are unaffected. Drop --remote-write.config-file from thanos.ruler.extraArgs, or leave the gateway's metrics listener plaintext, until the ruler carries certificate material." }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}

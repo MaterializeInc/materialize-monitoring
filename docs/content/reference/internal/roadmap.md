@@ -350,8 +350,9 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Alerting design doc plus review | — | 🔨 ([design doc](../design-docs/20260917-alerting-self-managed/) drafted; review outstanding) |
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ⬜ |
-| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ⬜ |
-| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ |
+| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below) |
+| Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
+| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | ⬜ |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ⬜ |
@@ -365,6 +366,21 @@ Every component needed to alert is in the chart, and no two of them are connecte
 Alertmanager is bundled and the rules exist, but nothing routes them anywhere.
 Until that lands the alerting story is "we ship rules", which is half a feature.
 
+**The evaluators are now connected.**
+A default install runs the Thanos ruler stateless against Thanos Query, runs the Loki ruler against Loki, and points both at the bundled Alertmanager.
+Both remote-write their results to the alloy-gateway, which is what puts `ALERTS` in front of the destination fan-out that [call-home](../design-docs/20260917-call-home-self-managed/) needs.
+What is still missing is the rules themselves: `pre-rendered/rules/` is empty, `gen-rules` does not exist, and the Alertmanager the rulers notify has no routing tree, so a firing alert reaches a null receiver.
+The remaining items in the table are what close that gap.
+
+Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
+Each is worked around in `values.yaml` with the reasoning recorded at the line.
+
+| Gap | Workaround |
+|---|---|
+| `thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally | Stateless is reached through `extraArgs` plus a ConfigMap the umbrella renders. The ruler still starts a block shipper against the object store, which scans an agent WAL and uploads nothing |
+| The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
+| The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
+
 The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and are best worked together.
 Adoption was previously the higher-value half, on the reasoning that until routing exists nobody is paged.
 **The design doc revises that: HA belongs in the default configuration rather than in a later hardening step.**
@@ -373,10 +389,12 @@ Two replicas with gossip and a PDB of one is the shape; the rest of DEP-226 stay
 
 Five findings from drafting the design doc belong on this page rather than only in it.
 
-**`PrometheusRule` has exactly one consumer in this stack, and it is off.**
+**`PrometheusRule` has exactly one consumer in this stack, and it is now on.**
 The chart installs the Prometheus Operator CRDs and not the operator, and Alloy consumes `ServiceMonitor` and `PodMonitor` only.
-The one thing that reads a `PrometheusRule` is the Thanos ruler's import sidecar, which is inert while `thanos.ruler.enabled` is `false`.
-A template emitting `PrometheusRule` resources today would render, apply, pass CI, and do nothing — which makes `thanos.ruler.enabled` the switch that makes alerting exist, rather than an optimization.
+The one thing that reads a `PrometheusRule` is the Thanos ruler's import sidecar, which was inert while `thanos.ruler.enabled` was `false`.
+A template emitting `PrometheusRule` resources would then render, apply, pass CI, and do nothing — which made `thanos.ruler.enabled` the switch that makes alerting exist, rather than an optimization.
+That switch is on as of the ruler wiring, so a `PrometheusRule` applied to the cluster is evaluated.
+The sidecar imports with no label selector, which is the upstream default and is kept: a customer's own `PrometheusRule` works with no chart configuration, at the cost that a co-resident rule owner's alerts also reach this Alertmanager.
 
 **The rule set is Cloud's rule set, and 28 of its 85 rules cannot fire in a stock self-managed install.**
 CockroachDB, the egress gateway, LaunchDarkly, the external uptime checkers, and Cilium account for most of them, and only five carry the `deploymentMode: cloud-only` label that exists to say so.

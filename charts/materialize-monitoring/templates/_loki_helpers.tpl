@@ -73,6 +73,12 @@ Usage:
     {{- $res := include "mzmon.loki.validate.ingesterRollout" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
+      {{- $res := include "mzmon.loki.validate.ruler" $ | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}
@@ -376,6 +382,87 @@ Usage:
         {{- end }}
       {{- end }}
     {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Check if the Loki ruler is enabled.
+
+Returns a truthy string if enabled and a falsy string (empty) if not. Unlike the
+Thanos ruler this has always defaulted on — what it has never had is an
+Alertmanager to notify.
+
+Usage:
+  {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
+*/}}
+{{- define "mzmon.loki.ruler.enabled" }}
+  {{- if ( include "mzmon.loki.enabled" $ ) }}
+    {{- if ( dig "ruler" "enabled" false ( $.Values.loki | default dict ) ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate the Loki ruler.
+
+Usage:
+  {{- $res := include "mzmon.loki.validate.ruler" $ | fromYaml }}
+*/}}
+{{- define "mzmon.loki.validate.ruler" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.loki | required "loki is missing from values." }}
+  {{- $rulerConfig := dig "loki" "rulerConfig" dict $values }}
+
+  {{- /* Without this the ruler evaluates LogQL correctly and notifies nobody,
+         which is the state this chart shipped in for its whole life so far.
+
+         A warning rather than an error: clearing the URL is how someone says
+         "recording rules yes, alerting no", and the ruler still does the first
+         half. The point is that it is a choice rather than an accident. */}}
+  {{- if not ( dig "alertmanager_url" "" $rulerConfig ) }}
+    {{- $warnings = append $warnings "loki.ruler.enabled is true but loki.loki.rulerConfig.alertmanager_url is unset. The ruler evaluates its rules and discards every alert they produce, while reporting healthy." }}
+  {{- end }}
+
+  {{- /* The ruler's PVC exists for the remote-write WAL. A ruler with no
+         remote_write is paying for a volume it never writes to. */}}
+  {{- $remoteWrite := dig "remote_write" dict $rulerConfig }}
+  {{- $rwOn := and ( dig "enabled" false $remoteWrite ) ( dig "clients" dict $remoteWrite ) }}
+  {{- if and ( dig "persistence" "enabled" false ( dig "ruler" dict $values ) ) ( not $rwOn ) }}
+    {{- $warnings = append $warnings "loki.ruler.persistence is enabled but loki.loki.rulerConfig.remote_write is not, so the PVC the ruler keeps for its remote-write WAL buffers nothing. Either configure remote_write or drop the volume." }}
+  {{- end }}
+
+  {{- /* The gateway's metrics listener is where recording-rule samples go, and
+         this ruler cannot speak TLS to it: its remote_write URL is a literal
+         `http://` in values, and no CA reaches the pod. The `mtls` profile
+         family turns that listener on, so the composition is reachable. */}}
+  {{- if and $rwOn ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) }}
+    {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, but loki.loki.rulerConfig.remote_write still addresses it over http and no CA is mounted into the Loki ruler. Recording-rule samples fill the ruler's WAL and are dropped. Alert evaluation and notification are unaffected. Set loki.loki.rulerConfig.remote_write.enabled to false, or leave the gateway's metrics listener plaintext, until the ruler carries certificate material." }}
+  {{- end }}
+
+  {{- /* Same reasoning as the Thanos ruler's: the samples are lost, the alerts
+         are not, and a Loki-only install is a legitimate shape. */}}
+  {{- if and $rwOn ( not ( include "mzmon.alloyGateway.enabled" $ ) ) }}
+    {{- $warnings = append $warnings "loki.loki.rulerConfig.remote_write targets the alloy-gateway, but alloy-gateway is not enabled. Recording-rule samples are written to a Service that does not exist, so they fill the ruler's WAL and are eventually dropped. Alerting is unaffected." }}
+  {{- end }}
+
+  {{- /* A rule group is per tenant, and the ruler does not evaluate across
+         tenants. Under the dynamic tenancy modes the tenant set is not knowable
+         at render time, so a rendered rule set covers the tenants that existed
+         when Helm last ran. */}}
+  {{- $tenantMap := dig "tenancy" "tenantMap" dict ( $.Values.pipeline | default dict ) }}
+  {{- $dynamic := list }}
+  {{- range $class, $mode := $tenantMap }}
+    {{- if eq ( $mode | toString ) "byNamespace" }}
+      {{- $dynamic = append $dynamic $class }}
+    {{- end }}
+  {{- end }}
+  {{- if $dynamic }}
+    {{- $warnings = append $warnings ( printf "pipeline.tenancy.tenantMap sets %s to byNamespace, so every Materialize namespace is its own Loki tenant and the tenant set changes as namespaces are created. A Loki rule group is per tenant and the ruler does not evaluate across them, so log alerting cannot be complete under this mode. Prefer `static` or `byEnvironment` where log alerting matters." ( join ", " ( sortAlpha $dynamic ) ) ) }}
   {{- end }}
 
   {{- /* final output */}}
