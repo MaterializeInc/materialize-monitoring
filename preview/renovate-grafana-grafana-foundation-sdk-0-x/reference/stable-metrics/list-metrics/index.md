@@ -62,15 +62,19 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.cilium.bpf_map_pressure">infra.cilium.bpf_map_pressure</a></li>
+                <li><a href="../common-queries#infra.net.cni.cilium.bpf_map_pressure">infra.net.cni.cilium.bpf_map_pressure</a></li>
             </ul>
         </details>
     </li>
     <li id="cilium_drop_count_total">cilium_drop_count_total
         <details>
+            Used labels: reason
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.cilium.drop_rate_elevated">infra.cilium.drop_rate_elevated</a></li>
+                <li><a href="../common-queries#infra.net.cni.cilium.drops">infra.net.cni.cilium.drops</a></li>
+                <li><a href="../common-queries#infra.net.security.drops.cilium">infra.net.security.drops.cilium</a></li>
             </ul>
         </details>
     </li>
@@ -179,7 +183,7 @@ like our bundled Thanos provider.
     </li>
     <li id="container_network_receive_bytes_total">container_network_receive_bytes_total
         <details>
-            Used labels: namespace, pod, workload
+            Used labels: interface, namespace, pod, workload
             <br />
             Example queries:
             <ul>
@@ -187,6 +191,11 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.egress_gateway.high_traffic">infra.egress_gateway.high_traffic</a></li>
                 <li><a href="../common-queries#infra.egress_gateway.low_traffic">infra.egress_gateway.low_traffic</a></li>
                 <li><a href="../common-queries#infra.egress_gateway.traffic_missing_metrics">infra.egress_gateway.traffic_missing_metrics</a></li>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.k8s.throughput.by_namespace">infra.net.k8s.throughput.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
+                <li><a href="../common-queries#infra.net.overview.throughput">infra.net.overview.throughput</a></li>
+                <li><a href="../common-queries#infra.net.overview.top_talkers">infra.net.overview.top_talkers</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_rx">materialize.kubernetes.pods.network_rx</a></li>
             </ul>
         </details>
@@ -197,6 +206,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_errors">materialize.kubernetes.pods.network_errors</a></li>
             </ul>
         </details>
@@ -207,16 +218,21 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_drops">materialize.kubernetes.pods.network_drops</a></li>
             </ul>
         </details>
     </li>
     <li id="container_network_transmit_bytes_total">container_network_transmit_bytes_total
         <details>
-            Used labels: namespace, pod
+            Used labels: interface, namespace, pod
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.throughput.by_namespace">infra.net.k8s.throughput.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.throughput">infra.net.overview.throughput</a></li>
+                <li><a href="../common-queries#infra.net.overview.top_talkers">infra.net.overview.top_talkers</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_tx">materialize.kubernetes.pods.network_tx</a></li>
             </ul>
         </details>
@@ -227,6 +243,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_errors">materialize.kubernetes.pods.network_errors</a></li>
             </ul>
         </details>
@@ -237,6 +255,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.overview.errors">infra.net.overview.errors</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.network_drops">materialize.kubernetes.pods.network_drops</a></li>
             </ul>
         </details>
@@ -622,7 +642,7 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_container_status_restarts_total">kube_pod_container_status_restarts_total
         <details>
-            Used labels: container, namespace
+            Used labels: container, namespace, pod
             <br />
             Example queries:
             <ul>
@@ -631,6 +651,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.kubernetes.oomkill_nonessential_systems">infra.kubernetes.oomkill_nonessential_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.pod_restart_rate_high">infra.kubernetes.pod_restart_rate_high</a></li>
                 <li><a href="../common-queries#infra.kubernetes.pod_restart_rate_high_nonessential">infra.kubernetes.pod_restart_rate_high_nonessential</a></li>
+                <li><a href="../common-queries#infra.loki.health.restarts">infra.loki.health.restarts</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.restarts">infra.nodes.pods.restarts</a></li>
                 <li><a href="../common-queries#materialize.clusterd.error_kill">materialize.clusterd.error_kill</a></li>
                 <li><a href="../common-queries#materialize.clusterd.new_restarts_during_release">materialize.clusterd.new_restarts_during_release</a></li>
@@ -658,10 +679,11 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_info">kube_pod_info
         <details>
-            Used labels: node
+            Used labels: namespace, node
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.net.security.policies.uncovered">infra.net.security.policies.uncovered</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.pods">infra.nodes.allocation.pods</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.by_namespace">infra.nodes.pods.by_namespace</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.by_phase">infra.nodes.pods.by_phase</a></li>
@@ -749,13 +771,64 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="loki_distributor_bytes_received_total">loki_distributor_bytes_received_total
+    <li id="loki_canary_entries_total">loki_canary_entries_total
         <details>
-            Used labels: namespace
+            Used labels: app_instance, namespace
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.loki.health.canary.entries">infra.loki.health.canary.entries</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_canary_missing_entries_total">loki_canary_missing_entries_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.health.canary.missing">infra.loki.health.canary.missing</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_canary_response_latency_seconds_bucket">loki_canary_response_latency_seconds_bucket
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.health.canary.latency">infra.loki.health.canary.latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_canary_spot_check_missing_entries_total">loki_canary_spot_check_missing_entries_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.health.canary.spot_check">infra.loki.health.canary.spot_check</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_distributor_bytes_received_total">loki_distributor_bytes_received_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.bytes">infra.loki.write.bytes</a></li>
                 <li><a href="../common-queries#infra.monitoring.logging_collection_down">infra.monitoring.logging_collection_down</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_objstore_bucket_operation_failures_total">loki_objstore_bucket_operation_failures_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.failures">infra.loki.store.failures</a></li>
             </ul>
         </details>
     </li>
@@ -768,23 +841,16 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="loki_request_duration_seconds_bucket">loki_request_duration_seconds_bucket
-        <details>
-            Used labels: route
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#infra.loki.req_duration_high">infra.loki.req_duration_high</a></li>
-            </ul>
-        </details>
-    </li>
     <li id="loki_request_duration_seconds_count">loki_request_duration_seconds_count
         <details>
-            Used labels: route, status_code
+            Used labels: app_instance, container, namespace, route, status_code
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.loki.health.request_errors">infra.loki.health.request_errors</a></li>
+                <li><a href="../common-queries#infra.loki.health.request_failures">infra.loki.health.request_failures</a></li>
                 <li><a href="../common-queries#infra.loki.push_err_high">infra.loki.push_err_high</a></li>
+                <li><a href="../common-queries#infra.loki.read.query_rate">infra.loki.read.query_rate</a></li>
                 <li><a href="../common-queries#infra.loki.req_err_high">infra.loki.req_err_high</a></li>
                 <li><a href="../common-queries#infra.loki.writer_err_high">infra.loki.writer_err_high</a></li>
             </ul>
@@ -796,6 +862,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.loki.alloy_log_drops">infra.loki.alloy_log_drops</a></li>
+                <li><a href="../common-queries#infra.loki.pipeline.dropped">infra.loki.pipeline.dropped</a></li>
             </ul>
         </details>
     </li>
@@ -1371,12 +1438,14 @@ like our bundled Thanos provider.
     </li>
     <li id="up">up
         <details>
-            Used labels: cluster_environmentd_materialize_cloud_cluster_id, job, namespace
+            Used labels: app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.loki.health.up">infra.loki.health.up</a></li>
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
+                <li><a href="../common-queries#infra.net.overview.dataplane">infra.net.overview.dataplane</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.clusterd">materialize.scraper.mzmon.clusterd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.environmentd">materialize.scraper.mzmon.environmentd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.orchestratord">materialize.scraper.mzmon.orchestratord</a></li>
@@ -1419,6 +1488,125 @@ like our bundled Thanos provider.
 
 
 <ul>
+    <li id="awscni_assigned_ip_addresses">awscni_assigned_ip_addresses
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.addresses">infra.net.cni.aws.addresses</a></li>
+                <li><a href="../common-queries#infra.net.cni.aws.ip_utilization">infra.net.cni.aws.ip_utilization</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_aws_api_latency_ms_count">awscni_aws_api_latency_ms_count
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.api_latency">infra.net.cni.aws.api_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_aws_api_latency_ms_sum">awscni_aws_api_latency_ms_sum
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.api_latency">infra.net.cni.aws.api_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_eni_allocated">awscni_eni_allocated
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.enis">infra.net.cni.aws.enis</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_eni_max">awscni_eni_max
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.enis">infra.net.cni.aws.enis</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_ip_max">awscni_ip_max
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.addresses">infra.net.cni.aws.addresses</a></li>
+                <li><a href="../common-queries#infra.net.cni.aws.ip_utilization">infra.net.cni.aws.ip_utilization</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_no_available_ip_addresses">awscni_no_available_ip_addresses
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.exhaustion">infra.net.cni.aws.exhaustion</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="awscni_total_ip_addresses">awscni_total_ip_addresses
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.aws.addresses">infra.net.cni.aws.addresses</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_endpoint_regeneration_time_stats_seconds_bucket">cilium_endpoint_regeneration_time_stats_seconds_bucket
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.endpoint_regeneration">infra.net.cni.cilium.endpoint_regeneration</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_endpoint_state">cilium_endpoint_state
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.endpoints">infra.net.cni.cilium.endpoints</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_policy_verdict_total">cilium_policy_verdict_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.policy_verdicts">infra.net.cni.cilium.policy_verdicts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_unreachable_health_endpoints">cilium_unreachable_health_endpoints
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.unreachable">infra.net.cni.cilium.unreachable</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cilium_unreachable_nodes">cilium_unreachable_nodes
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.unreachable">infra.net.cni.cilium.unreachable</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="environmentd_needs_update">environmentd_needs_update
         <details>
             Used labels: namespace
@@ -1426,6 +1614,359 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.operator.environments.needing_update">materialize.operator.environments.needing_update</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="hubble_flows_processed_total">hubble_flows_processed_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cni.cilium.hubble_flows">infra.net.cni.cilium.hubble_flows</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_endpointslice_endpoints">kube_endpointslice_endpoints
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.endpoints.by_namespace">infra.net.k8s.endpoints.by_namespace</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_networkpolicy_spec_egress_rules">kube_networkpolicy_spec_egress_rules
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.security.policies.rules">infra.net.security.policies.rules</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_networkpolicy_spec_ingress_rules">kube_networkpolicy_spec_ingress_rules
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.security.policies.by_namespace">infra.net.security.policies.by_namespace</a></li>
+                <li><a href="../common-queries#infra.net.security.policies.rules">infra.net.security.policies.rules</a></li>
+                <li><a href="../common-queries#infra.net.security.policies.uncovered">infra.net.security.policies.uncovered</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_service_spec_type">kube_service_spec_type
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.services.by_type">infra.net.k8s.services.by_type</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_service_status_load_balancer_ingress">kube_service_status_load_balancer_ingress
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.cloud.load_balancers">infra.net.cloud.load_balancers</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kubeproxy_network_programming_duration_seconds_bucket">kubeproxy_network_programming_duration_seconds_bucket
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.proxy.programming_latency">infra.net.k8s.proxy.programming_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kubeproxy_sync_proxy_rules_duration_seconds_bucket">kubeproxy_sync_proxy_rules_duration_seconds_bucket
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.k8s.proxy.sync_latency">infra.net.k8s.proxy.sync_latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds">loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.compaction_age">infra.loki.store.compaction_age</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_boltdb_shipper_compact_tables_operation_total">loki_boltdb_shipper_compact_tables_operation_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.compaction_runs">infra.loki.store.compaction_runs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_cache_fetched_keys">loki_cache_fetched_keys
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.read.cache_hit_rate">infra.loki.read.cache_hit_rate</a></li>
+                <li><a href="../common-queries#infra.loki.read.cache_requests">infra.loki.read.cache_requests</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_cache_hits">loki_cache_hits
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.read.cache_hit_rate">infra.loki.read.cache_hit_rate</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_compactor_apply_retention_last_successful_run_timestamp_seconds">loki_compactor_apply_retention_last_successful_run_timestamp_seconds
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.retention_age">infra.loki.store.retention_age</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_compactor_oldest_pending_delete_request_age_seconds">loki_compactor_oldest_pending_delete_request_age_seconds
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.deletes_pending">infra.loki.store.deletes_pending</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_compactor_pending_delete_requests_count">loki_compactor_pending_delete_requests_count
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.deletes_pending">infra.loki.store.deletes_pending</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_discarded_bytes_total">loki_discarded_bytes_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.discarded_bytes">infra.loki.write.discarded_bytes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_discarded_samples_total">loki_discarded_samples_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.discarded">infra.loki.write.discarded</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_distributor_lines_received_total">loki_distributor_lines_received_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.lines">infra.loki.write.lines</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ingester_chunks_flushed_total">loki_ingester_chunks_flushed_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.chunks_flushed">infra.loki.write.chunks_flushed</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ingester_memory_chunks">loki_ingester_memory_chunks
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.chunks_in_memory">infra.loki.write.chunks_in_memory</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ingester_memory_streams">loki_ingester_memory_streams
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.streams">infra.loki.write.streams</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ingester_wal_disk_full_failures_total">loki_ingester_wal_disk_full_failures_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.wal_disk_full">infra.loki.write.wal_disk_full</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ingester_wal_disk_usage_percent">loki_ingester_wal_disk_usage_percent
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.wal_disk">infra.loki.write.wal_disk</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ingester_wal_replay_active">loki_ingester_wal_replay_active
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.write.wal_replay">infra.loki.write.wal_replay</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_logql_querystats_bytes_processed_per_seconds_sum">loki_logql_querystats_bytes_processed_per_seconds_sum
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.read.bytes_processed">infra.loki.read.bytes_processed</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_objstore_bucket_operations_total">loki_objstore_bucket_operations_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.operations">infra.loki.store.operations</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_process_dropped_lines_total">loki_process_dropped_lines_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.pipeline.dropped_lines">infra.loki.pipeline.dropped_lines</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_query_frontend_queries_in_progress">loki_query_frontend_queries_in_progress
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.read.queries_in_flight">infra.loki.read.queries_in_flight</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_source_file_files_active_total">loki_source_file_files_active_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.pipeline.source_files">infra.loki.pipeline.source_files</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_source_file_read_bytes_total">loki_source_file_read_bytes_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.pipeline.source_files">infra.loki.pipeline.source_files</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_tsdb_shipper_tables_sync_operation_total">loki_tsdb_shipper_tables_sync_operation_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.index_sync">infra.loki.store.index_sync</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_tsdb_shipper_tables_upload_operation_total">loki_tsdb_shipper_tables_upload_operation_total
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.store.index_sync">infra.loki.store.index_sync</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_write_batch_retries_total">loki_write_batch_retries_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.pipeline.retries">infra.loki.pipeline.retries</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_write_sent_entries_total">loki_write_sent_entries_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.pipeline.sent">infra.loki.pipeline.sent</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="memcached_current_bytes">memcached_current_bytes
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.read.memcached_memory">infra.loki.read.memcached_memory</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="memcached_limit_bytes">memcached_limit_bytes
+        <details>
+            Used labels: app_instance, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.loki.read.memcached_memory">infra.loki.read.memcached_memory</a></li>
             </ul>
         </details>
     </li>
@@ -1806,6 +2347,15 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.compute.views.count">materialize.compute.views.count</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="network_policy_drop_count_total">network_policy_drop_count_total
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.net.security.drops.aws">infra.net.security.drops.aws</a></li>
             </ul>
         </details>
     </li>

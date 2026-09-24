@@ -790,6 +790,44 @@ Two things worth keeping if this pattern spreads:
 
 `text` was added to `bin/gen-grafana-models.sh` for this — it is the only plugin here that shows no data.
 
+## Rendering a row on a discovered variable
+
+**New precedent, first used on `infra-net`'s CNI and Security tabs.** `Row::only_when_variable` and
+`Row::only_unless_variable` own it, beside the time-range pair.
+
+A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
+variant, or render conditionally.
+The per-variant route was tried for GCP and retired, because the variants stopped differing in anything but which
+panels were blank.
+
+Reach for a variable condition when a whole *section* of a dashboard is meaningless on some clusters and the clusters
+cannot be told apart at render time.
+A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
+once.
+
+Four rules, all of them learned from the one implementation:
+
+- **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
+  every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
+  being asked a question the system can answer.
+- **Discover it from `up`, not from a vendor metric.** `up` exists for a target that is being scraped even when the
+  exporter returns nothing. A vendor metric conflates "this cluster runs something else" with "this cluster's exporter
+  is mute", and only the second is a collection bug worth showing rows about.
+- **Always pair the set with a negated fallback.** A tab whose every condition failed is indistinguishable from a
+  broken one. One row carries `only_unless_variable` over the alternation of every pattern its siblings match, so
+  exactly one thing is always on screen. Derive the alternation from the same constants the sibling rows use, or a
+  vendor added later renders its panels *and* a note saying nothing was detected.
+- **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
+  fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
+  Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
+
+The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
+for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
+(`matches` / `notMatches`) rather than by flipping the group's visibility, unlike the time-range pair, because Grafana
+offers the negative operator directly.
+
+Verified round-tripping: Grafana accepts all eight conditional rows and returns them unchanged on a read.
+
 ## Kubernetes events in Loki
 
 What the `env-upgrade` Events tab is built on, and the parts that are not guessable.
@@ -952,6 +990,31 @@ Give any bounded fraction an explicit `.min(0.0)` **and** `.max(1.0)` so the
 panel is drawn against the range that matters and a flat-healthy line stays flat.
 Unbounded rates (errors and drops per second) keep autoscaling, since there is no
 honest ceiling to pin them to and a spike is the thing worth seeing.
+
+## One picker across two engines
+
+Normally a metrics filter and a log filter are separate variables, because the label spaces are separate: the metrics
+side has `container`, the logs side has `component`, and a dashboard that conflated them would empty half its panels
+without saying why.
+
+`infra-loki` does conflate them, deliberately, and the conditions under which that is allowed are narrow enough to
+state.
+Both labels there hold the **same Kubernetes container name** — `container` because that is what a ServiceMonitor
+stamps, `component` because that is what the log pipeline relabels a Loki pod to — so one `$lokiComponent` discovered
+from `label_values(up{app_instance="loki"}, container)` scopes the metric panels and the log panels alike.
+
+Two conditions, both of which have to hold:
+
+- **The value sets have to agree by construction**, not by coincidence. A shared *origin* is the test — here, the
+  container name — because two lists that merely happen to match today will drift the first time either side is
+  relabelled.
+- **Any divergence has to be benign in the direction it goes.** `exporter`, the memcached sidecar, exists on the
+  metrics side and emits no log lines, so selecting it empties the log feeds. That is the honest answer to "show me
+  the exporter's logs" rather than a bug. Nothing goes the other way: every process that logs is also scraped.
+
+Where either condition fails, define two variables.
+The cost of the second picker is that a reader has to set both; the cost of wrongly sharing one is a panel that is
+empty and looks fine, which is the failure this whole guide keeps coming back to.
 
 ## Node identifiers across three families
 

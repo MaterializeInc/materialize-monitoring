@@ -97,7 +97,7 @@ mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
 `--list` enumerates what is available, `--dashboard <stem>` renders one, `--format json` emits the docsite shape, and
 ### Two copies, one review
 
-Every dashboard is written twice: `charts/…/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
+Every dashboard is written twice: `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
 `docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
 Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
 reading.
@@ -118,6 +118,39 @@ metric-to-usage index rather than a second one, so its diff is the only place a 
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
 `make dashboards` wires the two shipped output trees; see
 [SDKs and Schemas](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/dashboard/sdks/#rendering) for the determinism guarantees.
+
+## The size ceiling on dashboard delivery
+
+**The dashboards ship in a chart of their own, and this is why.**
+
+Helm stores each release as a Kubernetes Secret, and a Secret's data may not exceed 1 MiB.
+The rendered dashboards are the largest thing this repository produces by an order of magnitude — over a megabyte of
+YAML before Helm's own encoding — and a seventh crossed the limit.
+`helm upgrade` then failed with `Secret "sh.helm.release.v1.<release>.vN" is invalid: data: Too long`, raised before
+anything was applied: safe and loud, and completely blocking.
+
+Measured on a reference install, where the umbrella release had 36,202 bytes of headroom left:
+
+| | one release | after the split |
+|---|---|---|
+| `materialize-monitoring` | 1,012,374 (97%) | **648,594** (62%) |
+| `materialize-monitoring-dashboards` | — | **440,100** (42%) |
+
+It is the same 1 MiB object ceiling the Terraform design doc
+[flagged for the ConfigMap sidecar path](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/design-docs/20260803-terraform-modules/); that note
+assumed the grafana-operator path had room, which stopped being true.
+A `standalone` Grafana provisions dashboards through that sidecar, which is why the dashboards chart refuses that mode
+rather than emitting resources nothing can carry.
+
+**What the split does not fix is the trajectory.**
+Each release now has roughly 400 KB of headroom, and the rendered dashboards remain the fastest-growing artifact here —
+so this buys a generation of dashboards rather than solving delivery.
+Shrinking the rendered output is the next lever, and the one that would stop the problem recurring is moving dashboards
+out of the release payload altogether.
+
+A dashboard's own size is worth knowing when adding one: `env-top` is 335 KB, `infra-nodes` 246 KB, `infra-loki`
+162 KB, `env-logs` 37 KB.
+`selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
 

@@ -148,6 +148,1829 @@ Node journal lines per second by systemd unit.
   </div>
 </div>
 
+## infra-loki
+
+<p>Is the log store healthy — and if not, which half of it broke.</p>
+<p>Every other logs query in this repository <em>reads</em> Loki. These watch it. That
+makes this file the one place where the monitoring stack is the subject rather
+than the instrument, and it changes what a reading means: a blank panel here is
+itself a finding, because the thing that would have reported the problem is the
+thing that is down.</p>
+<p>The audience is whoever operates the monitoring stack. Loki&rsquo;s vocabulary is not
+assumed — a <em>stream</em> is one label-set&rsquo;s worth of lines, a <em>chunk</em> is a stream&rsquo;s
+lines batched up for storage, and the write path turns the first into the
+second before handing it to object storage. Where a panel needs one of those to
+be legible, its description says so.</p>
+<h2 id="two-unrelated-loki_-metric-families">Two unrelated <code>loki_</code> metric families<a class="anchor" href="#two-unrelated-loki_-metric-families">#</a></h2>
+<p>The prefix is shared and the producers are not. Reading one for the other is
+the single easiest mistake to make here, and nothing about the metric name
+warns you.</p>
+<ul>
+<li><strong>The log store.</strong> <code>job=~&quot;loki/.*&quot;</code>, and everything this file&rsquo;s panels draw.
+391 metric names on a reference install.</li>
+<li><strong>Alloy&rsquo;s <code>loki.*</code> components.</strong> <code>job=~&quot;alloy-.*&quot;</code>, 43 names, all under
+<code>loki_write_*</code>, <code>loki_source_{file,api,journal}_*</code>, <code>loki_process_*</code> and
+<code>loki_relabel_*</code>. These describe the <em>collector</em> — what Alloy read off disk
+and shipped — not the store that received it.</li>
+</ul>
+<p>Only <code>loki_experimental_features_in_use_total</code> is emitted by both.</p>
+<p>The two are kept apart by <code>app_instance=&quot;loki&quot;</code>, which both of this chart&rsquo;s
+Loki ServiceMonitors stamp on every target they collect and nothing else sets.
+A <code>job=~&quot;loki/.*&quot;</code> matcher would work too, but it hardcodes the subchart&rsquo;s
+<code>jobPrefix</code>, which is a value an operator may change.</p>
+<p>The Alloy-side family gets <code>infra.loki.pipeline.*</code> below — queries with no
+dashboard behind them. That is deliberate; see &ldquo;Queries with no panel&rdquo;.</p>
+<h2 id="scoping">Scoping<a class="anchor" href="#scoping">#</a></h2>
+<p>Two variables, both written literally rather than reaching through a render
+parameter, on the same precedent as <code>$nodeList</code> in <code>node-health.yaml</code> and
+<code>$namespaceList</code> in <code>infra-networking.yaml</code>: a meta-monitoring dashboard&rsquo;s
+scope is the monitoring stack&rsquo;s own, which no Materialize-shaped parameter
+describes.</p>
+<ul>
+<li><strong><code>$lokiNamespace</code></strong> — where Loki runs. Every metric query here carries it,
+so two <code>materialize-monitoring</code> releases sharing a cluster do not read as
+one store.</li>
+<li><strong><code>$lokiComponent</code></strong> — which Loki process. Discovered from the <em>metrics</em>
+side, off the <code>container</code> label, and applied to the log queries as
+<code>component=~&quot;$lokiComponent&quot;</code> as well.</li>
+</ul>
+<p>One picker across both engines is a deliberate call, because the two label sets
+agree by construction: <code>container</code> on a metric and <code>component</code> on a log line
+are both the Kubernetes container name. The one value that exists on the
+metrics side and not the logs side is <code>exporter</code>, the memcached sidecar, which
+produces no log lines at all — so selecting it empties the log feeds, which is
+the honest answer rather than a bug.</p>
+<h2 id="plaintext-exporters">Plaintext exporters<a class="anchor" href="#plaintext-exporters">#</a></h2>
+<p>Three of Loki&rsquo;s targets never serve TLS, whatever Loki itself is configured to
+do: the canary&rsquo;s own <code>/metrics</code>, and the two memcached exporters. They are
+collected by a separate ServiceMonitor for that reason
+(<code>templates/scrapers/monitor-loki-plaintext.yaml</code>), and <code>infra.loki.health.up</code>
+is the panel that says whether that split is working. It was not, before this
+file existed: under <code>profiles/mtls</code> all three were scraped over HTTPS, failed,
+and vanished — taking the end-to-end canary with them.</p>
+<h2 id="queries-with-no-panel">Queries with no panel<a class="anchor" href="#queries-with-no-panel">#</a></h2>
+<p><code>infra.loki.pipeline.*</code> is referenced by no dashboard. The registry is not only
+a dashboard source — it is also what <code>gen-metric-tiers</code> reads to decide which
+metrics survive the gateway&rsquo;s per-destination allowlist, and a metric no query
+names is in no tier and reaches no metered backend.</p>
+<p>Metric <em>overrides</em> cannot stand in for this. An override re-weights a metric
+some query already references; it cannot introduce one. So a family worth
+keeping has to be named by a query even when nothing draws it, and these are
+written with the descriptions a reader of the metrics reference would want.</p>
+
+<h4 id="infra.loki.health.canary.missing">infra.loki.health.canary.missing
+  <a class="anchor" href="#infra.loki.health.canary.missing">#</a>
+</h4>
+Log lines the canary wrote to Loki and then could not read back, per
+second.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.canary.missing-tabs" id="infra.loki.health.canary.missing-tab-0" checked>
+  <label for="infra.loki.health.canary.missing-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_canary_missing_entries_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.canary.entries">infra.loki.health.canary.entries
+  <a class="anchor" href="#infra.loki.health.canary.entries">#</a>
+</h4>
+Log lines per second the canary has written and successfully read back.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.canary.entries-tabs" id="infra.loki.health.canary.entries-tab-0" checked>
+  <label for="infra.loki.health.canary.entries-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_canary_entries_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.canary.latency">infra.loki.health.canary.latency
+  <a class="anchor" href="#infra.loki.health.canary.latency">#</a>
+</h4>
+How long the canary waited between writing a line and reading it back,
+at the median and the 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.canary.latency-tabs" id="infra.loki.health.canary.latency-tab-0" checked>
+  <label for="infra.loki.health.canary.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_canary_response_latency_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_canary_response_latency_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.canary.losses">infra.loki.health.canary.losses
+  <a class="anchor" href="#infra.loki.health.canary.losses">#</a>
+</h4>
+Canary lines that went missing, split by <em>when</em> they went missing.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.canary.losses-tabs" id="infra.loki.health.canary.losses-tab-0" checked>
+  <label for="infra.loki.health.canary.losses-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_canary_missing_entries_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_canary_spot_check_missing_entries_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.up">infra.loki.health.up
+  <a class="anchor" href="#infra.loki.health.up">#</a>
+</h4>
+Whether each Loki target is being scraped successfully, one series per
+component.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.up-tabs" id="infra.loki.health.up-tab-0" checked>
+  <label for="infra.loki.health.up-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.request_errors">infra.loki.health.request_errors
+  <a class="anchor" href="#infra.loki.health.request_errors">#</a>
+</h4>
+The share of Loki API requests returning a 5xx, as a proportion of all
+requests.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.request_errors-tabs" id="infra.loki.health.request_errors-tab-0" checked>
+  <label for="infra.loki.health.request_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>      status_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">5..</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.client_errors">infra.loki.health.client_errors
+  <a class="anchor" href="#infra.loki.health.client_errors">#</a>
+</h4>
+The share of Loki API requests rejected as the caller&rsquo;s fault — a 4xx —
+as a proportion of all requests.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.client_errors-tabs" id="infra.loki.health.client_errors-tab-0" checked>
+  <label for="infra.loki.health.client_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>      status_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">4..</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.request_failures">infra.loki.health.request_failures
+  <a class="anchor" href="#infra.loki.health.request_failures">#</a>
+</h4>
+Requests per second that failed without producing an HTTP status, split
+by component.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.request_failures-tabs" id="infra.loki.health.request_failures-tab-0" checked>
+  <label for="infra.loki.health.request_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>      status_code<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">error</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.request_latency">infra.loki.health.request_latency
+  <a class="anchor" href="#infra.loki.health.request_latency">#</a>
+</h4>
+99th-percentile Loki API latency, split by route.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.request_latency-tabs" id="infra.loki.health.request_latency-tab-0" checked>
+  <label for="infra.loki.health.request_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.restarts">infra.loki.health.restarts
+  <a class="anchor" href="#infra.loki.health.restarts">#</a>
+</h4>
+Container restarts across the Loki components over the dashboard&rsquo;s time
+range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.restarts-tabs" id="infra.loki.health.restarts-tab-0" checked>
+  <label for="infra.loki.health.restarts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_pod_container_status_restarts_total{
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki-.*</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.lines">infra.loki.write.lines
+  <a class="anchor" href="#infra.loki.write.lines">#</a>
+</h4>
+Log lines per second arriving at the distributor — everything the cluster
+is sending Loki.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.lines-tabs" id="infra.loki.write.lines-tab-0" checked>
+  <label for="infra.loki.write.lines-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_distributor_lines_received_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.bytes">infra.loki.write.bytes
+  <a class="anchor" href="#infra.loki.write.bytes">#</a>
+</h4>
+Bytes per second arriving at the distributor, before compression.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.bytes-tabs" id="infra.loki.write.bytes-tab-0" checked>
+  <label for="infra.loki.write.bytes-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_distributor_bytes_received_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.discarded">infra.loki.write.discarded
+  <a class="anchor" href="#infra.loki.write.discarded">#</a>
+</h4>
+Log lines per second Loki accepted the connection for and then threw
+away, split by the reason it gave.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.discarded-tabs" id="infra.loki.write.discarded-tab-0" checked>
+  <label for="infra.loki.write.discarded-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_discarded_samples_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.discarded_bytes">infra.loki.write.discarded_bytes
+  <a class="anchor" href="#infra.loki.write.discarded_bytes">#</a>
+</h4>
+Bytes per second discarded, split by reason — the same losses as the line
+panel, weighted by how much was lost.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.discarded_bytes-tabs" id="infra.loki.write.discarded_bytes-tab-0" checked>
+  <label for="infra.loki.write.discarded_bytes-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_discarded_bytes_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.streams">infra.loki.write.streams
+  <a class="anchor" href="#infra.loki.write.streams">#</a>
+</h4>
+Active streams held in memory by the ingesters. A stream is one distinct
+label-set — one container&rsquo;s lines at one level, say.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.streams-tabs" id="infra.loki.write.streams-tab-0" checked>
+  <label for="infra.loki.write.streams-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_ingester_memory_streams{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.chunks_in_memory">infra.loki.write.chunks_in_memory
+  <a class="anchor" href="#infra.loki.write.chunks_in_memory">#</a>
+</h4>
+Chunks each ingester is holding before flushing them to object storage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.chunks_in_memory-tabs" id="infra.loki.write.chunks_in_memory-tab-0" checked>
+  <label for="infra.loki.write.chunks_in_memory-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_ingester_memory_chunks{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.chunks_flushed">infra.loki.write.chunks_flushed
+  <a class="anchor" href="#infra.loki.write.chunks_flushed">#</a>
+</h4>
+Chunks per second the ingesters have written out to object storage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.chunks_flushed-tabs" id="infra.loki.write.chunks_flushed-tab-0" checked>
+  <label for="infra.loki.write.chunks_flushed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_ingester_chunks_flushed_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.chunk_utilization">infra.loki.write.chunk_utilization
+  <a class="anchor" href="#infra.loki.write.chunk_utilization">#</a>
+</h4>
+How full a chunk was when it was flushed, at the median and 10th
+percentile. 1.0 is a chunk closed because it filled up.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.chunk_utilization-tabs" id="infra.loki.write.chunk_utilization-tab-0" checked>
+  <label for="infra.loki.write.chunk_utilization-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_ingester_chunk_utilization_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.10</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_ingester_chunk_utilization_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.chunk_age">infra.loki.write.chunk_age
+  <a class="anchor" href="#infra.loki.write.chunk_age">#</a>
+</h4>
+How old a chunk was when it was flushed, at the median and 99th
+percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.chunk_age-tabs" id="infra.loki.write.chunk_age-tab-0" checked>
+  <label for="infra.loki.write.chunk_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_ingester_chunk_age_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_ingester_chunk_age_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.wal_disk">infra.loki.write.wal_disk
+  <a class="anchor" href="#infra.loki.write.wal_disk">#</a>
+</h4>
+How much of its write-ahead log volume each ingester has used, as a
+percentage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.wal_disk-tabs" id="infra.loki.write.wal_disk-tab-0" checked>
+  <label for="infra.loki.write.wal_disk-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_ingester_wal_disk_usage_percent{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.wal_disk_full">infra.loki.write.wal_disk_full
+  <a class="anchor" href="#infra.loki.write.wal_disk_full">#</a>
+</h4>
+Times an ingester could not write to its write-ahead log because the
+volume was full.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.wal_disk_full-tabs" id="infra.loki.write.wal_disk_full-tab-0" checked>
+  <label for="infra.loki.write.wal_disk_full-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_ingester_wal_disk_full_failures_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.wal_replay">infra.loki.write.wal_replay
+  <a class="anchor" href="#infra.loki.write.wal_replay">#</a>
+</h4>
+Whether an ingester is currently replaying its write-ahead log. 1 means
+replaying.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.wal_replay-tabs" id="infra.loki.write.wal_replay-tab-0" checked>
+  <label for="infra.loki.write.wal_replay-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_ingester_wal_replay_active{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.write.push_latency">infra.loki.write.push_latency
+  <a class="anchor" href="#infra.loki.write.push_latency">#</a>
+</h4>
+How long a push request took, at the median and 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.write.push_latency-tabs" id="infra.loki.write.push_latency-tab-0" checked>
+  <label for="infra.loki.write.push_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki_api_v1_push|api_prom_push|/logproto.Pusher/Push</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki_api_v1_push|api_prom_push|/logproto.Pusher/Push</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.query_rate">infra.loki.read.query_rate
+  <a class="anchor" href="#infra.loki.read.query_rate">#</a>
+</h4>
+Queries per second reaching the query frontend, split by the kind of
+request.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.query_rate-tabs" id="infra.loki.read.query_rate-tab-0" checked>
+  <label for="infra.loki.read.query_rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query-frontend</span>&#34;,
+</span></span><span style="display:flex;"><span>      route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki_api_v1_.*</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.query_latency">infra.loki.read.query_latency
+  <a class="anchor" href="#infra.loki.read.query_latency">#</a>
+</h4>
+End-to-end query latency at the query frontend, at the median, 90th and
+99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.query_latency-tabs" id="infra.loki.read.query_latency-tab-0" checked>
+  <label for="infra.loki.read.query_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query-frontend</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki_api_v1_.*</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(?i).*tail.*</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.90</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query-frontend</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki_api_v1_.*</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(?i).*tail.*</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query-frontend</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki_api_v1_.*</span>&#34;,
+</span></span><span style="display:flex;"><span>        route<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(?i).*tail.*</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.queue_duration">infra.loki.read.queue_duration
+  <a class="anchor" href="#infra.loki.read.queue_duration">#</a>
+</h4>
+How long a query sub-request waited in the scheduler&rsquo;s queue before a
+querier picked it up, at the median and 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.queue_duration-tabs" id="infra.loki.read.queue_duration-tab-0" checked>
+  <label for="infra.loki.read.queue_duration-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_query_scheduler_queue_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_query_scheduler_queue_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.queries_in_flight">infra.loki.read.queries_in_flight
+  <a class="anchor" href="#infra.loki.read.queries_in_flight">#</a>
+</h4>
+Queries the frontend is currently working on.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.queries_in_flight-tabs" id="infra.loki.read.queries_in_flight-tab-0" checked>
+  <label for="infra.loki.read.queries_in_flight-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_query_frontend_queries_in_progress{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.bytes_processed">infra.loki.read.bytes_processed
+  <a class="anchor" href="#infra.loki.read.bytes_processed">#</a>
+</h4>
+Bytes per second of stored log data the queriers had to decompress and
+scan to answer the queries being asked.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.bytes_processed-tabs" id="infra.loki.read.bytes_processed-tab-0" checked>
+  <label for="infra.loki.read.bytes_processed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_logql_querystats_bytes_processed_per_seconds_sum{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.cache_requests">infra.loki.read.cache_requests
+  <a class="anchor" href="#infra.loki.read.cache_requests">#</a>
+</h4>
+Cache lookups per second, split by which cache — chunks, query results
+and the index each have their own.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.cache_requests-tabs" id="infra.loki.read.cache_requests-tab-0" checked>
+  <label for="infra.loki.read.cache_requests-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_cache_fetched_keys{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.cache_hit_rate">infra.loki.read.cache_hit_rate
+  <a class="anchor" href="#infra.loki.read.cache_hit_rate">#</a>
+</h4>
+The share of cache lookups that were served from cache, split by which
+cache.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.cache_hit_rate-tabs" id="infra.loki.read.cache_hit_rate-tab-0" checked>
+  <label for="infra.loki.read.cache_hit_rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_cache_hits{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_cache_fetched_keys{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.read.memcached_memory">infra.loki.read.memcached_memory
+  <a class="anchor" href="#infra.loki.read.memcached_memory">#</a>
+</h4>
+How much of its allotted memory each memcached cache is holding, as a
+proportion of its limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.read.memcached_memory-tabs" id="infra.loki.read.memcached_memory-tab-0" checked>
+  <label for="infra.loki.read.memcached_memory-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  memcached_current_bytes{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  memcached_limit_bytes{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.operations">infra.loki.store.operations
+  <a class="anchor" href="#infra.loki.store.operations">#</a>
+</h4>
+Object-storage operations per second, split by kind.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.operations-tabs" id="infra.loki.store.operations-tab-0" checked>
+  <label for="infra.loki.store.operations-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>operation<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_objstore_bucket_operations_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.failures">infra.loki.store.failures
+  <a class="anchor" href="#infra.loki.store.failures">#</a>
+</h4>
+Object-storage operations per second that failed, split by kind.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.failures-tabs" id="infra.loki.store.failures-tab-0" checked>
+  <label for="infra.loki.store.failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>operation<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_objstore_bucket_operation_failures_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.latency">infra.loki.store.latency
+  <a class="anchor" href="#infra.loki.store.latency">#</a>
+</h4>
+99th-percentile object-storage operation latency, split by kind.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.latency-tabs" id="infra.loki.store.latency-tab-0" checked>
+  <label for="infra.loki.store.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, operation<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_objstore_bucket_operation_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.index_sync">infra.loki.store.index_sync
+  <a class="anchor" href="#infra.loki.store.index_sync">#</a>
+</h4>
+Index table sync and upload operations per second between the shippers
+and object storage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.index_sync-tabs" id="infra.loki.store.index_sync-tab-0" checked>
+  <label for="infra.loki.store.index_sync-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_tsdb_shipper_tables_sync_operation_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_tsdb_shipper_tables_upload_operation_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.index_wait">infra.loki.store.index_wait
+  <a class="anchor" href="#infra.loki.store.index_wait">#</a>
+</h4>
+How long a query waited for an index table to be downloaded before it
+could run, at the 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.index_wait-tabs" id="infra.loki.store.index_wait-tab-0" checked>
+  <label for="infra.loki.store.index_wait-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_tsdb_shipper_query_wait_time_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.retention_age">infra.loki.store.retention_age
+  <a class="anchor" href="#infra.loki.store.retention_age">#</a>
+</h4>
+How long ago the compactor last finished applying retention
+successfully.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.retention_age-tabs" id="infra.loki.store.retention_age-tab-0" checked>
+  <label for="infra.loki.store.retention_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_compactor_apply_retention_last_successful_run_timestamp_seconds{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.compaction_age">infra.loki.store.compaction_age
+  <a class="anchor" href="#infra.loki.store.compaction_age">#</a>
+</h4>
+How long ago the compactor last finished compacting index tables
+successfully.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.compaction_age-tabs" id="infra.loki.store.compaction_age-tab-0" checked>
+  <label for="infra.loki.store.compaction_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.compaction_runs">infra.loki.store.compaction_runs
+  <a class="anchor" href="#infra.loki.store.compaction_runs">#</a>
+</h4>
+Compactor runs over the dashboard&rsquo;s time range, split by outcome.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.compaction_runs-tabs" id="infra.loki.store.compaction_runs-tab-0" checked>
+  <label for="infra.loki.store.compaction_runs-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>status<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_boltdb_shipper_compact_tables_operation_total{
+</span></span><span style="display:flex;"><span>      app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.store.deletes_pending">infra.loki.store.deletes_pending
+  <a class="anchor" href="#infra.loki.store.deletes_pending">#</a>
+</h4>
+Delete requests waiting to be processed, and how old the oldest one is.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.store.deletes_pending-tabs" id="infra.loki.store.deletes_pending-tab-0" checked>
+  <label for="infra.loki.store.deletes_pending-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_compactor_pending_delete_requests_count{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_compactor_oldest_pending_delete_request_age_seconds{
+</span></span><span style="display:flex;"><span>    app_instance<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$lokiNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.logs.stream">infra.loki.logs.stream
+  <a class="anchor" href="#infra.loki.logs.stream">#</a>
+</h4>
+Loki&rsquo;s own log feed, newest first, for the selected components and
+levels.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.logs.stream-tabs" id="infra.loki.logs.stream-tab-0" checked>
+  <label for="infra.loki.logs.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.logs.warnings.stream">infra.loki.logs.warnings.stream
+  <a class="anchor" href="#infra.loki.logs.warnings.stream">#</a>
+</h4>
+Warning-and-worse lines from Loki, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.logs.warnings.stream-tabs" id="infra.loki.logs.warnings.stream-tab-0" checked>
+  <label for="infra.loki.logs.warnings.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.logs.rate.by_component">infra.loki.logs.rate.by_component
+  <a class="anchor" href="#infra.loki.logs.rate.by_component">#</a>
+</h4>
+Loki&rsquo;s own log lines per second, split by component.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.logs.rate.by_component-tabs" id="infra.loki.logs.rate.by_component-tab-0" checked>
+  <label for="infra.loki.logs.rate.by_component-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.logs.warnings.rate">infra.loki.logs.warnings.rate
+  <a class="anchor" href="#infra.loki.logs.warnings.rate">#</a>
+</h4>
+Warning-and-worse lines per minute from Loki, across the selected
+components.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.logs.warnings.rate-tabs" id="infra.loki.logs.warnings.rate-tab-0" checked>
+  <label for="infra.loki.logs.warnings.rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.pipeline.sent">infra.loki.pipeline.sent
+  <a class="anchor" href="#infra.loki.pipeline.sent">#</a>
+</h4>
+Log lines per second Alloy successfully delivered to a Loki endpoint.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.pipeline.sent-tabs" id="infra.loki.pipeline.sent-tab-0" checked>
+  <label for="infra.loki.pipeline.sent-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_write_sent_entries_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.pipeline.dropped">infra.loki.pipeline.dropped
+  <a class="anchor" href="#infra.loki.pipeline.dropped">#</a>
+</h4>
+Log lines per second Alloy gave up on delivering, split by reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.pipeline.dropped-tabs" id="infra.loki.pipeline.dropped-tab-0" checked>
+  <label for="infra.loki.pipeline.dropped-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_write_dropped_entries_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.pipeline.retries">infra.loki.pipeline.retries
+  <a class="anchor" href="#infra.loki.pipeline.retries">#</a>
+</h4>
+Delivery batches per second Alloy had to retry.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.pipeline.retries-tabs" id="infra.loki.pipeline.retries-tab-0" checked>
+  <label for="infra.loki.pipeline.retries-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_write_batch_retries_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.pipeline.propagation">infra.loki.pipeline.propagation
+  <a class="anchor" href="#infra.loki.pipeline.propagation">#</a>
+</h4>
+How long a line took to get from Alloy reading it to Loki acknowledging
+it, at the 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.pipeline.propagation-tabs" id="infra.loki.pipeline.propagation-tab-0" checked>
+  <label for="infra.loki.pipeline.propagation-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_write_entry_propagation_latency_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.pipeline.source_files">infra.loki.pipeline.source_files
+  <a class="anchor" href="#infra.loki.pipeline.source_files">#</a>
+</h4>
+Log files Alloy currently has open, and the bytes per second it is
+reading from them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.pipeline.source_files-tabs" id="infra.loki.pipeline.source_files-tab-0" checked>
+  <label for="infra.loki.pipeline.source_files-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_source_file_files_active_total
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_source_file_read_bytes_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.pipeline.dropped_lines">infra.loki.pipeline.dropped_lines
+  <a class="anchor" href="#infra.loki.pipeline.dropped_lines">#</a>
+</h4>
+Log lines per second dropped by Alloy&rsquo;s own processing stages, before
+anything was sent.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.pipeline.dropped_lines-tabs" id="infra.loki.pipeline.dropped_lines-tab-0" checked>
+  <label for="infra.loki.pipeline.dropped_lines-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_process_dropped_lines_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
+## infra-networking
+
+<p>How traffic moves through the cluster, and what stops it.</p>
+<p>Where <code>infra-nodes</code> asks what one machine is doing, this asks what the
+<em>network</em> is doing across all of them: what pods are sending, what Kubernetes
+is routing, what the CNI is doing underneath, and which packets a policy
+dropped.</p>
+<p>Three families meet here, and knowing which is which is most of what makes
+this file readable:</p>
+<ul>
+<li>
+<p><strong>cAdvisor</strong> (<code>container_network_*</code>) is the only per-pod view. It is always
+present, because the gateway scrapes every kubelet. Note that its series
+split in two by whether <code>namespace</code> is set: with a namespace they describe a
+pod, and without one they carry <code>id=&quot;/&quot;</code> and describe the <em>node&rsquo;s</em> root
+cgroup — every interface on the machine, including the veth of every pod on
+it. Panels must pick one and say which.</p>
+<p><strong>Host-network pods are excluded from every rollup here, and must be.</strong>
+cAdvisor reads a container&rsquo;s counters from its network namespace, and a
+host-network pod&rsquo;s namespace is the node&rsquo;s — so such a pod reports all 31 of
+a reference node&rsquo;s interfaces rather than its own one, and its &ldquo;pod traffic&rdquo;
+is the whole machine&rsquo;s, counting every other pod&rsquo;s veth. Several DaemonSets
+do this on every node. Left in, a cluster-wide sum read 27,831 KiB/s against
+a true 1,700, and the ten busiest pods were all host-network DaemonSets
+reporting their node. <code>%%{excludeHostNetworkPods}</code> is the <code>unless</code> clause
+that drops them; it appends to a <code>sum by (namespace, pod)</code> and cannot be a
+label matcher, because being host-network is a property of a pod&rsquo;s whole
+series set rather than of any one series.</p>
+</li>
+<li>
+<p><strong>kube-state-metrics</strong> (<code>kube_service_*</code>, <code>kube_endpointslice_*</code>,
+<code>kube_networkpolicy_*</code>) is the declared intent: what Services exist, what is
+behind them, and which policies were written. It says nothing about whether
+any of it works.</p>
+</li>
+<li>
+<p><strong>The CNI</strong> is the only family that can say what the dataplane actually did
+— which packet a policy dropped, how many addresses are left, whether the
+datapath is erroring. It is also the only family that is not guaranteed to
+be there, which is why every query reading it is on a row the dashboard
+shows only when that vendor was detected. See &ldquo;Dataplane detection&rdquo; below.</p>
+</li>
+</ul>
+<p><code>node_*</code> is a fourth family and deliberately <em>not</em> redefined here:
+<code>node-health.yaml</code> and <code>node-debug.yaml</code> already carry it, every one of their
+expressions is scoped by <code>instance=~&quot;$nodeList&quot;</code>, and <code>infra-net</code> defines that
+variable as a multi-select across the fleet rather than the single address
+<code>infra-nodes</code> resolves it to. The same expressions therefore answer for one
+node or for all of them depending only on the dashboard that asks.</p>
+<h2 id="dataplane-detection">Dataplane detection<a class="anchor" href="#dataplane-detection">#</a></h2>
+<p>A cluster&rsquo;s CNI is not something this repository can know: EKS defaults to the
+AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium, and a
+bring-your-own cluster to anything at all. Rather than ask the operator, the
+CNI monitors in <code>packages/prometheus-scrapers/</code> stamp every series they
+collect with a <code>network_component</code> label, and the dashboard discovers the
+answer with <code>label_values(up{network_component=~&quot;.+&quot;}, network_component)</code>.</p>
+<p>That puts the vendor knowledge in the scrape config, where it already had to
+live, and leaves the queries below reading ordinary vendor metric names.</p>
+<p>Two conventions apply throughout:</p>
+<ul>
+<li>
+<p><strong>Scope literally, not by parameter.</strong> <code>namespace=~&quot;$namespaceList&quot;</code> and
+<code>instance=~&quot;$nodeList&quot;</code> are written out, the same way <code>infra-nodes.yaml</code>
+writes <code>node=&quot;$node&quot;</code>. A dashboard using these must define the variables; no
+render parameter supplies them.</p>
+<p><code>$nodeList</code> holds node-exporter <em>addresses</em>, inherited from the node query
+families. Nothing here scopes on a <code>node</code> label, which every other family
+spells as the Kubernetes <em>name</em> &ndash; the two cannot be filtered by one picker,
+and the node-exporter form is the one that buys the 87 vetted expressions in
+<code>node-health.yaml</code> and <code>node-debug.yaml</code>.</p>
+</li>
+<li>
+<p><strong>Deduplicate across scrape replicas.</strong> <code>instance</code> is the scrape target, so
+a bare <code>sum</code> over an HA kube-state-metrics adds each object once per
+replica. Aggregations keep <code>instance</code> in the inner step and collapse it with
+an outer <code>max</code>.</p>
+</li>
+</ul>
+<p><code>%%{interval}</code> is the rate window, including its brackets.</p>
+
+<h4 id="infra.net.overview.dataplane">infra.net.overview.dataplane
+  <a class="anchor" href="#infra.net.overview.dataplane">#</a>
+</h4>
+Which networking components this cluster is running, as discovered
+rather than configured.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.dataplane-tabs" id="infra.net.overview.dataplane-tab-0" checked>
+  <label for="infra.net.overview.dataplane-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>network_component<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>up{network_component<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.overview.throughput">infra.net.overview.throughput
+  <a class="anchor" href="#infra.net.overview.throughput">#</a>
+</h4>
+Total bytes per second in and out of the cluster&rsquo;s pods.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.throughput-tabs" id="infra.net.overview.throughput-tab-0" checked>
+  <label for="infra.net.overview.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.overview.errors">infra.net.overview.errors
+  <a class="anchor" href="#infra.net.overview.errors">#</a>
+</h4>
+Interface errors and dropped packets across every pod in the cluster.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.errors-tabs" id="infra.net.overview.errors-tab-0" checked>
+  <label for="infra.net.overview.errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.overview.top_talkers">infra.net.overview.top_talkers
+  <a class="anchor" href="#infra.net.overview.top_talkers">#</a>
+</h4>
+The ten pods moving the most traffic, in and out combined.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.overview.top_talkers-tabs" id="infra.net.overview.top_talkers-tab-0" checked>
+  <label for="infra.net.overview.top_talkers-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span><span style="color:#ae81ff">10</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.throughput.by_namespace">infra.net.k8s.throughput.by_namespace
+  <a class="anchor" href="#infra.net.k8s.throughput.by_namespace">#</a>
+</h4>
+Pod traffic split by namespace, received and transmitted.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.throughput.by_namespace-tabs" id="infra.net.k8s.throughput.by_namespace-tab-0" checked>
+  <label for="infra.net.k8s.throughput.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_bytes_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;, interface<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">lo</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.errors.by_namespace">infra.net.k8s.errors.by_namespace
+  <a class="anchor" href="#infra.net.k8s.errors.by_namespace">#</a>
+</h4>
+Which namespace&rsquo;s pods are losing packets.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.errors.by_namespace-tabs" id="infra.net.k8s.errors.by_namespace-tab-0" checked>
+  <label for="infra.net.k8s.errors.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_errors_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_receive_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_network_transmit_packets_dropped_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeHostNetworkPods</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.services.by_type">infra.net.k8s.services.by_type
+  <a class="anchor" href="#infra.net.k8s.services.by_type">#</a>
+</h4>
+Services in the cluster, by how they are exposed.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.services.by_type-tabs" id="infra.net.k8s.services.by_type-tab-0" checked>
+  <label for="infra.net.k8s.services.by_type-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_spec_type<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.endpoints.by_namespace">infra.net.k8s.endpoints.by_namespace
+  <a class="anchor" href="#infra.net.k8s.endpoints.by_namespace">#</a>
+</h4>
+How many endpoints back the Services in each namespace.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.endpoints.by_namespace-tabs" id="infra.net.k8s.endpoints.by_namespace-tab-0" checked>
+  <label for="infra.net.k8s.endpoints.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_endpointslice_endpoints{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.proxy.sync_latency">infra.net.k8s.proxy.sync_latency
+  <a class="anchor" href="#infra.net.k8s.proxy.sync_latency">#</a>
+</h4>
+How long kube-proxy takes to turn a Service change into rules on the
+node.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.proxy.sync_latency-tabs" id="infra.net.k8s.proxy.sync_latency-tab-0" checked>
+  <label for="infra.net.k8s.proxy.sync_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kubeproxy_sync_proxy_rules_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.k8s.proxy.programming_latency">infra.net.k8s.proxy.programming_latency
+  <a class="anchor" href="#infra.net.k8s.proxy.programming_latency">#</a>
+</h4>
+End-to-end time from an endpoint changing to the node&rsquo;s rules reflecting
+it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.k8s.proxy.programming_latency-tabs" id="infra.net.k8s.proxy.programming_latency-tab-0" checked>
+  <label for="infra.net.k8s.proxy.programming_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kubeproxy_network_programming_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.ip_utilization">infra.net.cni.aws.ip_utilization
+  <a class="anchor" href="#infra.net.cni.aws.ip_utilization">#</a>
+</h4>
+How much of each node&rsquo;s pod-IP allowance is in use.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.ip_utilization-tabs" id="infra.net.cni.aws.ip_utilization-tab-0" checked>
+  <label for="infra.net.cni.aws.ip_utilization-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_assigned_ip_addresses<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_ip_max<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.addresses">infra.net.cni.aws.addresses
+  <a class="anchor" href="#infra.net.cni.aws.addresses">#</a>
+</h4>
+Addresses assigned to pods on each node, against the pool the CNI is
+holding and the ceiling it cannot pass.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.addresses-tabs" id="infra.net.cni.aws.addresses-tab-0" checked>
+  <label for="infra.net.cni.aws.addresses-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_assigned_ip_addresses<span style="color:#f92672">)</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_total_ip_addresses<span style="color:#f92672">)</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_ip_max<span style="color:#f92672">)</span></span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.enis">infra.net.cni.aws.enis
+  <a class="anchor" href="#infra.net.cni.aws.enis">#</a>
+</h4>
+Network interfaces attached to each node, against the most it can have.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.enis-tabs" id="infra.net.cni.aws.enis-tab-0" checked>
+  <label for="infra.net.cni.aws.enis-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_eni_allocated<span style="color:#f92672">)</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_eni_max<span style="color:#f92672">)</span></span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.exhaustion">infra.net.cni.aws.exhaustion
+  <a class="anchor" href="#infra.net.cni.aws.exhaustion">#</a>
+</h4>
+Nodes that have run out of pod addresses outright.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.exhaustion-tabs" id="infra.net.cni.aws.exhaustion-tab-0" checked>
+  <label for="infra.net.cni.aws.exhaustion-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>awscni_no_available_ip_addresses<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.aws.api_latency">infra.net.cni.aws.api_latency
+  <a class="anchor" href="#infra.net.cni.aws.api_latency">#</a>
+</h4>
+How long the CNI&rsquo;s calls to the EC2 API are taking, by operation.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.aws.api_latency-tabs" id="infra.net.cni.aws.api_latency-tab-0" checked>
+  <label for="infra.net.cni.aws.api_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>api<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>awscni_aws_api_latency_ms_sum<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>api<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>awscni_aws_api_latency_ms_count<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.endpoints">infra.net.cni.cilium.endpoints
+  <a class="anchor" href="#infra.net.cni.cilium.endpoints">#</a>
+</h4>
+Cilium endpoints per node, by state. An endpoint is roughly a pod as the
+dataplane sees it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.endpoints-tabs" id="infra.net.cni.cilium.endpoints-tab-0" checked>
+  <label for="infra.net.cni.cilium.endpoints-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node, endpoint_state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_endpoint_state<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.drops">infra.net.cni.cilium.drops
+  <a class="anchor" href="#infra.net.cni.cilium.drops">#</a>
+</h4>
+Packets the Cilium datapath dropped, by the reason it gives.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.drops-tabs" id="infra.net.cni.cilium.drops-tab-0" checked>
+  <label for="infra.net.cni.cilium.drops-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_drop_count_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.policy_verdicts">infra.net.cni.cilium.policy_verdicts
+  <a class="anchor" href="#infra.net.cni.cilium.policy_verdicts">#</a>
+</h4>
+Policy decisions the dataplane made, allowed against denied.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.policy_verdicts-tabs" id="infra.net.cni.cilium.policy_verdicts-tab-0" checked>
+  <label for="infra.net.cni.cilium.policy_verdicts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>action<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_policy_verdict_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.bpf_map_pressure">infra.net.cni.cilium.bpf_map_pressure
+  <a class="anchor" href="#infra.net.cni.cilium.bpf_map_pressure">#</a>
+</h4>
+How full Cilium&rsquo;s BPF maps are, as a fraction of their capacity.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.bpf_map_pressure-tabs" id="infra.net.cni.cilium.bpf_map_pressure-tab-0" checked>
+  <label for="infra.net.cni.cilium.bpf_map_pressure-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node, map_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_bpf_map_pressure<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.endpoint_regeneration">infra.net.cni.cilium.endpoint_regeneration
+  <a class="anchor" href="#infra.net.cni.cilium.endpoint_regeneration">#</a>
+</h4>
+How long Cilium takes to reprogram an endpoint&rsquo;s datapath, at the 99th
+percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.endpoint_regeneration-tabs" id="infra.net.cni.cilium.endpoint_regeneration-tab-0" checked>
+  <label for="infra.net.cni.cilium.endpoint_regeneration-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, scope<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_endpoint_regeneration_time_stats_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.unreachable">infra.net.cni.cilium.unreachable
+  <a class="anchor" href="#infra.net.cni.cilium.unreachable">#</a>
+</h4>
+Nodes and health endpoints Cilium&rsquo;s own connectivity probes cannot
+reach.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.unreachable-tabs" id="infra.net.cni.cilium.unreachable-tab-0" checked>
+  <label for="infra.net.cni.cilium.unreachable-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_unreachable_nodes<span style="color:#f92672">))</span></span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cilium_unreachable_health_endpoints<span style="color:#f92672">))</span></span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cni.cilium.hubble_flows">infra.net.cni.cilium.hubble_flows
+  <a class="anchor" href="#infra.net.cni.cilium.hubble_flows">#</a>
+</h4>
+Network flows Hubble observed, by verdict.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cni.cilium.hubble_flows-tabs" id="infra.net.cni.cilium.hubble_flows-tab-0" checked>
+  <label for="infra.net.cni.cilium.hubble_flows-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>verdict<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>hubble_flows_processed_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.policies.by_namespace">infra.net.security.policies.by_namespace
+  <a class="anchor" href="#infra.net.security.policies.by_namespace">#</a>
+</h4>
+How many NetworkPolicy objects each namespace has.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.policies.by_namespace-tabs" id="infra.net.security.policies.by_namespace-tab-0" checked>
+  <label for="infra.net.security.policies.by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_ingress_rules{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.policies.uncovered">infra.net.security.policies.uncovered
+  <a class="anchor" href="#infra.net.security.policies.uncovered">#</a>
+</h4>
+Namespaces that run pods and have no NetworkPolicy.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.policies.uncovered-tabs" id="infra.net.security.policies.uncovered-tab-0" checked>
+  <label for="infra.net.security.policies.uncovered-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_info{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_ingress_rules<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.policies.rules">infra.net.security.policies.rules
+  <a class="anchor" href="#infra.net.security.policies.rules">#</a>
+</h4>
+Each policy&rsquo;s ingress and egress rule counts, one row per policy.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.policies.rules-tabs" id="infra.net.security.policies.rules-tab-0" checked>
+  <label for="infra.net.security.policies.rules-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, networkpolicy<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_ingress_rules{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, networkpolicy<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_networkpolicy_spec_egress_rules{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$namespaceList</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.drops.aws">infra.net.security.drops.aws
+  <a class="anchor" href="#infra.net.security.drops.aws">#</a>
+</h4>
+Packets the AWS network policy agent dropped for violating a policy.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.drops.aws-tabs" id="infra.net.security.drops.aws-tab-0" checked>
+  <label for="infra.net.security.drops.aws-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>network_policy_drop_count_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.security.drops.cilium">infra.net.security.drops.cilium
+  <a class="anchor" href="#infra.net.security.drops.cilium">#</a>
+</h4>
+Packets Cilium dropped specifically because a policy denied them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.security.drops.cilium-tabs" id="infra.net.security.drops.cilium-tab-0" checked>
+  <label for="infra.net.security.drops.cilium-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_drop_count_total{reason<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Policy denied.*</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.load_balancers">infra.net.cloud.load_balancers
+  <a class="anchor" href="#infra.net.cloud.load_balancers">#</a>
+</h4>
+Every Service in the cluster that has a cloud load balancer, and the
+address it was given.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.load_balancers-tabs" id="infra.net.cloud.load_balancers-tab-0" checked>
+  <label for="infra.net.cloud.load_balancers-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, service, ip, hostname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
 ## infra-nodes
 
 <p>What <code>kubectl describe node</code> would tell you, for whoever cannot run it.</p>

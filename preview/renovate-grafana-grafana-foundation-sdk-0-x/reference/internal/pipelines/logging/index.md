@@ -43,7 +43,8 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 - `otelcol.receiver.otlp` on ports **4317** (gRPC) and **4318** (HTTP) — OTLP logs from instrumented applications or forwarders, bridged into the loki pipeline via `otelcol.exporter.loki`.
 - `loki.source.kubernetes_events` — Kubernetes events, processed as log lines.
 
-These ingress components and the `loki.write` sink are not typed in the schema yet, so they are authored via the `raw:` escape (see [Authoring](../authoring/)); the `loki.process` stages themselves are fully typed.
+Every component in these pipelines is typed and schema-validated, including the ingress components and the `loki.write` sink.
+The `raw:` escape (see [Authoring](../authoring/)) remains available and is currently unused.
 
 ### Processing conventions
 
@@ -52,11 +53,62 @@ These are the conventions a contributor must preserve when editing the gateway `
 - **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
 - **Drops and limits.** Lines older than the ingestion backlog window or larger than the per-line ceiling are dropped; per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
 - **Label families.** Only a small, stable set is promoted to **Loki labels**: `level`, `app`, `container`, `namespace`, `component`, `job` and `service_name`, plus `unit` on node journal logs (which carry no `namespace`) and `environment_id` for environment namespaces. Everything else identifying — `pod`, `node`, `pod_id`, `container_id`, `region`, `zone`, `nodepool`, `trace_id`, `span_id`, `error`, `msg`, … — is routed to **structured metadata** so it stays queryable without inflating stream cardinality. The `k8s_`-prefixed aliases (`k8s_namespace`, `k8s_app`, `k8s_container`, `k8s_pod`) were **removed**: the first three duplicated the unprefixed labels exactly, and `k8s_pod` was the only stream label a pod name ever had — a pod name is unbounded and changes on every restart, so it belonged in structured metadata from the start. Asserted by `loki::gateway_labels` in the e2e suite, which fails if any of them returns.
+- **Two log formats.** `environmentd` and `clusterd` log tracing JSON. `balancerd` and `materialize-operator` log tracing's plain text layer, `<ts> LEVEL <spans>: <target>: <message>`, which carries no `level=` pair for the heuristic scan to find and so needs a parser of its own. Both families are handled; a new Materialize binary belongs in one of them.
 - **Timestamps.** Parsed from the source line (`ts`/`timestamp`) as `RFC3339`/`RFC3339Nano` where the application provides one.
 
 > [!WARNING]
 >   The label-vs-structured-metadata split is the dominant cost-and-stability lever.
 >   Adding a new Loki label multiplies [cardinality](../../../../o11y-glossary/#observability-foundations) — default to structured metadata and promote to a label only when it is low-cardinality and used as a selector.
+
+### Multi-line records
+
+A Rust panic is written to stderr as a single buffer and split back into one log line per newline by the container runtime.
+Read line by line it arrives as roughly twenty unrelated entries.
+The header naming the thread and the source location is then indistinguishable from the backtrace around it.
+`stage.multiline` reassembles it ahead of every other stage.
+
+The stage is configured by `firstline`, a regular expression matching the **start** of a record.
+A line that matches begins a new entry, and a line that does not is appended to the entry in progress.
+`firstline` must therefore match every ordinary line of the stream it is applied to.
+The continuation lines of a panic are exactly the lines it must not match.
+
+Two log formats appear on the Materialize services, and one expression covers both.
+
+| Stream | An ordinary line starts with | Matched by |
+|---|---|---|
+| `environmentd`, `clusterd` | `{`, being tracing JSON | `^\{` |
+| `balancerd`, `materialize-operator` | an RFC 3339 timestamp, being tracing's plain text format | `^\d{4}-\d{2}-\d{2}T` |
+| a panic on any of them | an RFC 3339 timestamp, then `thread '…' panicked at` | `^\d{4}-\d{2}-\d{2}T` |
+
+The stage is scoped by container rather than by namespace, because `firstline` encodes a log format.
+A stream whose format never matches `firstline` is unaffected, because entries pass through one at a time until the first match.
+A stream whose format matches only intermittently is the case that does damage.
+Every line between two matches is absorbed into the earlier one.
+
+Three ordering constraints hold the placement in the pipeline.
+
+| Constraint | Reason |
+|---|---|
+| Merge ahead of `stage.limit` | The limiter drops entries. A limiter that sheds continuation lines leaves a backtrace with holes in it, which reads as complete and is not |
+| Merge ahead of the per-level rate limits | A merged panic costs the limiter one entry rather than twenty, so a crash stops competing with ordinary logs for the same budget |
+| Keep `longer_than` after the merge | The ceiling then applies to the merged entry. That is what discards the separate pathological panic that emits multi-MiB lines, which this pipeline does not carry |
+
+`max_wait_time` is the mechanism that delivers a panic rather than a timeout that rarely fires.
+While a process is alive, each new `firstline` match flushes its predecessor immediately.
+A panic is the last thing a process writes, so nothing follows it to push it out and the block is held until `max_wait_time` elapses.
+The agent goes on tailing the log file after the container exits, so the wait is safe.
+
+Merging runs on the gateway rather than on the agent because `firstline` depends on the log format, and the agent is deliberately format-agnostic.
+The cost is that the gateway runs two or more replicas behind a service.
+A panic whose lines straddle two of the agent's write batches can reach two replicas and remain two entries.
+The failure mode is a backtrace split in two rather than one lost.
+
+A merged panic is then classified.
+`level` is set to `CRITICAL`, the value the normalization rules already resolve `fatal` and `crit` to.
+That level is exempt from both per-level rate limits.
+`msg` is set to the source location and the panic message, and `panic_thread` and `panic_location` are recorded as structured metadata.
+Classification runs after the per-application blocks, because those set `msg` from JSON that a panic does not contain.
+The regular expression is anchored at the start of the entry, so a log line that merely quotes a panic is not mistaken for one.
 
 ### Destinations
 
@@ -66,7 +118,7 @@ These are the conventions a contributor must preserve when editing the gateway `
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
 
 ## Attribution and adoption status
 
@@ -76,7 +128,7 @@ Per-component history is captured in the repo `CHANGELOG.md` and the [Releasing]
 Current status (see the [Roadmap](../../roadmap/)):
 
 - **Agent pipeline** — adopted in `packages/alloy-pipelines/agent.yaml`.
-- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml` (processing) + `packages/alloy-pipelines/gateway-dest-stub.yaml` (default egress tail), ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `inputProcessor` block renders line-for-line against the reference. Still deferred: typing the ingress/sink components (currently `raw:`), `loki.write` auth, and the recording-rule remote-write leg.
+- **Gateway pipeline** — adopted in `packages/alloy-pipelines/gateway.yaml` (processing) + `packages/alloy-pipelines/gateway-dest-stub.yaml` (default egress tail), ported from `packages/ref-alloy-pipelines/staging-gateway.alloy` (the `sample_processor` debug-sampling variant was intentionally not ported). The `inputProcessor` block renders line-for-line against the reference, apart from the multi-line handling above, which the reference does not have. Still deferred: `loki.write` auth, and the recording-rule remote-write leg.
 
 ## See more
 

@@ -56,7 +56,7 @@ Item tables below reference milestones by those prefixed tags.
 |---|---|---|
 | **1.0** (OO-M1) | August 28 | *Hardening:* Grafana reachable (ingress/service + LB) and **persistent** (Postgres or PVC); node and container metrics on the default Alloy path (cAdvisor + node-exporter); the profile set (Thanos sizing, `kind`, scheduling, storage class); the pre-delete finalizer hook; static object-storage credentials in Terraform. *The contract:* **stamp 1.0** on the chart and Terraform module; NetworkPolicy for every component; in-cluster mTLS via cert-manager; the Rust E2E suite; the deprecation policy and contract reference docs; remaining destinations (OTLP, Datadog, auth) exposed through Terraform; Grafana 11 (v1) parity for the public dashboards gallery |
 | **Troubleshooting** (OO-M2) | September 25 | **Troubleshooting**, **Logs & Events**, **Upgrades**, and **Networking** dashboards; the Day 2 change operations; the Hydration / Freshness / Sources / Sinks drilldowns (⛓️); Alertmanager adoption; orchestratord and k8s controller instrumentation |
-| **Reach** (OO-M3) | October 23 | Native Datadog / GCM / Honeycomb dashboard sets; BYOC gateway-to-gateway architecture and sanitization; adoption in Materialize Cloud via Pulumi; agent→gateway OTLP with a WAL; the Day 1 dashboards; the GitOps CI matrix |
+| **Reach** (OO-M3) | October 23 | Native Datadog / GCM / Honeycomb dashboard sets; BYOC gateway-to-gateway architecture and sanitization; adoption in Materialize Cloud via Pulumi; agent→gateway OTLP with a WAL; the Day 1 dashboards; the GitOps CI matrix; chart and image security scanning |
 
 Hardening and the 1.0 contract were briefly separate milestones and were merged back.
 They get worked in parallel, and the split was not carrying its weight: the hardening items are the reasons a 1.0 would be premature, and the contract items are what the number actually promises.
@@ -83,7 +83,7 @@ The `env-top` overview is shipped and carries the cloud ↔ self-managed converg
 | [Troubleshooting](https://linear.app/materializeinc/issue/DEP-208) — symptom-first entry into the rest | OO-M2 | ⬜ |
 | [Logs & Events](https://linear.app/materializeinc/issue/DEP-209) (Loki + Alloy + logs now shipped) | OO-M2 | ✅ (`env-logs` dashboard ships, `mz-mon-env-logs`, with **Logs** and **Events** tabs. The repo's first Loki-only dashboard: it defines no metrics datasource and its namespace / app / level pickers are Loki-discovered, so it keeps working when the metrics pipeline is the thing being investigated. Materialize-first rather than Materialize-only — the namespace picker discovers every namespace and merely *defaults* to the Materialize ones, so the monitoring stack and `kube-system` are one selection away rather than behind a filter. That is where the answer lives when collection itself is what broke. Ports the shape of the internal cloud dashboards (namespace/app/level pickers, case-insensitive search box, ad-hoc filter) **without** their Snowflake org lookup, which does not exist on self-managed; `organization_name` structured metadata is the equivalent where one is needed. Its Kubernetes-event queries are deliberately separate definitions from `env-upgrade`'s rollout-scoped ones, which carry generation and reporting-controller filters a general browser must not inherit. Verified against a live self-managed install. **Later:** a per-pod drilldown, and log-derived alerting — neither blocks the dashboard, which is why this is done) |
 | [Upgrades](https://linear.app/materializeinc/issue/DEP-210) (Day 2 ops) — **customer-blocking**, see below | OO-M2 | 🔨 (`env-upgrade` dashboard exists, `mz-mon-env-upgrade`, with three tabs: **Events**, **Generations**, and **Reconciliation**. This is the repo's first dashboard on Loki, and the first LogQL family in the query registry — Kubernetes events from the operator and environment namespaces, with orchestratord's own lifecycle transitions and reconciliation failures picked out by `reportingcontroller`. **Generations** splits a blue/green rollout into its two sides via a new `$mzGenerationList` selector, so the question the rollout actually poses — has the new generation caught up yet — can be asked at all; its centrepiece is the hydrating-collection count descending toward zero, beside a version-per-generation table that states what the rollout is changing. Verified against a live rollout: gen 2 on `v26.38.2` beside gen 3 on `v26.40.0-rc.1`, 116 of 191 collections hydrating. **Reconciliation** is the operator's control loop as metrics — pass outcomes, durations, and the per-step counters that turn "reconciliation is failing" into "reconciliation is failing *here*". The two tabs are scoped differently on purpose: events are per-resource and therefore per-environment, while the operator's metrics carry no organization label at all, because one operator reconciles every environment in the cluster. Together they answer *is it stuck* from the rollout's own account of itself rather than from version counts. **Installed by default**, since the stem matches the `["env-*"]` pattern `dashboards.selected` ships with. The operator-side events and metrics depend on unreleased Materialize changes ([CLO-188](https://linear.app/materializeinc/issue/CLO-188)), so against a current release it degrades unevenly rather than going dark: **Generations works fully** (its panels read metrics that predate the change, and the blue/green split comes from pod names), Events keeps its Kubernetes Activity row, and Reconciliation is empty but for its two pre-existing gauges. Requires `v26.41.0`, recorded in `compatibility.md`; narrow `dashboards.selected` to `["env-top"]` to hold it back. **Outstanding:** *what do I do about it* beyond what the panel descriptions say, and a Day 2 change-operations view) |
-| [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ⬜ |
+| [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ✅ (`infra-net` dashboard ships, `mz-mon-infra-net`, with six tabs: **Overview**, **Kubernetes**, **CNI**, **Node Networking**, **Cloud Networking** and **Security**. Filed under `infra-*` rather than `env-*`: the question is the cluster's, not one environment's, and the row below in the infrastructure table is the same deliverable. **The repo's first dashboard whose layout is not fixed.** A cluster's CNI is not knowable from here — EKS defaults to the AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium — and the metrics describing each share no names with the others, so a fixed layout would mean a dashboard per cloud. That was built once for GCP and retired. Instead the CNI monitors stamp every series with a `network_component` label, a `$networkComponentList` variable discovers it, and each vendor's rows render on a `ConditionalRenderingVariable` match — new machinery in `layout.rs`, which previously modelled only the time-range condition. A cluster with no dataplane metrics gets a single row on the complement of every vendor pattern, saying which case it is in: on GKE that is not a fault, since Google disables the Cilium agent's Prometheus endpoint outright. Detection reads `up` rather than a vendor metric, which is what tells a mute exporter apart from an absent one. **Verified against both live clusters:** all 51 rendered queries execute, 33 return data on the GKE cluster where no CNI is collectable, and the AWS VPC CNI rows return real IPAM, ENI and policy-drop data on EKS once the new monitor was applied. Grafana round-trips all eight conditional rows unchanged. Endpoint regeneration time and unreachable-node counts come from the internal cloud networking dashboards, which both lead with the former. **Outstanding:** the cloud-provider half, which is [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and ships as two stub rows naming the metrics that would fill them) |
 | [Hydration Drilldown](https://linear.app/materializeinc/issue/DEP-212) | OO-M2 | ⛓️ |
 | [Freshness Drilldown](https://linear.app/materializeinc/issue/DEP-213) | OO-M2 | ⛓️ |
 | [Sources Drilldown](https://linear.app/materializeinc/issue/DEP-214) | OO-M2 | ⛓️ |
@@ -125,17 +125,18 @@ it is the difference between a dashboard we could build this week and one that n
 | **Logs & events** — the platform's own logs, the node journal, cluster-wide events | **Yes, shipped.** `infra-logs` (`mz-mon-infra-logs`) exists with **Logs**, **Nodes** and **Events** tabs. Adds the two axes `env-logs` structurally cannot offer: `component`, which splits `loki` into eight processes and `thanos` into three, and the **node journal**, whose lines carry no namespace and so are excluded from every `env-*` selector by construction. Shares its event queries and variable names with `env-logs`; differs in where the namespace picker opens and in carrying an **Exclude Materialize** switch, on by default — the Materialize namespaces are about half of a week's log volume and `materialize-environment` alone out-logs every other namespace, so left in they make the volume panels a picture of Materialize rather than of the platform underneath it. Verified against a live install | OO-M3 | ✅ |
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M3 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
-| **Meta-monitoring** — every component of this stack | **Yes, and then some.** Grafana 523 families, Loki 439, Thanos 220, Alloy 35. **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | ⬜ |
+| **Meta-monitoring** — every component of this stack | **Loki shipped; the rest outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (no Prometheus, no Thanos Ruler, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Outstanding:** Grafana (523 families), Thanos (220) and Alloy (35); **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | 🔨 |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
-| **Networking** — throughput, traffic shape, policy metrics | **Partly.** 8 `container_network_*` families carry throughput and errors (`env-top` already plots four of them). **No CNI or NetworkPolicy metrics at all** — no `cilium_*`, no `hubble_*` | OO-M3 | ⬜ |
-| **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents). **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics | OO-M3 | ⬜ |
+| **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M3 | ✅ |
+| **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents), and **nothing in the registry reads any of them**. **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics. Now designed rather than only scoped: see [External dependencies](#external-dependencies) | OO-M3 | 🔨 |
 
 Ordering follows what is buildable and what an operator reaches for first.
 **Nodes** and **Meta-monitoring** need no collection work and answer the two questions that block everything else — is
 the platform healthy, and is the telemetry itself trustworthy.
 **Pods** is the natural drilldown target from both, and from `env-logs`.
 **Autoscaling** is buildable now as an events dashboard and becomes a real one when the controller is scraped.
-**Networking** and **External components** are gated on the collection gaps below.
+**External components** is gated on the collection gap below.
+**Networking** was too, and stopped being: the gap turned out to be unscraped endpoints rather than absent ones, so the dashboard and the scrape configs landed together.
 
 #### Collection gaps these depend on
 
@@ -146,8 +147,8 @@ Found while surveying a live install; each is a scrape-side gap in *this* repo r
 | ✅ **kube-state-metrics label collision** — fixed, and now asserted | *was:* Pods, Nodes, and five shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fixed by setting `honorLabels: true` on both ServiceMonitor endpoints (the vendored 8.4.0 subchart defaults them to `false`). Now asserted by `kube_state::labels_are_honored` and `kube_state::pods_are_distinguishable` in the e2e suite, which between them catch the collision's signature (`exported_*` labels) and its consequence (`kube_pod_info` collapsing to one identity). Verified against a live install *before* the fix: 15 families carrying `exported_*`, and 117 `kube_pod_info` series reporting a single pod. The three `materialize.kubernetes.*` readiness queries are `canonical` on the strength of that coverage |
 | Alertmanager is not scraped | Meta-monitoring | Deployed by the chart and emitting nothing to Thanos. The smallest of these and the most embarrassing, since it is our own component |
 | No cluster-autoscaler / Karpenter scrape | Autoscaling | Distro-specific: GKE's autoscaler, Karpenter and Cluster Autoscaler each expose different endpoints, so this is a per-flavor scrape source rather than one config |
-| No CNI / NetworkPolicy metrics | Networking (policy half) | Needs a CNI that exports them and a scrape source for it. Throughput and traffic shape do not depend on this and can land first |
-| Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not |
+| ✅ **No CNI / NetworkPolicy metrics** — fixed for the two CNIs with monitors | *was:* Networking (policy half) | Two PodMonitors ship, for the AWS VPC CNI and for Cilium, plus a kube-proxy ScrapeConfig. All three are **self-disabling**, which is what makes it safe to deploy every one to every cluster: the pod selector matches nothing on a cluster running another vendor, and the CNI endpoints name *container ports* rather than numbers, so a vendor built without metrics yields no target instead of a scrape failing on every node forever. Each stamps a `network_component` label, which is the dashboard's whole detection mechanism. Measured rather than assumed: EKS `aws-node` serves `awscni_*` on the `metrics` port and `network_policy_drop_count_total` on the nodeagent's, both verified landing in Thanos; GKE Dataplane V2 serves nothing on `:9962` and only Hubble's own health counters on `:9965`. **kube-proxy is collected too**, from the gateway pipeline rather than from its ScrapeConfig CR: the gateway has no `prometheus.operator.scrapeconfigs` component, so the CR is a Prometheus-consumer artifact exactly as the cAdvisor one is, and the pipeline carries the same relabeling. Discovery is a server-side pod selector, so a cluster running no kube-proxy returns no targets rather than a refused connection on every node. **Still uncovered:** Calico and Azure NPM, which no monitor ships for |
+| Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not. Nothing in this chart deploys one — the [external-dependency design](../design-docs/20260920-external-dependency-monitoring/) makes it a chart component with a documented grant |
 
 ### Materialize components beyond the environment
 
@@ -185,6 +186,70 @@ initially populated (rather than steady state metrics) with some error detection
 Troubleshooting is the entry point rather than another sibling — it is symptom-first where `env-top` is subsystem-first, and every panel links onward into Logs & Events or the matching drilldown.
 That makes it dependent on those existing, so it sequences last within OO-M2.
 
+### External dependencies
+
+`env-*` and `infra-*` both stop at the cluster boundary.
+The two services a Materialize deployment cannot run without and does not run itself — the **metadata (consensus) database** and the **object store** — have no dashboard, no working alert, and no collection path beyond what their clients happen to publish.
+
+Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and designed in [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/), which owns the [External components row](#infrastructure-dashboards-infra-) above and the consensus-DB collection gap beneath it.
+
+| Item | Milestone | Status |
+|---|---|---|
+| External dependency monitoring ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)) — design doc plus review | OO-M2 | 🔨 ([design doc](../design-docs/20260920-external-dependency-monitoring/) drafted; review outstanding) |
+| Split `persist-failures` into consensus, blob and persist-internal alerts | OO-M2 | ⬜ |
+| Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe. Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
+| The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry | OO-M2 | ⬜ |
+| The normalized `ext:*` recording-rule layer | OO-M2 | ⬜ |
+| `infra-deps` dashboard, with discovered-flavor rows and a negated fallback | OO-M2 | ⬜ |
+| The **exporter** vantage point — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant | OO-M2 | ⬜ |
+| PostgreSQL, self-hosted CockroachDB and CNPG adapters | OO-M2 | ⬜ |
+| On-premise object-store adapter (MinIO / Garage / Ceph) | OO-M2 | ⬜ |
+| Version reporting (`ext:*_version_info`) across every adapter | OO-M2 | ⬜ |
+| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering | OO-M2 | ⬜ |
+| Terraform: read-only provider roles on the per-cloud monitoring modules | OO-M2 | ⬜ |
+
+**The design's central claim is that the client's measurement of a dependency is the SLI and the dependency's own telemetry is the diagnosis.**
+`environmentd`, Loki and Thanos already time and count every call they make to both dependencies, identically on every cloud and with no credentials.
+That vantage point ships on by default; everything flavor-specific is opt-in behind a normalized contract, which is what keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
+
+Provider metrics are **pulled into the Alloy gateway as an ingest source** rather than queried as a Grafana datasource.
+That makes the cost a function of what is configured rather than of how closely anyone is watching, puts the result in the same retention and the same PromQL surface as everything else, and makes a dependency series joinable with `mz_persist_blob_failures` in a single expression.
+
+**The default is a default rather than a ranking, and the field evidence is what keeps it from becoming one.**
+Of the incidents seen so far, two were CockroachDB exhausting disk and CPU, one was a neighbouring project consuming a shared database instance, one was a component running an out-of-date version, and the most common class was day-0 setup failure.
+Only the first pair is visible from the client side at all, and only after the dependency has begun to fail.
+So the design carries two signals that came from the field rather than from analysis — **per-database storage attribution** and **version reporting** — and treats **Day 0 as a separate problem with a separate answer**, served by render-time validation and a probe rather than by any of the three vantage points.
+
+Three findings from drafting it belong on this page rather than only in the design doc.
+
+**The consensus-DB alerts that exist describe two incidents that have since happened, and could not have fired.**
+`crdb-disk-usage-critical` and `crdb-cpu-usage-critical` are well calibrated and carry correct remediation text.
+They read `crdb_dedicated_*`, which is CockroachDB Cloud's metric-export prefix rather than the names a self-hosted node publishes, and no rule in this repository is installed anywhere.
+Fixing either alone would still have produced silence.
+Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions managed **PostgreSQL**, nothing in the registry names a `pg_*` family, and CNPG is arriving in customer clusters — so no flavor is the one that waits.
+
+**The design is the first consumer of the query registry's `rules:` branch**, which has no producer, leaving `pre-rendered/rules/{prometheus,thanos,loki}/` empty.
+The evaluated-rule path it also depends on is owned by [Alerting in self-managed](../design-docs/20260917-alerting-self-managed/), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
+Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
+
+**One alert covers both dependencies, and it is the shortest path to value here.**
+`persist-failures` `or`s sixteen counters at `severity: notice` with `for: 15m`, and its degraded text concedes that a sustained rate *points at object storage or consensus trouble*.
+Its severity and window are set by its least serious member, its runbook cannot be written because it covers two dependencies with different ones, and its description names CockroachDB on deployments that run PostgreSQL.
+Splitting it needs no adapter, no exporter and no new collection — only the evaluated-rule path everything else here waits on.
+
+**Failure counters report that a dependency broke, never that one is degrading.**
+Neither persist's consensus path nor its blob path emits latency or retry-rate, so the slow-and-getting-slower case that precedes an outage has no signal at all.
+The exporter and the provider watch the database slow down and cannot attribute it to Materialize's traffic.
+That is an addition to the [Tier 2 upstream asks](#metrics-contract-upstream-dependency) rather than work that can land here, and it is the most important thing this design cannot do.
+
+**The Materialize persist bucket has no `AbortIncompleteMultipartUpload` lifecycle rule**, while the monitoring stack's own telemetry buckets do, on both AWS and GCS.
+Aborted multipart uploads leave parts that are billed, do not appear in an object listing, and are not counted by any bucket-size metric.
+That is a fix in the Terraform repo rather than here, and the monitoring work is what surfaced it.
+
+Two smaller notes that change where the work is easiest.
+**There is no `generic-cloud` wrapper downstream** corresponding to the generic path this repository supports, and one may be worth having; its absence does not leave the shape unobserved, because `terraform/test/generic-cloud` already runs rustfs and CNPG and is that deployment.
+**On-premise object stores publish their own capacity, drive health and healing state**, which no managed cloud offers at any price — so the one shape with no Terraform wrapper is the one whose adapters this repository can test end to end, and the one where object storage earns an exporter rather than the client alone.
+
 ### Pipelines (Alloy)
 
 Alloy carries both metrics and logs.
@@ -198,6 +263,7 @@ The agent and gateway pipelines are in place, the OTLP export path shipped with 
 | Loki (logs) + Thanos (metrics) wiring | FCO-M2 | ✅ |
 | Agent **metrics path** ([DEP-187](https://linear.app/materializeinc/issue/DEP-187)) — superseded rather than deferred: `prometheus.exporter.cadvisor` was removed from the agent, and the gateway scrapes each kubelet's `/metrics/cadvisor` instead. A per-agent cAdvisor cost ~750Mi against a 200Mi logs-only envelope, so the agent stays logs-only by design | OO-M1 | ✅ |
 | **Multiple Prometheus remote-write destinations** ([DEP-232](https://linear.app/materializeinc/issue/DEP-232)) — Cloud's transition needs Thanos and Amazon Managed Prometheus written simultaneously, each on its own importance tier | OO-M1 | ✅ (`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a map keyed by name, defaulting to one `thanos` entry. Each destination renders its own `prometheus.relabel` tier filter feeding its own `prometheus.remote_write`, rather than one component with several `endpoint` blocks: the filter has to sit *upstream* of the WAL for a tier to reduce disk rather than only egress, and separate WALs keep a stuck backend from holding back truncation for the others. `external_labels`, auth, TLS and the credential env vars are all per destination, derived from the name. The tier filter is new on this path — `GATEWAY_UNFILTERED_PROM_METRICS` was written to the env ConfigMap and read by nothing, so `minMetricImportance` on remote-write had never done anything. A leftover pre-map key fails at render, because Helm would otherwise merge it beside `thanos` and silently apply it to nothing) |
+| **Multi-line Rust panics** ([DEP-255](https://linear.app/materializeinc/issue/DEP-255)) — a panic arrived as ~20 unrelated entries with no level and no message | OO-M2 | ✅ (`inputProcessor` opens with a `stage.multiline` that merges the block, and a later block gives the merged entry `level=CRITICAL`, a `msg` naming the source location, and `panic_thread` / `panic_location` as structured metadata. `stage.multiline` is new to the typed model and the first stage here that carries state across entries. Merging sits ahead of the drops and the rate limit, because `stage.limit` runs with `drop: true` and a backtrace with holes in it reads as complete and is not; the `longer_than: "1MB"` ceiling still applies to the merged entry, which is what discards the separate multi-MiB-line panic variant we deliberately do not carry. `firstline` is inverted from how it reads — it matches the *start* of a record and non-matching lines append — so it must match every ordinary line of the stream, and one expression covers both Materialize log families. Measured rather than assumed: a stream whose format never matches is unaffected, since entries pass through singly until the first match; environmentd's non-JSON startup banner is on stdout while tracing and panics are on stderr, and `stage.cri` makes `stream` a label, so the banner cannot contaminate the JSON; and `max_wait_time` is the delivery mechanism rather than a rare fallback, because a panic is the last thing a process writes. Verified end to end against a real `mz_panic` on a live install, with the false-positive and stdout-banner cases covered too. **Fixed alongside:** `balancerd` and `materialize-operator` log tracing's plain text layer rather than JSON and nothing parsed it — 100% of both services' lines were UNKNOWN, 41,631 of them from the operator in 6h, all in the bucket the rate limiter drops from. **Outstanding:** log-derived alerting on panics, a panel on `env-logs`, and moving the merge to the agent if the two-replica split ever needs to be zero) |
 | Agent → gateway transport over **OTLP/gRPC with a node-local WAL** ([DEP-189](https://linear.app/materializeinc/issue/DEP-189); `hostPath`, compaction-bounded); gateway stays stateless and backend fan-outs are unchanged | OO-M3 | ⬜ |
 | `otelcol.processor.transform` before the log bridge ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) — becomes load-bearing once agent logs arrive as OTLP | OO-M3 | ⬜ |
 | [Backup log collection path](https://linear.app/materializeinc/issue/CLO-180) for alloy-agent failures — today an agent crash loses the logs explaining why | OO-M3 | ⬜ |
@@ -244,6 +310,7 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | **Grafana persistence** ([DEP-202](https://linear.app/materializeinc/issue/DEP-202)) — chart side done: `grafana-postgres` and `grafana-pvc` profiles, plus render-time checks that refuse multi-replica SQLite and RWO-with-rolling-update. Terraform provisioning the database per cloud is the remaining half | OO-M1 | 🔨 |
 | **Grafana production shape** ([CLO-111](https://linear.app/materializeinc/issue/CLO-111)) — pinned image so Renovate bumps the server independently, resource requests, PDB, HPA, Image Renderer refused, unpinned-plugin and leaked-secret guards, `grafana.ini` documented as an arbitrary-config passthrough for SSO, and a `grafanaSpec` break-glass for `mode: operator` | OO-M1 | ✅ |
 | **Pre-delete hook finalizing the Grafana custom resources** before grafana-operator is deleted, so teardown does not deadlock on finalizers with no remover ([DEP-197](https://linear.app/materializeinc/issue/DEP-197)). `cleanup.grafanaOperator` runs one `kubectl delete` at `pre-delete` and blocks until the finalizers clear, on upstream's distroless kubectl image | OO-M1 | ✅ |
+| **Dashboards split into `materialize-monitoring-dashboards`** — their own chart and release, because the rendered set outgrew what a Helm release can carry ([why, and what it cost](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Not their own component:** the chart joined the existing `dashboards` stream, since it carries nothing but that component's output and two streams would move in lockstep while claiming independence. The umbrella chart dropped `dashboards` from its `dependencies` with it — nothing it ships comes from them any more. Folders, datasources and the `Grafana` instance stay in the umbrella chart; the new one references them through explicit values, and the Terraform module derives those from the same `values.yaml` the main release renders from. Verified on a live install: the full seven-dashboard default set installs and each lands in its folder | OO-M3 | ✅ |
 | **cert-manager integration (opt-in)** ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)) — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | OO-M1 | 🔨 (issuance shipped and off by default: `certificates.enabled` renders per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root, and a separate external issuer for a Grafana behind an L4 LB. `global.clusterDomain` lands with it and propagates into Loki and Thanos. Material is mounted, not env-injected, and the `tls.*File` carriers plus scheme derivation are wired on the gateway's own destinations — `alloy validate` passes on the TLS-enabled render. Server halves shipped for both: `profiles/mtls.values.yaml` assembles Loki's six coupled settings and Thanos Receive's two, and a validator refuses every half-applied combination — `alloy validate` passes on the rendered result. All four gateway ingress listeners — 3100, 4317, 4318, 9090 — now render from Helm and take TLS from values; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker, so **agent→gateway is shipped**. Phases 2 and 3 ship as `mtls-phase2` / `mtls-phase3`, and at phase 3 five listeners refuse a client presenting no certificate. Terraform exposes the whole rollout as `internal_tls` (`off`/`encrypt`/`present`/`authenticate`) and `materialize-terraform-self-managed` defaults to certificates on and `authenticate`. Tier 2 runs phase 3 by default at chart-default lifetimes — the earlier 1h/55m livelocked cert-manager, so renewal is **forced** by deleting the Secret instead. The E2E suite has its own TLS client and asserts issuance, expiry, plaintext refusal, client-certificate enforcement and delivery across a forced renewal; verified on kind and on real EKS and GKE. **Outstanding:** the trust bundle ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)); intra-Loki and intra-Thanos hops; and Loki's HTTP port, which cannot pass phase 2 because the kubelet probes it) |
 
 Grafana reachability and persistence are paired deliberately.
@@ -276,20 +343,76 @@ See [Testing / CI](#testing--ci--devex).
 
 ### Rules & alerts
 
-The rule set ships; the routing that turns a firing rule into a page does not.
+Every component needed to alert is in the chart, and no two of them are connected.
 
 | Item | Milestone | Status |
 |---|---|---|
+| Alerting design doc plus review | — | 🔨 ([design doc](../design-docs/20260917-alerting-self-managed/) drafted; review outstanding) |
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
-| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ |
+| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ⬜ |
+| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below) |
+| Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
+| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
+| Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | ⬜ |
-| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ |
+| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ⬜ |
+| Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ⬜ |
+| Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | ⬜ |
+| Alert and recording-rule names added to the committed surface | OO-M2 | ⬜ |
+| Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | ⬜ |
+| Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | ⬜ |
+| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ (**HA moves into the default** rather than staying a hardening step; see below) |
 
 Alertmanager is bundled and the rules exist, but nothing routes them anywhere.
 Until that lands the alerting story is "we ship rules", which is half a feature.
 
+**The evaluators are now connected.**
+A default install runs the Thanos ruler stateless against Thanos Query, runs the Loki ruler against Loki, and points both at the bundled Alertmanager.
+Both remote-write their results to the alloy-gateway, which is what puts `ALERTS` in front of the destination fan-out that [call-home](../design-docs/20260917-call-home-self-managed/) needs.
+What is still missing is the rules themselves: `pre-rendered/rules/` is empty, `gen-rules` does not exist, and the Alertmanager the rulers notify has no routing tree, so a firing alert reaches a null receiver.
+The remaining items in the table are what close that gap.
+
+Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
+Each is worked around in `values.yaml` with the reasoning recorded at the line.
+
+| Gap | Workaround |
+|---|---|
+| `thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally | Stateless is reached through `extraArgs` plus a ConfigMap the umbrella renders. The ruler still starts a block shipper against the object store, which scans an agent WAL and uploads nothing |
+| The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
+| The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
+
 The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and are best worked together.
-Adoption is the higher-value half — until routing exists nobody is paged, which is why hardening is the lower priority of the pair despite Alertmanager being a single replica holding the only copy of its silences.
+Adoption was previously the higher-value half, on the reasoning that until routing exists nobody is paged.
+**The design doc revises that: HA belongs in the default configuration rather than in a later hardening step.**
+A single-replica notifier is lost to an ordinary node drain, it holds the only copy of every silence, and it cannot report its own absence — and shipping routing on top of it is shipping the failure the workstream exists to prevent.
+Two replicas with gossip and a PDB of one is the shape; the rest of DEP-226 stays hardening.
+
+Five findings from drafting the design doc belong on this page rather than only in it.
+
+**`PrometheusRule` has exactly one consumer in this stack, and it is now on.**
+The chart installs the Prometheus Operator CRDs and not the operator, and Alloy consumes `ServiceMonitor` and `PodMonitor` only.
+The one thing that reads a `PrometheusRule` is the Thanos ruler's import sidecar, which was inert while `thanos.ruler.enabled` was `false`.
+A template emitting `PrometheusRule` resources would then render, apply, pass CI, and do nothing — which made `thanos.ruler.enabled` the switch that makes alerting exist, rather than an optimization.
+That switch is on as of the ruler wiring, so a `PrometheusRule` applied to the cluster is evaluated.
+The sidecar imports with no label selector, which is the upstream default and is kept: a customer's own `PrometheusRule` works with no chart configuration, at the cost that a co-resident rule owner's alerts also reach this Alertmanager.
+
+**The rule set is Cloud's rule set, and 28 of its 85 rules cannot fire in a stock self-managed install.**
+CockroachDB, the egress gateway, LaunchDarkly, the external uptime checkers, and Cilium account for most of them, and only five carry the `deploymentMode: cloud-only` label that exists to say so.
+**`cloud-only` is also the wrong axis.**
+A CockroachDB rule is for a deployment running CockroachDB, and a Cilium rule is for a cluster whose CNI is Cilium — both of which a self-managed customer may be.
+Rules should declare capability tags (`crdb-dedicated`, `cilium`, `aws`, …) describing what they require, with applicability checked at build time against the extracted metric set, so that no rule is deleted and selection follows what a deployment contains rather than who operates it.
+
+**Severity is a property of the alert and urgency is a property of the deployment**, and conflating them is what makes one rule set unable to serve both a customer for whom Materialize is critical infrastructure and one who is evaluating it.
+The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment, with a severity-to-receiver-class matrix between them.
+
+**Alert names become a committed surface, which closes an open naming decision.**
+[Stamping 1.0](#versioning-changelog-and-releases) records the alert and recording-rule naming decision as free only until the alerting path ships.
+It ships here, and the answer is that names are committed from the release that first carries rules: `rules.disabled` names alerts, an external Alertmanager's routing matches on them, and a runbook link is built from them.
+Names churn while the default set is derived, and each rename owes a changelog entry even then.
+
+**Log-derived alerting has never been code anywhere at Materialize.**
+Cloud's pipeline emits PromQL rule groups, so the alerts that detect panics, correctness violations, and data-corruption patterns are clicked into Grafana — duplicated per region, drifted between copies, and carrying deployment-specific exclusions compiled into the LogQL.
+Self-managed is the first place that class can be defined and reviewed, and the port is not a transcription: the clicked-in rules use `$__range`, which is a Grafana variable that a Loki ruler cannot parse.
 
 ### Profiles
 
@@ -319,7 +442,13 @@ Scheduling and storage class are profiles rather than a `global.*` block so the 
 | **Tier 0** — plan each Terraform example, extract the composed values, and render the chart against them (`make terraform-render`). Asserts values *land*, which `validate` cannot: a wrong value path is still valid HCL | FCO-M3 | ✅ |
 | **kind E2E**, path-filtered behind `e2e-gate`: tier-1 chart variant on `loki-test` + `kind-tier1`; tier-2 generic-cloud substrate (rustfs + CNPG) | FCO-M3 | ✅ (both tiers install and assert in CI. Tier 2 composes `terraform/test/generic-cloud` with the module via `terraform/test/tier2`, on `sizing = "small"` against rustfs and CNPG; ~5 min green. `make e2e-tier1-down` switches a cluster between tiers, which is needed because both name their CRDs release `mzmon-crds`) |
 | **Rust E2E suite** ([DEP-185](https://linear.app/materializeinc/issue/DEP-185), `packages/mz-monitoring-e2e`): Grafana API dashboard + datasource-query assertions, Loki / Thanos direct health, Alloy support-bundle inspection, WAL durability across a gateway outage | OO-M1 | 🔨 (15 assertions, green on tier 1, tier 2, and a real EKS cluster — Loki round trip, Grafana dashboards/datasources/proxied queries, Thanos store fanout and scrape assertions, Alloy support bundles. The Thanos half runs in CI at tier 2. WAL durability across a gateway outage outstanding, as are NetworkPolicy and mTLS, which the design doc assigns to tier 2) |
+| **Chart misconfiguration scanning** ([DEP-247](https://linear.app/materializeinc/issue/DEP-247)) — `trivy config` over the rendered chart, gated on HIGH/CRITICAL outside a documented baseline | OO-M3 | 🔨 (`bin/security-scan.sh` renders three scenarios — tier 1, the Azure example, and tier 1 at mTLS phase 3 — and scans each; the `security` workflow gates pull requests and uploads unfiltered SARIF to code scanning. It renders with `helm template` first rather than pointing Trivy at the chart directory, because Trivy's own Helm renderer cannot render this chart: the Thanos subchart `fail`s without objstore config, which Trivy treats as a warning before falling back to the static `pre-rendered/` YAML and exiting 0 — a green check that inspected no template. Baseline: **no HIGH/CRITICAL finding originates in our own templates**; all 16 are upstream, and `.trivyignore.yaml` records each with a justification. **Outstanding:** `security-gate` is not yet a required check) |
+| **Image vulnerability scanning** ([DEP-248](https://linear.app/materializeinc/issue/DEP-248)) — Trivy over every image the chart resolves to | OO-M3 | 🔨 (same script, `images-gate` / `images-report`. The image list is read out of the renders with `yq` rather than maintained by hand, so a newly enabled subchart cannot be missed — 13 images today. The gate covers only images we publish, and within those only base-layer packages with a fix available: `mzmon-alloy` is a Debian base plus Grafana's own Alloy binary, and the 17 HIGH findings compiled into that binary's Go module graph are not ours to patch. **Outstanding:** the published image is one distroless base behind a fixed `libssl3t64`, so the gate fails until it is rebuilt and republished — the base pin is bumped and the rebuild verified locally, but the digest in `values.yaml` still points at the old image) |
 | ArgoCD / FluxCD CI matrix ([DEP-111](https://linear.app/materializeinc/issue/DEP-111), [DEP-118](https://linear.app/materializeinc/issue/DEP-118)) | OO-M3 | ⬜ (very low priority) |
+
+Both scanners are scoped to findings this repository can act on, and both report everything else rather than gating on it.
+The upstream population is large and moves on someone else's release schedule, so a gate that included it would turn CI red on a dashboard change — which is how scanners get switched off.
+Three follow-ups came out of building them: the suppressions are per-check rather than per-resource, so they also mask a finding if one of our own templates grows it ([DEP-249](https://linear.app/materializeinc/issue/DEP-249)); `readOnlyRootFilesystem` on grafana and alertmanager is probably fixable through values rather than permanently baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250)); and SARIF findings point at temp render paths, so code scanning cannot map them back to a source line ([DEP-251](https://linear.app/materializeinc/issue/DEP-251)).
 
 The E2E suite subsumes what was previously tracked as a synthetic-data smoke test ([DEP-119](https://linear.app/materializeinc/issue/DEP-119), now closed as a duplicate).
 It asserts **query success everywhere and non-empty results only on self-monitoring series** — Materialize scrapers stay off, since those are integration-tested downstream, so `env-top` assertions are structural while the stack's own telemetry provides real data.
@@ -381,6 +510,81 @@ The gateway pair is what enforces the boundary, rather than ad-hoc network confi
 Sanitization is what makes *anything* crossing safe, since the `_info` metrics that made dashboards legible are precisely the ones carrying customer names, and the same tension applies to log labels.
 Redaction attaches to the destination rather than to the pipeline, so the reduced copy is a fork of the customer's stream and never a downgrade of it.
 
+### Call-home from self-managed
+
+The [BYOC](#byoc) section above is about environments Materialize operates.
+This one is about the deployments Materialize cannot see at all: self-managed installs, which are invisible between escalations.
+
+Nothing here is ticketed yet.
+
+| Item | Milestone | Status |
+|---|---|---|
+| Call-home design doc plus review | — | 🔨 ([design doc](../design-docs/20260917-call-home-self-managed/) drafted; review outstanding) |
+| The `callHome.level` consent ladder and its profiles, defaulting to off | — | ⬜ |
+| Heartbeat producer — a fixed, enumerable install record | — | ⬜ |
+| Alert-state forwarding, once rule evaluation ships | — | ⬜ |
+| `previewOnly` destination mode — full chain, counted locally, never sent | — | ⬜ |
+| The egress meter — a dashboard row over the existing per-destination counters | — | ⬜ |
+| A generated egress schedule per level, extending the `metric-tiers.yaml` pattern | — | ⬜ |
+| OTLP/HTTP default wire, forward-proxy and corporate-CA configuration | — | ⬜ |
+
+**The channel is the BYOC channel; the feature is consent.**
+A BYOC customer bought an operated service, so telemetry crossing the boundary is what they purchased.
+A self-managed customer bought software they run themselves, and every byte that leaves is a concession.
+The design is therefore a bounded, monotone, locally-visible ladder — `off`, `heartbeat`, `alerts`, `metrics`, `diagnostics` — rather than a pipeline, which already exists.
+
+Two findings from drafting it belong on this page rather than only in the design doc.
+
+**The cheapest useful level is alerts, and nothing evaluates alerting rules today.**
+That is the same gap the [Rules & alerts](#rules--alerts) row records, reached from the other direction: a call-home channel forwarding alert state from a stack that evaluates no rules forwards an empty set, which reads as good news.
+Alert *state* (the `ALERTS` series, over the existing metric fan-out) and alert *notification* (an Alertmanager webhook, after grouping and silences) are different signals, and the state series is the one that ships first because it reuses the channel.
+
+**A TLS-intercepting corporate forward proxy defeats mTLS outright**, and that network shape is common in exactly this segment.
+That makes token exchange a reachability requirement for self-managed rather than the security refinement it is for BYOC, and it is the strongest argument for the [`oauth2.tls`](#tenant-scoped-read-path) prerequisite already owed to the read path.
+
+**Receiving a signal creates an obligation.**
+Collecting alerts nobody is paged on is worse than collecting nothing, because the customer took a disclosure risk on the assumption that someone is watching.
+A stated response model — and a stated *non*-response — is a prerequisite for the alerts level, not a follow-up.
+
+### Tenant-scoped read path
+
+Every workstream above is about **collecting** telemetry, and every consumer of it so far is a Grafana we deploy, reading backends it reaches over a `ClusterIP` Service.
+This one is about **reading** it from somewhere else: the Materialize console, and a customer's own Grafana attached to our backends as a PromQL and LogQL datasource.
+
+Nothing here is ticketed yet.
+
+| Item | Milestone | Status |
+|---|---|---|
+| Tenant-scoped query API — design doc plus review | — | 🔨 ([design doc](../design-docs/20260916-tenant-query-api/) drafted; review outstanding) |
+| Per-family tenancy classification generated from the query registry | — | ⬜ |
+| `query-proxy` chart component — JWT verification, label enforcement, per-tenant read limits | — | ⬜ |
+| Separate grants for logs and metrics, and for the classes within each | — | ⬜ |
+| A producer for the `audit` log class — `tenantMap.audit` and `GATEWAY_TENANT_MAP_AUDIT` exist and nothing reads or writes the class | — | ⬜ |
+| Published query manifest for Console to consume by query ID | — | ⬜ |
+| `oauth2.tls` on the destination schema, so BYOC ingest can exchange its certificate for a short-lived token | — | ⬜ |
+
+**The read path is where this stack stops being optional.**
+Console today renders environment metrics from SQL against the environment itself, which keeps a short window of history and is unavailable precisely when the environment is.
+Reading PromQL and LogQL instead makes a deployment without those endpoints a deployment with a broken Console, which is a change of posture for a repository whose stated goal is that every component can be turned off.
+
+The design resolves that by mandating **an interface rather than an implementation**: a PromQL endpoint and a LogQL endpoint carrying the documented label contract, reachable through a tenant-scoped proxy.
+Thanos and Loki are the bundled implementation of it; a customer already running an equivalent points the proxy at theirs.
+
+Two consequences reach other rows on this page.
+[Cloud adoption](#adoption--productionalization) becomes a prerequisite for Console dashboards in Cloud rather than a parallel track, and the metric and label contract under [Metrics contract](#metrics-contract-upstream-dependency) becomes load-bearing for a product surface rather than for dashboards alone.
+
+**This supersedes the earlier plan to expose a Prometheus endpoint for customers to scrape into their own environment.**
+A scrape endpoint delivers current samples to whoever can reach inward and keeps no history across a gap.
+A federated or remote-read endpoint on the same proxy is strictly smaller than the query API, so federation survives as an option for customers with a dedicated Prometheus rather than as the integration story.
+
+Two findings from drafting it belong on this page rather than only in the design doc.
+**The `audit` log class is declared and unimplemented** — `pipeline.logging.tenancy.tenantMap.audit` is a values key and `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway's ConfigMap, where nothing reads it, exactly as `GATEWAY_UNFILTERED_PROM_METRICS` did before [DEP-232](https://linear.app/materializeinc/issue/DEP-232).
+**The destination `oauth2` block models no TLS for the token request**, so a BYOC gateway cannot today exchange its license certificate for a short-lived token without falling back to a long-lived client secret.
+
+The `console` row under [Materialize components beyond the environment](#materialize-components-beyond-the-environment) is a different subject with the same word in it.
+That row tracks Console as a component we cannot monitor; this section tracks Console as a consumer.
+Neither blocks the other.
+
 ## Metrics contract (upstream dependency)
 
 Several dashboards depend on metric instrumentation that lives **upstream in the `materialize` repo, not in this repository**.
@@ -398,6 +602,7 @@ High-leverage asks, in priority order:
 - ⬜ Native **source/sink status** metrics (no genuine source exists today).
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
+- ⬜ **Latency and retry-rate on persist's consensus and blob paths.** Today both publish failure counters only, so a dependency that is degrading rather than broken is invisible from the one vantage point that could attribute it to Materialize's own traffic. Asked for by [DEP-233](https://linear.app/materializeinc/issue/DEP-233); see [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
   actually connects *through* are observable only as logs. Blocks the dashboards listed under
@@ -452,4 +657,23 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
 - A BYOC gateway-to-gateway design doc is owed under `design-docs/`, tracked as [DEP-219](https://linear.app/materializeinc/issue/DEP-219). 🔨
   [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byoc-observability/) is written and in review as a draft; it also covers [DEP-124](https://linear.app/materializeinc/issue/DEP-124) and [DEP-220](https://linear.app/materializeinc/issue/DEP-220).
   The [BYOC](#byoc) section above is updated to match it: a reduced log subset crosses, where the earlier position was that logs never leave the customer network.
+- [A Tenant-Scoped Query API for Console and Customer Grafana](../design-docs/20260916-tenant-query-api/) is written and in review as a draft. 🔨
+- [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/) is written and in review as a draft. 🔨
+  It establishes the [External dependencies](#external-dependencies) section above and closes out the External components row.
+  Three findings change this page: the CockroachDB alerts describe two incidents that have since happened and could not have fired, the recording-rule branch of the query registry has no producer, and the persist bucket is missing the multipart-upload lifecycle rule the telemetry buckets already set.
+  It is also the first design here shaped by incident history rather than by analysis alone, which is why per-database storage attribution, version reporting, and a Day 0 preflight appear in it at all.
+  It proposes mandating a PromQL and LogQL read interface in self-managed and Cloud, and a JWT-authenticated single-tenant proxy in front of it.
+  The [Tenant-scoped read path](#tenant-scoped-read-path) section above is the roadmap position it establishes, including that it supersedes the customer-scraped Prometheus endpoint.
+- A **customer-facing** read-endpoint page — how to obtain a token, the two Grafana datasource shapes, and what a tenant can and cannot read — is owed alongside it. ⬜
+- [Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane](../design-docs/20260917-call-home-self-managed/) is written and in review as a draft. 🔨
+  It proposes an opt-in consent ladder over the BYOC channel, with alerts as the lowest useful level and the bound made verifiable by a preview mode and a local egress meter.
+  The [Call-home from self-managed](#call-home-from-self-managed) section above is the roadmap position it establishes, including that the alerts level is blocked on rule evaluation rather than on the pipeline.
+- A **customer-facing** call-home page — the levels, the generated schedule for each, how to preview before enabling, how to read the local meter, and the retention, access and deletion commitments — is owed alongside it. ⬜
+- [Alerting in Self-Managed: Evaluation, Routing, and Customer Extension](../design-docs/20260917-alerting-self-managed/) is written and in review as a draft. 🔨
+  It proposes two evaluators and one notifier, a severity-to-urgency matrix selected by a single values key, a capability-tagged rule set checked against the metric registry, and four additive extension points so that customer-specific alerting never enters this repository.
+  The [Rules & alerts](#rules--alerts) section above is the roadmap position it establishes, including that `thanos.ruler.enabled` is the switch that makes alerting exist at all, that Alertmanager HA moves into the default, and that alert names become a committed surface.
+- The three **customer-facing** alerting pages under `alerting/` are owed alongside it: `configuring.md` is currently the word `TODO`, and `channels.md` and `maintenance.md` are bare headings. ⬜
+  A **label contract** page is owed with them — every label a shipped rule emits and what it means — because a customer routing in their own Alertmanager has nothing to route on without it.
+- A **runbook per shipped alert** under `operating/runbooks/` is owed with the rules themselves, since every alert links to one. ⬜
+  Runbooks that stop changing and describe a practice rather than a workaround should be promoted to the product documentation.
 

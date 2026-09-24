@@ -1201,6 +1201,100 @@ Materialize-specific configuration values.
   </tbody>
 </table>
 
+### Networking collection
+
+Collection from the cluster's networking layer.
+
+The CNI is the one part of the platform this chart cannot assume, because it
+differs per cloud and per install: EKS defaults to the AWS VPC CNI, GKE to
+Dataplane V2, AKS to Azure CNI powered by Cilium.
+
+Rather than asking which one is present, the monitors below are all deployed
+and each is **self-disabling**. Their pod selectors match nothing on a cluster
+running a different vendor, and their endpoints name container ports that
+exist only where the vendor exposes metrics at all — so a cluster collects
+from whichever it runs, and from nothing else. Every series they collect
+carries a `network_component` label, which is what the `infra-net` dashboard
+discovers its dataplane from.
+
+Leaving these on costs a cluster nothing it does not use. Turn one off to stop
+collecting from a CNI that *is* present.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect from the AWS VPC CNI (`aws-node`): IPAM, ENI and address exhaustion, plus NetworkPolicy drops from the node agent where it runs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.namespaces</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces to look for the CNI daemon in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default pod selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.aws-vpc<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Collect from Cilium, including GKE Dataplane V2 and Azure CNI powered by Cilium, plus Hubble where its metrics are enabled. Note that GKE Dataplane V2 disables the agent's Prometheus endpoint, so this collects nothing there by design — see the dashboard's CNI tab.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.namespaces</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces to look for the CNI daemon in.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default pod selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">networking<wbr>.cni<wbr>.cilium<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Pipeline configuration
 
 Pipeline configuration values that drive Alloy behavior and defaults.
@@ -1752,6 +1846,37 @@ bringing up a new distribution.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.kubeProxy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "scrapeInterval": "60s"
+}</pre>
+</td>
+      <td class="helm-value-desc">Scraping kube-proxy, the service proxy.
+
+kube-proxy turns a Service into rules on the node, so its sync latency is
+the answer when connections to a Service fail while every pod behind it is
+healthy. The `infra-net` dashboard's kube-proxy row reads it.
+
+Discovery is a server-side pod selector, so a cluster without kube-proxy
+returns no targets and this costs nothing. GKE Dataplane V2 and any Cilium
+install in kube-proxy-replacement mode are exactly that case.
+No enable toggle, for the same reason `kubelet` above has none: the
+pipeline is pre-rendered, so a key here would have to be read by something
+to mean anything, and the scrape already disables itself where kube-proxy
+is absent. A knob written to the env ConfigMap and read by nothing is a
+bug this repo has shipped once already.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.kubeProxy<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"60s"</code></td>
+      <td class="helm-value-desc">Scrape interval for kube-proxy. Roughly 230 series per node.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.denyMetrics</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -2202,12 +2327,19 @@ otelcol.auth.basic "oteldest" {
   </tbody>
 </table>
 
-### Monitoring configurations
+### Dashboards
 
-Configuration for dashboards, rules, and alerts
+Where the bundled dashboards are filed.
 
-Underlying content is generated into `pre-rendered/`
-from the sources under `packages/` and embedded via `.Files.Get`.
+**The dashboards themselves are not in this chart.** They ship in
+`materialize-monitoring-dashboards`, installed as a release of its own, because
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
+— the rendered set outgrew that and took `helm upgrade` with it.
+
+What stays here is what a dashboard is filed *into*: the `Grafana` instance,
+its datasources, and the folders below. The dashboards chart references the
+folder UIDs this one creates, spelled out in its own values rather than
+discovered, since it cannot see this release.
 
 <table class="helm-values">
   <thead>
@@ -2217,7 +2349,7 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Grafana dashboards. Requires the Grafana operator or a writable Grafana instance.
+      <td class="helm-value-desc">Create the Grafana folders the bundled dashboards are filed into. Requires the Grafana operator.
 </td>
     </tr>
     <tr>
@@ -2228,10 +2360,20 @@ from the sources under `packages/` and embedded via `.Files.Get`.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"allowCrossNamespaceImport":null, "instanceSelector":{}, "resyncPeriod":"5m"}</code></td>
+      <td class="helm-value-desc">Settings shared by the Grafana resources this chart creates.
+Named `manifest` from when it also covered the dashboard manifests; those
+moved to `materialize-monitoring-dashboards`, which carries its own copies
+of these under `grafana`. What is left applies to the folders.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.resyncPeriod</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">Time to sync the dashboard from the manifest
+      <td class="helm-value-desc">Time to sync the folder from its resource.
 </td>
     </tr>
     <tr>
@@ -2240,21 +2382,14 @@ from the sources under `packages/` and embedded via `.Files.Get`.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift.
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in the dashboards chart, which has no way to read it from here.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.allowCrossNamespaceImport</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>inferred</code></td>
-      <td class="helm-value-desc">Allow dashboards to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the dashboards, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">dashboards<wbr>.config<wbr>.grafana<wbr>.manifest<wbr>.apiTarget</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"dashboard.grafana.app/v2"</code></td>
-      <td class="helm-value-desc">Dashboard API Version (v2 or v2beta1)
+      <td class="helm-value-desc">Allow folders to match a Grafana instance outside their own namespace. Left unset, this is inferred — it turns on only when the `Grafana` resource lands in a different namespace than the folders, as it does under the `split-namespace` profile. Set it explicitly when pointing `instanceSelector` at an instance this chart does not create. Note that the CRDs forbid turning this back off in place; the resource has to be recreated.
 </td>
     </tr>
   </tbody>
@@ -2292,32 +2427,6 @@ no folder resource to create.
 | `existingUid` | `""` | Adopt the folder with this UID instead of deriving one from the key. |
 | `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
 | `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
-
-<table class="helm-values">
-  <thead>
-    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-  </thead>
-  <tbody>    <tr>
-      <td class="helm-value-key">dashboards<wbr>.config<wbr>.datadog<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Datadog dashboards. Requires Datadog API credentials configured out-of-band.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">dashboards<wbr>.selected</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "env-*",
-  "infra-*"
-]</pre>
-</td>
-      <td class="helm-value-desc">List of dashboard patterns to render
-</td>
-    </tr>
-  </tbody>
-</table>
 
 #### Rule configuration
 
@@ -2931,15 +3040,43 @@ only once the finalizers have been processed, and Helm proceeds from there.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.scope</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"instance"</code></td>
+      <td class="helm-value-desc">Which resources the hook deletes: `instance` or `release`.
+
+**`instance`** (the default) selects everything pointed at the `Grafana`
+this release created, by the labels in `connections.grafana.labels` — the
+same ones the resources carry and their `instanceSelector` matches.
+
+That deliberately reaches beyond this release. The dashboards ship as
+`materialize-monitoring-dashboards`, a release of its own whose
+`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in that
+release's teardown runs when this one is being removed. Take the operator
+away without clearing them and they wedge in `Terminating` with no remover.
+It is still bounded: it cannot reach resources aimed at a Grafana this
+release did not create.
+
+**`release`** is the narrow form — only what this release created. Correct
+when grafana-operator is not ours to remove, since it survives the
+uninstall and clears the rest itself, and the escape hatch if the broader
+sweep ever reaches something it should not.
+
+Only `instance` consults `mzmon.grafanaOperator.enabled`; with the operator
+unmanaged here, both scopes fall back to the release.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">cleanup<wbr>.grafanaOperator<wbr>.kinds</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
   "grafanamanifests.grafana.integreatly.org",
-  "grafanadatasources.grafana.integreatly.org"
+  "grafanadatasources.grafana.integreatly.org",
+  "grafanafolders.grafana.integreatly.org"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaFolder`, `GrafanaAlertRuleGroup`, and so on) with the chart's instance label.
+      <td class="helm-value-desc">Resource types to delete, as `<resource>.<group>`. Fully qualified on purpose: a bare `grafanamanifests` resolves through discovery and can collide with another CRD of the same short name. Only kinds that actually carry the operator's finalizer belong here — the `Grafana` instance CR does not, so Helm removes it unaided. Extend this if you add your own operator resources (`GrafanaAlertRuleGroup`, `GrafanaContactPoint`, and so on) with the chart's instance label.
 </td>
     </tr>
     <tr>
@@ -3992,6 +4129,83 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "alertmanager_url": "http://{{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093",
+  "enable_alertmanager_v2": true,
+  "evaluation_interval": "1m",
+  "poll_interval": "1m",
+  "remote_write": {
+    "clients": {
+      "gateway": {
+        "queue_config": {
+          "batch_send_deadline": "5s",
+          "capacity": 2500,
+          "max_samples_per_send": 500,
+          "max_shards": 10,
+          "min_shards": 1
+        },
+        "remote_timeout": "30s",
+        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+      }
+    },
+    "enabled": true
+  },
+  "rule_path": "/var/loki/ruler-rules"
+}</pre>
+</td>
+      <td class="helm-value-desc">Ruler *configuration* (distinct from the ruler deployment below).
+
+The ruler deployment has been on since this chart had one. What it has
+never had is somewhere to send an alert: without `alertmanager_url` it
+evaluates its rules correctly and drops every alert on the floor, which is
+indistinguishable from nothing being wrong. That is what this block fixes.
+
+**Rule storage is already configured and is not here.** With
+`loki.storage.use_thanos_objstore` on, the subchart renders a top-level
+`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
+writes rules into that bucket yet — the chart's own log-alert definitions
+do not exist, and how they get delivered is decided with them.
+
+Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
+resolves. It does **not** see the umbrella's values, which is why these
+addresses are spelled out rather than built from the helpers the Thanos
+side uses — and why `split-namespace` overrides both of them.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "clients": {
+    "gateway": {
+      "queue_config": {
+        "batch_send_deadline": "5s",
+        "capacity": 2500,
+        "max_samples_per_send": 500,
+        "max_shards": 10,
+        "min_shards": 1
+      },
+      "remote_timeout": "30s",
+      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+    }
+  },
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Remote-write for recording-rule samples.
+
+This is what the ruler's PVC exists for: the WAL buffers derived samples
+when the metric store is unreachable, which is exactly the run-up to an
+incident. Same destination as the Thanos ruler — the alloy-gateway's
+`prometheus.receive_http` listener — so both rulers' results reach the
+destination fan-out rather than only the bundled metric store.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.gateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
@@ -4443,7 +4657,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store.
+      <td class="helm-value-desc">Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store. The evaluation and notification wiring lives in `loki.loki.rulerConfig`; this switch only decides whether the component is deployed.
 </td>
     </tr>
     <tr>
@@ -4482,15 +4696,39 @@ https://grafana.com/docs/loki/latest/get-started/components/
     <tr>
       <td class="helm-value-key">loki<wbr>.chunksCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-default"><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.chunksCache<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the cache out of the subchart's ServiceMonitor and into this chart's plaintext one. See the `plaintext exporters` note under `monitoring.serviceMonitor` below.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.resultsCache</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable"}</code></td>
+      <td class="helm-value-default"><code>{"priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">Query results cache (memcached).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.resultsCache<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the cache out of the subchart's ServiceMonitor, as above.
 </td>
     </tr>
     <tr>
@@ -4498,13 +4736,41 @@ https://grafana.com/docs/loki/latest/get-started/components/
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
       <td class="helm-value-desc">Enable a ServiceMonitor for the loki microservices.
+
+**Plaintext exporters are excluded from it.** The subchart renders a
+single ServiceMonitor covering everything it labels, with one `scheme`
+shared by every target. Three of those targets never speak TLS whatever
+Loki is configured to do — the canary's own `/metrics` server, and the
+two memcached exporters — so under `profiles/mtls`, which sets
+`scheme: https` here, all three fail the scrape and their series vanish.
+For the canary that means the end-to-end write→read check goes quiet
+rather than red, which is the worst way for a canary to fail.
+
+Each of the three therefore carries
+`prometheus.io/service-monitor: "false"`, which the subchart's selector
+excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
+opt-in that this chart's own monitor selects on
+(`templates/scrapers/monitor-loki-plaintext.yaml`). The split is
+unconditional so the two modes share one code path.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the canary out of the subchart's ServiceMonitor and into this chart's plaintext one. Its `/metrics` server is plaintext even when `-tls` is set, since that flag configures the client it uses to reach Loki. See `monitoring.serviceMonitor` above.
 </td>
     </tr>
     <tr>
@@ -5393,10 +5659,343 @@ validator warns when the two disagree.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "enabled": false
+  "alertmanagers": {
+    "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+  },
+  "autoImportPrometheusRules": {
+    "enabled": true,
+    "sidecar": {
+      "image": {
+        "registry": "docker.io",
+        "repository": "alpine/kubectl",
+        "tag": "1.35.4"
+      },
+      "resources": {
+        "requests": {
+          "cpu": "25m",
+          "memory": "64Mi"
+        }
+      }
+    }
+  },
+  "enabled": true,
+  "extraArgs": [
+    "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+  ],
+  "extraVolumeMounts": [
+    {
+      "mountPath": "/etc/thanos/remote-write.yaml",
+      "name": "remote-write",
+      "readOnly": true,
+      "subPath": "remote-write.yaml"
+    }
+  ],
+  "extraVolumes": [
+    {
+      "configMap": {
+        "name": "thanos-ruler-remote-write"
+      },
+      "name": "remote-write"
+    }
+  ],
+  "persistence": {
+    "enabled": false
+  },
+  "query": {
+    "urls": [
+      "http://thanos-query:9090"
+    ]
+  },
+  "replicaCount": 2,
+  "resources": {
+    "requests": {
+      "cpu": "100m",
+      "memory": "256Mi"
+    }
+  },
+  "rules": {
+    "example-alerts.yaml": "groups: []\n"
+  },
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "ruler",
+          "app.kubernetes.io/name": "thanos"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "topology.kubernetes.io/zone",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    },
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "ruler",
+          "app.kubernetes.io/name": "thanos"
+        }
+      },
+      "matchLabelKeys": [
+        "controller-revision-hash"
+      ],
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos Ruler configuration. Ruler provides alerting and recording rules evaluation.
+
+**This is the switch that makes PromQL alerting exist.** The chart installs
+the Prometheus Operator CRDs but runs no Prometheus and no operator, and
+Alloy — the one component that consumes `ServiceMonitor` and `PodMonitor` —
+is a collector with no rule evaluator. So the single consumer of a
+`PrometheusRule` in this stack is the Ruler's import sidecar, and until the
+Ruler is on, a `PrometheusRule` renders, applies, passes every check, and
+does nothing.
+
+Evaluation is a PromQL query over the network to Thanos Query. There is no
+local TSDB to fall back on, which means **an outage in the query path stops
+alert evaluation**, and stopped evaluation looks exactly like nothing being
+wrong. Size Query with that in mind.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.replicaCount</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replica count. Both replicas evaluate every rule; Alertmanager deduplicates the resulting notifications, and `--alert.label-drop` strips the `ruler_replica` label that would otherwise make them distinct alerts.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.query</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "urls": [
+    "http://thanos-query:9090"
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">Query endpoints the Ruler evaluates against.
+
+**Query, not Query Frontend, deliberately.** The frontend splits and caches,
+which is right for a dashboard and wrong for an evaluator: a cached range
+served to a rule is an alert firing — or failing to fire — on data up to a
+cache TTL stale, with nothing in either component saying so. Grafana's
+datasource follows the frontend when it is enabled; this does not.
+
+The name is bare rather than fully qualified because Ruler and Query are
+components of one subchart and always land in one namespace, so it stays
+correct under `split-namespace`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.alertmanagers</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+}</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager routing, in Thanos's own format.
+
+`tpl`-evaluated by the subchart, so `.Release.*` resolves. Alertmanager is
+the one subchart with no `fullnameOverride`, so its Service name is derived
+from the release name — see the `alertmanager` section. `split-namespace`
+overrides this because it moves Alertmanager out of the release namespace.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.rules</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "example-alerts.yaml": "groups: []\n"
+}</pre>
+</td>
+      <td class="helm-value-desc">Inline rule files, keyed by filename.
+
+**This empties the subchart's `example-alerts.yaml`**, which ships an
+`ExampleAlwaysFiring` rule built on `vector(1)`. Left in place it notifies
+on every evaluation, forever, through whatever receiver an operator has
+configured.
+
+It is emptied rather than removed because **the subchart's JSON Schema
+lists `example-alerts.yaml` as a required property**, so neither
+`rules: {}` (which would not clear a subchart default anyway) nor
+`example-alerts.yaml: null` renders — the second fails schema validation
+before any template runs. A rule file declaring no groups is the only
+spelling that both satisfies the schema and evaluates nothing. Fixing that
+upstream is on the same list as the missing `remoteWrite` key.
+
+The render fails if the example rule comes back.
+
+The chart's own rules do not arrive here. They arrive as `PrometheusRule`
+resources, through the import sidecar below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.autoImportPrometheusRules</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "sidecar": {
+    "image": {
+      "registry": "docker.io",
+      "repository": "alpine/kubectl",
+      "tag": "1.35.4"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "25m",
+        "memory": "64Mi"
+      }
+    }
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Import `PrometheusRule` resources from the cluster into the Ruler.
+
+A `kubectl` sidecar lists `PrometheusRule` resources every 60s, writes each
+one's `.spec` into the Ruler's rule directory, and POSTs `/-/reload` when
+the set changes. No Prometheus Operator controller is involved.
+
+**`labelSelector` is empty, so this imports every `PrometheusRule` in the
+cluster**, including any belonging to a co-resident kube-prometheus-stack.
+That is the upstream default and it is kept deliberately: it is also what
+makes a customer's own `PrometheusRule` work with no chart configuration.
+Set a selector here if this cluster runs another rule owner whose alerts
+should not reach this Alertmanager.
+
+The image is pinned rather than left on the upstream `latest`, so a default
+install does not track a floating tag. It is the only Docker Hub image the
+Thanos subchart pulls, which is why the registry profiles each carry a line
+for it.
+
+**It cannot be the distroless `registry.k8s.io/kubectl` this chart uses for
+the cleanup hook**, tempting as sharing one image is. The sidecar's
+entrypoint is `/bin/sh /scripts/import.sh`, and the script shells out to
+`curl` to POST `/-/reload`. `alpine/kubectl` is Alpine plus `curl` plus
+`kubectl`; the distroless build has neither a shell nor curl, so it
+crash-loops immediately. The same applies to any hardened `kubectl` image —
+see the note in `profiles/registry/`.
+
+The minor tracks the cleanup hook's kubectl, and the same version-skew
+advice applies: keep it within one minor of your API server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+]</pre>
+</td>
+      <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
+
+**The subchart models no `remoteWrite` key**, and its StatefulSet passes
+`--objstore.config-file` unconditionally, so stateless is reached by
+pointing `extraArgs` at a ConfigMap the umbrella renders
+(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
+tracked; until it lands, **this flag is load-bearing** — drop it and the
+Ruler silently reverts to a local TSDB.
+
+Three reasons stateless is the right mode here, in ascending order of how
+much they matter. It removes a stateful workload. It puts rule results on
+the same path as every other series in this stack, rather than making the
+Ruler a second writer into object storage with its own compaction
+interaction. And it is what makes alert state forwardable: a Ruler shipping
+blocks puts `ALERTS` in Thanos and out of reach of every gateway
+destination except Thanos.
+
+The residue is that the Ruler still starts a block shipper against the
+object store. With an agent WAL and no blocks in the data directory it
+scans every 30s and uploads nothing.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.persistence</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">No PVC. The data directory holds the remote-write WAL and nothing else.
+
+The Loki ruler keeps a volume for the same WAL, on the argument that
+buffering derived samples through a metric-store outage is worth a disk.
+That argument applies here too and is deliberately not taken yet: this
+Ruler evaluates no recording rules, so there is nothing to buffer, and a
+10Gi PVC per replica for an empty WAL is not a default worth shipping.
+Revisit when recording rules land.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "100m",
+    "memory": "256Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests for the Ruler. Evaluation is a fan-out of PromQL to Query, so the work happens there; the Ruler holds rule state and a WAL.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "ruler",
+        "app.kubernetes.io/name": "thanos"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/component": "ruler",
+        "app.kubernetes.io/name": "thanos"
+      }
+    },
+    "matchLabelKeys": [
+      "controller-revision-hash"
+    ],
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread for the Ruler: soft on both axes.
+
+Soft rather than `DoNotSchedule`, unlike Receive: both replicas evaluate
+every rule and Alertmanager deduplicates, so co-locating them costs a
+simultaneous loss rather than a quorum. A Ruler that cannot schedule is a
+Ruler that is not evaluating, which is the worse outcome.
+
+`controller-revision-hash` because this is a StatefulSet; Deployments in
+this file use `pod-template-hash`.
 </td>
     </tr>
   </tbody>
@@ -5513,7 +6112,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.2.0"
+  "tag": "13.2.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.

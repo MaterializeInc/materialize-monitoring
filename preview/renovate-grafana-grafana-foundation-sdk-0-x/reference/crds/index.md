@@ -124,7 +124,7 @@ See [Grafana Operator](/materialize-monitoring/preview/renovate-grafana-grafana-
 ### Dashboards arrive as `GrafanaManifest`, not `GrafanaDashboard`
 
 This surprises people, so it is worth stating plainly.
-The chart wraps each pre-rendered dashboard in a `GrafanaManifest`, whose `spec.template` carries the dashboard object verbatim with its `apiVersion` set from `dashboards.config.grafana.manifest.apiTarget` (`dashboard.grafana.app/v2` by default).
+The `materialize-monitoring-dashboards` chart wraps each pre-rendered dashboard in a `GrafanaManifest`, whose `spec.template` carries the dashboard object verbatim with its `apiVersion` set from that chart's `grafana.apiTarget` (`dashboard.grafana.app/v2` by default).
 
 `GrafanaManifest` is the generic carrier for a Grafana API object, which is what lets the same chart ship dashboard schema v2 without the operator needing a v2-aware spec of its own.
 `GrafanaDashboard` still works and is the natural choice for dashboards you author yourself — it simply is not how the bundled set travels.

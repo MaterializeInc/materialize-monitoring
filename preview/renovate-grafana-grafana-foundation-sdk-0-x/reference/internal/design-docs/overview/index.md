@@ -7,6 +7,9 @@
 
 These are proposed changes to materialize-monitoring.
 
+Opening a non-draft pull request that adds a page here posts a notification to the `#rnd-design-docs` Slack channel (internal), the same channel the cloud repository notifies.
+Marking an existing draft pull request ready for review posts the same notification.
+
 
 
 <ul>
@@ -43,6 +46,34 @@ These are proposed changes to materialize-monitoring.
       <ul>
             <li><strong>lastmod:</strong> 2026-08-24 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Accepted</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/design-docs/20260916-tenant-query-api/">A Tenant-Scoped Query API for Console and Customer Grafana</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-16 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/design-docs/20260917-alerting-self-managed/">Alerting in Self-Managed: Evaluation, Routing, and Customer Extension</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/design-docs/20260917-call-home-self-managed/">Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/design-docs/20260920-external-dependency-monitoring/">Monitoring Materialize&#39;s External Dependencies</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-20 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
       </ul>
     </li>
 </ul>

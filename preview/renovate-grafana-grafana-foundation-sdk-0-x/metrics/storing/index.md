@@ -92,6 +92,8 @@ env:
   CLUSTER_NAME: prod-us-east-1
 ```
 
+The Terraform module sets it from its `cluster_name` input.
+
 `cluster` is applied to every destination.
 Add labels for one destination only with its `externalLabels` map, which is useful where one backend needs a tenant or account key the others do not:
 

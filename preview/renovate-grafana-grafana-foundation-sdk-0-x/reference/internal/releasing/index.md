@@ -166,7 +166,11 @@ When there are assets the release is created as a **draft**, the assets are uplo
 ## Chart publishing (OCI, GHCR)
 
 Chart components are additionally published to GitHub Packages as **OCI artifacts**, after the GitHub Release.
-The same `helm package` output is pushed with `helm push charts/<component>-<version>.tgz oci://ghcr.io/materializeinc/helm-charts`, landing at `ghcr.io/materializeinc/helm-charts/<component>` (the chart name becomes the repository, the chart version the OCI tag).
+The same `helm package` output is pushed with `helm push charts/<chart>-<version>.tgz oci://ghcr.io/materializeinc/helm-charts`, landing at `ghcr.io/materializeinc/helm-charts/<chart>` (the chart name becomes the repository, the chart version the OCI tag).
+
+**`<chart>` is not always `<component>`.**
+A component's chart directory comes from its `chart` key in `packages/components.yaml`, falling back to `charts/<component>`, and the tarball is named after the chart's own `name` rather than the component.
+`dashboards` is the case that needs both: it ships `charts/materialize-monitoring-dashboards` under a component name that predates the chart.
 GitHub Packages speaks **only** the OCI distribution protocol — there is no classic HTTP (`index.yaml`) Helm repository — which is consistent with how this chart already sources its own subcharts over `oci://ghcr.io/...`.
 
 Consumers install directly from the registry, no `helm repo add` needed:
@@ -179,6 +183,26 @@ Login uses the workflow's default `GITHUB_TOKEN` (the `publish-release` workflow
 The push runs *after* the release so a registry hiccup never blocks it; re-running the job retries the push while the release step no-ops on the existing tag.
 The push overwrites an existing version tag, so a retry is safe.
 Newly created GHCR packages are **private** by default — set the package visibility to public (once) so external consumers can pull.
+
+## Renaming a component {#renaming-a-component}
+
+A component's `title` is its identity in `CHANGELOG.md`: `latest_released` finds a component's baseline by matching section titles, so renaming one in `packages/components.yaml` alone makes the tooling report it as having no prior release and refuse to bump it.
+
+The rename is still supported, and takes one paired edit:
+
+1. Change `title` in `packages/components.yaml`.
+2. In `CHANGELOG.md`, rewrite the **latest released** heading to the new title.
+   That is the one `latest_released` reads, and rewriting it re-establishes the baseline.
+3. Rewrite the open `(Unreleased)` heading too, if there is one, so the section in flight is not duplicated under the new title on the next run.
+
+Older headings keep the old title.
+They are the historical record, and rewriting them would claim a component shipped under a name it did not.
+
+Verify with `CI=true cargo run -p mz-monitoring-build -- propose-bumps --dry-run`: the component should appear with its next version rather than as `skip <name>: no prior release`.
+
+Done twice so far — `materialize-monitoring` when the Terraform module joined it, and `dashboards` when the Helm chart did.
+
+Renaming the component **key** is a different and larger change: the key is the release tag prefix (`<component>/vX.Y.Z`) and the version-update branch name, neither of which can be rewritten after the fact.
 
 ## Auto-format
 
