@@ -267,7 +267,7 @@ The agent and gateway pipelines are in place, the OTLP export path shipped with 
 | Agent → gateway transport over **OTLP/gRPC with a node-local WAL** ([DEP-189](https://linear.app/materializeinc/issue/DEP-189); `hostPath`, compaction-bounded); gateway stays stateless and backend fan-outs are unchanged | OO-M3 | ⬜ |
 | `otelcol.processor.transform` before the log bridge ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) — becomes load-bearing once agent logs arrive as OTLP | OO-M3 | ⬜ |
 | [Backup log collection path](https://linear.app/materializeinc/issue/CLO-180) for alloy-agent failures — today an agent crash loses the logs explaining why | OO-M3 | ⬜ |
-| Ingest secret filter — `loki.secretfilter` ahead of parsing, with Materialize rules and a canary ([design](../design-docs/20260924-log-secret-filtering/)). Needs Alloy v1.20.0, where the component is GA; not blocked on BYOC | — | ⬜ |
+| Ingest secret filter — `loki.secretfilter` ahead of parsing, with Materialize rules, `stage.luhn` for card numbers, a sampleable `DEBUG`/`TRACE` tier against queueing, and the `mz-monitoring-canary` producer ([design](../design-docs/20260924-log-secret-filtering/)). GA from Alloy v1.20.0 and acceptable at public preview before it; not blocked on BYOC | — | ⬜ |
 
 ### Scraping (ScrapeConfigs & ServiceMonitors)
 
@@ -516,6 +516,7 @@ Redaction attaches to the destination rather than to the pipeline, so the reduce
 The [secret-filtering design](../design-docs/20260924-log-secret-filtering/) runs `loki.secretfilter` on every line before the gateway
 parses it, because the component scans the line and never the structured metadata the gateway copies out of it.
 A credential in the customer's own Loki is their exposure, so removing it protects their copy rather than degrading it.
+Card numbers are removed at the same point, by `stage.luhn`.
 Each control-plane branch runs a second, stricter filter immediately before its writer, and a canary per layer proves both are in the path.
 `TRACE` and `DEBUG` cross only inside an elevated window, and elevation never relaxes the secret filter.
 
@@ -686,13 +687,13 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
 - [Secret Filtering: A Last Line of Defense for Stored and Egressed Logs](../design-docs/20260924-log-secret-filtering/) is written and in
   review as a draft. 🔨
   It proposes an ingest filter ahead of parsing, a stricter fail-closed filter on each control-plane branch, and a backstop at the
-  control-plane ingress, with a canary per layer.
+  control-plane ingress, with a canary per layer and `stage.luhn` for card numbers.
   Measured against a Materialize-shaped corpus, the Gitleaks defaults miss the metadata-database URL, `Authorization` headers,
   presigned-URL signatures and anything inside an escaped JSON string.
   The [BYOC](#byoc) section above records the position it narrows: credential filtering attaches to the pipeline, where other redaction
   attaches to the destination.
-- A **customer-facing secret-filtering page** — what is redacted, the placeholder, the alerts, the canaries, and how to add rules — is owed
-  alongside it. ⬜
+- A **customer-facing secret-filtering page** — what is redacted, card numbers included, the placeholder, the alerts, the canaries, and how
+  to add rules — is owed alongside it. ⬜
 - A **runbook per shipped alert** under `operating/runbooks/` is owed with the rules themselves, since every alert links to one. ⬜
   Runbooks that stop changing and describe a practice rather than a workaround should be promoted to the product documentation.
 
