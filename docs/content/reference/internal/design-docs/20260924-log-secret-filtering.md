@@ -59,15 +59,19 @@ They appear on the placement of each filter, on its configuration, and on the ha
 Agent note: this doc records decisions and their *why*. When a decision lands in code, update the section and
 check the matching row in "Chart-side prerequisites".
 
-Five claims here are load-bearing and easy to soften by accident:
+Seven claims here are load-bearing and easy to soften by accident:
   1. loki.secretfilter scans the line only, and the gateway copies the line into structured metadata while
      parsing. That is the whole argument for the ingest filter sitting before inputProcessor.
   2. Identifiers are allowlisted by field name, never by value shape. A v4 UUID is a working bearer credential
      in systems that issue it as one. The upstream Alloy docs suggest a UUID shape allowlist; this doc rejects it.
-  3. The runtime canary is matched only by a rule of our own. A provider-shaped canary pages the customer's
-     own security team, because their scanners read the same container logs.
+  3. The runtime canaries are matched only by rules of our own and contain no rule keyword. A provider-shaped
+     canary pages the customer's own security team, because their scanners read the same container logs.
+     One canary per layer, because ingest redacts its canary before the egress branch forks.
   4. Elevation never relaxes the secret filter. It relaxes reduction (levels, classes, bodies).
   5. The egress level gate is an allowlist of levels. An unparsed TRACE line is UNKNOWN.
+  6. Sampling (rate < 1.0) is confined to the bulk tier, and nothing from the bulk tier crosses. Queueing is
+     the risk sampling exists for; do not "fix" it by allowing sampled lines to cross.
+  7. stage.luhn's skip_regex keys on the leading 1 of epoch timestamps and expires in May 2033.
 
 The corpus results were measured with the Gitleaks v8.30.1 CLI at --max-decode-depth 0. The CLI defaults to 5
 and finds things Alloy does not. Re-measure with the Alloy binary once the harness in "Testing" exists, and
@@ -101,6 +105,7 @@ Five stakeholder classes consume this:
   source and the credential is rotated.
 - **[Must] As an operator,** I want continuous proof that the filter is in the path, so that a change that routes around it is noticed in
   minutes rather than at an audit.
+- **[Must] As an operator,** I want the filter never to be the reason logs queue, so that protecting some lines never costs me all of them.
 - **[Must] As an operator,** I want the identifiers Materialize logs constantly left intact, so that redaction does not destroy the
   correlation I debug with.
 - **[Must] As Materialize support,** I want the placeholder to name what was redacted, so that "a credential was here" is still evidence.
@@ -117,10 +122,10 @@ Five stakeholder classes consume this:
 
 ## Technical BLUF
 
-- **`loki.secretfilter` is GA in Alloy v1.20.0**, at release candidate as of this writing.
-  The image pins v1.19.2, where it is public preview and therefore unavailable at the chart's `stabilityLevel: generally-available`.
-  The bump is the prerequisite.
-  Lowering the stability level instead would enable every preview component in the gateway.
+- **`loki.secretfilter` is GA in Alloy v1.20.0**, at release candidate as of this writing, and public preview in the pinned v1.19.2.
+  Public-preview components are acceptable here, and the chart sets `stabilityLevel` to the highest level its components allow.
+  v1.20.0 is expected to ship before this design is implemented, so the gateway is expected to stay at `generally-available`.
+  If it does not, the gateway runs at `public-preview` until it does.
 - **It scans `entry.Line` and nothing else.** Labels and structured metadata are never scanned.
   The gateway copies `msg`, `error`, `path`, `query`, `flow` and more out of the line into structured metadata, so **the ingest filter runs
   after the multi-line merge and before any parsing**, and everything downstream is derived from redacted text.
@@ -140,8 +145,16 @@ Five stakeholder classes consume this:
   The Gitleaks defaults themselves carry rules for UUID-shaped credentials from Heroku, HubSpot, Snyk and others.
 - **The egress filter drops the entropy floor on credential-named keys.** That floor is the upstream generic rule's false-positive guard, and
   it is exactly what lets a human-chosen password through.
+- **Log queueing is a larger risk than an unscanned `DEBUG` line.** A filter slower than its input back-pressures the whole pipeline and
+  turns into loss on every stream.
+  So `DEBUG` and `TRACE` form a bulk tier that MAY be sampled below `rate = 1.0`, after cheaper levers run out.
+  Nothing sampled ever crosses.
+- **Payment card numbers are in scope, through `stage.luhn`.** It is a checksum over digit runs and costs little.
+  Left at its defaults it redacts one in ten of the millisecond timestamps Materialize logs as frontiers, so it ships with a `skip_regex`
+  for epoch timestamps.
 - **A canary per layer proves each filter runs.** Each is a fixed, published string in the spirit of the EICAR test file, matched by a rule of
-  our own and by no third-party scanner, and emitted on a schedule through the same path as Materialize's logs.
+  our own and by no third-party scanner, free of every rule keyword, and emitted on a schedule by a purpose-built `mz-monitoring-canary`
+  through the same path as Materialize's logs.
   Detected means the filter is in the path.
   Found verbatim in a store means a path bypassed it.
   One canary cannot serve both layers, because the ingest filter redacts it before the egress filter sees it.
@@ -158,9 +171,10 @@ Five stakeholder classes consume this:
 
 ## Non-goals
 
-- **Customer data that is not a credential.** Object names, query text, source and sink names, and personal data belong to DEP-220's allowlist
-  and identifier hashing in the [BYOC design](../20260813-byoc-observability/#redaction).
-  Alloy's own documentation states that PII is out of scope for this component.
+- **Customer data that is not a credential or a card number.** Object names, query text, source and sink names, and other personal data
+  belong to DEP-220's allowlist and identifier hashing in the [BYOC design](../20260813-byoc-observability/#redaction).
+  Alloy's own documentation states that PII is out of scope for `loki.secretfilter`.
+  [Card numbers](#payment-card-numbers) are the exception, because a separate stage redacts them for almost nothing.
 - **Replacing redaction at the source.** Materialize components not logging credentials is upstream work in the `materialize` repo.
   This design catches what escapes it and reports the escape.
 - **The node's copy.** Container runtimes write log files before any collector reads them.
@@ -177,7 +191,7 @@ Five stakeholder classes consume this:
 | Capability | State | Where |
 |---|---|---|
 | Any redaction in the log pipeline | ❌ None | [Securing](../../../../operating/securing/) says so, citing DEP-220 |
-| `loki.secretfilter` in the typed pipeline schema | ❌ Not modeled | `packages/mzmon-lib/schemas/alloy/loki.schema.yaml` |
+| `loki.secretfilter` and `stage.luhn` in the typed pipeline schema | ❌ Neither modeled | `packages/mzmon-lib/schemas/alloy/loki.schema.yaml` |
 | An Alloy release carrying the component at GA | ⚠️ v1.19.2 pinned; GA from v1.20.0 | `packages/alloy/Dockerfile`; `stabilityLevel: generally-available` on both roles |
 | Substrings of the line copied into structured metadata | ✅ Shipped | `msg`, `error`, `path`, `query`, `flow`, `request_header_host` and others in `gateway.yaml` |
 | Request header maps parsed out of tracing spans | ✅ Shipped | `span."request.headers"` is read for `host`; the rest of the map stays in the line |
@@ -220,8 +234,8 @@ Read from the component source at Alloy v1.20.0-rc.0.
 | Replacement | Each finding's secret is replaced everywhere it occurs in the line | A credential repeated within one line is redacted at every occurrence |
 | `redact_with` | Template with `$SECRET_NAME` and `$SECRET_HASH`; the hash is a full, unsalted SHA-1 | The hash confirms any guessed secret, so it is not used |
 | `redact_percent` | Used when `redact_with` is unset; the default 80 keeps the first 20% of the secret | `redact_with` MUST be set on every instance |
-| `rate` | Samples entries; the unsampled are forwarded unchanged and counted | MUST be `1.0` on every instance |
-| `processing_timeout` | Off by default; on expiry, forwards with partial redaction unless `drop_on_timeout` | Ingest forwards and labels; egress drops |
+| `rate` | Samples entries; the unsampled are forwarded unchanged and counted, but not marked | `1.0` on everything that can cross; the [bulk tier](#sampling-the-bulk-tier) MAY sample, and marks its own output |
+| `processing_timeout` | Off by default; on expiry, forwards with partial redaction unless `drop_on_timeout` | Ingest forwards and labels; egress drops. It bounds the time spent on one line, not the throughput of all of them |
 | Decoding | No decode depth is set, so base64 and percent-encoded text is not decoded | Encoded credentials need rules of their own |
 | Metrics | `secrets_redacted_total`, `secrets_redacted_by_category_total{rule, origin}`, `processing_duration_seconds`, `entries_bypassed_total`, `lines_timed_out_total`, `lines_dropped_total` | The alerts below read these |
 | Live debugging | Publishes `original => redacted` for every entry | A bypass while enabled |
@@ -284,17 +298,17 @@ flowchart LR
     node[("container log files<br/>not reachable by any filter")]
     agent["alloy-agent<br/>format-agnostic, unchanged"]
     src["gateway sources<br/>loki.source.api · OTLP bridge · k8s events"]
-    pre["loki.process.inputPrefilter<br/>multi-line merge · size and age drops · global limit"]
-    ing["loki.secretfilter.ingest<br/>every stored line"]
-    tap["sampleDebug tap"]
+    pre["loki.process.inputPrefilter<br/>multi-line merge · size and age drops · global limit<br/>stage.luhn · level sniff"]
+    ing["loki.secretfilter.ingest<br/>full tier · rate 1.0"]
+    bulk["loki.secretfilter.ingestBulk<br/>DEBUG and TRACE · MAY sample"]
     ip["loki.process.inputProcessor<br/>parse · structured metadata · labels · level · tenancy"]
     local["egress:local<br/>customer Loki"]
-    gate["egress:controlPlane<br/>level allowlist · class and body allowlist"]
+    gate["egress:controlPlane<br/>level allowlist · drop bulk and timed-out<br/>class and body allowlist"]
     egr["loki.secretfilter.egress<br/>strict · fail-closed"]
     attr["metadata allowlist · byte ceiling · writer"]
-    node --> agent --> src --> pre --> ing
-    ing --> ip
-    ing --> tap
+    node --> agent --> src --> pre
+    pre -->|"full tier"| ing --> ip
+    pre -->|"bulk tier"| bulk --> ip
     ip --> local
     ip --> gate --> egr --> attr
   end
@@ -317,8 +331,9 @@ The current `inputProcessor` is one component, and the filter is a component of 
 
 | Component | Stages | Why they sit here |
 |---|---|---|
-| `loki.process.inputPrefilter` | Multi-line panic merge, the `older_than` and `longer_than` drops, the global rate limit | The merge first, so a PEM block or panic message split across CRI lines is one text when scanned. The drops and the limit next, so the filter scans only lines that will be kept, which is Alloy's own performance guidance |
-| `loki.secretfilter.ingest` | The filter | After the merge and the drops, before anything reads the text |
+| `loki.process.inputPrefilter` | Multi-line panic merge, the `older_than` and `longer_than` drops, the global rate limit, `stage.luhn`, the level sniff | The merge first, so a PEM block or panic message split across CRI lines is one text when scanned. The drops and the limit next, so the filter scans only lines that will be kept, which is Alloy's own performance guidance. [`stage.luhn`](#payment-card-numbers) last, since it is a stage rather than a component and has to precede parsing for the same reason the filter does |
+| Two tier splitters | Each keeps one tier and drops the other; the bulk splitter applies the `DEBUG` and `TRACE` rate limit and stamps `secretfilter="bulk"` | Alloy's `forward_to` fans out rather than routing, so a split is two components. See [Sampling the bulk tier](#sampling-the-bulk-tier) |
+| `loki.secretfilter.ingest`, `loki.secretfilter.ingestBulk` | The filter, twice | After the merge and the drops, before anything reads the text |
 | `loki.process.inputProcessor` | Everything from the `orig_entry` stash onward | Unchanged, apart from receiving redacted lines |
 
 Every source MUST forward to `inputPrefilter`.
@@ -328,9 +343,40 @@ The debug tap MUST move behind the filter or be removed.
 A tap that samples 1% of lines adds little beside the live-debugging view, and removing it also removes a stdout copy that the gateway then
 has to drop.
 
-The per-level rate limits cannot move ahead of the filter, because the level is not known until the line is parsed.
-So the filter scans `DEBUG` and `TRACE` lines that the per-level limiter may then drop.
-The global limit bounds that cost, and [measuring it](#testing) is a prerequisite for turning the filter on by default.
+### Sampling the bulk tier
+
+**Log queueing is the failure to design against, and a slow filter causes it.**
+The filter runs inline in the gateway's processing path.
+`processing_timeout` bounds the time it spends on one line, not the rate at which it clears lines.
+When scanning falls behind arrival, entries back up into the gateway's receivers, agent pushes slow down and retry, the agents' tailing falls
+behind, and container log rotation eventually removes files nobody has read.
+When the backlog does drain, the `older_than: "2h"` drops discard what is left of it.
+That loss lands on every stream, including the `ERROR` lines that matter most.
+
+So the ingest filter runs as two instances, and the cheaper levers come first.
+
+| Lever | Coverage lost | When |
+|---|---|---|
+| Apply the existing `DEBUG` and `TRACE` rate limit in the bulk splitter, before the scan rather than after it | None, since the limiter drops those lines either way | Always |
+| Add gateway replicas | None | When measured latency approaches the arrival rate |
+| Set the bulk instance's `rate` below `1.0` | The unsampled fraction of `DEBUG` and `TRACE` is stored unscanned | Last, per install, from measurement |
+
+The bulk tier is `DEBUG` and `TRACE`, which are the most voluminous levels and the ones that do not cross in a standing configuration.
+The level label does not exist before parsing, so the prefilter sniffs it by matching the level field of the three shapes this stack
+emits: tracing JSON, tracing's plain text, and logfmt.
+The sniff errs toward the full tier.
+A line it cannot classify is scanned at full rate, so a miss costs CPU rather than coverage.
+
+**A line from the bulk tier MUST NOT cross.**
+The component counts the entries it skips without marking them, so the bulk splitter stamps `secretfilter="bulk"` on every line in the tier,
+and step 2 of the egress branch drops that label the way it drops `timed-out`.
+The egress filter would scan such a line, but its `msg` copy was derived before the fork from text that may never have been scanned.
+An [elevated window](#trace-and-debug-do-not-cross-in-a-standing-configuration) routes its named components to the full tier for its
+duration, so their `DEBUG` and `TRACE` are scanned in full before they can cross.
+
+The bulk instance's `rate` defaults to `1.0`.
+Lowering it is a decision for one install, taken from `processing_duration_seconds` against the arrival rate.
+`entries_bypassed_total` on the dashboard row shows what the decision costs.
 
 ### Why not the agent
 
@@ -352,15 +398,15 @@ Order matters, and each step is placed for a reason.
 | Step | Mechanism | Why it is in this position |
 |---|---|---|
 | 1. Level gate | `stage.match` keeping `level=~"CRITICAL\|ERROR\|WARN"`, extended to `INFO` if the destination's level allows | An allowlist of levels, never a denylist. The gateway labels an unparsed line `UNKNOWN`, and an unparsed `TRACE` line is still `TRACE` |
-| 2. Timed-out lines | Drop any entry the ingest filter labelled `secretfilter="timed-out"` | A line the ingest filter could not finish never crosses |
+| 2. Unscanned lines | Drop any entry labelled `secretfilter="timed-out"` or `secretfilter="bulk"` | A line the ingest filter could not finish, or may have sampled past, never crosses |
 | 3. Class and body allowlist | BYOC's selection | Owned by that design |
 | 4. `loki.secretfilter.egress` | The strict rules | After the drops, so it scans only what would cross |
 | 5. Metadata allowlist | `keep_keys` in `otelcol.processor.transform`, on the OTLP side of the bridge | The filter never scans metadata, and metadata that did not come from the line never passed any filter |
 | 6. Byte ceiling and writer | Call-home's ceiling, then the destination's writer | Last, so what is metered is what leaves |
 
 Step 5 uses `otelcol.processor.transform`, which is GA, rather than `otelcol.processor.redaction`.
-The redaction processor's `allowed_keys` is exactly the fail-closed semantics this step wants, and it is experimental, which would take the
-gateway's stability level down to enable one component.
+The redaction processor's `allowed_keys` is exactly the fail-closed semantics this step wants, and it is experimental, a level below the
+public preview this chart accepts.
 If it reaches GA it is the better fit, and it adds keyed HMAC hashing that the secret filter lacks.
 
 **The egress filter MUST be present on every branch whose destination is outside the customer's control, and there MUST be no values key
@@ -391,7 +437,7 @@ Aggregated across tenants and grouped by the customer-side chart version, the sa
 |---|---|---|---|
 | Default | On | On whenever the branch exists; not removable | On |
 | Rule file | `ingest.toml`, plus the customer extension if set | `egress.toml` | `egress.toml`, at the newest version |
-| `rate` | `1.0`, enforced | `1.0`, enforced | `1.0` |
+| `rate` | `1.0`, enforced, on the full tier; the bulk tier MAY sample | `1.0`, enforced | `1.0` |
 | `processing_timeout` | Set, from measurement | Set, from measurement | Set |
 | `drop_on_timeout` | `false`, with `label_timed_out = true` | `true` | `true` |
 | `redact_with` | `<redacted:$SECRET_NAME>` | Same | Same |
@@ -421,9 +467,15 @@ pipeline:
         processingTimeout: ""
         # Gitleaks TOML. Rendered with [extend] path = the shipped ingest rules.
         extraConfig: ""
-      canary:
-        enabled: true
-        interval: 5m
+        bulk:
+          # DEBUG and TRACE. Below 1.0 only when measured latency would queue the
+          # pipeline; nothing in this tier ever crosses.
+          rate: 1.0
+
+# The mz-monitoring-canary workload.
+canary:
+  enabled: true
+  interval: 5m
 ```
 
 The egress settings have no values surface here.
@@ -438,7 +490,7 @@ Every rule declares keywords, so a line containing none of them costs only the s
 
 | Rule | Matches | Why the default set misses it |
 |---|---|---|
-| `mzmon-secretfilter-canary` | The ingest [canary](#a-canary-in-the-spirit-of-eicar) | It is ours |
+| `mzmon-canary` | The ingest [canary](#a-canary-in-the-spirit-of-eicar) | It is ours |
 | `mzmon-materialize-app-password` | `mzp_` followed by the token | No upstream rule knows the prefix |
 | `mzmon-url-userinfo` | The password in `scheme://user:password@`, for any scheme | The backend Secret's `metadata_backend_url` is exactly this shape, and `persist_backend_url` is on installs with static object-store credentials |
 | `mzmon-base64-postgres-url` | Base64 of `postgres://` or `postgresql://` at the start of a value | A controller that logs a Secret object logs its data base64-encoded, and the component decodes nothing |
@@ -497,7 +549,7 @@ The positive corpus MUST carry a UUID after a credential-named key and assert it
 ### What the egress file adds
 
 The egress file carries the ingest rules and two more.
-`mzmon-secretfilter-egress-canary` matches the egress canary.
+`mzmon-egress-canary` matches the egress canary.
 `mzmon-egress-keyword-value` is the generic rule's pattern with the entropy floor removed, the minimum length lowered to eight, and the
 escaped-string handling of `mzmon-password-field`.
 It uses the same name allowlist.
@@ -533,6 +585,48 @@ the identifier set.
 
 The rendered rule files are the customer-readable artifact [BYOC asks for](../20260813-byoc-observability/#customers-must-be-able-to-read-the-rules).
 They SHOULD be published on the docsite beside the metric tiers, as a table generated from the files rather than written beside them.
+
+## Payment card numbers
+
+`stage.luhn` redacts digit runs that pass the Luhn checksum, which every payment card number does.
+It is a `loki.process` stage rather than a detector, and its cost is a digit scan and a checksum per line.
+Card numbers reach logs the way other customer data does: through an error message that quotes the value it rejected, such as an
+input-syntax error or a source decode error.
+That makes it a cheap improvement in posture, and it runs at ingest beside the filter.
+
+**At its defaults it would damage the logs Materialize is debugged with.**
+The stage considers every run of 13 or more digits, and a random number passes the Luhn check one time in ten.
+Materialize logs frontiers, `as_of` and `upper` among them, as millisecond epoch timestamps, which are 13 digits.
+A reimplementation of the stage's scan redacted 10.0% of 100,000 millisecond timestamps and 10.1% of 100,000 microsecond ones.
+The loss is inconsistent as well as frequent: in a line carrying an `as_of` and an `upper` one millisecond apart, the first was redacted and
+the second was not.
+
+**The stage ships with a `skip_regex` for epoch timestamps.**
+`skip_regex` exempts matching substrings rather than whole lines, so a card number on the same line is still redacted.
+The expression exempts 13-, 16- and 19-digit runs that begin with `1`, which covers epoch timestamps in milliseconds, microseconds and
+nanoseconds.
+The ISO/IEC 7812 industry identifier `1` belongs to airlines, whose UATP cards are 15 digits, so they stay redacted.
+
+```text
+skip_regex = "\\b1(?:\\d{12}|\\d{15}|\\d{18})\\b"
+```
+
+The expression is dated.
+Millisecond timestamps pass `2000000000000` in May 2033, and the leading digit it keys on changes then.
+A unit test SHOULD start failing a year before that date, so the expression is revisited on a schedule rather than discovered.
+
+| Setting | Value | Reason |
+|---|---|---|
+| `min_length` | `13`, the default | The shortest card numbers are 13 digits |
+| `delimiters` | Empty | A space or dash delimiter joins separate numbers, such as a date beside a count, into one long candidate |
+| `replacement` | `<redacted:luhn>` | The placeholder shape the filter already exempts and the alerts already count |
+| `skip_regex` | The timestamp expression above | Epoch timestamps are the dominant false positive |
+
+The stage runs before the tier split, so the bulk tier is never sampled for card numbers.
+It exports no counter of its own.
+A `stage.match` on its placeholder followed by `stage.metrics` counts its redactions, for the dashboard row and for the `notice` alert.
+The runtime canary carries no card number, for the reason in [its table](#a-canary-in-the-spirit-of-eicar).
+The corpus proves the stage in CI instead, with Visa, American Express and UATP numbers and with each timestamp width.
 
 ## Calibrating misses against false alarms
 
@@ -579,12 +673,12 @@ The EICAR test file is a fixed string every antivirus engine agrees to detect, s
 The equivalent here is a pair of published strings, one per layer:
 
 ```text
-mzmon-secretfilter-canary-v1-7f3a9c2e4b6d8015
-mzmon-secretfilter-egress-canary-v1-3b8e1d6a9c4f2e07
+mzmon-canary-v1-7f3a9c2e4b6d8015
+mzmon-egress-canary-v1-3b8e1d6a9c4f2e07
 ```
 
-The first is matched by `mzmon-secretfilter-canary`, which both rule files carry.
-The second is matched by `mzmon-secretfilter-egress-canary`, which only the egress file carries.
+The first is matched by `mzmon-canary`, which both rule files carry.
+The second is matched by `mzmon-egress-canary`, which only the egress file carries.
 Neither is matched by any upstream rule.
 The version is in each string so that a future format can run beside the current one during a transition.
 
@@ -596,15 +690,21 @@ The egress canary passes the ingest filter untouched and is stored locally verba
 | Property | Reason |
 |---|---|
 | Matched by a rule of our own and by no third-party scanner | A provider-shaped canary, such as an AWS-key-shaped string, trips the customer's own secret scanners and DLP, which read the same container logs. It would page the customer's security team every five minutes |
+| No rule keyword anywhere in the line: no `secret`, `key`, `token`, `auth`, `api`, `access`, `credential` or `passw` | A keyword wakes the generic rules' prefilter, so whether they also claim the canary comes down to upstream entropy thresholds and stopwords that change between versions. The same words are what third-party DLP dictionaries key on. The field names count too: `canary` and `egress_canary`, never `secret_canary` |
 | Fixed and published | The customer, the control plane and CI all test against the same strings, and they are not secrets |
 | Emitted by a pod to stdout | They then take the same path as Materialize's logs: container log file, agent, gateway. A canary injected at the gateway proves less |
 | One JSON line carrying both, in fields the gateway copies to structured metadata | Proves that metadata derived from the line holds the placeholder |
 | At `WARN`, in a class the egress branch admits | The egress branch sees the line and the control plane receives it |
 | On a fixed interval | The missing-canary alert needs an expected rate |
+| No card number | Customer PCI scanners flag Luhn-valid numbers, well-known test numbers included, so [`stage.luhn`](#payment-card-numbers) is proven in CI rather than at runtime |
 
-The producer is a small workload the chart ships, on by default.
-Its image is an [open question](#open-questions), and whichever it is joins the image scan and the registry profiles.
-A small `stage.match` in `inputProcessor` parses the producer's line so the canary fields reach structured metadata.
+The producer is `mz-monitoring-canary`, a purpose-built binary in this repository that the chart runs as one long-running pod, on by default.
+It emits the canary line on its interval and does nothing else.
+Forking `loki-canary` is unnecessary.
+That tool's value is its write-then-read round trip, which the bundled Loki canary already provides, and this producer only needs to write.
+A long-running pod rather than a CronJob avoids a pod and its Kubernetes events every interval.
+Its image is built and published beside `mzmon-alloy`, and joins the image scan and the registry profiles.
+A small `stage.match` on `{container="mz-monitoring-canary"}` in `inputProcessor` parses the line so the canary fields reach structured metadata.
 
 The pair answers four questions at once.
 
@@ -616,14 +716,17 @@ The pair answers four questions at once.
 | Both placeholders arrive at the control plane on schedule, and the backstop detects nothing | The egress filter held, and log egress for this install is working |
 
 The last doubles as a log-egress heartbeat per install, which the call-home heartbeat cannot be, since it carries no log lines.
-An egress canary that reaches the backstop verbatim is detected there by the same rule, which makes it the backstop's clearest leak signal.
+An egress canary that reaches the backstop verbatim is detected there by the same rule.
+That is a bug report against the install's egress branch rather than an exposure, because the canary is published and the backstop still
+filters what follows it.
 
 ### Two traps in watching the canary
 
 **Loki logs the text of every query it evaluates, and the gateway stores Loki's logs.**
-A leak query written as `|= "mzmon-secretfilter-canary-v1-7f3a9c2e4b6d8015"` puts the full canary into Loki's query log on every evaluation.
+A leak query written as `|= "mzmon-canary-v1-7f3a9c2e4b6d8015"` puts the full canary into Loki's query log on every evaluation.
 The ingest filter then detects it there, and the canary counter keeps rising from `origin="loki"` after the producer has died.
-So the leak query MUST NOT contain a full canary: it searches the producer's stream for the ingest canary's suffix alone, which no rule matches.
+So the leak query MUST NOT contain a full canary.
+It searches `{container="mz-monitoring-canary"}` for the ingest canary's suffix alone, which no rule matches.
 The missing-canary alert MUST also scope to the producer's origin, because a human pasting a canary into Grafana produces the same detection.
 
 **The runtime canary proves one path.**
@@ -640,17 +743,23 @@ contributor's own scanner flags.
 ## Alerts
 
 Severity follows the registry's scale: `critical` over `warning` over `notice`.
+Nothing here is `critical`.
+Each alert reports either a finding to act on or a bug in the pipeline, and none describes an exposure that paging someone would stop.
 The metric alerts read Alloy's own metrics, which the gateway already scrapes, and ride the query registry's alert path.
 The leak alert is LogQL and waits on [log-derived alert definitions](../../roadmap/#rules--alerts).
 
 | Alert | Fires when | Severity | Meaning |
 |---|---|---|---|
 | `secret-filter-redacted` | Any rule other than a canary's redacted at ingest in the last hour | `notice` | A component logged a credential. The stores are clean and the source is not |
+| `secret-filter-card-redacted` | `stage.luhn` redacted a number in the last hour | `notice` | A card-shaped number reached a log, most likely quoted by an error message |
 | `secret-filter-egress-redacted` | The egress filter redacted anything other than its canary | `notice` | The stricter rules matched. A steady low rate is expected, and a jump names a shape the ingest rules should gain |
 | `secret-filter-canary-missing` | A filter instance has not detected its canary from the producer's origin for three intervals | `warning` | That filter is out of the path or not loaded, or the producer stopped |
-| `secret-filter-canary-leaked` | The ingest canary's suffix appears in the producer's stored stream | `critical` | A path to storage bypassed the ingest filter |
+| `secret-filter-canary-leaked` | The ingest canary's suffix appears in the producer's stored stream | `warning` | A bug: a path to storage bypasses the ingest filter. The canary is published, so its own appearance exposed nothing |
 | `secret-filter-timeouts` | The ingest filter timed out on any line | `warning` | A line was stored partly scanned. It is labelled and it will not cross |
-| `secret-filter-sampling-enabled` | `entries_bypassed_total` rises | `warning` | Someone set `rate` below `1.0` past the validator |
+| `secret-filter-full-tier-sampled` | `entries_bypassed_total` rises on the full-tier ingest filter or on the egress filter | `warning` | A `rate` below `1.0` reached an instance whose lines can cross, past the validator |
+
+Sampling the [bulk tier](#sampling-the-bulk-tier) is deliberate and raises no alert.
+Its bypassed count belongs on the dashboard row, where it reads as the fraction of `DEBUG` and `TRACE` stored unscanned.
 
 Sketches of the two that need care:
 
@@ -659,7 +768,7 @@ Sketches of the two that need care:
 sum by (component_id, rule, origin) (
   increase(loki_secretfilter_secrets_redacted_by_category_total{
     component_id="loki.secretfilter.ingest",
-    rule!~"mzmon-secretfilter(-egress)?-canary"
+    rule!~"mzmon-(egress-)?canary"
   }[1h])
 ) > 0
 
@@ -670,12 +779,12 @@ sum by (component_id, rule, origin) (
 sum by (component_id) (
   increase(loki_secretfilter_secrets_redacted_by_category_total{
     component_id="loki.secretfilter.ingest",
-    rule="mzmon-secretfilter-canary", origin="mzmon-secretfilter-canary"
+    rule="mzmon-canary", origin="mz-monitoring-canary"
   }[15m])
 ) == 0
 or absent(loki_secretfilter_secrets_redacted_by_category_total{
   component_id="loki.secretfilter.ingest",
-  rule="mzmon-secretfilter-canary", origin="mzmon-secretfilter-canary"
+  rule="mzmon-canary", origin="mz-monitoring-canary"
 })
 ```
 
@@ -711,7 +820,7 @@ The [call-home ladder](../20260917-call-home-self-managed/#the-consent-ladder) a
 |---|---|---|---|
 | `CRITICAL`, `ERROR`, `WARN` | ✅ | ✅ | ✅ |
 | `INFO` | ✅ | If the destination's level allows it | ✅ |
-| `DEBUG`, `TRACE` | ✅, rate-limited as today | ❌ | ✅ for the named components only |
+| `DEBUG`, `TRACE` | ✅, rate-limited as today, scanned by the bulk tier | ❌ | ✅ for the named components only, scanned by the full tier |
 | `UNKNOWN` | ✅ | ❌ | ✅ for the named components only |
 | Ingest filter | ✅ | ✅ | ✅ |
 | Egress filter | — | ✅ | ✅, unchanged |
@@ -772,24 +881,27 @@ Work in **this** repo, ordered roughly by dependency.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **Alloy v1.20.0 in the image** | The component is GA there and the chart runs GA components only | **Blocking** for everything |
-| **Typed `loki.secretfilter` in the pipeline schema** | A `raw` block would go unvalidated at build time | **Blocking** |
+| **Alloy v1.20.0 in the image** | The component is GA there, so the gateway keeps `stabilityLevel: generally-available` | Expected to land first. Not blocking: until it does, the gateway runs at `public-preview` |
+| **Typed `loki.secretfilter` and `stage.luhn` in the pipeline schema** | A `raw` block would go unvalidated at build time | **Blocking** |
 | **Split `inputProcessor` into `inputPrefilter` and `inputProcessor`**, and retarget every source in `gateway.yaml`, the source stub and the chart helper | Placement before parsing is the design | **Blocking** for ingest |
+| **The level sniff, the two tier splitters, and the bulk-tier rate limit** moved ahead of the scan | The bulk tier's levers against queueing | **Blocking** for ingest on by default |
+| **`stage.luhn`** in the prefilter, with the timestamp `skip_regex`, the placeholder, and its counter | Card numbers, without losing frontiers | Should land with ingest |
 | **Move `sampleDebug` behind the filter, or remove it** and the agent's unwired copy | A raw-input tap is a bypass | **Blocking** for ingest |
 | **Flat rule files** under `packages/alloy-pipelines/secretfilter/`, rendered to `pre-rendered/secretfilter/` and mounted by ConfigMap | Readable rules, one source, and no third `[extend]` level | **Blocking** |
 | **The corpus harness**, running the pinned Alloy binary over positive and negative fixtures | Accepting upstream rule changes is safe only with it | **Blocking** |
 | **Shadow mode** | The name allowlist and the timeout come from its data | Should land before enforcement |
-| **Validators**: `rate` is `1.0`; `redact_with` is set and carries no `$SECRET_HASH`; the egress filter exists on every control-plane branch; ingest is on when one exists; live debugging warns | Each is a setting whose obvious value fails open | **Blocking** |
-| **The `pipeline.logging.secretFilter` values surface** | Customer extension and the on-by-default switch | **Blocking** |
-| **The canary producer, its rule, and its parse block** | Continuous proof of placement | **Blocking** for any claim that the filter works |
-| **Metric alert definitions** in the query registry | The `notice`, `warning` and missing-canary alerts | Waits on `gen-rules` |
-| **The canary-leak alert** in LogQL | The `critical` alert | Waits on log-derived alert definitions |
+| **Validators**: `rate` is `1.0` on every instance but the bulk tier's; `redact_with` is set and carries no `$SECRET_HASH`; the egress filter exists on every control-plane branch; ingest is on when one exists; live debugging warns | Each is a setting whose obvious value fails open | **Blocking** |
+| **The `pipeline.logging.secretFilter` and `canary` values surfaces** | Customer extension, the bulk rate, and the on-by-default switches | **Blocking** |
+| **`mz-monitoring-canary`**: the binary, its image and scan entry, the chart workload, the two canary rules, and the parse block | Continuous proof of placement | **Blocking** for any claim that the filter works |
+| **Metric alert definitions** in the query registry | Every alert above except the leak alert | Waits on `gen-rules` |
+| **The canary-leak alert** in LogQL | The pipeline-bug alert | Waits on log-derived alert definitions |
 | **Egress steps 1, 2, 4 and 5** on the per-destination branch | The strict filter and the metadata allowlist | Waits on BYOC's map-shaped log destinations |
 | **Backstop overlay** for the control-plane gateway | Materialize-updatable rules | Blocking for the control plane, not for customers |
-| **A dashboard row**: redactions by rule and origin, canary status, filter latency | The alert's evidence, one click away | Should |
+| **A dashboard row**: redactions by rule and origin, card redactions, canary status, filter latency, bulk-tier bypass | The alert's evidence, one click away | Should |
 
 The ingest half is not blocked on BYOC.
-It covers the customer's own Loki and the third-party OTLP log destination that already ships, and it can land as soon as the image bump does.
+It covers the customer's own Loki and the third-party OTLP log destination that already ships.
+Nor does it wait on the image bump, since a public-preview component is acceptable in the meantime.
 
 ## Testing
 
@@ -800,9 +912,12 @@ It covers the customer's own Loki and the third-party OTLP log destination that 
 | **Redaction preserves parsing** | Unit | Every fixture that was valid JSON is still valid JSON, and the gateway extracts the same `level` and `msg` shape from it |
 | **Default set is loaded** | Unit | A default-only fixture, such as an AWS access key ID assembled at test time, is redacted through every shipped file and through a customer extension |
 | **Metadata is derived from redacted text** | Tier 1 | The canary's structured-metadata copy holds the placeholder |
-| **No path bypasses ingest** | Tier 0 render | In the assembled gateway config, every path from a source to a `loki.write` or `loki.echo` passes through `loki.secretfilter.ingest` |
+| **No path bypasses ingest** | Tier 0 render | In the assembled gateway config, every path from a source to a `loki.write` or `loki.echo` passes through `loki.secretfilter.ingest` or `loki.secretfilter.ingestBulk` |
 | **Timeout behavior** | Unit | Ingest forwards with the label; egress drops; step 2 drops a labelled line |
-| **Sampling refused** | Chart unit | A `rate` below `1.0` fails the render |
+| **Sampling confined to the bulk tier** | Chart unit | A `rate` below `1.0` on the full-tier or egress instance fails the render; on the bulk instance it renders |
+| **The bulk tier never crosses** | Tier 2 | With the bulk rate below `1.0`, no bulk-tier line reaches the control-plane stand-in; inside an elevated window, the named component's `DEBUG` lines are counted by the full-tier filter and arrive redacted |
+| **The level sniff errs toward the full tier** | Unit | Every fixture of each log shape at `INFO` and above lands in the full tier |
+| **`stage.luhn`** | Unit | Visa, American Express and UATP numbers are redacted; millisecond, microsecond and nanosecond timestamps and UUID tails pass untouched; the test fails a year before the `skip_regex` expires |
 | **Canary end to end** | Tier 1 and tier 2 | Each filter's counter rises for its own canary; the local store holds no ingest-canary text; the tier 2 control-plane stand-in receives both placeholders |
 | **Per-destination redaction** | Tier 2 | An egress-only rule's match is absent from the control-plane copy and present locally |
 | **Cost** | Tier 2 and a live install | Gateway CPU and `processing_duration_seconds`, with and without the filter, at the global limit's rate |
@@ -817,8 +932,8 @@ The per-destination property is still worth asserting, and an egress-only rule i
 
 - [Securing](../../../../operating/securing/): the "keep secrets out of logs at the source" item keeps its advice and gains what the pipeline
   now does and does not do; the "Redaction in the pipeline" row moves off ❌.
-- A **customer-facing page** under `logs-and-events/`: what is redacted, the placeholder, the alerts and their runbooks, the canary and how to
-  test against it, and how to add rules.
+- A **customer-facing page** under `logs-and-events/`: what is redacted, card numbers included, the placeholder, the alerts and their
+  runbooks, the canaries and how to test against them, the bulk tier's rate, and how to add rules.
 - [Logging pipeline reference](../../pipelines/logging/): the prefilter split and the filter's position.
 - The BYOC and call-home designs: the [wording revision](#positions-this-revises), and a pointer from BYOC's Redaction section to this doc.
 - [Roadmap](../../roadmap/): the design-doc row and the follow-up-documentation entry.
@@ -830,20 +945,21 @@ The per-destination property is still worth asserting, and an egress-only rule i
   A value too low drops real lines on the egress branch; a value too high lets one pathological line stall the gateway.
 - [ ] **What false-positive rate is acceptable at ingest?** A budget per million lines, per rule, would make the tuning loop mechanical.
   It needs shadow data first.
-- [ ] **What runs the canary producer?** A minimal long-running container avoids the pod churn and event noise a five-minute CronJob creates, and
-  it needs an image with a shell or a purpose-built static binary.
-  Either joins the image scan.
+- [ ] **What sets the bulk tier's rate on an install?** The levers are ordered, and the trigger for the last one is not.
+  Candidates are a documented latency-to-arrival ratio an operator applies by hand, or a value the Terraform module derives from sizing.
+- [ ] **Should `mz-monitoring-canary` carry more than the two canaries?** A stable, low-volume synthetic stream is useful to other checks,
+  such as the log-egress heartbeat.
+  The risk is that it accretes content until its line is no longer obviously harmless.
 - [ ] **Should `mzmon-password-field` enforce at ingest?** Its false positives include ordinary prose such as
   `password: must be at least 8 characters`.
   Shadow mode decides; the egress file carries it either way.
-- [ ] **How does the control plane respond to a verbatim canary?** Refusing that tenant's logs at the ingress is the fail-closed answer.
-  Whether it is automated or a runbook step, and how the customer is told, is control-plane work.
+- [ ] **Should a verbatim egress canary pause that tenant's log ingestion?** It is a bug in the install's egress branch rather than an
+  exposure, and the backstop still filters what follows it.
+  Pausing trades support visibility for a margin the backstop already provides; filing the bug and telling the customer may be enough.
 - [ ] **Should upstream scan structured metadata?** An option to do so would remove the ingest placement constraint for metadata that did not come
   from the line.
   Worth raising with the Alloy maintainers.
 - [ ] **Should upstream offer a keyed hash?** An HMAC placeholder would give correlation without a confirmation oracle.
-- [ ] **Card numbers and other personal data.** `stage.luhn` exists and is out of this doc's scope.
-  DEP-220's allowlist is the primary answer, and a decision is still owed.
 - [ ] **Should the ingest filter be on by default where nothing leaves the cluster?** The recommendation is yes, since the goal is no credentials
   at rest.
   The measured CPU cost may argue for a slower rollout.
@@ -863,10 +979,10 @@ title = "mzmon ingest"
 useDefault = true
 
 [[rules]]
-id = "mzmon-secretfilter-canary"
-description = "The published secret-filter canary"
-regex = '''mzmon-secretfilter-canary-v1-[0-9a-f]{16}'''
-keywords = ["mzmon-secretfilter-canary"]
+id = "mzmon-canary"
+description = "The published ingest canary"
+regex = '''mzmon-canary-v1-[0-9a-f]{16}'''
+keywords = ["mzmon-canary"]
 
 [[rules]]
 id = "mzmon-materialize-app-password"
