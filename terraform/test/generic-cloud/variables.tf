@@ -41,16 +41,39 @@ variable "thanos_bucket" {
 }
 
 variable "storage_class" {
-  description = "StorageClass for the substrate's volumes. Defaults to kind's, which is `standard` — the same local-path provisioner k3s calls `local-path`, which is what the rustfs chart assumes."
+  description = "StorageClass for the substrate's volumes. Defaults to kind's, which is `standard` — the same local-path provisioner k3s calls `local-path`."
   type        = string
   default     = "standard"
   nullable    = false
 }
 
 variable "storage_size" {
-  description = "Volume size for the object store. Sized for a CI job's worth of telemetry, not for retention."
+  description = "Volume size for the object store's data. Sized for a CI job's worth of telemetry, not for retention. Also becomes the capacity Garage assigns the node in its cluster layout."
   type        = string
   default     = "4Gi"
+  nullable    = false
+}
+
+variable "metadata_storage_size" {
+  description = "Volume size for Garage's metadata database, which lives on its own volume. Raised over the chart's 100Mi default: LMDB grows with object count, and it runs out on a busy run long before the data volume does."
+  type        = string
+  default     = "1Gi"
+  nullable    = false
+}
+
+variable "s3_region" {
+  description = <<-EOT
+    Region the object store signs requests for.
+
+    Not cosmetic, and not a cloud selector. Garage validates the region in the
+    SigV4 signature and rejects a mismatch, so this value has to reach both the
+    store and every client — tier 2 passes it to the module as
+    `object_storage.region`. `us-east-1` because it is what an unconfigured AWS
+    SDK falls back to, which keeps an unrelated client that forgets to set one
+    working rather than failing on a signature error.
+  EOT
+  type        = string
+  default     = "us-east-1"
   nullable    = false
 }
 

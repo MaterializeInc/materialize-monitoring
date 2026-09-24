@@ -142,7 +142,7 @@ locals {
   # The port object storage is actually on, for Loki's egress NetworkPolicy.
   #
   # Hardcoding 443 here is what broke tier 2: a self-hosted store answers on its
-  # own port (rustfs on 9000), the policy blocked the dial, and Loki's index
+  # own port (Garage on 3900), the policy blocked the dial, and Loki's index
   # gateway failed with a bare `i/o timeout` — which surfaces to a user as every
   # query hanging until the frontend returns 504, with nothing naming the policy.
   # Thanos hid it further by working fine, since the chart writes no policy for it.

@@ -82,7 +82,7 @@ The binding is per-cloud, and the trust-policy subjects have to match the chart'
 Without a cloud identity provider there is no identity to bind, so credentials become **static keys supplied as a Secret**.
 That is the documented escape hatch rather than the recommended path; both backends read them by reference, and the Terraform module exposes them as `object_storage_access_key_id` / `object_storage_secret_access_key`.
 
-Any S3-compatible endpoint works. This repository's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs), so a self-hosted MinIO, Ceph, or rustfs is a supported shape rather than an untested one.
+Any S3-compatible endpoint works. This repository's own tier-2 E2E runs against [Garage](https://garagehq.deuxfleurs.fr/), so a self-hosted MinIO, Ceph, or Garage is a supported shape rather than an untested one.
 
 > [!WARNING]
 >  **Naming the backend is the step that most often goes wrong.**

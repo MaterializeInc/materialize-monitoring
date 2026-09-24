@@ -67,7 +67,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `terraform/` (see [Terraform Modules](../design-docs/20260803-terraform-modules/)): the cloud-agnostic module that installs the released charts. Versioned as part of the `materialize-monitoring` component rather than on a stream of its own; per-cloud wrappers live in `materialize-terraform-self-managed`
     * `modules/materialize-monitoring/`: the module. Concern per file — `values.tf` (composition order), `scheduling.tf` and `storage_class.tf` (subchart fan-outs), `destinations.tf` (extra metric destinations), `config_hash.tf` (the pod-template hash that rolls Alloy)
       * `examples/{aws,gcp}/`: not deployable roots — plan targets for the tier-0 render check. Both clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
-    * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
+    * `test/generic-cloud/`: the tier-2 substrate — Garage standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme

@@ -6,7 +6,7 @@
 # Scope is deliberately narrow. Thanos needs object storage in every deployment
 # shape it supports — FILESYSTEM exists but assumes one shared volume, which the
 # receive/store/compactor split does not have — so a hermetic run cannot include
-# it. Tier 2 provides rustfs and covers the metrics path there.
+# it. Tier 2 provides Garage and covers the metrics path there.
 #
 # What this still proves, which a render cannot: pods actually start, the agent
 # discovers pods and ships their logs, the gateway accepts and forwards them,
