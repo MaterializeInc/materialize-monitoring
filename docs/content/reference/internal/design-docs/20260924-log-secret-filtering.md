@@ -632,10 +632,44 @@ The corpus proves the stage in CI instead, with Visa, American Express and UATP 
 
 The two error types cost different amounts on each side, so each side is tuned separately.
 
-| | A false negative costs | A false positive costs |
+### The four cases
+
+A positive is a value the filter redacted, and a negative is a value it passed untouched.
+Every value the filter sees lands in one of four cells.
+
+| | The filter redacts it | The filter passes it |
 |---|---|---|
-| Ingest | A credential readable by everyone with Loki access, in object storage and in the query caches, for the retention period | A value the customer needed while debugging, and one more `notice` alert to read |
-| Egress | A credential in another company's systems that the customer cannot recall | One value in a support engineer's view, with the rule named in its place |
+| **It is a credential** | **True positive.** The stores are clean and the source still leaked, so a `notice` fires and the runbook rotates. *Corpus:* the password in a `metadata_backend_url` | **False negative.** The credential is stored, and crosses if its line is admitted. Nothing fires. *Corpus, default rules:* `"authorization": "Bearer …"` |
+| **It is not a credential** | **False positive.** A value is replaced by the rule's name, and a `notice` fires for nothing. *Corpus:* a `next_page_token` cursor; under `stage.luhn`'s defaults, one frontier timestamp in ten | **True negative.** Nothing happens. *Corpus:* an `environment_id`, an `as_of` frontier, a trace ID |
+
+| Case | Cost at ingest | Cost at egress | Observed by |
+|---|---|---|---|
+| True positive | None beyond rotating the credential | None | The per-rule counter and the `notice` alert |
+| False negative | A credential readable by everyone with Loki access, in object storage and the query caches, for the retention period | A credential in another company's systems that the customer cannot recall | Nothing directly; see [Measuring misses](#measuring-misses) |
+| False positive | A value the customer needed while debugging, and one more alert to read | One value in a support engineer's view, with the rule named in its place | The per-rule counter, and the shadow stream's context |
+| True negative | None | None | Not counted |
+
+The egress rules deliberately put more lines in the false-positive cell, because that is how they take lines out of the false-negative one.
+
+**The matrix describes what is stored, not what the component returned.**
+A component can redact the line and still leave a false negative behind, when a copy of the credential was made before it ran.
+That is the [placement argument](#ingest-after-the-merge-before-the-parse), restated as a cell.
+
+A missing rule is only one way into the false-negative cell.
+
+| Cause | Where | What closes it |
+|---|---|---|
+| No rule for the shape | Any layer | The Materialize rules, the corpus, and the egress file |
+| A copy made before the scan | Filter placement | The prefilter split, and the ingest filter being on whenever egress is |
+| Sampled past | The bulk tier | Nothing from the tier crosses; its bypassed count is on the dashboard |
+| Timed out | Ingest | The line is labelled, alerted on, and never crosses |
+| An allowlist too broad | Any layer | Allowlists name fields, never value shapes, and never target the whole line |
+| A rule file missing the default set | Any layer | Flat rule files, and the default-set test |
+| A path that skips the filter | The pipeline graph | The render-time bypass assertion, and the canaries |
+
+The canaries are the one place the false-negative cell becomes observable.
+Each is a known positive, so a canary that passes a filter undetected is a false negative produced on demand, which is what the
+missing-canary alert reports.
 
 The ingest side's false-positive rate matters for a reason beyond lost values.
 A redaction raises a `notice` alert, and an alert that fires daily on pagination cursors is an alert nobody reads, which hides the true
