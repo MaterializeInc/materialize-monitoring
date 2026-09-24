@@ -99,7 +99,7 @@ jobs:
           # required checks. Falls back to GITHUB_TOKEN when the secret is unset.
           token: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           lfs: true
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: rustfmt
