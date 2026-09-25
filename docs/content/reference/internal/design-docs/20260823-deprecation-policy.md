@@ -2,14 +2,14 @@
 title: "Stability Guarantees and Deprecation Policy"
 weight: 20260823
 # draft=false makes it render as a page
-# params.status=Accepted — the policy landed; see "Work in this repo" for what remains
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-08-23
 lastmod: 2026-08-24
 # custom parameters
 params:
   author: Heather Lapointe
-  status: "Accepted"
+  status: "Shipped"
 ---
 
 # Stability Guarantees and Deprecation Policy

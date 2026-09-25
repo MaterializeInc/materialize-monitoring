@@ -2,14 +2,14 @@
 title: "First-Class Production Loki Infrastructure"
 weight: 20260627
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-06-27
 lastmod: 2026-06-28
 # custom parameters
 params:
   author: Heather Lapointe
-  status: "Preview"
+  status: "Shipped"
 ---
 
 # First-Class Production Loki Infrastructure

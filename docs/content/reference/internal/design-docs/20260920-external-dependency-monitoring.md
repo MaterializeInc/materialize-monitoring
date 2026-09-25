@@ -2,7 +2,7 @@
 title: "Monitoring Materialize's External Dependencies"
 weight: 20260920
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-20
 lastmod: 2026-09-20
@@ -10,7 +10,7 @@ lastmod: 2026-09-20
 params:
   author: Heather Lapointe
   agent: Claude Opus 5
-  status: "Draft"
+  status: "Ready"
 ---
 
 # Monitoring Materialize's External Dependencies

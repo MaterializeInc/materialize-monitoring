@@ -2,7 +2,7 @@
 title: "Secret Filtering: A Last Line of Defense for Stored and Egressed Logs"
 weight: 20260924
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-24
 lastmod: 2026-09-24
@@ -10,7 +10,7 @@ lastmod: 2026-09-24
 params:
   author: Heather Lapointe
   agent: Claude
-  status: "Draft"
+  status: "Ready"
 ---
 
 # Secret Filtering: A Last Line of Defense for Stored and Egressed Logs

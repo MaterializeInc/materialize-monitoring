@@ -2,14 +2,14 @@
 title: "Terraform Modules for materialize-monitoring"
 weight: 20260803
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-08-03
 lastmod: 2026-08-03
 # custom parameters
 params:
   author: Heather Lapointe
-  status: "Draft"
+  status: "Shipped"
 ---
 
 # Terraform Modules for materialize-monitoring
