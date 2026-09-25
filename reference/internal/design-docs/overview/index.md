@@ -76,6 +76,13 @@ Marking an existing draft pull request ready for review posts the same notificat
             <li><strong>status:</strong> Draft</li>
       </ul>
     </li>
+    <li>
+      <a href="/materialize-monitoring/reference/internal/design-docs/20260924-log-secret-filtering/">Secret Filtering: A Last Line of Defense for Stored and Egressed Logs</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-09-24 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
 </ul>
 
 
