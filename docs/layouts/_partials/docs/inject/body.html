@@ -4,9 +4,27 @@
   Ships the replaceables handler on pages that render replaceable
   placeholders, so a reader can pin values through the URL query string —
   for example ?mzSqlPrefix=v2_mz_ on Common Queries.
+
+  Ships the Mermaid zoom view on pages that render a Mermaid diagram.
+  svg-pan-zoom is fetched once at build time and published with the site, so
+  there is nothing vendored in the repo and nothing loaded from a CDN at
+  runtime. Renovate bumps the version through the annotation above it.
+  Both scripts must run before window load, when Mermaid replaces the diagram
+  source; see assets/mermaid-zoom.js.
 */}}
 {{- if strings.Contains .Content "class='replaceable'" }}
   {{- with resources.Get "replaceables.js" | resources.Minify }}
+<script>{{ .Content | safeJS }}</script>
+  {{- end }}
+{{- end }}
+{{- if strings.Contains .Content `class="mermaid"` }}
+  {{- /* renovate: datasource=npm packageName=svg-pan-zoom */}}
+  {{- $svgPanZoomVersion := "3.6.2" }}
+  {{- $svgPanZoomURL := printf "https://cdn.jsdelivr.net/npm/svg-pan-zoom@%s/dist/svg-pan-zoom.min.js" $svgPanZoomVersion }}
+  {{- with resources.GetRemote $svgPanZoomURL | fingerprint }}
+<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}"></script>
+  {{- end }}
+  {{- with resources.Get "mermaid-zoom.js" | resources.Minify }}
 <script>{{ .Content | safeJS }}</script>
   {{- end }}
 {{- end }}
