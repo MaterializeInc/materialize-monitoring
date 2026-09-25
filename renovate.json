@@ -154,6 +154,15 @@
     },
     {
       "customType": "regex",
+      "description": "Update renovate-annotated versions in the docsite's Hugo templates. Same annotation convention as the other managers, but Go templates have no `#` comment, so the annotation sits in a `{{/* */}}` comment and the version in a `$var := \"x.y.z\"` assignment on the next line. The svg-pan-zoom pin is fetched at build time with resources.GetRemote, and Hugo computes the SRI hash from what it fetched, so moving the version is the whole bump.",
+      "managerFilePatterns": ["/^docs/layouts/.+\\.html$/"],
+      "matchStrings": [
+        "/\\*\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s*\\*/\\s*-?\\}\\}\\s*\\n\\s*\\{\\{-?\\s*\\$[A-Za-z0-9_]+\\s*:=\\s*\"(?<currentValue>[^\"\\s]+)\""
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    },
+    {
+      "customType": "regex",
       "description": "Update renovate-annotated image refs (tag plus optional digest) in the Makefile. The bundled customManagers:makefileVersions preset only matches a bare version in a *_VERSION variable, so it cannot maintain an image:tag@sha256 pair. Capturing currentDigest is what bumps both halves together — a tag-only bump would leave the digest pinning the old image and silently win.",
       "managerFilePatterns": ["/(^|/)Makefile$/"],
       "matchStrings": [
