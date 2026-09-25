@@ -353,7 +353,7 @@ tests:
           count: 0
 
   # One receiver for everything is the common small-deployment case.
-  - it: routes every severity through the matrix to the receivers that serve its class
+  - it: routes every severity through the preset to the receivers that serve its class
     set:
       alerting:
         receivers:
@@ -401,7 +401,7 @@ tests:
   - it: routes a suppressed severity to the null receiver
     set:
       alerting:
-        criticality: evaluation
+        preset: evaluation
         receivers:
           chat:
             class: normal
@@ -416,6 +416,40 @@ tests:
       - matchRegex:
           path: stringData["alertmanager.yml"]
           pattern: '- matchers:\n    - severity="critical"\n    receiver: chat\n'
+
+  # Presets are a map, so one of your own is one more key, with severities and
+  # classes of its own. The shipped presets are merged in alongside it.
+  - it: routes through a preset of your own
+    set:
+      alerting:
+        preset: oncall-lite
+        presets:
+          oncall-lite:
+            critical: page
+            warning: ticket
+            notice: suppressed
+        receivers:
+          pager:
+            class: page
+            config:
+              webhook_configs:
+                - url: http://pager.example.invalid/
+          tickets:
+            class: ticket
+            config:
+              webhook_configs:
+                - url: http://tickets.example.invalid/
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="critical"\n    receiver: pager\n'
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="warning"\n    receiver: tickets\n'
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="notice"\n    receiver: mzmon-null\n'
 
   # An Alertmanager route names one receiver. Several serving one class become
   # sibling children that all continue, so each is notified.
@@ -460,8 +494,8 @@ tests:
           path: stringData["alertmanager.yml"]
           pattern: '- matchers:\n    - severity="critical"\n    receiver: pager\n'
 
-  # Extra routes go first so a specific match wins; the matrix is the fallback.
-  - it: places extra routes ahead of the matrix, verbatim
+  # Extra routes go first so a specific match wins; the preset is the fallback.
+  - it: places extra routes ahead of the preset, verbatim
     set:
       alerting:
         receivers:
@@ -647,17 +681,17 @@ tests:
 
   # --- validators: routing --------------------------------------------------
 
-  - it: fails on a criticality the matrix does not define
+  - it: fails on a preset that is not defined
     set:
-      alerting.criticality: critical
+      alerting.preset: critical
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: 'alerting.criticality is "critical", which is not an entry of alerting.matrix'
+          errorPattern: 'alerting.preset is "critical", which is not an entry of alerting.presets'
 
   # An unroutable severity is otherwise discovered during the incident it
   # should have reported.
-  - it: fails when the selected matrix names a class no receiver serves
+  - it: fails when the selected preset names a class no receiver serves
     set:
       alerting.receivers.chat:
         class: normal
@@ -667,11 +701,11 @@ tests:
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: 'alerting.matrix.important.critical routes critical alerts to class "high", which no receiver serves'
+          errorPattern: 'alerting.presets.important.critical routes critical alerts to class "high", which no receiver serves'
 
-  - it: accepts a matrix every class of which is served or suppressed
+  - it: accepts a preset every class of which is served or suppressed
     set:
-      alerting.criticality: evaluation
+      alerting.preset: evaluation
       alerting.receivers.chat:
         class: normal
         config:
@@ -681,7 +715,7 @@ tests:
     asserts:
       - notFailedTemplate: {}
 
-  - it: fails on an unknownSeverity the matrix does not name
+  - it: fails on an unknownSeverity the preset does not name
     set:
       alerting.unknownSeverity: info
     template: templates/validate.yaml

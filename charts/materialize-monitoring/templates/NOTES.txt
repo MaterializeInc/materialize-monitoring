@@ -54,7 +54,7 @@ Alertmanager is installed and notifies for both rulers.
   Alertmanager namespace: {{ include "mzmon.alertmanager.namespace" $ }}
   Service: {{ include "mzmon.alertmanager.hostPort" $ }}
   Replicas: {{ $amReplicas }}{{ if gt $amReplicas 1 }} (gossiping){{ end }}
-  Criticality: {{ $.Values.alerting.criticality }}
+  Preset: {{ $.Values.alerting.preset }}
   Alerts are labelled: cluster={{ include "mzmon.clusterName" $ | quote }} (pipeline.env.CLUSTER_NAME)
   {{- if $amReceivers }}
   Receivers:

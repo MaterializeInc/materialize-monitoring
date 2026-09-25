@@ -3,7 +3,7 @@ The bundled Alertmanager's configuration, rendered from `alerting`.
 
 **This exists because the subchart cannot compute its configuration.** It renders
 `alertmanager.config` into a ConfigMap with `toYaml` and no `tpl`, and the
-severity matrix, the receiver classes and the checks in
+severity presets, the receiver classes and the checks in
 `mzmon.alertmanager.validate` all need computing. So `alertmanager.config.enabled`
 is off and the StatefulSet mounts this Secret instead, through
 `alertmanager.extraVolumes`, with `alertmanager.extraArgs.config.file` pointing at

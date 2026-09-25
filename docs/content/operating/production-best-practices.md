@@ -1063,7 +1063,7 @@ So the defaults target surviving a bad day rather than minimal footprint, and th
 |---|---|---|
 | Replicas | 2, gossiping, one per zone | 2 |
 | State | A 4Gi volume per replica, replicated by gossip | Unchanged |
-| Receivers | None; every alert reaches `mzmon-null` | At least one receiver per class the chosen criticality names |
+| Receivers | None; every alert reaches `mzmon-null` | At least one receiver per class the chosen preset names |
 | Credentials | A mounted, optional `alertmanager-receivers` Secret | That Secret, provisioned by the secret-management tooling already in use |
 | Reachability | `ClusterIP`, and Grafana's Alertmanager datasource | Unchanged, or an authenticated ingress with `baseURL` set |
 
@@ -1093,8 +1093,8 @@ Everything else on this list ships as a default or is checked at render time.
 #### 3. Routing & receivers
 
 - [ ] `[operator]` **Configure at least one receiver.** Until one exists every alert reaches `mzmon-null`, and the render warns. See [Alert Channels](../../alerting/channels/).
-- [ ] `[operator]` **Choose `alerting.criticality` deliberately.** `important` is the default because it errs in the least damaging direction; a deployment for which Materialize is critical infrastructure wants `critical-infrastructure`, which routes `critical` to `page`.
-- [x] `[chart]` A render-time check **errors** when the selected matrix entry names a class no receiver serves, on a route naming an undefined receiver or time interval, and on a receiver key that is not an Alertmanager integration.
+- [ ] `[operator]` **Choose `alerting.preset` deliberately.** `important` is the default because it errs in the least damaging direction; a deployment for which Materialize is critical infrastructure wants `critical-infrastructure`, which routes `critical` to `page`. A preset of your own is one more key under `alerting.presets`.
+- [x] `[chart]` A render-time check **errors** when the selected preset names a class no receiver serves, on a route naming an undefined receiver or time interval, and on a receiver key that is not an Alertmanager integration.
 - [x] `[chart]` **`amtool check-config`** runs in CI over representative configurations, in the Alertmanager image the chart pins, so the tree the chart generates is one Alertmanager accepts.
 - [x] `[chart]` Routing changes **reload in place**: the config-reloader sidecar POSTs `/-/reload` when the rendered Secret changes. A configuration Alertmanager rejects leaves the previous one running. A validator warns when the sidecar is turned off.
 - [x] `[chart]` **Every alert carries `cluster`**, stamped by both rulers from `pipeline.env.CLUSTER_NAME`, and the default `group_by` includes it. PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of the Alertmanager group key, so without it two clusters sending one condition to one service share an incident and resolve each other's. The render fails on an empty name, or one Loki's configuration cannot hold unquoted. See [The `cluster` label](../../alerting/architecture/#cluster-label).
@@ -1134,7 +1134,7 @@ Everything else on this list ships as a default or is checked at render time.
 ### See also
 
 - [Alert Architecture](../../alerting/architecture/) — the notifier's shape, state, and failure modes.
-- [Alert Channels](../../alerting/channels/) — receivers, classes, criticality, and credentials.
+- [Alert Channels](../../alerting/channels/) — receivers, classes, presets, and credentials.
 - [Maintenance Windows](../../alerting/maintenance/) — silences, mute windows, and inhibition.
 - [Alertmanager configuration reference](https://prometheus.io/docs/alerting/latest/configuration/) (official) — every
   receiver integration and route option.

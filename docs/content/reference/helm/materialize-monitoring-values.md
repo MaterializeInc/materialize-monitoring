@@ -3064,7 +3064,7 @@ every replica like any other.
 
 #### Alert routing
 
-Where alerts go: receivers, the severity matrix, and extra routes.
+Where alerts go: receivers, severity presets, and extra routes.
 
 Rendered into the bundled Alertmanager's configuration by
 `templates/alertmanager-config.yaml`. A rule says how bad a condition is with
@@ -3075,7 +3075,7 @@ walks through it.
 
 ```yaml
 alerting:
-  criticality: important
+  preset: important
   receivers:
     oncall:
       class: page
@@ -3099,20 +3099,20 @@ notifying its own Alertmanager configures that one's routing itself.
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">alerting<wbr>.criticality</td>
+      <td class="helm-value-key">alerting<wbr>.preset</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"important"</code></td>
-      <td class="helm-value-desc">How much this deployment depends on Materialize: `critical-infrastructure`, `important`, or `evaluation`.
+      <td class="helm-value-desc">Which entry of `presets` routes alerts: `critical-infrastructure`, `important`, `evaluation`, or one of your own.
 
-Selects one entry of `matrix`. `important` is the default because it is the
-assumption that is wrong in the least damaging direction: a
-critical-infrastructure deployment left on it gets a notification where it
-wanted a page, while an evaluation deployment that pages on `critical` gets an
-operator who turns alerting off.
+The three shipped presets say how much this deployment depends on
+Materialize. `important` is the default because it is the assumption that is
+wrong in the least damaging direction: a critical-infrastructure deployment
+left on it gets a notification where it wanted a page, while an evaluation
+deployment that pages on `critical` gets an operator who turns alerting off.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">alerting<wbr>.matrix</td>
+      <td class="helm-value-key">alerting<wbr>.presets</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
@@ -3133,11 +3133,11 @@ operator who turns alerting off.
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Severity-to-class mapping, one entry per `criticality`.
+      <td class="helm-value-desc">Severity-to-class mappings, one per preset.
 
 A class names a kind of delivery — `page`, `high`, `normal`, `low` — rather
-than a receiver. Each receiver declares the classes it serves, so the same
-matrix works for a deployment with a pager and one with a single chat channel.
+than a receiver. Each receiver declares the classes it serves, so one preset
+works for a deployment with a pager and one with a single chat channel.
 `suppressed` is reserved: the alert still fires and still shows in
 Alertmanager and Grafana, and no notification is sent.
 
@@ -3147,18 +3147,18 @@ Alertmanager and Grafana, and no notification is sent.
 | `warning` | `high` | `normal` | `normal` |
 | `notice` | `normal` | `low` | `suppressed` |
 
-This is a map, so one cell can be changed without restating the rest, and a
-row can carry a severity of its own. Class names are free-form. The render
-fails when the selected entry names a class no receiver serves, since an
-unroutable severity is otherwise discovered during the incident it should
-have reported.
+This is a map, so one cell can be changed without restating the rest, a
+preset can carry a severity of its own, and a preset of your own is one more
+key. Class names are free-form. The render fails when the selected preset
+names a class no receiver serves, since an unroutable severity is otherwise
+discovered during the incident it should have reported.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">alerting<wbr>.unknownSeverity</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"warning"</code></td>
-      <td class="helm-value-desc">Severity an alert is routed as when its `severity` label is missing or is not in the matrix. An alert that matches no severity route still reaches somebody, rather than the null receiver.
+      <td class="helm-value-desc">Severity an alert is routed as when its `severity` label is missing or is not in the preset. An alert that matches no severity route still reaches somebody, rather than the null receiver.
 </td>
     </tr>
     <tr>
@@ -3173,7 +3173,7 @@ have reported.
 | --- | --- |
 | `class` | The class, or list of classes, this receiver serves. Optional: a receiver with none is reachable only from `routes.extra`. |
 | `config` | An Alertmanager receiver, verbatim, without `name`: `slack_configs`, `pagerduty_configs`, `webhook_configs`, `email_configs`, `msteamsv2_configs`, and every other integration Alertmanager supports. |
-| `route` | Route options — `group_wait`, `group_interval`, `repeat_interval`, `group_by`, `mute_time_intervals`, `active_time_intervals` — applied wherever the matrix routes to this receiver. |
+| `route` | Route options — `group_wait`, `group_interval`, `repeat_interval`, `group_by`, `mute_time_intervals`, `active_time_intervals` — applied wherever the preset routes to this receiver. |
 
 The chart does not model receiver types, so every integration Alertmanager
 documents works as written in its
@@ -3216,10 +3216,10 @@ chart's and are rejected here.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Routes placed ahead of the severity matrix, in Alertmanager's route format.
+      <td class="helm-value-desc">Routes placed ahead of the preset's severity routes, in Alertmanager's route format.
 
 An alert is tested against these first, so a specific match wins and the
-matrix remains the fallback. A route that should also reach the matrix sets
+preset remains the fallback. A route that should also reach the preset sets
 `continue: true`. Each `receiver` has to name one under `receivers`.
 
 ```yaml
@@ -6946,7 +6946,7 @@ it once. This is a map, so adding a flag here keeps the others.
       <td class="helm-value-desc">Use the configuration the chart renders, not the subchart's.
 
 The subchart renders `config` into a ConfigMap with `toYaml` and no `tpl`, so
-nothing in it can be computed. The severity matrix, the receiver classes and
+nothing in it can be computed. The severity presets, the receiver classes and
 the render-time checks all have to be, so the chart renders the configuration
 itself from `alerting`, as the `alertmanager-config` Secret, and mounts it
 below. Turning this back on fails the render: the subchart would mount its

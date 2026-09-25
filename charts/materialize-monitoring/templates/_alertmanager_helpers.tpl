@@ -94,7 +94,7 @@ Usage:
 {{- /*
 The receiver that notifies nobody.
 
-It is the root route's receiver, the target of every `suppressed` matrix cell,
+It is the root route's receiver, the target of every `suppressed` preset cell,
 and where every alert goes while `alerting.receivers` is empty. An alert that
 reaches it still fires and still shows in Alertmanager and Grafana. The name is
 reserved: a receiver of that name under `alerting.receivers` fails the render.
@@ -168,7 +168,7 @@ parent's own receiver is never used, since a child with no matchers matches
 everything that reached the parent.
 
 A receiver's `route` options are merged into whichever route names it, so a
-pager can repeat faster than a ticket queue without the matrix knowing.
+pager can repeat faster than a ticket queue without the preset knowing.
 
 `suppressed`, and a class nobody serves, route to the null receiver. The second
 is a render-time error whenever any receiver exists; this only keeps the
@@ -213,13 +213,13 @@ The Alertmanager configuration, rendered from `alerting`.
 The routing tree, top to bottom:
 
   1. `alerting.routes.extra`, verbatim and in order, so a specific match wins.
-  2. One route per severity in the selected `alerting.matrix` entry, delivering
+  2. One route per severity in the selected entry of `alerting.presets`, delivering
      that severity's class.
   3. A catch-all delivering the class of `alerting.unknownSeverity`, so an alert
-     with no `severity` label, or one the matrix does not name, still reaches
+     with no `severity` label, or one the preset does not name, still reaches
      somebody.
 
-The root route's receiver is the null receiver, and the matrix is left out
+The root route's receiver is the null receiver, and the preset is left out
 entirely while no receiver exists: every alert then lands on the root, which is
 the honest rendering of "configured to notify nobody".
 
@@ -237,7 +237,7 @@ Usage:
     {{- $routes = append $routes . }}
   {{- end }}
   {{- if $receivers }}
-    {{- $row := index ( $alerting.matrix | default dict ) ( $alerting.criticality | default "" ) | default dict }}
+    {{- $row := index ( $alerting.presets | default dict ) ( $alerting.preset | default "" | toString ) | default dict }}
     {{- range $severity := keys $row | sortAlpha }}
       {{- $routes = append $routes ( include "mzmon.alerting.classRoute" ( dict
         "receivers" $receivers
@@ -538,17 +538,17 @@ Usage:
 
     {{- /* --- the configuration ---------------------------------------------- */}}
 
-    {{- $matrix := $alerting.matrix | default dict }}
-    {{- $criticality := $alerting.criticality | default "" | toString }}
-    {{- $row := index $matrix $criticality }}
+    {{- $presets := $alerting.presets | default dict }}
+    {{- $preset := $alerting.preset | default "" | toString }}
+    {{- $row := index $presets $preset }}
     {{- $byClass := include "mzmon.alerting.classReceivers" $ | fromYaml }}
 
     {{- if not ( kindIs "map" $row ) }}
-      {{- $errors = append $errors ( printf "alerting.criticality is %q, which is not an entry of alerting.matrix (%s)." $criticality ( keys $matrix | sortAlpha | join ", " ) ) }}
+      {{- $errors = append $errors ( printf "alerting.preset is %q, which is not an entry of alerting.presets (%s)." $preset ( keys $presets | sortAlpha | join ", " ) ) }}
     {{- else }}
       {{- $unknown := $alerting.unknownSeverity | default "" | toString }}
       {{- if not ( hasKey $row $unknown ) }}
-        {{- $errors = append $errors ( printf "alerting.unknownSeverity is %q, which alerting.matrix.%s does not name (%s). Alerts with no recognised severity would have no class to route to." $unknown $criticality ( keys $row | sortAlpha | join ", " ) ) }}
+        {{- $errors = append $errors ( printf "alerting.unknownSeverity is %q, which alerting.presets.%s does not name (%s). Alerts with no recognised severity would have no class to route to." $unknown $preset ( keys $row | sortAlpha | join ", " ) ) }}
       {{- end }}
       {{- /* An unroutable severity is found during the incident it should have
              reported, so this is an error, not a drop. Only once a receiver
@@ -558,9 +558,9 @@ Usage:
         {{- range $severity := keys $row | sortAlpha }}
           {{- $class := index $row $severity }}
           {{- if not ( kindIs "string" $class ) }}
-            {{- $errors = append $errors ( printf "alerting.matrix.%s.%s must be a class name or `suppressed`." $criticality $severity ) }}
+            {{- $errors = append $errors ( printf "alerting.presets.%s.%s must be a class name or `suppressed`." $preset $severity ) }}
           {{- else if and ( ne $class "suppressed" ) ( not ( hasKey $byClass $class ) ) }}
-            {{- $errors = append $errors ( printf "alerting.matrix.%s.%s routes %s alerts to class %q, which no receiver serves. Add %q to a receiver's class under alerting.receivers, or set the cell to `suppressed`." $criticality $severity $severity $class $class ) }}
+            {{- $errors = append $errors ( printf "alerting.presets.%s.%s routes %s alerts to class %q, which no receiver serves. Add %q to a receiver's class under alerting.receivers, or set the cell to `suppressed`." $preset $severity $severity $class $class ) }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -572,7 +572,7 @@ Usage:
 
     {{- /* Reserved route keys: the chart owns where a route sends and what it
            matches, and a `route` override setting them would silently rewrite
-           the matrix. */}}
+           the preset. */}}
     {{- $reservedRouteKeys := list "receiver" "routes" "matchers" "match" "match_re" "continue" }}
     {{- range $key := keys ( dig "routes" "root" dict $alerting | default dict ) | sortAlpha }}
       {{- if has $key $reservedRouteKeys }}
@@ -613,7 +613,7 @@ Usage:
       {{- $override := $r.route | default dict }}
       {{- range $key := keys $override | sortAlpha }}
         {{- if has $key $reservedRouteKeys }}
-          {{- $errors = append $errors ( printf "alerting.receivers.%s.route.%s is set, but the matrix decides which alerts reach a receiver. Use alerting.routes.extra for a route of your own." $name $key ) }}
+          {{- $errors = append $errors ( printf "alerting.receivers.%s.route.%s is set, but the preset decides which alerts reach a receiver. Use alerting.routes.extra for a route of your own." $name $key ) }}
         {{- end }}
       {{- end }}
       {{- $timeRefs = concat $timeRefs ( include "mzmon.alerting.leaves" ( dict "path" ( printf "alerting.receivers.%s.route" $name ) "node" $override ) | fromYamlArray ) }}
@@ -633,7 +633,7 @@ Usage:
       {{- if not ( kindIs "map" $route ) }}
         {{- $errors = append $errors ( printf "alerting.routes.extra[%d] must be an Alertmanager route." $i ) }}
       {{- else if and ( not $route.receiver ) ( not $route.continue ) }}
-        {{- $warnings = append $warnings ( printf "alerting.routes.extra[%d] names no receiver and does not continue, so an alert it matches that none of its child routes catch goes to %s and notifies nobody. Name a receiver, or set continue: true to fall through to the matrix." $i $null ) }}
+        {{- $warnings = append $warnings ( printf "alerting.routes.extra[%d] names no receiver and does not continue, so an alert it matches that none of its child routes catch goes to %s and notifies nobody. Name a receiver, or set continue: true to fall through to the preset." $i $null ) }}
       {{- end }}
     {{- end }}
     {{- $timeRefs = concat $timeRefs $extraLeaves }}

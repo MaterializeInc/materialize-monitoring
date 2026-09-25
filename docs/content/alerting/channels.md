@@ -20,17 +20,18 @@ Everything here is configured under the `alerting` values key, which the chart r
 A default install configures no receiver, so every alert reaches `mzmon-null`, a receiver that notifies nobody.
 The render warns about that until a receiver exists.
 
-## Receivers, classes, and criticality
+## Receivers, classes, and presets
 
 Three ideas carry the whole configuration.
 
 | Idea | Owned by | Set with |
 |---|---|---|
 | **Severity** — how bad a condition is | The rule | A rule's `severity` label: `critical`, `warning`, or `notice` |
-| **Criticality** — how much this deployment depends on Materialize | The operator | `alerting.criticality`: `critical-infrastructure`, `important` (default), or `evaluation` |
-| **Class** — a kind of delivery, such as a page or a low-priority notice | The operator | Each receiver's `class`, and the cells of `alerting.matrix` |
+| **Preset** — what each severity means for this deployment | The operator | `alerting.preset`, naming an entry of `alerting.presets` |
+| **Class** — a kind of delivery, such as a page or a low-priority notice | The operator | Each receiver's `class`, and the cells of each preset |
 
-The criticality selects one entry of `alerting.matrix`, which maps each severity to a class.
+A preset maps each severity to a class.
+The three shipped presets express how much the deployment depends on Materialize, and `important` is the default.
 
 | `severity` | `critical-infrastructure` | `important` | `evaluation` |
 |---|---|---|---|
@@ -43,13 +44,25 @@ An alert reaches every receiver serving the class its severity maps to.
 `suppressed` notifies nobody, and the alert still fires and still shows in Alertmanager and Grafana.
 
 The indirection is what lets one set of rules serve a deployment with a pager and one with a single chat channel.
-The rules do not change; the matrix and the receivers do.
+The rules do not change; the preset and the receivers do.
 
-**Every class the selected matrix entry names MUST be served by some receiver**, or be `suppressed`.
+**Every class the selected preset names MUST be served by some receiver**, or be `suppressed`.
 The render fails otherwise, since an unroutable severity is otherwise discovered during the incident it should have reported.
-Class names are free-form, and the matrix is a map, so a single cell can be changed without restating the rest.
+Class names are free-form, and `alerting.presets` is a map, so a single cell can be changed without restating the rest.
 
-An alert whose `severity` label is missing, or not in the matrix, is routed as `alerting.unknownSeverity` (default `warning`).
+A preset of the deployment's own is one more key, with whatever severities and classes it needs:
+
+```yaml
+alerting:
+  preset: oncall-lite
+  presets:
+    oncall-lite:
+      critical: page
+      warning: ticket
+      notice: suppressed
+```
+
+An alert whose `severity` label is missing, or not in the preset, is routed as `alerting.unknownSeverity` (default `warning`).
 
 ## Configuring a receiver
 
@@ -69,7 +82,7 @@ alerting:
 |---|---|
 | `class` | The classes this receiver serves. A receiver with no class is reachable only from [extra routes](#extra-routes). |
 | `config` | An Alertmanager receiver body, verbatim: `slack_configs`, `pagerduty_configs`, `webhook_configs`, `email_configs`, `msteamsv2_configs`, `opsgenie_configs`, and every other integration Alertmanager supports. The key is the receiver's name. |
-| `route` | Route options — `group_wait`, `group_interval`, `repeat_interval`, `group_by`, `mute_time_intervals`, `active_time_intervals` — applied wherever the matrix routes to this receiver. |
+| `route` | Route options — `group_wait`, `group_interval`, `repeat_interval`, `group_by`, `mute_time_intervals`, `active_time_intervals` — applied wherever the preset routes to this receiver. |
 
 The chart does not model receiver types.
 Each integration's fields are documented once, in Alertmanager's [receiver integration
@@ -144,7 +157,7 @@ Paths under `/etc/ssl/`, the image's own trust store, are exempt.
 ## Examples
 
 Each example is a complete `alerting` block that renders on its own.
-The default criticality, `important`, names the `high`, `normal` and `low` classes, so a receiver meant to catch everything on it serves all three.
+The default preset, `important`, names the `high`, `normal` and `low` classes, so a receiver meant to catch everything on it serves all three.
 
 ### One chat channel
 
@@ -152,7 +165,7 @@ The smallest real configuration: one Slack channel receiving everything, on an e
 
 ```yaml
 alerting:
-  criticality: evaluation
+  preset: evaluation
   receivers:
     chat:
       class: normal
@@ -171,7 +184,7 @@ Critical alerts page; everything else goes to a channel and a ticket queue.
 
 ```yaml
 alerting:
-  criticality: critical-infrastructure
+  preset: critical-infrastructure
   receivers:
     oncall:
       class: page
@@ -244,8 +257,8 @@ alerting:
 
 ## Extra routes {#extra-routes}
 
-`alerting.routes.extra` takes routes in Alertmanager's own format and places them **ahead of** the severity matrix.
-An alert is tested against them first, so a specific match wins and the matrix remains the fallback.
+`alerting.routes.extra` takes routes in Alertmanager's own format and places them **ahead of** the preset's severity routes.
+An alert is tested against them first, so a specific match wins and the preset remains the fallback.
 
 ```yaml
 alerting:
@@ -271,12 +284,12 @@ alerting:
 | `continue` | An alert the route matches |
 |---|---|
 | `false` (default) | Goes to this route's receiver only |
-| `true` | Goes to this route's receiver, then on through the matrix as well |
+| `true` | Goes to this route's receiver, then on through the preset as well |
 
 Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
 A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
 
-Storage alerts reach `data-team`, and, because the route continues, also whichever receivers the matrix names for their severity.
+Storage alerts reach `data-team`, and, because the route continues, also whichever receivers the preset names for their severity.
 
 This is where deployment-specific routing lives, including routing that names a particular customer or environment.
 It belongs in that deployment's own values, reviewed by the people who run it.
@@ -297,7 +310,7 @@ An Alertmanager group key is built from the route and the group labels, and Page
 Without `cluster`, two clusters sending the same condition to one PagerDuty service open a single incident, and either cluster's resolution closes it.
 Every alert carries `cluster`; see [Alert Architecture](../architecture/#cluster-label).
 
-A receiver's `route` overrides these wherever the matrix routes to it.
+A receiver's `route` overrides these wherever the preset routes to it.
 The root route's `receiver`, `routes` and `matchers` belong to the chart, and setting them fails the render.
 
 ## Notification templates
@@ -380,7 +393,7 @@ The render checks the structure it can see, and fails the install rather than th
 
 | The render fails on | Because Alertmanager would |
 |---|---|
-| A matrix class no receiver serves | Route that severity to nobody |
+| A preset class no receiver serves | Route that severity to nobody |
 | A route naming an undefined receiver or time interval | Refuse the configuration |
 | A receiver key that does not end in `_configs` | Refuse the configuration |
 | An inline credential | Accept it, and the credential would be published with the values |

@@ -7,7 +7,7 @@
 # nested extra route, inhibition, a time interval referenced from a route, a
 # notification template referenced from a receiver, and a `global` block.
 alerting:
-  criticality: critical-infrastructure
+  preset: critical-infrastructure
   receivers:
     oncall:
       class: page

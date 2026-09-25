@@ -1,7 +1,7 @@
 # Scenario for `bin/check-alertmanager-config.sh`: the smallest real deployment —
-# one chat channel, `evaluation` criticality, and a suppressed severity.
+# one chat channel, the `evaluation` preset, and a suppressed severity.
 alerting:
-  criticality: evaluation
+  preset: evaluation
   receivers:
     chat:
       class: normal
