@@ -169,22 +169,32 @@ tests:
 
   # Alertmanager is the one subchart with no `fullnameOverride`, so its Service
   # name is derived from the release name. Both rulers have to agree with it.
-  - it: points the Thanos ruler at the release's Alertmanager
+  #
+  # Both address the *headless* Service through DNS discovery, so each resolves
+  # one target per replica. Gossip replicates silences and the notification log
+  # between replicas, not alerts, so a ruler sending through the load-balanced
+  # Service leaves a replica that cannot notify for alerts it never received.
+  - it: points the Thanos ruler at every Alertmanager replica
     template: ../charts/thanos/templates/ruler/configmap-alertmanagers.yaml
     asserts:
       - matchRegex:
           path: data["alertmanagers.yaml"]
-          pattern: "- test-mon-alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+          pattern: "- dns\\+alertmanager-headless\\.test-monitoring\\.svc\\.cluster\\.local:9093"
       - matchRegex:
           path: data["alertmanagers.yaml"]
           pattern: "api_version: v2"
 
-  - it: points the Loki ruler at the same Alertmanager
+  - it: points the Loki ruler at every replica of the same Alertmanager
     template: ../charts/loki/templates/config.yaml
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: "alertmanager_url: http://test-mon-alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+          pattern: "alertmanager_url: http://_http\\._tcp\\.alertmanager-headless\\.test-monitoring\\.svc\\.cluster\\.local\\n"
+      # Without discovery the `_http._tcp.` name is dialled as a hostname and
+      # resolves to nothing.
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "enable_alertmanager_discovery: true"
       - matchRegex:
           path: data["config.yaml"]
           pattern: "enable_alertmanager_v2: true"
@@ -314,11 +324,11 @@ tests:
 
   # --- addressing edge cases ------------------------------------------------
 
-  # The subchart collapses `<release>-alertmanager` to `<release>` when the
-  # release name already contains the chart name, so spelling the Service name
-  # `printf "%s-alertmanager"` is wrong for exactly this release — and wrong in a
-  # way nothing catches until an alert is not delivered.
-  - it: addresses Alertmanager correctly when the release name contains its name
+  # `alertmanager.fullnameOverride` pins the name, so neither the release name
+  # nor the subchart's rule of collapsing `<release>-alertmanager` to
+  # `<release>` when the release name contains `alertmanager` reaches the
+  # addresses. This release name is the one that rule used to bite.
+  - it: addresses Alertmanager by its pinned name whatever the release is called
     release:
       name: alertmanager-prod
       namespace: test-monitoring
@@ -326,12 +336,9 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: "alertmanager_url: http://alertmanager-prod\\.test-monitoring\\.svc\\.cluster\\.local:9093"
-      - notMatchRegex:
-          path: data["config.yaml"]
-          pattern: "alertmanager-prod-alertmanager"
+          pattern: "alertmanager_url: http://_http\\._tcp\\.alertmanager-headless\\.test-monitoring\\.svc\\.cluster\\.local\\n"
 
-  - it: addresses Alertmanager correctly from the Thanos ruler under that release
+  - it: addresses Alertmanager by its pinned name from the Thanos ruler too
     release:
       name: alertmanager-prod
       namespace: test-monitoring
@@ -339,7 +346,137 @@ tests:
     asserts:
       - matchRegex:
           path: data["alertmanagers.yaml"]
-          pattern: "- alertmanager-prod\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+          pattern: "- dns\\+alertmanager-headless\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+
+  - it: warns when a renamed Alertmanager leaves the rulers addressing the old name
+    set:
+      alertmanager.fullnameOverride: am
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.ruler.alertmanagers.config does not name am-headless"
+      - matchRegexRaw:
+          pattern: "loki.loki.rulerConfig.alertmanager_url does not name am-headless"
+
+  - it: warns when the Loki ruler is given an SRV name without discovery
+    set:
+      loki.loki.rulerConfig.enable_alertmanager_discovery: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "is an SRV name .* but enable_alertmanager_discovery is off"
+
+  # --- the cluster label ----------------------------------------------------
+
+  # Both rulers stamp `cluster` on every alert from pipeline.env.CLUSTER_NAME.
+  # Without it, two clusters sending one condition to one incident tool share a
+  # group key, which is what PagerDuty's dedup_key is a hash of.
+  - it: carries the cluster name into each ruler's namespace
+    set:
+      pipeline.env.CLUSTER_NAME: prod-us-east
+    template: templates/ruler-env.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: ruler-env
+      - equal:
+          path: data.CLUSTER_NAME
+          value: prod-us-east
+
+  - it: renders one per ruler namespace under split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/ruler-env.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.namespace
+          value: thanos
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: loki
+        documentIndex: 1
+
+  # Loki refuses to run distributed without its ruler, so "no ruler" means
+  # neither backend is installed.
+  - it: renders none without a ruler
+    set:
+      tags.default: false
+      tags.alertmanager: true
+    template: templates/ruler-env.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # An external label, so it fills `cluster` only where an alert lacks one.
+  - it: stamps cluster on Thanos ruler alerts as an external label
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --label=cluster="$(CLUSTER_NAME)"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CLUSTER_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: ruler-env
+                key: CLUSTER_NAME
+
+  # The Loki ruler has no external labels. An empty regex matches only an absent
+  # label, so this also fills rather than overrides.
+  - it: stamps cluster on Loki ruler alerts through a fill-if-absent relabel
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'alert_relabel_configs:\n  - action: replace\n    regex: ""\n    replacement: \$\{CLUSTER_NAME\}\n    source_labels:\n    - cluster\n    target_label: cluster\n'
+
+  - it: gives the Loki ruler the cluster name to expand
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CLUSTER_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: ruler-env
+                key: CLUSTER_NAME
+
+  - it: fails on an empty cluster name
+    set:
+      pipeline.env.CLUSTER_NAME: ""
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.env.CLUSTER_NAME is empty"
+
+  # Substituted unquoted into the YAML every Loki component parses.
+  - it: fails on a cluster name Loki's configuration cannot hold unquoted
+    set:
+      pipeline.env.CLUSTER_NAME: "prod: us"
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.env.CLUSTER_NAME is "prod: us"'
+
+  - it: warns when an override drops either ruler's cluster stamp
+    set:
+      thanos.ruler.extraArgs:
+        - --remote-write.config-file=/etc/thanos/remote-write.yaml
+      loki.loki.rulerConfig.alert_relabel_configs: []
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.ruler.extraArgs no longer carries --label=cluster"
+      - matchRegexRaw:
+          pattern: "alert_relabel_configs no longer sets `cluster`"
 
   # `global.clusterDomain` is a supported setting, so every address this PR adds
   # has to follow it rather than hardcoding `cluster.local`.
@@ -350,7 +487,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: "alertmanager_url: http://test-mon-alertmanager\\.test-monitoring\\.svc\\.k8s\\.internal:9093"
+          pattern: "alertmanager_url: http://_http\\._tcp\\.alertmanager-headless\\.test-monitoring\\.svc\\.k8s\\.internal\\n"
       - matchRegex:
           path: data["config.yaml"]
           pattern: "url: http://alloy-gateway\\.test-monitoring\\.svc\\.k8s\\.internal:9090/api/v1/metrics/write"
@@ -390,7 +527,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["alertmanagers.yaml"]
-          pattern: "- test-mon-alertmanager\\.alertmanager\\.svc\\.cluster\\.local:9093"
+          pattern: "- dns\\+alertmanager-headless\\.alertmanager\\.svc\\.cluster\\.local:9093"
 
   - it: retargets the Loki ruler under split-namespace
     values:
@@ -399,12 +536,13 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: "alertmanager_url: http://test-mon-alertmanager\\.alertmanager\\.svc\\.cluster\\.local:9093"
+          pattern: "alertmanager_url: http://_http\\._tcp\\.alertmanager-headless\\.alertmanager\\.svc\\.cluster\\.local\\n"
       - matchRegex:
           path: data["config.yaml"]
           pattern: "url: http://alloy-gateway\\.alloy-gateway\\.svc\\.cluster\\.local:9090/api/v1/metrics/write"
 
-  - it: opens Alertmanager to the ruler namespaces under split-namespace
+  # Grafana dials it too, for the Alertmanager datasource.
+  - it: opens Alertmanager to the ruler and Grafana namespaces under split-namespace
     values:
       - ../profiles/split-namespace.values.yaml
     template: templates/networkpolicies.yaml
@@ -422,6 +560,9 @@ tests:
               - namespaceSelector:
                   matchLabels:
                     kubernetes.io/metadata.name: loki
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: grafana
             ports:
               - port: 9093
                 protocol: TCP

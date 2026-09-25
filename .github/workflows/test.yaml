@@ -54,6 +54,10 @@ jobs:
         run: make helm-unittest-install
       - name: helm unittest
         run: make helm-tests
+      # The runner's docker pulls the Alertmanager image the chart pins, so the
+      # rendered configuration is checked by the amtool that would load it.
+      - name: amtool check-config over the rendered Alertmanager configuration
+        run: make alertmanager-config-check
 
   terraform-check:
     name: terraform check

@@ -412,6 +412,15 @@ helm-update-snapshots:
 	$(MAKE) helm-tests HELM_UNITTEST_ARGS="--update-snapshot"
 .PHONY: helm-update-snapshots
 
+# Check the Alertmanager configuration the chart renders with `amtool
+# check-config`, in the Alertmanager image the chart pins. Helm cannot run amtool
+# at render time, and a configuration Alertmanager rejects fails quietly: a reload
+# keeps the old one, a fresh start crash-loops. Needs docker, or AMTOOL=<binary>.
+# See bin/check-alertmanager-config.sh for the scenarios.
+alertmanager-config-check:
+	./bin/check-alertmanager-config.sh
+.PHONY: alertmanager-config-check
+
 # Scan the rendered chart for Kubernetes misconfigurations.
 #
 # Renders representative profiles and scans the result -- pointing Trivy at the

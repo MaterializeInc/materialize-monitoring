@@ -132,6 +132,12 @@ Two rendering traps are worth knowing, because both put a plaintext credential s
 - **`grafana.ini` renders into a ConfigMap.** A secret written there is plaintext in the release manifest, in `helm get values`, and in whatever Git repo holds your values. Use `$__file{/path}` against a mounted Secret, or `$__env{VAR}`. The subchart's `assertNoLeakedSecrets` check fails the render on a known-sensitive key set to a literal — leave it on. See [Grafana > Authentication](../../dashboards/grafana/auth/#client-secrets-never-go-in-grafanaini).
 - **Loki's config defaults to a ConfigMap too.** With static S3 credentials the rendered config carries `secret_access_key` verbatim, so `loki.loki.configStorageType: Secret` is load-bearing whenever you are not using workload identity. The Terraform module sets it automatically on that path; a hand-written values file has to. Thanos needs no equivalent — its objstore document already renders into a Secret.
 
+Alertmanager's receivers are not a trap of this kind, because the chart refuses an inline credential in them.
+It renders Alertmanager's configuration from `alerting` and fails the render on a credential written inline — a Slack
+webhook URL, a PagerDuty routing key, an SMTP password — unless `alerting.assertNoInlineCredentials` is turned off.
+Receivers read their credentials through `_file` fields from a mounted Secret instead; see [Alert Channels >
+Credentials](../../alerting/channels/#credentials).
+
 - [ ] `[consumer]` Provision every Secret in the namespace the **pod** runs in, which under [`split-namespace`](../production-best-practices/#namespace-layout) is not the release namespace.
 - [ ] `[operator]` **Rotate the Grafana admin password** after an identity provider is configured, or disable the account. It is a generated password in a Secret, and it bypasses SSO.
 - [ ] `[operator]` Prefer file-mounted credential material over environment variables for anything that renews. An env-var PEM is read once at process start, so renewal does not take effect until every pod restarts.
@@ -154,7 +160,7 @@ Two consequences follow from those deviations, and the second is the one that su
 2. **The release namespace cannot run under Pod Security Admission `baseline` or `restricted` as shipped.** Baseline forbids `hostPath` volumes and host namespaces, and the two DaemonSets need both, so the namespace has to be labelled `privileged`. Nothing else in the stack needs it.
 
 - [ ] `[operator]` **Give the DaemonSets their own namespace if you want PSA above `privileged` for the rest.** [`split-namespace`](../production-best-practices/#namespace-layout) is the mechanism; the backends, Grafana and the gateway are all `baseline`-clean today. Note that support for that layout is best-effort, and that it changes the workload-identity subject and the NetworkPolicy selectors along with it.
-- [ ] `[operator]` **`seccompProfile` is not set on every workload** — Alloy, Thanos, Alertmanager and grafana-operator leave it unset, so they inherit the container runtime's default rather than declaring `RuntimeDefault`. Set it through each subchart's `podSecurityContext` if you are targeting `restricted`.
+- [ ] `[operator]` **`seccompProfile` is not set on every workload** — Alloy, Thanos and grafana-operator leave it unset, so they inherit the container runtime's default rather than declaring `RuntimeDefault`. Set it through each subchart's `podSecurityContext` if you are targeting `restricted`.
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
 ## Supply chain

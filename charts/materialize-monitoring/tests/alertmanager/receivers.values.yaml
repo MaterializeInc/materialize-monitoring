@@ -1,0 +1,67 @@
+# Scenario for `bin/check-alertmanager-config.sh`: every configuration surface
+# `alerting` exposes, at once, so `amtool check-config` sees the full shape the
+# chart can render.
+#
+# Covers a class served by one receiver, a class fanned out to several, a
+# receiver reachable only from an extra route, per-receiver route options, a
+# nested extra route, inhibition, a time interval referenced from a route, a
+# notification template referenced from a receiver, and a `global` block.
+alerting:
+  criticality: critical-infrastructure
+  receivers:
+    oncall:
+      class: page
+      route:
+        group_wait: 10s
+        repeat_interval: 1h
+      config:
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/alertmanager-receivers/pagerduty-key
+            send_resolved: true
+    platform:
+      class: [high, normal]
+      config:
+        slack_configs:
+          - channel: "#platform-alerts"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true
+            title: '{{ template "mzmon.check.title" . }}'
+    tickets:
+      class: normal
+      route:
+        mute_time_intervals: [weekends]
+      config:
+        webhook_configs:
+          - url: https://tickets.example.invalid/hooks/alerts
+            http_config:
+              authorization:
+                credentials_file: /etc/alertmanager/secrets/alertmanager-receivers/tickets-token
+    data-team:
+      config:
+        email_configs:
+          - to: data-team@example.invalid
+            from: alertmanager@example.invalid
+            smarthost: smtp.example.invalid:587
+            auth_username: alertmanager
+            auth_password_file: /etc/alertmanager/secrets/alertmanager-receivers/smtp-password
+  routes:
+    extra:
+      - matchers: ['component="storage"']
+        receiver: data-team
+        continue: true
+        routes:
+          - matchers: ['severity="critical"']
+            receiver: oncall
+  inhibitRules:
+    - source_matchers: ['severity="critical"']
+      target_matchers: ['severity="warning"']
+      equal: [alertname, namespace]
+  timeIntervals:
+    - name: weekends
+      time_intervals:
+        - weekdays: [saturday, sunday]
+  templates:
+    check.tmpl: |
+      {{ define "mzmon.check.title" }}[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}{{ end }}
+  global:
+    resolve_timeout: 5m

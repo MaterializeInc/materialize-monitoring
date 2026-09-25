@@ -1,0 +1,11 @@
+# Scenario for `bin/check-alertmanager-config.sh`: the smallest real deployment —
+# one chat channel, `evaluation` criticality, and a suppressed severity.
+alerting:
+  criticality: evaluation
+  receivers:
+    chat:
+      class: normal
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url

@@ -17,6 +17,22 @@ Usage:
 {{- end }}
 
 {{- /*
+The cluster's name, as every signal this stack produces labels it: `cluster` on
+log lines (the Alloy agent and gateway), on metrics (the gateway's remote-write
+`external_labels`), and on alerts (both rulers, through `templates/ruler-env.yaml`).
+
+Read from `pipeline.env.CLUSTER_NAME`, which is where the Alloy env ConfigMaps
+take it from and where Terraform's `cluster_name` writes it, so the three cannot
+disagree. `tpl`-rendered, as every `pipeline.env` value is.
+
+Usage:
+  {{ include "mzmon.clusterName" $ }}
+*/}}
+{{- define "mzmon.clusterName" -}}
+  {{- tpl ( dig "env" "CLUSTER_NAME" "" ( $.Values.pipeline | default dict ) | toString ) $ -}}
+{{- end }}
+
+{{- /*
 The components this chart can issue a certificate for, and where each one runs.
 
 The key is both the `certificates.components` key and the subchart key as it

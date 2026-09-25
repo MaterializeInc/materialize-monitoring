@@ -547,8 +547,8 @@ the cluster reduces that to "has any certificate".
       <td class="tf-var-name"><a name="min_zones" href="#min_zones">min_<wbr>zones</a></td>
         <td class="tf-var-type"><code>number</code></td>
       <td class="tf-var-desc">Number of availability zones the node pool can actually launch in, used to adjust the hard zone
-spread on Thanos Receive and Loki's ingesters. Null leaves the chart's defaults alone, which
-assume two or more zones and is correct for every managed cloud default.
+spread on Thanos Receive, Loki's ingesters and Alertmanager. Null leaves the chart's defaults
+alone, which assume two or more zones and is correct for every managed cloud default.
 
 Set this when that assumption does not hold, because the chart's constraints fail closed rather
 than degrading:
@@ -563,7 +563,8 @@ than degrading:
 Leaving this null on a cluster with fewer than two zones leaves those pods **Pending forever**
 rather than unbalanced: below `minDomains` Kubernetes treats the global minimum as 0, so one
 zone holding every replica computes a skew equal to the replica count. One zone is exactly as
-broken as none.
+broken as none. Alertmanager's rule sets no `minDomains`, so it survives one zone and breaks
+only at zero.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
